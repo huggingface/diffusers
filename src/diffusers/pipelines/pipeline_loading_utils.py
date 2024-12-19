@@ -554,6 +554,11 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 loaded_sub_model = passed_class_obj[name]
 
         else:
+            sub_model_dtype = (
+                torch_dtype.get(name, torch_dtype.get("_", torch.float32))
+                if isinstance(torch_dtype, dict)
+                else torch_dtype
+            )
             loaded_sub_model = _load_empty_model(
                 library_name=library_name,
                 class_name=class_name,
@@ -562,7 +567,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 is_pipeline_module=is_pipeline_module,
                 pipeline_class=pipeline_class,
                 name=name,
-                torch_dtype=torch_dtype,
+                torch_dtype=sub_model_dtype,
                 cached_folder=kwargs.get("cached_folder", None),
                 force_download=kwargs.get("force_download", None),
                 proxies=kwargs.get("proxies", None),
@@ -578,7 +583,12 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
     # Obtain a sorted dictionary for mapping the model-level components
     # to their sizes.
     module_sizes = {
-        module_name: compute_module_sizes(module, dtype=torch_dtype)[""]
+        module_name: compute_module_sizes(
+            module,
+            dtype=torch_dtype.get(module_name, torch_dtype.get("_", torch.float32))
+            if isinstance(torch_dtype, dict)
+            else torch_dtype,
+        )[""]
         for module_name, module in init_empty_modules.items()
         if isinstance(module, torch.nn.Module)
     }
