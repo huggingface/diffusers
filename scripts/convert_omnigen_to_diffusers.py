@@ -1,6 +1,5 @@
 import argparse
 import os
-os.environ['HF_HUB_CACHE'] = "/share/shitao/downloaded_models2"
 
 import torch
 from huggingface_hub import snapshot_download
@@ -45,7 +44,6 @@ def main(args):
         "t_embedder.mlp.2.weight": "t_embedder.linear_2.weight",
         "t_embedder.mlp.2.bias": "t_embedder.linear_2.bias",
         "llm.embed_tokens.weight": "embed_tokens.weight",
-
     }
 
     converted_state_dict = {}
@@ -63,7 +61,7 @@ def main(args):
             converted_state_dict[k[4:]] = v
 
     transformer = OmniGenTransformer2DModel(
-        rope_scaling = {
+        rope_scaling={
             "long_factor": [
                 1.0299999713897705,
                 1.0499999523162842,
@@ -198,7 +196,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--dump_path", default="/share/shitao/repos/OmniGen-v1-diffusers2", type=str, required=False, help="Path to the output pipeline."
+        "--dump_path", default="OmniGen-v1-diffusers", type=str, required=False, help="Path to the output pipeline."
     )
 
     args = parser.parse_args()

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -22,8 +22,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers
 from ..attention import OmniGenFeedForward
-from ..attention_processor import Attention, OmniGenAttnProcessor2_0
-from ..embeddings import OmniGenPatchEmbed, TimestepEmbedding, Timesteps, OmniGenSuScaledRotaryEmbedding
+from ..attention_processor import Attention, AttentionProcessor, OmniGenAttnProcessor2_0
+from ..embeddings import OmniGenPatchEmbed, OmniGenSuScaledRotaryEmbedding, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, RMSNorm
@@ -70,7 +70,6 @@ class OmniGenBlock(nn.Module):
         self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
         self.mlp = OmniGenFeedForward(hidden_size, intermediate_size)
 
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -106,7 +105,6 @@ class OmniGenBlock(nn.Module):
         hidden_states = residual + hidden_states
 
         return hidden_states
-
 
 
 class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -161,8 +159,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         time_step_dim: int = 256,
         flip_sin_to_cos: bool = True,
         downscale_freq_shift: int = 0,
-        timestep_activation_fn: str = 'silu',
-
+        timestep_activation_fn: str = "silu",
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -185,11 +182,13 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.proj_out = nn.Linear(hidden_size, patch_size * patch_size * self.out_channels, bias=True)
 
         self.embed_tokens = nn.Embedding(vocab_size, hidden_size, pad_token_id)
-        self.rotary_emb = OmniGenSuScaledRotaryEmbedding(hidden_size // num_attention_heads,
-                 max_position_embeddings=max_position_embeddings,
-                 original_max_position_embeddings=original_max_position_embeddings,
-                 base=rope_base,
-                 rope_scaling=rope_scaling)
+        self.rotary_emb = OmniGenSuScaledRotaryEmbedding(
+            hidden_size // num_attention_heads,
+            max_position_embeddings=max_position_embeddings,
+            original_max_position_embeddings=original_max_position_embeddings,
+            base=rope_base,
+            rope_scaling=rope_scaling,
+        )
 
         self.layers = nn.ModuleList(
             [
@@ -220,7 +219,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, OmniGenAttnProcessor2_0]:
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -244,7 +243,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[OmniGenAttnProcessor2_0, Dict[str, OmniGenAttnProcessor2_0]]):
+    def set_attn_processor(self, processor: Union[OmniGenAttnProcessor2_0, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -381,7 +380,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         height, width = hidden_states.size()[-2:]
         hidden_states = self.patch_embedding(hidden_states, is_input_image=False)
         num_tokens_for_output_image = hidden_states.size(1)
-        
+
         time_token = self.time_token(self.time_proj(timestep).to(hidden_states.dtype)).unsqueeze(1)
 
         condition_tokens = self.get_multimodal_embeddings(
@@ -393,7 +392,6 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             inputs_embeds = torch.cat([condition_tokens, time_token, hidden_states], dim=1)
         else:
             inputs_embeds = torch.cat([time_token, hidden_states], dim=1)
-        
 
         batch_size, seq_length = inputs_embeds.shape[:2]
         position_ids = position_ids.view(-1, seq_length).long()
@@ -410,19 +408,15 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         cos, sin = self.rotary_emb(hidden_states, position_ids)
         for decoder_layer in self.layers:
-            hidden_states = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                rotary_emb=[cos, sin]
-            )
+            hidden_states = decoder_layer(hidden_states, attention_mask=attention_mask, rotary_emb=[cos, sin])
 
         hidden_states = self.norm(hidden_states)
-    
+
         image_embedding = hidden_states[:, -num_tokens_for_output_image:]
         time_emb = self.t_embedder(self.time_proj(timestep).to(hidden_states.dtype))
         x = self.proj_out(self.norm_out(image_embedding, temb=time_emb))
         output = self.unpatchify(x, height, width)
 
         if not return_dict:
-            return (output, )
+            return (output,)
         return Transformer2DModelOutput(sample=output)

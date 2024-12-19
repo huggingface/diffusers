@@ -315,7 +315,6 @@ class OmniGenPipeline(
     def interrupt(self):
         return self._interrupt
 
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -478,7 +477,6 @@ class OmniGenPipeline(
             generator,
             latents,
         )
-
 
         # 8. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:

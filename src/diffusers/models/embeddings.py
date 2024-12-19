@@ -1013,8 +1013,18 @@ def apply_rotary_emb(
             sin = sin[None, None]
         elif len(cos.shape) == 3:
             # Used for OmniGen
-            cos = cos[:, :, None, :,]
-            sin = sin[:, :, None, :,]
+            cos = cos[
+                :,
+                :,
+                None,
+                :,
+            ]
+            sin = sin[
+                :,
+                :,
+                None,
+                :,
+            ]
         cos, sin = cos.to(x.device), sin.to(x.device)
 
         if revert_x_as_rotated:
@@ -1034,7 +1044,7 @@ def apply_rotary_emb(
                 x_rotated = torch.cat([-x_imag, x_real], dim=-1)
             else:
                 raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
-        
+
         out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
         return out
@@ -1045,8 +1055,6 @@ def apply_rotary_emb(
         x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
 
         return x_out.type_as(x)
-
-
 
 
 def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
@@ -1098,12 +1106,9 @@ class FluxPosEmbed(nn.Module):
 
 
 class OmniGenSuScaledRotaryEmbedding(nn.Module):
-    def __init__(self,
-                 dim,
-                 max_position_embeddings=131072,
-                 original_max_position_embeddings=4096,
-                 base=10000,
-                 rope_scaling=None):
+    def __init__(
+        self, dim, max_position_embeddings=131072, original_max_position_embeddings=4096, base=10000, rope_scaling=None
+    ):
         super().__init__()
 
         self.dim = dim
@@ -1148,6 +1153,7 @@ class OmniGenSuScaledRotaryEmbedding(nn.Module):
             cos = emb.cos() * scaling_factor
             sin = emb.sin() * scaling_factor
         return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+
 
 class TimestepEmbedding(nn.Module):
     def __init__(
@@ -1214,8 +1220,6 @@ class Timesteps(nn.Module):
             scale=self.scale,
         )
         return t_emb
-
-
 
 
 class GaussianFourierProjection(nn.Module):
