@@ -431,6 +431,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 clip_skip=clip_skip,
                 clip_model_index=0,
             )
+            print(f" ")
+            print(f" after get_clip_prompt_embeds(1):")
+            print(f" text_encoder: {self.text_encoder.device if self.text_encoder is not None else 'None'}")
+            print(f" text_encoder_2: {self.text_encoder_2.device if self.text_encoder_2 is not None else 'None'}")
+            print(f" text_encoder_3: {self.text_encoder_3.device if self.text_encoder_3 is not None else 'None'}")
+            print(f" transformer: {self.transformer.device if self.transformer is not None else 'None'}")
+            print(f" vae: {self.vae.device if self.vae is not None else 'None'}")
             prompt_2_embed, pooled_prompt_2_embed = self._get_clip_prompt_embeds(
                 prompt=prompt_2,
                 device=device,
@@ -438,6 +445,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 clip_skip=clip_skip,
                 clip_model_index=1,
             )
+            print(f" ")
+            print(f" after get_clip_prompt_embeds(2):")
+            print(f" text_encoder: {self.text_encoder.device if self.text_encoder is not None else 'None'}")
+            print(f" text_encoder_2: {self.text_encoder_2.device if self.text_encoder_2 is not None else 'None'}")
+            print(f" text_encoder_3: {self.text_encoder_3.device if self.text_encoder_3 is not None else 'None'}")
+            print(f" transformer: {self.transformer.device if self.transformer is not None else 'None'}")
+            print(f" vae: {self.vae.device if self.vae is not None else 'None'}")
             clip_prompt_embeds = torch.cat([prompt_embed, prompt_2_embed], dim=-1)
 
             t5_prompt_embed = self._get_t5_prompt_embeds(
@@ -446,6 +460,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 max_sequence_length=max_sequence_length,
                 device=device,
             )
+            print(f" ")
+            print(f" after get_t5_prompt_embeds:")
+            print(f" text_encoder: {self.text_encoder.device if self.text_encoder is not None else 'None'}")
+            print(f" text_encoder_2: {self.text_encoder_2.device if self.text_encoder_2 is not None else 'None'}")
+            print(f" text_encoder_3: {self.text_encoder_3.device if self.text_encoder_3 is not None else 'None'}")
+            print(f" transformer: {self.transformer.device if self.transformer is not None else 'None'}")
+            print(f" vae: {self.vae.device if self.vae is not None else 'None'}")
 
             clip_prompt_embeds = torch.nn.functional.pad(
                 clip_prompt_embeds, (0, t5_prompt_embed.shape[-1] - clip_prompt_embeds.shape[-1])
@@ -910,6 +931,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             generator,
             latents,
         )
+        print(f" ")
+        print(f" before denoising loop:")
+        print(f" text_encoder: {self.text_encoder.device if self.text_encoder is not None else 'None'}")
+        print(f" text_encoder_2: {self.text_encoder_2.device if self.text_encoder_2 is not None else 'None'}")
+        print(f" text_encoder_3: {self.text_encoder_3.device if self.text_encoder_3 is not None else 'None'}")
+        print(f" transformer: {self.transformer.device if self.transformer is not None else 'None'}")
+        print(f" vae: {self.vae.device if self.vae is not None else 'None'}")
 
         # 5. Prepare timesteps
         scheduler_kwargs = {}
@@ -1012,6 +1040,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+        print(f" ")
+        print(f" after denoising loop:")
+        print(f" text_encoder: {self.text_encoder.device if self.text_encoder is not None else 'None'}")
+        print(f" text_encoder_2: {self.text_encoder_2.device if self.text_encoder_2 is not None else 'None'}")
+        print(f" text_encoder_3: {self.text_encoder_3.device if self.text_encoder_3 is not None else 'None'}")
+        print(f" transformer: {self.transformer.device if self.transformer is not None else 'None'}")
+        print(f" vae: {self.vae.device if self.vae is not None else 'None'}")
 
         if output_type == "latent":
             image = latents
@@ -1021,6 +1056,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
+        print(f" ")
+        print(f" after decode:")
+        print(f" text_encoder: {self.text_encoder.device if self.text_encoder is not None else 'None'}")
+        print(f" text_encoder_2: {self.text_encoder_2.device if self.text_encoder_2 is not None else 'None'}")
+        print(f" text_encoder_3: {self.text_encoder_3.device if self.text_encoder_3 is not None else 'None'}")
+        print(f" transformer: {self.transformer.device if self.transformer is not None else 'None'}")
+        print(f" vae: {self.vae.device if self.vae is not None else 'None'}")
 
         # Offload all models
         self.maybe_free_model_hooks()
