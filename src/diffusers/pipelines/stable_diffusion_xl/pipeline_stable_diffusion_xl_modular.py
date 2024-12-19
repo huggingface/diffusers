@@ -325,6 +325,102 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         return pipeline, state
 
 
+class StableDiffusionXLVAEEncoderStep(PipelineBlock):
+    expected_components = ["vae"]
+    expected_auxiliaries = ["image_processor"]
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("image", None),
+            ("generator", None),
+            ("height", None),
+            ("width", None),
+            ("device", None),
+            ("dtype", None),
+        ]
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["batch_size"]
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["image_latents"]
+
+    def __init__(self, vae=None):
+        super().__init__(vae=vae)
+        self.image_processor = VaeImageProcessor()
+        self.auxiliaries["image_processor"] = self.image_processor
+
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        image = state.get_input("image")
+        generator = state.get_input("generator")
+        height = state.get_input("height")
+        width = state.get_input("width")
+        device = state.get_input("device")
+        dtype = state.get_input("dtype")
+
+        batch_size = state.get_intermediate("batch_size")
+
+        if device is None:
+            device = pipeline._execution_device
+        if dtype is None:
+            dtype = pipeline.vae.dtype
+
+        image = pipeline.image_processor.preprocess(image, height=height, width=width)
+        image = image.to(device=device, dtype=dtype)
+
+        latents_mean = latents_std = None
+        if hasattr(pipeline.vae.config, "latents_mean") and pipeline.vae.config.latents_mean is not None:
+            latents_mean = torch.tensor(pipeline.vae.config.latents_mean).view(1, 4, 1, 1)
+        if hasattr(pipeline.vae.config, "latents_std") and pipeline.vae.config.latents_std is not None:
+            latents_std = torch.tensor(pipeline.vae.config.latents_std).view(1, 4, 1, 1)
+
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        if pipeline.vae.config.force_upcast:
+            image = image.float()
+            pipeline.vae.to(dtype=torch.float32)
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        elif isinstance(generator, list):
+            if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
+                image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
+            elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
+                raise ValueError(
+                    f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
+                )
+
+            init_latents = [
+                retrieve_latents(pipeline.vae.encode(image[i : i + 1]), generator=generator[i])
+                for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
+        else:
+            init_latents = retrieve_latents(pipeline.vae.encode(image), generator=generator)
+
+        if pipeline.vae.config.force_upcast:
+            pipeline.vae.to(dtype)
+
+        init_latents = init_latents.to(dtype)
+        if latents_mean is not None and latents_std is not None:
+            latents_mean = latents_mean.to(device=device, dtype=dtype)
+            latents_std = latents_std.to(device=device, dtype=dtype)
+            init_latents = (init_latents - latents_mean) * pipeline.vae.config.scaling_factor / latents_std
+        else:
+            init_latents = pipeline.vae.config.scaling_factor * init_latents
+
+        state.add_intermediate("image_latents", init_latents)
+
+        return pipeline, state
+
+
 class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     expected_components = ["scheduler"]
 
@@ -498,9 +594,9 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         denoising_start = state.get_input("denoising_start")
 
         batch_size = state.get_intermediate("batch_size")
-        prompt_embeds = state.get_intermediate("prompt_embeds", None)
+        prompt_embeds = state.get_intermediate("prompt_embeds")
         # image to image only
-        latent_timestep = state.get_intermediate("latent_timestep", None)
+        latent_timestep = state.get_intermediate("latent_timestep")
 
         if dtype is None and prompt_embeds is not None:
             dtype = prompt_embeds.dtype
@@ -1872,12 +1968,6 @@ class StableDiffusionXLModularPipeline(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
 
-        latents_mean = latents_std = None
-        if hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None:
-            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
-        if hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None:
-            latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
-
         # Offload text encoder if `enable_model_cpu_offload` was enabled
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.text_encoder_2.to("cpu")
@@ -1891,6 +1981,11 @@ class StableDiffusionXLModularPipeline(
             init_latents = image
 
         else:
+            latents_mean = latents_std = None
+            if hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None:
+                latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
+            if hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None:
+                latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
             # make sure the VAE is in float32 mode, as it overflows in float16
             if self.vae.config.force_upcast:
                 image = image.float()
