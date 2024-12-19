@@ -27,7 +27,7 @@ The example below only quantizes the weights to int8.
 ```python
 from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
 
-model_id = "black-forest-labs/Flux.1-Dev"
+model_id = "black-forest-labs/FLUX.1-dev"
 dtype = torch.bfloat16
 
 quantization_config = TorchAoConfig("int8wo")
@@ -45,7 +45,9 @@ pipe = FluxPipeline.from_pretrained(
 pipe.to("cuda")
 
 prompt = "A cat holding a sign that says hello world"
-image = pipe(prompt, num_inference_steps=28, guidance_scale=0.0).images[0]
+image = pipe(
+    prompt, num_inference_steps=50, guidance_scale=4.5, max_sequence_length=512
+).images[0]
 image.save("output.png")
 ```
 
