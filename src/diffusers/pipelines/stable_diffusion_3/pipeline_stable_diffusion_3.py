@@ -182,8 +182,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             Image processor for IP Adapter.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->transformer->vae"
-    _exclude_from_cpu_offload = ["image_encoder"]
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->image_encoder->transformer->vae"
     _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "negative_pooled_prompt_embeds"]
 
@@ -760,6 +759,16 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
 
         return image_embeds.to(device=device)
+    
+    def enable_sequential_cpu_offload(self, *args, **kwargs):
+        if self.image_encoder is not None and "image_encoder" not in self._exclude_from_cpu_offload:
+            logger.warning(
+                "`pipe.enable_sequential_cpu_offload()` might fail for `image_encoder` if it uses "
+                "`torch.nn.MultiheadAttention`. You can exclude `image_encoder` from CPU offloading by calling "
+                "`pipe._exclude_from_cpu_offload.append('image_encoder')` before `pipe.enable_sequential_cpu_offload()`."
+            )
+
+        super().enable_sequential_cpu_offload(*args, **kwargs)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
