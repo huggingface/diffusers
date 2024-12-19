@@ -230,7 +230,7 @@ class OmniGenPipelineSlowTests(unittest.TestCase):
 
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
-        print(image_slice)
+
         expected_slice = np.array(
             [
                 [0.1783447, 0.16772744, 0.14339337],
