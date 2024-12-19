@@ -1,5 +1,6 @@
 import argparse
 import os
+os.environ['HF_HUB_CACHE'] = "/share/shitao/downloaded_models2"
 
 import torch
 from huggingface_hub import snapshot_download
@@ -35,37 +36,34 @@ def main(args):
         "final_layer.adaLN_modulation.1.bias": "norm_out.linear.bias",
         "final_layer.linear.weight": "proj_out.weight",
         "final_layer.linear.bias": "proj_out.bias",
+        "time_token.mlp.0.weight": "time_token.linear_1.weight",
+        "time_token.mlp.0.bias": "time_token.linear_1.bias",
+        "time_token.mlp.2.weight": "time_token.linear_2.weight",
+        "time_token.mlp.2.bias": "time_token.linear_2.bias",
+        "t_embedder.mlp.0.weight": "t_embedder.linear_1.weight",
+        "t_embedder.mlp.0.bias": "t_embedder.linear_1.bias",
+        "t_embedder.mlp.2.weight": "t_embedder.linear_2.weight",
+        "t_embedder.mlp.2.bias": "t_embedder.linear_2.bias",
+        "llm.embed_tokens.weight": "embed_tokens.weight",
+
     }
 
     converted_state_dict = {}
     for k, v in ckpt.items():
         if k in mapping_dict:
             converted_state_dict[mapping_dict[k]] = v
+        elif "qkv" in k:
+            to_q, to_k, to_v = v.chunk(3)
+            converted_state_dict[f"layers.{k.split('.')[2]}.self_attn.to_q.weight"] = to_q
+            converted_state_dict[f"layers.{k.split('.')[2]}.self_attn.to_k.weight"] = to_k
+            converted_state_dict[f"layers.{k.split('.')[2]}.self_attn.to_v.weight"] = to_v
+        elif "o_proj" in k:
+            converted_state_dict[f"layers.{k.split('.')[2]}.self_attn.to_out.0.weight"] = v
         else:
-            converted_state_dict[k] = v
+            converted_state_dict[k[4:]] = v
 
-    # transformer_config = AutoConfig.from_pretrained(args.origin_ckpt_path)
-    # print(type(transformer_config.__dict__))
-    # print(transformer_config.__dict__)
-
-    transformer_config = {
-        "_name_or_path": "Phi-3-vision-128k-instruct",
-        "architectures": ["Phi3ForCausalLM"],
-        "attention_dropout": 0.0,
-        "bos_token_id": 1,
-        "eos_token_id": 2,
-        "hidden_act": "silu",
-        "hidden_size": 3072,
-        "initializer_range": 0.02,
-        "intermediate_size": 8192,
-        "max_position_embeddings": 131072,
-        "model_type": "phi3",
-        "num_attention_heads": 32,
-        "num_hidden_layers": 32,
-        "num_key_value_heads": 32,
-        "original_max_position_embeddings": 4096,
-        "rms_norm_eps": 1e-05,
-        "rope_scaling": {
+    transformer = OmniGenTransformer2DModel(
+        rope_scaling = {
             "long_factor": [
                 1.0299999713897705,
                 1.0499999523162842,
@@ -168,17 +166,6 @@ def main(args):
             ],
             "type": "su",
         },
-        "rope_theta": 10000.0,
-        "sliding_window": 131072,
-        "tie_word_embeddings": False,
-        "torch_dtype": "bfloat16",
-        "transformers_version": "4.38.1",
-        "use_cache": True,
-        "vocab_size": 32064,
-        "_attn_implementation": "sdpa",
-    }
-    transformer = OmniGenTransformer2DModel(
-        transformer_config=transformer_config,
         patch_size=2,
         in_channels=4,
         pos_embed_max_size=192,
@@ -189,7 +176,7 @@ def main(args):
     num_model_params = sum(p.numel() for p in transformer.parameters())
     print(f"Total number of transformer parameters: {num_model_params}")
 
-    scheduler = FlowMatchEulerDiscreteScheduler()
+    scheduler = FlowMatchEulerDiscreteScheduler(invert_sigmas=True, num_train_timesteps=1)
 
     vae = AutoencoderKL.from_pretrained(os.path.join(args.origin_ckpt_path, "vae"), torch_dtype=torch.float32)
 
@@ -211,7 +198,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--dump_path", default="OmniGen-v1-diffusers", type=str, required=False, help="Path to the output pipeline."
+        "--dump_path", default="/share/shitao/repos/OmniGen-v1-diffusers2", type=str, required=False, help="Path to the output pipeline."
     )
 
     args = parser.parse_args()

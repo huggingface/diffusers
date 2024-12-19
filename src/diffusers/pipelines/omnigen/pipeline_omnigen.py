@@ -32,7 +32,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .kvcache_omnigen import OmniGenCache
 from .processor_omnigen import OmniGenMultiModalProcessor
 
 
@@ -203,8 +202,6 @@ class OmniGenPipeline(
         input_images,
         height,
         width,
-        use_kv_cache,
-        offload_kv_cache,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
@@ -224,12 +221,6 @@ class OmniGenPipeline(
             logger.warning(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
             )
-
-        if use_kv_cache and offload_kv_cache:
-            if not torch.cuda.is_available():
-                raise ValueError(
-                    "Don't fine avaliable GPUs. `offload_kv_cache` can't be used when there is no GPU. please set it to False: `use_kv_cache=False, offload_kv_cache=False`"
-                )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -324,17 +315,6 @@ class OmniGenPipeline(
     def interrupt(self):
         return self._interrupt
 
-    def enable_transformer_block_cpu_offload(self, device: Union[torch.device, str] = "cuda"):
-        torch_device = torch.device(device)
-        for name, param in self.transformer.named_parameters():
-            if "layers" in name and "layers.0" not in name:
-                param.data = param.data.cpu()
-            else:
-                param.data = param.data.to(torch_device)
-        for buffer_name, buffer in self.transformer.patch_embedding.named_buffers():
-            setattr(self.transformer.patch_embedding, buffer_name, buffer.to(torch_device))
-        self.vae.to(torch_device)
-        self.offload_transformer_block = True
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -351,9 +331,6 @@ class OmniGenPipeline(
         timesteps: List[int] = None,
         guidance_scale: float = 2.5,
         img_guidance_scale: float = 1.6,
-        use_kv_cache: bool = True,
-        offload_kv_cache: bool = True,
-        offload_transformer_block: bool = False,
         use_input_image_size_as_output: bool = False,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -395,12 +372,6 @@ class OmniGenPipeline(
                 usually at the expense of lower image quality.
             img_guidance_scale (`float`, *optional*, defaults to 1.6):
                 Defined as equation 3 in [Instrucpix2pix](https://arxiv.org/pdf/2211.09800).
-            use_kv_cache (`bool`, *optional*, defaults to True):
-                enable kv cache to speed up the inference
-            offload_kv_cache (`bool`, *optional*, defaults to True):
-                offload the cached key and value to cpu, which can save memory but slow down the generation silightly
-            offload_transformer_block (`bool`, *optional*, defaults to False):
-                offload the transformer layers to cpu, which can save memory but slow down the generation
             use_input_image_size_as_output (bool, defaults to False):
                 whether to use the input image size as the output image size, which can be used for single-image input,
                 e.g., image editing task
@@ -451,17 +422,12 @@ class OmniGenPipeline(
         # using Float32 for the VAE doesn't take up much memory but can prevent potential black image outputs.
         self.vae.to(torch.float32)
 
-        if offload_transformer_block:
-            self.enable_transformer_block_cpu_offload()
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             input_images,
             height,
             width,
-            use_kv_cache,
-            offload_kv_cache,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
@@ -513,10 +479,6 @@ class OmniGenPipeline(
             latents,
         )
 
-        # 7. Prepare OmniGenCache
-        num_tokens_for_output_img = latents.size(-1) * latents.size(-2) // (self.transformer.patch_size**2)
-        cache = OmniGenCache(num_tokens_for_output_img, offload_kv_cache) if use_kv_cache else None
-        self.transformer.llm.config.use_cache = use_kv_cache
 
         # 8. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -527,7 +489,7 @@ class OmniGenPipeline(
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
-                noise_pred, cache = self.transformer(
+                noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     input_ids=processed_data["input_ids"],
@@ -536,23 +498,8 @@ class OmniGenPipeline(
                     attention_mask=processed_data["attention_mask"],
                     position_ids=processed_data["position_ids"],
                     attention_kwargs=attention_kwargs,
-                    past_key_values=cache,
-                    offload_transformer_block=self.offload_transformer_block
-                    if hasattr(self, "offload_transformer_block")
-                    else offload_transformer_block,
                     return_dict=False,
-                )
-
-                # if use kv cache, don't need attention mask and position ids of condition tokens for next step
-                if use_kv_cache:
-                    if processed_data["input_ids"] is not None:
-                        processed_data["input_ids"] = None
-                        processed_data["attention_mask"] = processed_data["attention_mask"][
-                            ..., -(num_tokens_for_output_img + 1) :, :
-                        ]  # +1 is for the timestep token
-                        processed_data["position_ids"] = processed_data["position_ids"][
-                            :, -(num_tokens_for_output_img + 1) :
-                        ]
+                )[0]
 
                 if num_cfg == 2:
                     cond, uncond, img_cond = torch.split(noise_pred, len(noise_pred) // 3, dim=0)

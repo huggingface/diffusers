@@ -301,39 +301,10 @@ However, when using input images, the computational cost increases.
 Here are some guidelines to help you reduce computational costs when input multiple images. The experiments are conducted on A800 GPU and input two images to OmniGen.
 
 
-### Inference speed
-
-| Parameter                | Inference Time |
-|--------------------------|----------------|
-| use_kv_cache=True        | 90s            |
-| use_kv_cache=False       | 221s           |
-| max_input_image_size=1024| 90s            |
-| max_input_image_size=512 | 58s            |
-
-- `use_kv_cache=True`:   
-   `use_kv_cache` will store key and value states of the input conditions to compute attention without redundant computations. 
-    The default value is True, and OmniGen will offload the kv cache to cpu default.
-  - `use_kv_cache=False`: the inference time is 3m21s.
-  - `use_kv_cache=True`: the inference time is 1m30s.
-
-- `max_input_image_size`:   
-  the maximum size of input image, which will be used to crop the input image
-  - `max_input_image_size=1024`: the inference time is 1m30s.
-  - `max_input_image_size=512`: the inference time is 58s.
-
-
-
-
-
-
-### Memory 
-
-
 | Method                                      | Memory Usage |
 |---------------------------------------------|--------------|
 | pipe.to("cuda")                             | 31GB         |
 | pipe.enable_model_cpu_offload()             | 28GB         |
-| pipe.enable_transformer_block_cpu_offload() | 25GB         |
 | pipe.enable_sequential_cpu_offload()        | 11GB         |
 
 - `pipe.enable_model_cpu_offload()`:

@@ -12,205 +12,101 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from transformers import Phi3Config, Phi3Model
-from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_outputs import BaseModelOutputWithPast
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers
-from ..attention_processor import AttentionProcessor
-from ..embeddings import OmniGenPatchEmbed, OmniGenTimestepEmbed
+from ..attention import OmniGenFeedForward
+from ..attention_processor import Attention, OmniGenAttnProcessor2_0
+from ..embeddings import OmniGenPatchEmbed, TimestepEmbedding, Timesteps, OmniGenSuScaledRotaryEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm
+from ..normalization import AdaLayerNorm, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-@dataclass
-class OmniGen2DModelOutput(Transformer2DModelOutput):
+class OmniGenBlock(nn.Module):
     """
-    The output of [`Transformer2DModel`].
-
-    Args:
-        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
-            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
-            distributions for the unnoised latent pixels.
-        past_key_values (`transformers.cache_utils.DynamicCache`)
-    """
-
-    sample: "torch.Tensor"  # noqa: F821
-    past_key_values: "DynamicCache"
-
-
-class OmniGenBaseTransformer(Phi3Model):
-    """
-    Transformer used in OmniGen. The transformer block is from Ph3, and only modify the attention mask. References:
-    [OmniGen](https://arxiv.org/pdf/2409.11340)
+    A LuminaNextDiTBlock for LuminaNextDiT2DModel.
 
     Parameters:
-        config: Phi3Config
+        hidden_size (`int`): Embedding dimension of the input features.
+        num_attention_heads (`int`): Number of attention heads.
+        num_key_value_heads (`int`):
+            Number of attention heads in key and value features (if using GQA), or set to None for the same as query.
+        intermediate_size (`int`): size of intermediate layer.
+        rms_norm_eps (`float`): The eps for norm layer.
     """
 
-    def prefetch_layer(self, layer_idx: int, device: torch.device):
-        "Starts prefetching the next layer cache"
-        with torch.cuda.stream(self.prefetch_stream):
-            # Prefetch next layer tensors to GPU
-            for name, param in self.layers[layer_idx].named_parameters():
-                param.data = param.data.to(device, non_blocking=True)
+    def __init__(
+        self,
+        hidden_size: int,
+        num_attention_heads: int,
+        num_key_value_heads: int,
+        intermediate_size: int,
+        rms_norm_eps: float,
+    ) -> None:
+        super().__init__()
 
-    def evict_previous_layer(self, layer_idx: int):
-        "Moves the previous layer cache to the CPU"
-        prev_layer_idx = layer_idx - 1
-        for name, param in self.layers[prev_layer_idx].named_parameters():
-            param.data = param.data.to("cpu", non_blocking=True)
+        self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
+        self.self_attn = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=hidden_size,
+            dim_head=hidden_size // num_attention_heads,
+            heads=num_attention_heads,
+            kv_heads=num_key_value_heads,
+            bias=False,
+            out_dim=hidden_size,
+            out_bias=False,
+            processor=OmniGenAttnProcessor2_0(),
+        )
+        self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
+        self.mlp = OmniGenFeedForward(hidden_size, intermediate_size)
 
-    def get_offload_layer(self, layer_idx: int, device: torch.device):
-        # init stream
-        if not hasattr(self, "prefetch_stream"):
-            self.prefetch_stream = torch.cuda.Stream()
-
-        # delete previous layer
-        torch.cuda.current_stream().synchronize()
-        self.evict_previous_layer(layer_idx)
-
-        # make sure the current layer is ready
-        torch.cuda.synchronize(self.prefetch_stream)
-
-        # load next layer
-        self.prefetch_layer((layer_idx + 1) % len(self.layers), device)
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        offload_transformer_block: Optional[bool] = False,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor,
+        rotary_emb: torch.Tensor,
+    ):
+        """
+        Perform a forward pass through the LuminaNextDiTBlock.
+
+        Parameters:
+            hidden_states (`torch.Tensor`): The input of hidden_states for LuminaNextDiTBlock.
+            attention_mask (`torch.Tensor): The input of hidden_states corresponse attention mask.
+            rotary_emb (`torch.Tensor`): Precomputed cosine and sine frequencies.
+        """
+        residual = hidden_states
+
+        hidden_states = self.input_layernorm(hidden_states)
+
+        # Self Attention
+        attn_outputs = self.self_attn(
+            hidden_states=hidden_states,
+            encoder_hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            query_rotary_emb=rotary_emb,
+            key_rotary_emb=rotary_emb,
         )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        hidden_states = residual + attn_outputs
 
-        if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
 
-        if self.gradient_checkpointing and self.training:
-            if use_cache:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
-                use_cache = False
+        return hidden_states
 
-        # kept for BC (non `Cache` `past_key_values` inputs)
-        return_legacy_cache = False
-        if use_cache and not isinstance(past_key_values, Cache):
-            return_legacy_cache = True
-            if past_key_values is None:
-                past_key_values = DynamicCache()
-            else:
-                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                logger.warning_once(
-                    "We detected that you are passing `past_key_values` as a tuple of tuples. This is deprecated and "
-                    "will be removed in v4.47. Please convert your cache or use an appropriate `Cache` class "
-                    "(https://huggingface.co/docs/transformers/kv_cache#legacy-cache-format)"
-                )
-
-        if attention_mask is not None and attention_mask.dim() == 3:
-            dtype = inputs_embeds.dtype
-            min_dtype = torch.finfo(dtype).min
-            attention_mask = (1 - attention_mask) * min_dtype
-            attention_mask = attention_mask.unsqueeze(1).to(inputs_embeds.dtype)
-        else:
-            raise Exception("attention_mask parameter was unavailable or invalid")
-
-        hidden_states = inputs_embeds
-
-        # decoder layers
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attns = () if output_attentions else None
-        next_decoder_cache = None
-
-        layer_idx = -1
-        for decoder_layer in self.layers:
-            layer_idx += 1
-
-            if output_hidden_states:
-                all_hidden_states += (hidden_states,)
-
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    attention_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                )
-            else:
-                if offload_transformer_block and not self.training:
-                    if not torch.cuda.is_available():
-                        logger.warning_once(
-                            "We don't detecte any available GPU, so diable `offload_transformer_block`"
-                        )
-                    else:
-                        self.get_offload_layer(layer_idx, device=inputs_embeds.device)
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    past_key_value=past_key_values,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                )
-
-            hidden_states = layer_outputs[0]
-
-            if use_cache:
-                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
-
-            if output_attentions:
-                all_self_attns += (layer_outputs[1],)
-
-        hidden_states = self.norm(hidden_states)
-
-        # add hidden states from the last decoder layer
-        if output_hidden_states:
-            all_hidden_states += (hidden_states,)
-
-        next_cache = next_decoder_cache if use_cache else None
-        if return_legacy_cache:
-            next_cache = next_cache.to_legacy_cache()
-
-        if not return_dict:
-            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
-        return BaseModelOutputWithPast(
-            last_hidden_state=hidden_states,
-            past_key_values=next_cache,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attns,
-        )
 
 
 class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -220,7 +116,23 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     Reference: https://arxiv.org/pdf/2409.11340
 
     Parameters:
-        transformer_config (`dict`): config for transformer layers. OmniGen-v1 use Phi3 as transformer backbone
+        hidden_size (`int`, *optional*, defaults to 3072):
+            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
+            hidden representations.
+        rms_norm_eps (`float`, *optional*, defaults to 1e-5): eps for RMSNorm layer.
+        num_attention_heads (`int`, *optional*, defaults to 32):
+            The number of attention heads in each attention layer. This parameter specifies how many separate attention
+            mechanisms are used.
+        num_kv_heads (`int`, *optional*, defaults to 32):
+            The number of key-value heads in the attention mechanism, if different from the number of attention heads.
+            If None, it defaults to num_attention_heads.
+        intermediate_size (`int`, *optional*, defaults to 8192): dimension of the intermediate layer in FFN
+        num_layers (`int`, *optional*, default to 32):
+            The number of layers in the model. This defines the depth of the neural network.
+        pad_token_id (`int`, *optional*, default to 32000):
+            id for pad token
+        vocab_size (`int`, *optional*, default to 32064):
+            size of vocabulary
         patch_size (`int`, defaults to 2): Patch size to turn the input data into small patches.
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input.
         pos_embed_max_size (`int`, *optional*, defaults to 192): The max size of pos emb.
@@ -231,19 +143,32 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     @register_to_config
     def __init__(
         self,
-        transformer_config: Dict,
+        hidden_size: int = 3072,
+        rms_norm_eps: float = 1e-05,
+        num_attention_heads: int = 32,
+        num_key_value_heads: int = 32,
+        intermediate_size: int = 8192,
+        num_layers: int = 32,
+        pad_token_id: int = 32000,
+        vocab_size: int = 32064,
+        max_position_embeddings: int = 131072,
+        original_max_position_embeddings: int = 4096,
+        rope_base: int = 10000,
+        rope_scaling: Dict = None,
         patch_size=2,
         in_channels=4,
         pos_embed_max_size: int = 192,
+        time_step_dim: int = 256,
+        flip_sin_to_cos: bool = True,
+        downscale_freq_shift: int = 0,
+        timestep_activation_fn: str = 'silu',
+
     ):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = in_channels
         self.patch_size = patch_size
         self.pos_embed_max_size = pos_embed_max_size
-
-        transformer_config = Phi3Config(**transformer_config)
-        hidden_size = transformer_config.hidden_size
 
         self.patch_embedding = OmniGenPatchEmbed(
             patch_size=patch_size,
@@ -252,14 +177,33 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             pos_embed_max_size=pos_embed_max_size,
         )
 
-        self.time_token = OmniGenTimestepEmbed(hidden_size)
-        self.t_embedder = OmniGenTimestepEmbed(hidden_size)
+        self.time_proj = Timesteps(time_step_dim, flip_sin_to_cos, downscale_freq_shift)
+        self.time_token = TimestepEmbedding(time_step_dim, hidden_size, timestep_activation_fn)
+        self.t_embedder = TimestepEmbedding(time_step_dim, hidden_size, timestep_activation_fn)
 
         self.norm_out = AdaLayerNorm(hidden_size, norm_elementwise_affine=False, norm_eps=1e-6, chunk_dim=1)
         self.proj_out = nn.Linear(hidden_size, patch_size * patch_size * self.out_channels, bias=True)
 
-        self.llm = OmniGenBaseTransformer(config=transformer_config)
-        self.llm.config.use_cache = False
+        self.embed_tokens = nn.Embedding(vocab_size, hidden_size, pad_token_id)
+        self.rotary_emb = OmniGenSuScaledRotaryEmbedding(hidden_size // num_attention_heads,
+                 max_position_embeddings=max_position_embeddings,
+                 original_max_position_embeddings=original_max_position_embeddings,
+                 base=rope_base,
+                 rope_scaling=rope_scaling)
+
+        self.layers = nn.ModuleList(
+            [
+                OmniGenBlock(
+                    hidden_size,
+                    num_attention_heads,
+                    num_key_value_heads,
+                    intermediate_size,
+                    rms_norm_eps,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.norm = RMSNorm(hidden_size, eps=rms_norm_eps)
 
     def unpatchify(self, x, h, w):
         """
@@ -276,7 +220,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> Dict[str, OmniGenAttnProcessor2_0]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -300,7 +244,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[OmniGenAttnProcessor2_0, Dict[str, OmniGenAttnProcessor2_0]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -358,7 +302,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         input_img_latents = [x.to(self.dtype) for x in input_img_latents]
         condition_tokens = None
         if input_ids is not None:
-            condition_tokens = self.llm.embed_tokens(input_ids)
+            condition_tokens = self.embed_tokens(input_ids)
             input_img_inx = 0
             if input_img_latents is not None:
                 input_image_tokens = self.patch_embedding(input_img_latents, is_input_image=True)
@@ -382,8 +326,6 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         input_image_sizes: Dict[int, List[int]],
         attention_mask: torch.Tensor,
         position_ids: torch.Tensor,
-        past_key_values: DynamicCache = None,
-        offload_transformer_block: bool = False,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ):
@@ -439,8 +381,8 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         height, width = hidden_states.size()[-2:]
         hidden_states = self.patch_embedding(hidden_states, is_input_image=False)
         num_tokens_for_output_image = hidden_states.size(1)
-
-        time_token = self.time_token(timestep, dtype=hidden_states.dtype).unsqueeze(1)
+        
+        time_token = self.time_token(self.time_proj(timestep).to(hidden_states.dtype)).unsqueeze(1)
 
         condition_tokens = self.get_multimodal_embeddings(
             input_ids=input_ids,
@@ -448,23 +390,39 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             input_image_sizes=input_image_sizes,
         )
         if condition_tokens is not None:
-            input_emb = torch.cat([condition_tokens, time_token, hidden_states], dim=1)
+            inputs_embeds = torch.cat([condition_tokens, time_token, hidden_states], dim=1)
         else:
-            input_emb = torch.cat([time_token, hidden_states], dim=1)
-        output = self.llm(
-            inputs_embeds=input_emb,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            offload_transformer_block=offload_transformer_block,
-        )
-        output, past_key_values = output.last_hidden_state, output.past_key_values
+            inputs_embeds = torch.cat([time_token, hidden_states], dim=1)
+        
 
-        image_embedding = output[:, -num_tokens_for_output_image:]
-        time_emb = self.t_embedder(timestep, dtype=hidden_states.dtype)
+        batch_size, seq_length = inputs_embeds.shape[:2]
+        position_ids = position_ids.view(-1, seq_length).long()
+
+        if attention_mask is not None and attention_mask.dim() == 3:
+            dtype = inputs_embeds.dtype
+            min_dtype = torch.finfo(dtype).min
+            attention_mask = (1 - attention_mask) * min_dtype
+            attention_mask = attention_mask.unsqueeze(1).to(inputs_embeds.dtype)
+        else:
+            raise Exception("attention_mask parameter was unavailable or invalid")
+
+        hidden_states = inputs_embeds
+
+        cos, sin = self.rotary_emb(hidden_states, position_ids)
+        for decoder_layer in self.layers:
+            hidden_states = decoder_layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                rotary_emb=[cos, sin]
+            )
+
+        hidden_states = self.norm(hidden_states)
+    
+        image_embedding = hidden_states[:, -num_tokens_for_output_image:]
+        time_emb = self.t_embedder(self.time_proj(timestep).to(hidden_states.dtype))
         x = self.proj_out(self.norm_out(image_embedding, temb=time_emb))
         output = self.unpatchify(x, height, width)
 
         if not return_dict:
-            return (output, past_key_values)
-        return OmniGen2DModelOutput(sample=output, past_key_values=past_key_values)
+            return (output, )
+        return Transformer2DModelOutput(sample=output)
