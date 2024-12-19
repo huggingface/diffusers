@@ -73,7 +73,7 @@ This will also allow us to push the trained LoRA parameters to the Hugging Face 
 Now, we can launch training using:
 
 ```bash
-export MODEL_NAME="Efficient-Large-Model/Sana_1600M_1024px_diffusers"
+export MODEL_NAME="Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-sana-lora"
 
