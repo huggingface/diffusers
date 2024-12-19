@@ -23,11 +23,11 @@ import re
 from collections import OrderedDict
 from functools import partial, wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
-from huggingface_hub import create_repo, split_torch_state_dict_into_shards
+from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
@@ -586,6 +586,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
+        dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -678,6 +679,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision=revision,
             subfolder=subfolder,
             user_agent=user_agent,
+            dduf_entries=dduf_entries,
             **kwargs,
         )
         # no in-place modification of the original config.
@@ -755,6 +757,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "revision": revision,
             "user_agent": user_agent,
             "commit_hash": commit_hash,
+            "dduf_entries": dduf_entries,
         }
         index_file = _fetch_index_file(**index_file_kwargs)
         # In case the index file was not found we still have to consider the legacy format.
@@ -790,7 +793,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
-            if is_sharded:
+            # in the case it is sharded, we have already the index
+            if is_sharded and not dduf_entries:
                 sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
                     pretrained_model_name_or_path,
                     index_file,
@@ -821,6 +825,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         subfolder=subfolder,
                         user_agent=user_agent,
                         commit_hash=commit_hash,
+                        dduf_entries=dduf_entries,
                     )
 
                 except IOError as e:
@@ -844,6 +849,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     subfolder=subfolder,
                     user_agent=user_agent,
                     commit_hash=commit_hash,
+                    dduf_entries=dduf_entries,
                 )
 
             if low_cpu_mem_usage:
@@ -865,7 +871,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
                     else:
                         param_device = torch.device(torch.cuda.current_device())
-                    state_dict = load_state_dict(model_file, variant=variant)
+                    state_dict = load_state_dict(model_file, variant=variant, dduf_entries=dduf_entries)
                     model._convert_deprecated_attention_blocks(state_dict)
 
                     # move the params from meta device to cpu
@@ -965,7 +971,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 model = cls.from_config(config, **unused_kwargs)
 
-                state_dict = load_state_dict(model_file, variant=variant)
+                state_dict = load_state_dict(model_file, variant=variant, dduf_entries=dduf_entries)
                 model._convert_deprecated_attention_blocks(state_dict)
 
                 model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
