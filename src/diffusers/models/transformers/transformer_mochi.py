@@ -335,6 +335,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["MochiTransformerBlock"]
 
     @register_to_config
     def __init__(
