@@ -228,8 +228,7 @@ class TorchAoTest(unittest.TestCase):
             ("int8wo", np.array([0.4648, 0.5195, 0.5547, 0.4199, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
             ("int8dq", np.array([0.4648, 0.5195, 0.5547, 0.4199, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
             ("uint4wo", np.array([0.4609, 0.5234, 0.5508, 0.4199, 0.4336, 0.6406, 0.4316, 0.4531, 0.5625])),
-            ("int_a8w8", np.array([0.4648, 0.5195, 0.5547, 0.4199, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
-            ("uint_a16w7", np.array([0.4648, 0.5195, 0.5547, 0.4219, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
+            ("uint7wo", np.array([0.4648, 0.5195, 0.5547, 0.4219, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
         ]
 
         if TorchAoConfig._is_cuda_capability_atleast_8_9():
@@ -253,8 +252,8 @@ class TorchAoTest(unittest.TestCase):
 
         for quantization_name, expected_slice in QUANTIZATION_TYPES_TO_TEST:
             quant_kwargs = {}
-            if quantization_name in ["uint4wo", "uint_a16w7"]:
-                # The dummy flux model that we use requires us to impose some restrictions on group_size here
+            if quantization_name in ["uint4wo", "uint7wo"]:
+                # The dummy flux model that we use has smaller dimensions. This imposes some restrictions on group_size here
                 quant_kwargs.update({"group_size": 16})
             quantization_config = TorchAoConfig(
                 quant_type=quantization_name, modules_to_not_convert=["x_embedder"], **quant_kwargs
@@ -279,13 +278,14 @@ class TorchAoTest(unittest.TestCase):
         self.assertEqual(weight.quant_max, 15)
         self.assertTrue(isinstance(weight.layout_type, TensorCoreTiledLayoutType))
 
-    def test_offload(self):
+    def test_device_map(self):
         """
-        Test if the quantized model int4 weight-only is working properly with cpu/disk offload. Also verifies
-        that the device map is correctly set (in the `hf_device_map` attribute of the model).
+        Test if the quantized model int4 weight-only is working properly with "auto" and custom device maps.
+        The custom device map performs cpu/disk offloading as well. Also verifies that the device map is
+        correctly set (in the `hf_device_map` attribute of the model).
         """
 
-        device_map_offload = {
+        custom_device_map_dict = {
             "time_text_embed": torch_device,
             "context_embedder": torch_device,
             "x_embedder": torch_device,
@@ -294,27 +294,50 @@ class TorchAoTest(unittest.TestCase):
             "norm_out": torch_device,
             "proj_out": "cpu",
         }
+        device_maps = ["auto", custom_device_map_dict]
 
         inputs = self.get_dummy_tensor_inputs(torch_device)
+        expected_slice = np.array([0.3457, -0.0366, 0.0105, -0.2275, -0.4941, 0.4395, -0.166, -0.6641, 0.4375])
 
-        with tempfile.TemporaryDirectory() as offload_folder:
-            quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
-            quantized_model = FluxTransformer2DModel.from_pretrained(
-                "hf-internal-testing/tiny-flux-pipe",
-                subfolder="transformer",
-                quantization_config=quantization_config,
-                device_map=device_map_offload,
-                torch_dtype=torch.bfloat16,
-                offload_folder=offload_folder,
-            )
+        for device_map in device_maps:
+            device_map_to_compare = {"": 0} if device_map == "auto" else device_map
 
-            self.assertTrue(quantized_model.hf_device_map == device_map_offload)
+            # Test non-sharded model
+            with tempfile.TemporaryDirectory() as offload_folder:
+                quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
+                quantized_model = FluxTransformer2DModel.from_pretrained(
+                    "hf-internal-testing/tiny-flux-pipe",
+                    subfolder="transformer",
+                    quantization_config=quantization_config,
+                    device_map=device_map,
+                    torch_dtype=torch.bfloat16,
+                    offload_folder=offload_folder,
+                )
 
-            output = quantized_model(**inputs)[0]
-            output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+                self.assertTrue(quantized_model.hf_device_map == device_map_to_compare)
 
-            expected_slice = np.array([0.3457, -0.0366, 0.0105, -0.2275, -0.4941, 0.4395, -0.166, -0.6641, 0.4375])
-            self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+                output = quantized_model(**inputs)[0]
+                output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+                self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+
+            # Test sharded model
+            with tempfile.TemporaryDirectory() as offload_folder:
+                quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
+                quantized_model = FluxTransformer2DModel.from_pretrained(
+                    "hf-internal-testing/tiny-flux-sharded",
+                    subfolder="transformer",
+                    quantization_config=quantization_config,
+                    device_map=device_map,
+                    torch_dtype=torch.bfloat16,
+                    offload_folder=offload_folder,
+                )
+
+                self.assertTrue(quantized_model.hf_device_map == device_map_to_compare)
+
+                output = quantized_model(**inputs)[0]
+                output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+
+                self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
     def test_modules_to_not_convert(self):
         quantization_config = TorchAoConfig("int8_weight_only", modules_to_not_convert=["transformer_blocks.0"])

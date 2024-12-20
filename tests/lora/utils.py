@@ -89,12 +89,12 @@ class PeftLoraLoaderMixinTests:
 
     has_two_text_encoders = False
     has_three_text_encoders = False
-    text_encoder_cls, text_encoder_id = None, None
-    text_encoder_2_cls, text_encoder_2_id = None, None
-    text_encoder_3_cls, text_encoder_3_id = None, None
-    tokenizer_cls, tokenizer_id = None, None
-    tokenizer_2_cls, tokenizer_2_id = None, None
-    tokenizer_3_cls, tokenizer_3_id = None, None
+    text_encoder_cls, text_encoder_id, text_encoder_subfolder = None, None, ""
+    text_encoder_2_cls, text_encoder_2_id, text_encoder_2_subfolder = None, None, ""
+    text_encoder_3_cls, text_encoder_3_id, text_encoder_3_subfolder = None, None, ""
+    tokenizer_cls, tokenizer_id, tokenizer_subfolder = None, None, ""
+    tokenizer_2_cls, tokenizer_2_id, tokenizer_2_subfolder = None, None, ""
+    tokenizer_3_cls, tokenizer_3_id, tokenizer_3_subfolder = None, None, ""
 
     unet_kwargs = None
     transformer_cls = None
@@ -124,16 +124,26 @@ class PeftLoraLoaderMixinTests:
         torch.manual_seed(0)
         vae = self.vae_cls(**self.vae_kwargs)
 
-        text_encoder = self.text_encoder_cls.from_pretrained(self.text_encoder_id)
-        tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id)
+        text_encoder = self.text_encoder_cls.from_pretrained(
+            self.text_encoder_id, subfolder=self.text_encoder_subfolder
+        )
+        tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id, subfolder=self.tokenizer_subfolder)
 
         if self.text_encoder_2_cls is not None:
-            text_encoder_2 = self.text_encoder_2_cls.from_pretrained(self.text_encoder_2_id)
-            tokenizer_2 = self.tokenizer_2_cls.from_pretrained(self.tokenizer_2_id)
+            text_encoder_2 = self.text_encoder_2_cls.from_pretrained(
+                self.text_encoder_2_id, subfolder=self.text_encoder_2_subfolder
+            )
+            tokenizer_2 = self.tokenizer_2_cls.from_pretrained(
+                self.tokenizer_2_id, subfolder=self.tokenizer_2_subfolder
+            )
 
         if self.text_encoder_3_cls is not None:
-            text_encoder_3 = self.text_encoder_3_cls.from_pretrained(self.text_encoder_3_id)
-            tokenizer_3 = self.tokenizer_3_cls.from_pretrained(self.tokenizer_3_id)
+            text_encoder_3 = self.text_encoder_3_cls.from_pretrained(
+                self.text_encoder_3_id, subfolder=self.text_encoder_3_subfolder
+            )
+            tokenizer_3 = self.tokenizer_3_cls.from_pretrained(
+                self.tokenizer_3_id, subfolder=self.tokenizer_3_subfolder
+            )
 
         text_lora_config = LoraConfig(
             r=rank,
@@ -1545,7 +1555,12 @@ class PeftLoraLoaderMixinTests:
                         "adapter-1"
                     ].weight += float("inf")
                 else:
-                    pipe.transformer.transformer_blocks[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
+                    named_modules = [name for name, _ in pipe.transformer.named_modules()]
+                    has_attn1 = any("attn1" in name for name in named_modules)
+                    if has_attn1:
+                        pipe.transformer.transformer_blocks[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
+                    else:
+                        pipe.transformer.transformer_blocks[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
 
             # with `safe_fusing=True` we should see an Error
             with self.assertRaises(ValueError):
