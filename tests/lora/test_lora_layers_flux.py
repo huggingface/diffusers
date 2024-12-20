@@ -825,3 +825,40 @@ class FluxControlLoRAIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
 
         assert max_diff < 1e-3
+
+    @parameterized.expand(["black-forest-labs/FLUX.1-Canny-dev-lora", "black-forest-labs/FLUX.1-Depth-dev-lora"])
+    def test_lora_with_turbo(self, lora_ckpt_id):
+        self.pipeline.load_lora_weights(lora_ckpt_id)
+        self.pipeline.load_lora_weights("ByteDance/Hyper-SD", weight_name="Hyper-FLUX.1-dev-8steps-lora.safetensors")
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
+
+        if "Canny" in lora_ckpt_id:
+            control_image = load_image(
+                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/canny_condition_image.png"
+            )
+        else:
+            control_image = load_image(
+                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/depth_condition_image.png"
+            )
+
+        image = self.pipeline(
+            prompt=self.prompt,
+            control_image=control_image,
+            height=1024,
+            width=1024,
+            num_inference_steps=self.num_inference_steps,
+            guidance_scale=30.0 if "Canny" in lora_ckpt_id else 10.0,
+            output_type="np",
+            generator=torch.manual_seed(self.seed),
+        ).images
+
+        out_slice = image[0, -3:, -3:, -1].flatten()
+        if "Canny" in lora_ckpt_id:
+            expected_slice = np.array([0.6562, 0.7266, 0.7578, 0.6367, 0.6758, 0.7031, 0.6172, 0.6602, 0.6484])
+        else:
+            expected_slice = np.array([0.6680, 0.7344, 0.7656, 0.6484, 0.6875, 0.7109, 0.6328, 0.6719, 0.6562])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3
