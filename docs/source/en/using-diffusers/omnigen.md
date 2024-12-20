@@ -300,23 +300,15 @@ However, when using input images, the computational cost increases.
 
 Here are some guidelines to help you reduce computational costs when inputting multiple images. The experiments are conducted on an A800 GPU with two input images.
 
+Like other pipelines, you can reduce memory usage by offloading the model: `pipe.enable_model_cpu_offload()` or `pipe.enable_sequential_cpu_offload() `. 
+In OmniGen, you can also decrease computational overhead by reducing the `max_input_image_size`. 
+The memory consumption for different image sizes is shown in the table below:
 
-| Method                                      | Memory Usage |
-|---------------------------------------------|--------------|
-| pipe.to("cuda")                             | 31GB         |
-| pipe.enable_model_cpu_offload()             | 28GB         |
-| pipe.enable_sequential_cpu_offload()        | 11GB         |
+| Method                    | Memory Usage |
+|---------------------------|--------------|
+| max_input_image_size=1024 | 40GB         |
+| max_input_image_size=512  | 17GB         |
+| max_input_image_size=256  | 14GB         |
 
-- `pipe.enable_model_cpu_offload()`:
-  - Without enabling cpu offloading, memory usage is `31 GB`
-  - With enabling cpu offloading, memory usage is `28 GB`
-
-- `pipe.enable_transformer_block_cpu_offload()`:
-  - Offload transformer block to reduce memory usage
-  - When enabled, memory usage is under `25 GB`
-
-- `pipe.enable_sequential_cpu_offload()`:
-  - Significantly reduce memory usage at the cost of slow inference
-  - When enabled, memory usage is under `11 GB`
 
 
