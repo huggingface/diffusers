@@ -99,7 +99,7 @@ export_to_video(video, "output.mp4", fps=15)
 ```
 
 <div class="flex justify-center">
-  <img src="https://huggingface.co/Lightricks/LTX-Video/resolve/main/media/ltx-video_example_00014.gif"/>
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hunyuan-video-output.gif"/>
 </div>
 
 </hfoption>
@@ -126,7 +126,7 @@ export_to_video(video, "output.mp4", fps=24)
 ```
 
 <div class="flex justify-center">
-  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hunyuan-video-output.gif"/>
+  <img src="https://huggingface.co/Lightricks/LTX-Video/resolve/main/media/ltx-video_example_00014.gif"/>
 </div>
 
 </hfoption>
@@ -232,6 +232,10 @@ output = pipeline(
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
 ```
+
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff.gif"/>
+</div>
 
 </hfoption>
 </hfoptions>
