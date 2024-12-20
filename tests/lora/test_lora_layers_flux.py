@@ -583,7 +583,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         self.assertTrue(np.allclose(lora_output_3, lora_output_4, atol=1e-3, rtol=1e-3))
 
     def test_load_regular_lora(self):
-        # This test checks if a regular lora (think of one trained Flux.1 Dev for example) can be loaded
+        # This test checks if a regular lora (think of one trained on Flux.1 Dev for example) can be loaded
         # into the transformer with more input channels than Flux.1 Dev, for example. Some examples of those
         # transformers include Flux Fill, Flux Control, etc.
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)

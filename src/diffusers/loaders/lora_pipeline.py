@@ -2357,7 +2357,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                         expanded_module = torch.nn.Linear(
                             in_features, out_features, bias=bias, dtype=module_weight.dtype
                         )
-                    # Only weights are expanded and biases are not.
+                    # Only weights are expanded and biases are not. This is because only the input dimensions
+                    # are changed while the output dimensions remain the same. The shape of the weight tensor
+                    # is (out_features, in_features), while the shape of bias tensor is (out_features,), which
+                    # explains the reason why only weights are expanded.
                     new_weight = torch.zeros_like(
                         expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
                     )
