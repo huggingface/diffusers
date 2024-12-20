@@ -75,7 +75,6 @@ if is_torch_available():
             "SanaLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
-        _import_structure["ip_adapter"] = ["IPAdapterMixin"]
         _import_structure["ip_adapter"] = [
             "IPAdapterMixin",
             "FluxIPAdapterMixin",
