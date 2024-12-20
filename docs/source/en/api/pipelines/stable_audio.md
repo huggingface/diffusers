@@ -35,6 +35,57 @@ During inference:
 * The _quality_ of the generated audio sample can be controlled by the `num_inference_steps` argument; higher steps give higher quality audio at the expense of slower inference.
 * Multiple waveforms can be generated in one go: set `num_waveforms_per_prompt` to a value greater than 1 to enable. Automatic scoring will be performed between the generated waveforms and prompt text, and the audios ranked from best to worst accordingly.
 
+## Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`StableAudioPipeline`] for inference with bitsandbytes.
+
+```py
+import torch
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, StableAudioDiTModel, StableAudioPipeline
+from diffusers.utils import export_to_video
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
+
+quant_config = BitsAndBytesConfig(load_in_8bit=True)
+text_encoder_8bit = T5EncoderModel.from_pretrained(
+    "stabilityai/stable-audio-open-1.0",
+    subfolder="text_encoder",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_8bit = StableAudioDiTModel.from_pretrained(
+    "stabilityai/stable-audio-open-1.0",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+pipeline = StableAudioPipeline.from_pretrained(
+    "stabilityai/stable-audio-open-1.0",
+    text_encoder=text_encoder_8bit,
+    transformer=transformer_8bit,
+    torch_dtype=torch.float16,
+    device_map="balanced",
+)
+
+prompt = "The sound of a hammer hitting a wooden surface."
+negative_prompt = "Low quality."
+audio = pipeline(
+    prompt,
+    negative_prompt=negative_prompt,
+    num_inference_steps=200,
+    audio_end_in_s=10.0,
+    num_waveforms_per_prompt=3,
+    generator=generator,
+).audios
+
+output = audio[0].T.float().cpu().numpy()
+sf.write("hammer.wav", output, pipeline.vae.sampling_rate)
+```
+
 
 ## StableAudioPipeline
 [[autodoc]] StableAudioPipeline
