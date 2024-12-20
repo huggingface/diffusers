@@ -63,9 +63,9 @@ image
 
 ## Image edit
 
-OmniGen supports for multimodal inputs. 
+OmniGen supports multimodal inputs. 
 When the input includes an image, you need to add a placeholder `<img><|image_1|></img>` in the text prompt to represent the image. 
-It is recommended to enable 'use_input_image_size_as_output' to keep the edited image the same size as the original image.
+It is recommended to enable `use_input_image_size_as_output` to keep the edited image the same size as the original image.
 
 ```py
 import torch
