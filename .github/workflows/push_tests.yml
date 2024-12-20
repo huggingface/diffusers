@@ -1,6 +1,13 @@
 name: Fast GPU Tests on main
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "src/diffusers/models/modeling_utils.py"
+      - "src/diffusers/models/model_loading_utils.py"
+      - "src/diffusers/pipelines/pipeline_utils.py"
+      - "src/diffusers/pipeline_loading_utils.py"
   workflow_dispatch:
   push:
     branches:
@@ -84,7 +91,6 @@ jobs:
       - name: PyTorch CUDA checkpoint tests on Ubuntu
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
@@ -138,7 +144,6 @@ jobs:
     - name: Run PyTorch CUDA tests
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
@@ -160,6 +165,7 @@ jobs:
         path: reports
 
   flax_tpu_tests:
+    if: ${{ github.event_name != 'pull_request' }}
     name: Flax TPU Tests
     runs-on:
       group: gcp-ct5lp-hightpu-8t
@@ -208,6 +214,7 @@ jobs:
         path: reports
 
   onnx_cuda_tests:
+    if: ${{ github.event_name != 'pull_request' }}
     name: ONNX CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -256,21 +263,18 @@ jobs:
         path: reports
 
   run_torch_compile_tests:
+    if: ${{ github.event_name != 'pull_request' }}
     name: PyTorch Compile CUDA tests
-
     runs-on:
       group: aws-g4dn-2xlarge
-
     container:
       image: diffusers/diffusers-pytorch-compile-cuda
       options: --gpus 0 --shm-size "16gb" --ipc host
-
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
       with:
         fetch-depth: 2
-
     - name: NVIDIA-SMI
       run: |
         nvidia-smi
@@ -290,7 +294,6 @@ jobs:
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_torch_compile_cuda_failures_short.txt
-
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
@@ -299,21 +302,18 @@ jobs:
         path: reports
 
   run_xformers_tests:
+    if: ${{ github.event_name != 'pull_request' }}
     name: PyTorch xformers CUDA tests
-
     runs-on:
       group: aws-g4dn-2xlarge
-
     container:
       image: diffusers/diffusers-pytorch-xformers-cuda
       options: --gpus 0 --shm-size "16gb" --ipc host
-
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
       with:
         fetch-depth: 2
-
     - name: NVIDIA-SMI
       run: |
         nvidia-smi
@@ -332,7 +332,6 @@ jobs:
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_torch_xformers_cuda_failures_short.txt
-
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
@@ -341,49 +340,39 @@ jobs:
         path: reports
 
   run_examples_tests:
+    if: ${{ github.event_name != 'pull_request' }}
     name: Examples PyTorch CUDA tests on Ubuntu
-
     runs-on:
       group: aws-g4dn-2xlarge
-
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --gpus 0 --shm-size "16gb" --ipc host
-
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
       with:
         fetch-depth: 2
-
     - name: NVIDIA-SMI
       run: |
         nvidia-smi
-
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test,training]
-
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
-
     - name: Run example tests on GPU
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install timm
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
-
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
         cat reports/examples_torch_cuda_stats.txt
         cat reports/examples_torch_cuda_failures_short.txt
-
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
