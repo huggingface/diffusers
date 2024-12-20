@@ -612,8 +612,10 @@ class Attention(nn.Module):
 
     def head_to_batch_dim(self, tensor: torch.Tensor, out_dim: int = 3) -> torch.Tensor:
         r"""
-        Reshape the tensor from `[batch_size, seq_len, dim]` to `[batch_size, seq_len, heads, dim // heads]` `heads` is
-        the number of heads initialized while constructing the `Attention` class.
+        Reshape the tensor from `[batch_size, seq_len, dim]` to 
+        `[batch_size, seq_len, heads, dim // heads]`  for out_dim==4
+        or  `[batch_size * heads, seq_len, dim // heads]` for out_dim==3
+        where `heads` is the number of heads initialized while constructing the `Attention` class.
 
         Args:
             tensor (`torch.Tensor`): The tensor to reshape.
@@ -630,9 +632,10 @@ class Attention(nn.Module):
         else:
             batch_size, extra_dim, seq_len, dim = tensor.shape
         tensor = tensor.reshape(batch_size, seq_len * extra_dim, head_size, dim // head_size)
-        tensor = tensor.permute(0, 2, 1, 3)
-
+        
+        assert out_dim in [3,4]
         if out_dim == 3:
+            tensor = tensor.permute(0, 2, 1, 3)
             tensor = tensor.reshape(batch_size * head_size, seq_len * extra_dim, dim // head_size)
 
         return tensor
