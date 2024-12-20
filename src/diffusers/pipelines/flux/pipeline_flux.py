@@ -177,7 +177,7 @@ class FluxPipeline(
             [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->transformer->vae"
     _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
@@ -314,17 +314,12 @@ class FluxPipeline(
         self,
         prompt: Union[str, List[str]],
         prompt_2: Union[str, List[str]],
-        negative_prompt: Union[str, List[str]] = None,
-        negative_prompt_2: Union[str, List[str]] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 512,
         lora_scale: Optional[float] = None,
-        do_true_cfg: bool = False,
     ):
         r"""
 
@@ -361,62 +356,24 @@ class FluxPipeline(
                 scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        if prompt is not None:
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
-
-        if do_true_cfg and negative_prompt is not None:
-            negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
-            negative_batch_size = len(negative_prompt)
-
-            if negative_batch_size != batch_size:
-                raise ValueError(
-                    f"Negative prompt batch size ({negative_batch_size}) does not match prompt batch size ({batch_size})"
-                )
-
-            # Concatenate prompts
-            prompts = prompt + negative_prompt
-            prompts_2 = (
-                prompt_2 + negative_prompt_2 if prompt_2 is not None and negative_prompt_2 is not None else None
-            )
-        else:
-            prompts = prompt
-            prompts_2 = prompt_2
 
         if prompt_embeds is None:
-            if prompts_2 is None:
-                prompts_2 = prompts
+            prompt_2 = prompt_2 or prompt
+            prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
 
             # We only use the pooled prompt output from the CLIPTextModel
             pooled_prompt_embeds = self._get_clip_prompt_embeds(
-                prompt=prompts,
+                prompt=prompt,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
             )
             prompt_embeds = self._get_t5_prompt_embeds(
-                prompt=prompts_2,
+                prompt=prompt_2,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
             )
 
-            if do_true_cfg and negative_prompt is not None:
-                # Split embeddings back into positive and negative parts
-                total_batch_size = batch_size * num_images_per_prompt
-                positive_indices = slice(0, total_batch_size)
-                negative_indices = slice(total_batch_size, 2 * total_batch_size)
-
-                positive_pooled_prompt_embeds = pooled_prompt_embeds[positive_indices]
-                negative_pooled_prompt_embeds = pooled_prompt_embeds[negative_indices]
-
-                positive_prompt_embeds = prompt_embeds[positive_indices]
-                negative_prompt_embeds = prompt_embeds[negative_indices]
-
-                pooled_prompt_embeds = positive_pooled_prompt_embeds
-                prompt_embeds = positive_prompt_embeds
-
-        # Unscale LoRA layers
         if self.text_encoder is not None:
             if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
@@ -430,16 +387,7 @@ class FluxPipeline(
         dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
         text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
-        if do_true_cfg and negative_prompt is not None:
-            return (
-                prompt_embeds,
-                pooled_prompt_embeds,
-                text_ids,
-                negative_prompt_embeds,
-                negative_pooled_prompt_embeds,
-            )
-        else:
-            return prompt_embeds, pooled_prompt_embeds, text_ids, None, None
+        return prompt_embeds, pooled_prompt_embeds, text_ids
 
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -832,22 +780,29 @@ class FluxPipeline(
             prompt_embeds,
             pooled_prompt_embeds,
             text_ids,
-            negative_prompt_embeds,
-            negative_pooled_prompt_embeds,
         ) = self.encode_prompt(
             prompt=prompt,
             prompt_2=prompt_2,
-            negative_prompt=negative_prompt,
-            negative_prompt_2=negative_prompt_2,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,
-            do_true_cfg=do_true_cfg,
+        )
+        (
+            negative_prompt_embeds,
+            negative_pooled_prompt_embeds,
+            _,
+        ) = self.encode_prompt(
+            prompt=negative_prompt,
+            prompt_2=negative_prompt_2,
+            prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=negative_pooled_prompt_embeds,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            max_sequence_length=max_sequence_length,
+            lora_scale=lora_scale,
         )
 
         # 4. Prepare latent variables
