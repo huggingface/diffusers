@@ -26,12 +26,11 @@ AuraFlow can be quite expensive to run on consumer hardware devices. However, yo
 
 Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
 
-Refer to the [Quantization](../../quantization/overview) to learn more about supported quantization backends (bitsandbytes, torchao, gguf) and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`AuraFlowPipeline`] for inference with bitsandbytes.
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`AuraFlowPipeline`] for inference with bitsandbytes.
 
 ```py
 import torch
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AuraFlowTransformer2DModel, AuraFlowPipeline
-from diffusers.utils import export_to_video
 from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
 
 quant_config = BitsAndBytesConfig(load_in_8bit=True)
@@ -58,7 +57,7 @@ pipeline = AuraFlowPipeline.from_pretrained(
     device_map="balanced",
 )
 
-prompt = "A refreshing scene where a glass of freshly squeezed orange juice stands prominently at the center, bathed in warm, golden sunlight that highlights the vibrant, citrus hues of the juice. The glass is intricately detailed, showing condensation droplets that glisten like tiny jewels. Surrounding the base of the glass, scattered orange slices and lush green leaves add a touch of natural beauty and freshness. Above the glass, a dynamic splash of orange juice is captured mid-air, forming the word 'Orange' in a fluid, playful script. The splash is so vivid and realistic that each droplet seems to dance in the air, creating a sense of movement and energy. In the background, a serene orchard with rows of orange trees stretches out under a clear blue sky, their branches heavy with ripe oranges ready for harvest. Rays of sunlight filter through the leaves, casting dappled shadows on the ground. A gentle breeze rustles the leaves, adding a sense of calm and tranquility to the scene. The entire scene evokes a sense of purity, freshness, and vitality, inviting viewers to experience the simple joy of a glass of fresh orange juice."
+prompt = "a tiny astronaut hatching from an egg on the moon"
 image = pipeline(prompt).images[0]
 image.save("auraflow.png")
 ```
