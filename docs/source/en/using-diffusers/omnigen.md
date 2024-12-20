@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 -->
 # OmniGen
 
-OmniGen is an image generation model. Unlike existing text-to-image models, OmniGen is designed to handle a variety of tasks (e.g., text-to-image, image editing, controllable generation) within a single model. It has the following features:
+OmniGen is an image generation model. Unlike existing text-to-image models, OmniGen is a single model designed to handle a variety of tasks (e.g., text-to-image, image editing, controllable generation). It has the following features:
 - Minimalist model architecture, consisting of only a VAE and a transformer module, for joint modeling of text and images.
 - Support for multimodal inputs. It can process any text-image mixed data as instructions for image generation, rather than relying solely on text.
 
