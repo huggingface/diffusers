@@ -29,7 +29,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import IPAdapterMixin
+from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
@@ -493,7 +493,7 @@ class FluxIPAdapterTesterMixin:
     def test_pipeline_signature(self):
         parameters = inspect.signature(self.pipeline_class.__call__).parameters
 
-        assert issubclass(self.pipeline_class, FluxIPAdapterTesterMixin)
+        assert issubclass(self.pipeline_class, FluxIPAdapterMixin)
         self.assertIn(
             "ip_adapter_image",
             parameters,
