@@ -790,20 +790,21 @@ class FluxPipeline(
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,
         )
-        (
-            negative_prompt_embeds,
-            negative_pooled_prompt_embeds,
-            _,
-        ) = self.encode_prompt(
-            prompt=negative_prompt,
-            prompt_2=negative_prompt_2,
-            prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            max_sequence_length=max_sequence_length,
-            lora_scale=lora_scale,
-        )
+        if do_true_cfg:
+            (
+                negative_prompt_embeds,
+                negative_pooled_prompt_embeds,
+                _,
+            ) = self.encode_prompt(
+                prompt=negative_prompt,
+                prompt_2=negative_prompt_2,
+                prompt_embeds=negative_prompt_embeds,
+                pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                lora_scale=lora_scale,
+            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
