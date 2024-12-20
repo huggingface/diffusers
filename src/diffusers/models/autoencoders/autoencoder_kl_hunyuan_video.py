@@ -168,6 +168,7 @@ class HunyuanVideoResnetBlockCausal3D(nn.Module):
             self.conv_shortcut = HunyuanVideoCausalConv3d(in_channels, out_channels, 1, 1, 0)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = hidden_states.contiguous()
         residual = hidden_states
 
         hidden_states = self.norm1(hidden_states)

@@ -840,6 +840,14 @@ class StableDiffusionPipelineFastTests(
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
+    def test_pipeline_accept_tuple_type_unet_sample_size(self):
+        # the purpose of this test is to see whether the pipeline would accept a unet with the tuple-typed sample size
+        sd_repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
+        sample_size = [60, 80]
+        customised_unet = UNet2DConditionModel(sample_size=sample_size)
+        pipe = StableDiffusionPipeline.from_pretrained(sd_repo_id, unet=customised_unet)
+        assert pipe.unet.config.sample_size == sample_size
+
 
 @slow
 @require_torch_gpu
