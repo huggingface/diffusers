@@ -36,7 +36,6 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     require_peft_backend,
-    require_peft_version_greater,
     require_torch_gpu,
     slow,
     torch_device,
@@ -354,81 +353,6 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         # support expanding the module, not shrinking it
         with self.assertRaises(NotImplementedError):
             pipe.load_lora_weights(lora_state_dict, "adapter-1")
-
-    @require_peft_version_greater("0.13.2")
-    def test_lora_B_bias(self):
-        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # keep track of the bias values of the base layers to perform checks later.
-        bias_values = {}
-        for name, module in pipe.transformer.named_modules():
-            if any(k in name for k in ["to_q", "to_k", "to_v", "to_out.0"]):
-                if module.bias is not None:
-                    bias_values[name] = module.bias.data.clone()
-
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
-        logger.setLevel(logging.INFO)
-
-        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        denoiser_lora_config.lora_bias = False
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        lora_bias_false_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        pipe.delete_adapters("adapter-1")
-
-        denoiser_lora_config.lora_bias = True
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        lora_bias_true_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        self.assertFalse(np.allclose(original_output, lora_bias_false_output, atol=1e-3, rtol=1e-3))
-        self.assertFalse(np.allclose(original_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
-        self.assertFalse(np.allclose(lora_bias_false_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
-
-    # for now this is flux control lora specific but can be generalized later and added to ./utils.py
-    def test_correct_lora_configs_with_different_ranks(self):
-        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        lora_output_same_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        pipe.transformer.delete_adapters("adapter-1")
-
-        # change the rank_pattern
-        updated_rank = denoiser_lora_config.r * 2
-        denoiser_lora_config.rank_pattern = {"single_transformer_blocks.0.attn.to_k": updated_rank}
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        assert pipe.transformer.peft_config["adapter-1"].rank_pattern == {
-            "single_transformer_blocks.0.attn.to_k": updated_rank
-        }
-
-        lora_output_diff_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        self.assertTrue(not np.allclose(original_output, lora_output_same_rank, atol=1e-3, rtol=1e-3))
-        self.assertTrue(not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=1e-3, rtol=1e-3))
-        pipe.transformer.delete_adapters("adapter-1")
-
-        # similarly change the alpha_pattern
-        updated_alpha = denoiser_lora_config.lora_alpha * 2
-        denoiser_lora_config.alpha_pattern = {"single_transformer_blocks.0.attn.to_k": updated_alpha}
-        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        assert pipe.transformer.peft_config["adapter-1"].alpha_pattern == {
-            "single_transformer_blocks.0.attn.to_k": updated_alpha
-        }
-
-        lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
-        self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
     def test_lora_expanding_shape_with_normal_lora_raises_error(self):
         # TODO: This test checks if an error is raised when a lora expands shapes (like control loras) but
