@@ -3119,7 +3119,6 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
@@ -3427,7 +3426,6 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
@@ -4042,7 +4040,6 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
