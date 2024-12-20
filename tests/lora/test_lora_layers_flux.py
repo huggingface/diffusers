@@ -467,18 +467,14 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.load_lora_weights(lora_state_dict, "adapter-2")
 
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
+        self.assertTrue("The following LoRA modules were zero padded to match the state dict of" in cap_logger.out)
         self.assertTrue(pipe.get_active_adapters() == ["adapter-2"])
 
         lora_output_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        self.assertTrue("The following LoRA modules were zero padded to match the state dict of" in cap_logger.out)
         self.assertFalse(np.allclose(lora_output, lora_output_2, atol=1e-3, rtol=1e-3))
 
         # Test the opposite case where the first lora has the correct input features and the second lora has expanded input features.
-        # This should raise a runtime error on input shapes being incompatible. But it doesn't. This is because PEFT renames the
-        # original layers as `base_layer` and the lora layers with the adapter names. This makes our logic to check if a lora
-        # weight is compatible with the current model inadequate. This should be addressed when attempting support for
-        # https://github.com/huggingface/diffusers/issues/10180 (TODO)
+        # This should raise a runtime error on input shapes being incompatible.
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         # Change the transformer config to mimic a real use case.
         num_channels_without_control = 4
@@ -501,24 +497,23 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "transformer.x_embedder.lora_A.weight": normal_lora_A.weight,
             "transformer.x_embedder.lora_B.weight": normal_lora_B.weight,
         }
-
-        with CaptureLogger(logger) as cap_logger:
-            pipe.load_lora_weights(lora_state_dict, "adapter-1")
+        pipe.load_lora_weights(lora_state_dict, "adapter-1")
 
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
         self.assertTrue(pipe.transformer.x_embedder.weight.data.shape[1] == in_features)
         self.assertTrue(pipe.transformer.config.in_channels == in_features)
-        self.assertFalse(cap_logger.out.startswith("Expanding the nn.Linear input/output features for module"))
 
         lora_state_dict = {
             "transformer.x_embedder.lora_A.weight": shape_expander_lora_A.weight,
             "transformer.x_embedder.lora_B.weight": shape_expander_lora_B.weight,
         }
 
-        # We should check for input shapes being incompatible here.
+        # We should check for input shapes being incompatible here. But because above mentioned issue is
+        # not a supported use case, and because of the PEFT renaming, we will currently have a shape
+        # mismatch error.
         self.assertRaisesRegex(
             RuntimeError,
-            "x_embedder.lora_A.weight",
+            "size mismatch for x_embedder.lora_A.adapter-2.weight",
             pipe.load_lora_weights,
             lora_state_dict,
             "adapter-2",

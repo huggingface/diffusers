@@ -2312,15 +2312,17 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         # Expand transformer parameter shapes if they don't match lora
         has_param_with_shape_update = False
+        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
                 module_weight = module.weight.data
                 module_bias = module.bias.data if module.bias is not None else None
                 bias = module_bias is not None
 
-                lora_A_weight_name = f"{name}.lora_A.weight"
-                lora_B_weight_name = f"{name}.lora_B.weight"
-                if lora_A_weight_name not in state_dict.keys():
+                lora_base_name = name.replace(".base_layer", "") if is_peft_loaded else name
+                lora_A_weight_name = f"{lora_base_name}.lora_A.weight"
+                lora_B_weight_name = f"{lora_base_name}.lora_B.weight"
+                if lora_A_weight_name not in state_dict:
                     continue
 
                 in_features = state_dict[lora_A_weight_name].shape[1]
