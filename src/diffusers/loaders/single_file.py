@@ -60,7 +60,7 @@ def load_single_file_sub_model(
     local_files_only=False,
     torch_dtype=None,
     is_legacy_loading=False,
-    no_mmap=False,
+    disable_mmap=False,
     **kwargs,
 ):
     if is_pipeline_module:
@@ -107,7 +107,7 @@ def load_single_file_sub_model(
             subfolder=name,
             torch_dtype=torch_dtype,
             local_files_only=local_files_only,
-            no_mmap=no_mmap,
+            disable_mmap=disable_mmap,
             **kwargs,
         )
 
@@ -310,7 +310,7 @@ class FromSingleFileMixin:
                       hosted on the Hub.
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
                       component configs in Diffusers format.
-            no_mmap ('bool', *optional*, defaults to 'False'):
+            disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
             kwargs (remaining dictionary of keyword arguments, *optional*):
@@ -360,7 +360,7 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        no_mmap = kwargs.pop("no_mmap", False)
+        disable_mmap = kwargs.pop("disable_mmap", False)
 
         is_legacy_loading = False
 
@@ -389,7 +389,7 @@ class FromSingleFileMixin:
             cache_dir=cache_dir,
             local_files_only=local_files_only,
             revision=revision,
-            no_mmap=no_mmap,
+            disable_mmap=disable_mmap,
         )
 
         if config is None:
@@ -511,7 +511,7 @@ class FromSingleFileMixin:
                         original_config=original_config,
                         local_files_only=local_files_only,
                         is_legacy_loading=is_legacy_loading,
-                        no_mmap=no_mmap,
+                        disable_mmap=disable_mmap,
                         **kwargs,
                     )
                 except SingleFileComponentError as e:

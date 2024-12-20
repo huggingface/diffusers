@@ -131,7 +131,9 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, no_mmap: bool = False):
+def load_state_dict(
+    checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, disable_mmap: bool = False
+):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
@@ -142,7 +144,7 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
-            if no_mmap:
+            if disable_mmap:
                 return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
                 return safetensors.torch.load_file(checkpoint_file, device="cpu")
