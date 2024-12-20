@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import gc
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -21,9 +23,12 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import PriorTransformer, UnCLIPPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
+from diffusers.models.modeling_utils import ModelMixin
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    is_accelerate_available,
     load_numpy,
     nightly,
     require_torch_gpu,
@@ -34,6 +39,9 @@ from diffusers.utils.testing_utils import (
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
+
+if is_accelerate_available():
+    from accelerate.utils import compute_module_sizes
 
 enable_full_determinism()
 
@@ -417,6 +425,34 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("UnCLIP produces very large differences in fp16 vs fp32. Test is not useful.")
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=1.0)
+
+    # It needs a different sharding ratio than the standard 0.75. So, we override it.
+    def test_sharded_components_can_be_device_placed(self):
+        components = self.get_dummy_components()
+
+        component_selected = None
+        for component_name in components:
+            if isinstance(components[component_name], ModelMixin) and hasattr(
+                components[component_name], "load_config"
+            ):
+                component_to_be_sharded = components[component_name]
+                component_cls = component_to_be_sharded.__class__
+                component_selected = component_name
+                break
+
+        assert component_selected, "No component selected that can be sharded."
+
+        model_size = compute_module_sizes(component_to_be_sharded)[""]
+        max_shard_size = int((model_size * 0.45) / (2**10))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            component_to_be_sharded.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
+            self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
+
+            loaded_sharded_component = component_cls.from_pretrained(tmp_dir)
+            _ = components.pop(component_selected)
+            components.update({component_selected: loaded_sharded_component})
+            _ = self.pipeline_class(**components).to(torch_device)
 
 
 @nightly

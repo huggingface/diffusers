@@ -400,12 +400,18 @@ class UNet2DConditionLoadersMixin:
             tuple:
                 A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
         """
+        from ..pipelines.pipeline_loading_utils import model_has_device_map
+
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
         if _pipeline is not None and _pipeline.hf_device_map is None:
             for _, component in _pipeline.components.items():
-                if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                if (
+                    isinstance(component, nn.Module)
+                    and hasattr(component, "_hf_hook")
+                    and not model_has_device_map(component)
+                ):
                     if not is_model_cpu_offload:
                         is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
                     if not is_sequential_cpu_offload:
