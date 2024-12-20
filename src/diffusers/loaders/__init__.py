@@ -94,10 +94,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils import AttnProcsLayers
 
         if is_transformers_available():
-            from .ip_adapter import , IPAdapterMixin
             from .ip_adapter import (
-                IPAdapterMixin,
                 FluxIPAdapterMixin,
+                IPAdapterMixin,
                 SD3IPAdapterMixin,
             )
             from .lora_pipeline import (

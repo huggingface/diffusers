@@ -47,6 +47,7 @@ from ..models.attention_processor import (
     SD3IPAdapterJointAttnProcessor2_0,
 )
 
+
 logger = logging.get_logger(__name__)
 
 
