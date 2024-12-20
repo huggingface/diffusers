@@ -21,7 +21,7 @@ import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import GatedSelfAttentionDense
@@ -90,7 +90,20 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionINSTDIFFPipeline(
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+class StableDiffusionINSTDIFFImg2ImgPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
     StableDiffusionLoraLoaderMixin,
@@ -418,8 +431,7 @@ class StableDiffusionINSTDIFFPipeline(
     def check_inputs(
         self,
         prompt,
-        height,
-        width,
+        strength,
         callback_steps,
         instdiff_phrases,
         instdiff_boxes,
@@ -427,8 +439,8 @@ class StableDiffusionINSTDIFFPipeline(
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -470,27 +482,80 @@ class StableDiffusionINSTDIFFPipeline(
                 f" got: `instdiff_phrases` {len(instdiff_phrases)} != `instdiff_boxes` {len(instdiff_boxes)}"
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            int(height) // self.vae_scale_factor,
-            int(width) // self.vae_scale_factor,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
+
+        return timesteps, num_inference_steps - t_start
+
+    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
+        image = image.to(device=device, dtype=dtype)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        batch_size = batch_size * num_images_per_prompt
+
+        if image.shape[1] == 4:
+            init_latents = image
+
+        else:
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            elif isinstance(generator, list):
+                if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
+                    image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
+                elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
+                    raise ValueError(
+                        f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
+                    )
+
+                init_latents = [
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                    for i in range(batch_size)
+                ]
+                init_latents = torch.cat(init_latents, dim=0)
+            else:
+                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+
+            init_latents = self.vae.config.scaling_factor * init_latents
+
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
+            # expand init_latents for batch_size
+            deprecation_message = (
+                f"You have passed {batch_size} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
+                " images (`image`). Initial images are now duplicating to match the number of text prompts. Note"
+                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
+                " your script to pass as many initial images as text prompts to suppress this warning."
+            )
+            deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
+            additional_image_per_prompt = batch_size // init_latents.shape[0]
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents], dim=0)
+
+        shape = init_latents.shape
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+
+        # get latents
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+        latents = init_latents
+
         return latents
 
     def enable_fuser(self, enabled=True):
@@ -522,8 +587,8 @@ class StableDiffusionINSTDIFFPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        image: PipelineImageInput = None,
+        strength: float = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         instdiff_scheduled_sampling_alpha: float = 0.8,
@@ -534,7 +599,6 @@ class StableDiffusionINSTDIFFPipeline(
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
@@ -622,15 +686,10 @@ class StableDiffusionINSTDIFFPipeline(
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            height,
-            width,
+            strength,
             callback_steps,
             instdiff_phrases,
             instdiff_boxes,
@@ -672,17 +731,23 @@ class StableDiffusionINSTDIFFPipeline(
             # to obtain its text feature
             _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
 
+        image = self.image_processor.preprocess(image)
+
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+        timesteps, num_eff_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        num_jump_steps = num_inference_steps - num_eff_inference_steps
+
         # 3. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
         init_latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
+            image,
+            latent_timestep,
+            batch_size,
+            num_images_per_prompt,
             self.text_encoder.dtype,
             device,
             generator,
-            latents,
         )
 
         with self.progress_bar(total=n_objs + 1) as progress_bar:
@@ -721,6 +786,7 @@ class StableDiffusionINSTDIFFPipeline(
                 # 5. Prepare timesteps
                 self.scheduler.set_timesteps(num_inference_steps, device=device)
                 timesteps = self.scheduler.timesteps
+                timesteps, num_eff_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
                 # For each entity, described in phrases, is denoted with a bounding box,
                 # we represent the location information as (xmin,ymin,xmax,ymax)
@@ -757,18 +823,21 @@ class StableDiffusionINSTDIFFPipeline(
                     "masks": masks,
                 }
 
-                num_alpha_steps = int(instdiff_scheduled_sampling_alpha * len(timesteps))
-                num_beta_steps = int(instdiff_scheduled_sampling_beta * len(timesteps))
+                num_alpha_steps = int(instdiff_scheduled_sampling_alpha * num_inference_steps)
+                num_beta_steps = int(instdiff_scheduled_sampling_beta * num_inference_steps)
 
                 # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
                 extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
                 # 7. Denoising loop
                 latents = deepcopy(init_latents)
-                for i, t in enumerate(timesteps[:num_beta_steps]):
-                    scale = 1.0 if i < num_alpha_steps else 0.0
-                    self.set_scale(scale)
-                    self.enable_fuser(scale > 0.0)
+                for i, t in enumerate(timesteps[:max(num_beta_steps - num_jump_steps, 0)]):
+                    i_ = i + num_jump_steps
+                    if i_ < num_alpha_steps:
+                        self.enable_fuser(True)
+                    else:
+                        self.enable_fuser(False)
+                        cross_attention_kwargs = {}
 
                     if latents.shape[1] != 4:
                         latents = torch.randn_like(latents[:, :4])
@@ -798,13 +867,17 @@ class StableDiffusionINSTDIFFPipeline(
 
         latents = torch.mean(torch.stack(latents_lst), dim=0)
 
-        with self.progress_bar(total=len(timesteps) - num_beta_steps) as progress_bar:
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            for i, t in enumerate(timesteps[num_beta_steps:]):
-                i_ = i + num_beta_steps
-                scale = 1.0 if i_ < num_alpha_steps else 0.0
-                self.set_scale(scale)
-                self.enable_fuser(scale > 0.0)
+        with self.progress_bar(
+            total=len(timesteps) - max(num_beta_steps - num_jump_steps, 0),
+        ) as progress_bar:
+            num_warmup_steps = len(timesteps) - num_eff_inference_steps * self.scheduler.order
+            for i, t in enumerate(timesteps[max(num_beta_steps - num_jump_steps, 0):]):
+                i_ = i + max(num_jump_steps, num_beta_steps)
+                if i_ < num_alpha_steps:
+                    self.enable_fuser(True)
+                else:
+                    self.enable_fuser(False)
+                    cross_attention_kwargs = {}
 
                 if latents.shape[1] != 4:
                     latents = torch.randn_like(latents[:, :4])
