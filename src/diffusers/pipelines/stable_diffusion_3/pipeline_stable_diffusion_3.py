@@ -1083,7 +1083,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                         noise_pred_skip_layers = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
-                            ip_adapter_image_embeds=ip_adapter_image_embeds,
                             encoder_hidden_states=original_prompt_embeds,
                             pooled_projections=original_pooled_prompt_embeds,
                             joint_attention_kwargs=self.joint_attention_kwargs,
