@@ -240,6 +240,8 @@
       title: Textual Inversion
     - local: api/loaders/unet
       title: UNet
+    - local: api/loaders/transformer_sd3
+      title: SD3Transformer2D
     - local: api/loaders/peft
       title: PEFT
     title: Loaders
