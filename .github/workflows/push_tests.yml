@@ -2,7 +2,7 @@ name: Fast GPU Tests on main
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    branches: main
     paths:
       - "src/diffusers/models/modeling_utils.py"
       - "src/diffusers/models/model_loading_utils.py"
