@@ -12,18 +12,18 @@ specific language governing permissions and limitations under the License.
 
 # Video generation
 
-Video generation models add a temporal dimension to image generation models to bring the images, or frames, together to create a video. These models are trained on large-scale datasets of high-quality text-video pairs to learn how to combine the modalities to ensure the generated video is coherent and realistic.
+Video generation models add a temporal dimension to bring images, or frames, together to create a video. These models are trained on large-scale datasets of high-quality text-video pairs to learn how to combine the modalities to ensure the generated video is coherent and realistic.
 
-Explore some of the more popular open-source video generation models available from Diffusers below.
+[Explore](https://huggingface.co/models?other=video-generation) some of the more popular open-source video generation models available from Diffusers below.
 
 <hfoptions id="popular-models">
 <hfoption id="CogVideoX">
 
 [CogVideoX](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce) uses a 3D causal Variational Autoencoder (VAE) to compress videos along the spatial and temporal dimensions, and it includes a stack of expert transformer blocks with a 3D full attention mechanism to better capture visual, semantic, and motion information in the data.
 
-The CogVideoX family also includes models capable of generating videos from images in addition to text. These models are indicated by **I2V** in the checkpoint name, and they should be used with the [`CogVideoXImageToVideoPipeline`].
+The CogVideoX family also includes models capable of generating videos from images and videos in addition to text. The image-to-video models are indicated by **I2V** in the checkpoint name, and they should be used with the [`CogVideoXImageToVideoPipeline`]. The regular checkpoints support video-to-video through the [`CogVideoXVideoToVideoPipeline`].
 
-The example below demonstrates how to generate a video from an image and text prompt with [THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V).
+The example below demonstrates how to generate a video from an image and text prompt with [THUDM/CogVideoX1.5-5B-I2V](https://huggingface.co/THUDM/CogVideoX1.5-5B-I2V).
 
 ```py
 import torch
@@ -33,7 +33,7 @@ from diffusers.utils import export_to_video, load_image
 prompt = "A vast, shimmering ocean flows gracefully under a twilight sky, its waves undulating in a mesmerizing dance of blues and greens. The surface glints with the last rays of the setting sun, casting golden highlights that ripple across the water. Seagulls soar above, their cries blending with the gentle roar of the waves. The horizon stretches infinitely, where the ocean meets the sky in a seamless blend of hues. Close-ups reveal the intricate patterns of the waves, capturing the fluidity and dynamic beauty of the sea in motion."
 image = load_image(image="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cogvideox/cogvideox_rocket.png")
 pipe = CogVideoXImageToVideoPipeline.from_pretrained(
-    "THUDM/CogVideoX-5b-I2V",
+    "THUDM/CogVideoX1.5-5B-I2V",
     torch_dtype=torch.bfloat16
 )
 
@@ -67,6 +67,9 @@ export_to_video(video, "output.mp4", fps=8)
 </hfoption>
 <hfoption id="HunyuanVideo">
 
+> [!TIP]
+> HunyuanVideo is a 13B parameter model and requires a lot of memory. Refer to the HunyuanVideo [Quantization](../api/pipelines/hunyuan_video#quantization) guide to learn how to quantize the model. CogVideoX and LTX-Video are more lightweight options that can still generate high-quality videos.
+
 [HunyuanVideo](https://huggingface.co/tencent/HunyuanVideo) features a dual-stream to single-stream diffusion transformer (DiT) for learning video and text tokens separately, and then subsequently concatenating the video and text tokens to combine their information. A single multimodal large language model (MLLM) serves as the text encoder, and videos are also spatio-temporally compressed with a 3D causal VAE.
 
 ```py
@@ -80,6 +83,8 @@ transformer = HunyuanVideoTransformer3DModel.from_pretrained(
 pipe = HunyuanVideoPipeline.from_pretrained(
   "tencent/HunyuanVideo", transformer=transformer, torch_dtype=torch.float16
 )
+
+# reduce memory requirements
 pipe.vae.enable_tiling()
 pipe.to("cuda")
 
@@ -127,6 +132,9 @@ export_to_video(video, "output.mp4", fps=24)
 </hfoption>
 <hfoption id="Mochi-1">
 
+> [!TIP]
+> Mochi-1 is a 10B parameter model and requires a lot of memory. Refer to the Mochi [Quantization](../api/pipelines/mochi#quantization) guide to learn how to quantize the model. CogVideoX and LTX-Video are more lightweight options that can still generate high-quality videos.
+
 [Mochi-1](https://huggingface.co/genmo/mochi-1-preview) introduces the Asymmetric Diffusion Transformer (AsymmDiT) and Asymmetric Variational Autoencoder (AsymmVAE) to reduces memory requirements. AsymmVAE causally compresses videos 128x to improve memory efficiency, and AsymmDiT jointly attends to the compressed video tokens and user text tokens. This model is noted for generating videos with high-quality motion dynamics and strong prompt adherence.
 
 ```py
@@ -148,6 +156,82 @@ export_to_video(video, "output.mp4", fps=30)
 <div class="flex justify-center">
   <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/mochi-video-output.gif"/>
 </div>
+
+</hfoption>
+<hfoption id="StableVideoDiffusion">
+
+[StableVideoDiffusion (SVD)](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt) is based on the Stable Diffusion 2.1 model and it is trained on images, then low-resolution videos, and finally a smaller dataset of high-resolution videos. This model generates a short 2-4 second video from an initial image.
+
+```py
+import torch
+from diffusers import StableVideoDiffusionPipeline
+from diffusers.utils import load_image, export_to_video
+
+pipeline = StableVideoDiffusionPipeline.from_pretrained(
+    "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
+)
+
+# reduce memory requirements
+pipeline.enable_model_cpu_offload()
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
+image = image.resize((1024, 576))
+
+generator = torch.manual_seed(42)
+frames = pipeline(image, decode_chunk_size=8, generator=generator).frames[0]
+export_to_video(frames, "generated.mp4", fps=7)
+```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">initial image</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/output_rocket.gif"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated video</figcaption>
+  </div>
+</div>
+
+</hfoption>
+<hfoption id="AnimateDiff">
+
+[AnimateDiff](https://huggingface.co/guoyww/animatediff) is an adapter model that inserts a motion module into a pretrained diffusion model to animate an image. The adapter is trained on video clips to learn motion which is used to condition the generation process to create a video. It is faster and easier to only train the adapter and it can be loaded into most diffusion models, effectively turning them into “video models”.
+
+Load a `MotionAdapter` and pass it to the [`AnimateDiffPipeline`].
+
+```py
+import torch
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
+from diffusers.utils import export_to_gif
+
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
+pipeline = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter, torch_dtype=torch.float16)
+scheduler = DDIMScheduler.from_pretrained(
+    "emilianJR/epiCRealism",
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
+)
+pipeline.scheduler = scheduler
+
+# reduce memory requirements
+pipeline.enable_vae_slicing()
+pipeline.enable_model_cpu_offload()
+
+output = pipeline(
+    prompt="A space rocket with trails of smoke behind it launching into space from the desert, 4k, high resolution",
+    negative_prompt="bad quality, worse quality, low resolution",
+    num_frames=16,
+    guidance_scale=7.5,
+    num_inference_steps=50,
+    generator=torch.Generator("cpu").manual_seed(49),
+)
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+```
 
 </hfoption>
 </hfoptions>
