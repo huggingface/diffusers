@@ -803,7 +803,7 @@ class ModelTesterMixin:
         self.assertFalse(model.is_gradient_checkpointing)
 
     @require_torch_accelerator_with_training
-    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5):
+    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip: set[str] = {}):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
 
@@ -849,6 +849,8 @@ class ModelTesterMixin:
 
         for name, param in named_params.items():
             if "post_quant_conv" in name:
+                continue
+            if name in skip:
                 continue
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=param_grad_tol))
 
