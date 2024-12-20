@@ -16,13 +16,14 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..test_pipelines_common import (
+    FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
 )
 
 
-class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
