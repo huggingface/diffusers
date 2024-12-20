@@ -65,7 +65,7 @@ class AutoencoderKLTemporalDecoderTests(ModelTesterMixin, UNetTesterMixin, unitt
         return init_dict, inputs_dict
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"Encoder", "TemporalDecoder"}
+        expected_set = {"Encoder", "TemporalDecoder", "UNetMidBlock2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     @unittest.skip("Test unsupported.")
