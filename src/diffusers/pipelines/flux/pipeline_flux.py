@@ -634,7 +634,7 @@ class FluxPipeline(
         prompt_2: Optional[Union[str, List[str]]] = None,
         negative_prompt: Union[str, List[str]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
-        true_cfg: float = 1.0,
+        true_cfg_scale: float = 1.0,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 28,
@@ -775,7 +775,7 @@ class FluxPipeline(
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        do_true_cfg = true_cfg > 1 or negative_prompt is not None
+        do_true_cfg = true_cfg_scale > 1 or negative_prompt is not None
         (
             prompt_embeds,
             pooled_prompt_embeds,
@@ -912,7 +912,7 @@ class FluxPipeline(
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
-                    noise_pred = neg_noise_pred + true_cfg * (noise_pred - neg_noise_pred)
+                    noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
