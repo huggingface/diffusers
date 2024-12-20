@@ -238,12 +238,13 @@ jobs:
 
   run_flax_tpu_tests:
     name: Nightly Flax TPU Tests
-    runs-on: docker-tpu
+    runs-on:
+      group: gcp-ct5lp-hightpu-8t
     if: github.event_name == 'schedule'
 
     container:
       image: diffusers/diffusers-flax-tpu
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --privileged
+      options: --shm-size "16gb" --ipc host --privileged ${{ vars.V5_LITEPOD_8_ENV}} -v /mnt/hf_cache:/mnt/hf_cache
     defaults:
       run:
         shell: bash
@@ -356,6 +357,8 @@ jobs:
         config:
           - backend: "bitsandbytes"
             test_location: "bnb"
+          - backend: "gguf"
+            test_location: "gguf"
     runs-on:
       group: aws-g6e-xlarge-plus
     container:

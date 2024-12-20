@@ -53,7 +53,61 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "FluxTransformer2DModel": lambda model_cls, weights: weights,
     "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
     "MochiTransformer3DModel": lambda model_cls, weights: weights,
+    "HunyuanVideoTransformer3DModel": lambda model_cls, weights: weights,
+    "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
+    "SanaTransformer2DModel": lambda model_cls, weights: weights,
 }
+
+
+def _maybe_adjust_config(config):
+    """
+    We may run into some ambiguous configuration values when a model has module names, sharing a common prefix
+    (`proj_out.weight` and `blocks.transformer.proj_out.weight`, for example) and they have different LoRA ranks. This
+    method removes the ambiguity by following what is described here:
+    https://github.com/huggingface/diffusers/pull/9985#issuecomment-2493840028.
+    """
+    rank_pattern = config["rank_pattern"].copy()
+    target_modules = config["target_modules"]
+    original_r = config["r"]
+
+    for key in list(rank_pattern.keys()):
+        key_rank = rank_pattern[key]
+
+        # try to detect ambiguity
+        # `target_modules` can also be a str, in which case this loop would loop
+        # over the chars of the str. The technically correct way to match LoRA keys
+        # in PEFT is to use LoraModel._check_target_module_exists (lora_config, key).
+        # But this cuts it for now.
+        exact_matches = [mod for mod in target_modules if mod == key]
+        substring_matches = [mod for mod in target_modules if key in mod and mod != key]
+        ambiguous_key = key
+
+        if exact_matches and substring_matches:
+            # if ambiguous we update the rank associated with the ambiguous key (`proj_out`, for example)
+            config["r"] = key_rank
+            # remove the ambiguous key from `rank_pattern` and update its rank to `r`, instead
+            del config["rank_pattern"][key]
+            for mod in substring_matches:
+                # avoid overwriting if the module already has a specific rank
+                if mod not in config["rank_pattern"]:
+                    config["rank_pattern"][mod] = original_r
+
+            # update the rest of the keys with the `original_r`
+            for mod in target_modules:
+                if mod != ambiguous_key and mod not in config["rank_pattern"]:
+                    config["rank_pattern"][mod] = original_r
+
+    # handle alphas to deal with cases like
+    # https://github.com/huggingface/diffusers/pull/9999#issuecomment-2516180777
+    has_different_ranks = len(config["rank_pattern"]) > 1 and list(config["rank_pattern"])[0] != config["r"]
+    if has_different_ranks:
+        config["lora_alpha"] = config["r"]
+        alpha_pattern = {}
+        for module_name, rank in config["rank_pattern"].items():
+            alpha_pattern[module_name] = rank
+        config["alpha_pattern"] = alpha_pattern
+
+    return config
 
 
 class PeftAdapterMixin:
@@ -154,6 +208,7 @@ class PeftAdapterMixin:
                 weights.
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -216,7 +271,9 @@ class PeftAdapterMixin:
 
             rank = {}
             for key, val in state_dict.items():
-                if "lora_B" in key:
+                # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
+                # Bias layers in LoRA only have a single dimension
+                if "lora_B" in key and val.ndim > 1:
                     rank[key] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
@@ -224,6 +281,8 @@ class PeftAdapterMixin:
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
+            lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
+
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
                     if is_peft_version("<", "0.9.0"):
@@ -233,8 +292,18 @@ class PeftAdapterMixin:
                 else:
                     if is_peft_version("<", "0.9.0"):
                         lora_config_kwargs.pop("use_dora")
-            lora_config = LoraConfig(**lora_config_kwargs)
 
+            if "lora_bias" in lora_config_kwargs:
+                if lora_config_kwargs["lora_bias"]:
+                    if is_peft_version("<=", "0.13.2"):
+                        raise ValueError(
+                            "You need `peft` 0.14.0 at least to use `lora_bias` in LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<=", "0.13.2"):
+                        lora_config_kwargs.pop("lora_bias")
+
+            lora_config = LoraConfig(**lora_config_kwargs)
             # adapter_name
             if adapter_name is None:
                 adapter_name = get_adapter_name(self)
@@ -251,8 +320,22 @@ class PeftAdapterMixin:
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
-            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+            # To handle scenarios where we cannot successfully set state dict. If it's unsucessful,
+            # we should also delete the `peft_config` associated to the `adapter_name`.
+            try:
+                inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+                incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+            except RuntimeError as e:
+                for module in self.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        active_adapters = module.active_adapters
+                        for active_adapter in active_adapters:
+                            if adapter_name in active_adapter:
+                                module.delete_adapter(adapter_name)
+
+                self.peft_config.pop(adapter_name)
+                logger.error(f"Loading {adapter_name} was unsucessful with the following error: \n{e}")
+                raise
 
             warn_msg = ""
             if incompatible_keys is not None:
