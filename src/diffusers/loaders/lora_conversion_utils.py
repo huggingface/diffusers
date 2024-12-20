@@ -643,7 +643,11 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
                     old_state_dict,
                     new_state_dict,
                     old_key,
-                    [f"transformer.single_transformer_blocks.{block_num}.norm.linear"],
+                    [
+                        f"transformer.single_transformer_blocks.{block_num}.attn.to_q",
+                        f"transformer.single_transformer_blocks.{block_num}.attn.to_k",
+                        f"transformer.single_transformer_blocks.{block_num}.attn.to_v",
+                    ],
                 )
 
             if "down" in old_key:
