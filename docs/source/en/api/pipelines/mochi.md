@@ -74,6 +74,12 @@ export_to_video(frames, "mochi.mp4", fps=30)
 The [Genmo Mochi implementation](https://github.com/genmoai/mochi/tree/main) uses different precision values for each stage in the inference process. The text encoder and VAE use `torch.float32`, while the DiT uses `torch.bfloat16` with the [attention kernel](https://pytorch.org/docs/stable/generated/torch.nn.attention.sdpa_kernel.html#torch.nn.attention.sdpa_kernel) set to `EFFICIENT_ATTENTION`. Diffusers pipelines currently do not support setting different `dtypes` for different stages of the pipeline. In order to run inference in the same way as the the original implementation, please refer to the following example.
 
 <Tip>
+THe original Mochi implementation zeros out empty prompts. However, enabling this option and placing the entire pipeline under autocast can lead to numerical overflows with the T5 text encoder.
+
+When enabling `force_zeros_for_empty_prompt`, it is recommended to run the text encoding step outside the autocast context in full precision.
+</Tip>
+
+<Tip>
 Decoding the latents in full precision is very memory intensive. You will need at least 70GB VRAM to generate the 163 frames
 in this example. To reduce memory, either reduce the number of frames or run the decoding step in `torch.bfloat16`
 </Tip>
@@ -86,7 +92,7 @@ from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
 from diffusers.video_processor import VideoProcessor
 
-pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview")
+pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", force_zeros_for_empty_prompt=True)
 pipe.enable_vae_tiling()
 pipe.enable_model_cpu_offload()
 
@@ -133,6 +139,86 @@ with torch.no_grad():
 
 video = video_processor.postprocess_video(video)[0]
 export_to_video(video, "mochi.mp4", fps=30)
+```
+
+## Running inference with multiple GPUs
+
+It is possible to split the large Mochi transformer across multiple GPUs using the `device_map` and `max_memory` options in `from_pretrained`. In the following example we split the model across two GPUs, each with 24GB of VRAM.
+
+```python
+import torch
+from diffusers import MochiPipeline, MochiTransformer3DModel
+from diffusers.utils import export_to_video
+
+model_id = "genmo/mochi-1-preview"
+transformer = MochiTransformer3DModel.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    device_map="auto",
+    max_memory={0: "24GB", 1: "24GB"}
+)
+
+pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
+pipe.enable_model_cpu_offload()
+pipe.enable_vae_tiling()
+
+with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
+    frames = pipe(
+        prompt="Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k.",
+        negative_prompt="",
+        height=480,
+        width=848,
+        num_frames=85,
+        num_inference_steps=50,
+        guidance_scale=4.5,
+        num_videos_per_prompt=1,
+        generator=torch.Generator(device="cuda").manual_seed(0),
+        max_sequence_length=256,
+        output_type="pil",
+    ).frames[0]
+
+export_to_video(frames, "output.mp4", fps=30)
+```
+
+## Using single file loading with the Mochi Transformer
+
+You can use `from_single_file` to load the Mochi transformer in its original format.
+
+<Tip>
+Diffusers currently doesn't support using the FP8 scaled versions of the Mochi single file checkpoints.
+</Tip>
+
+```python
+import torch
+from diffusers import MochiPipeline, MochiTransformer3DModel
+from diffusers.utils import export_to_video
+
+model_id = "genmo/mochi-1-preview"
+
+ckpt_path = "https://huggingface.co/Comfy-Org/mochi_preview_repackaged/blob/main/split_files/diffusion_models/mochi_preview_bf16.safetensors"
+
+transformer = MochiTransformer3DModel.from_pretrained(ckpt_path, torch_dtype=torch.bfloat16)
+
+pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
+pipe.enable_model_cpu_offload()
+pipe.enable_vae_tiling()
+
+with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
+    frames = pipe(
+        prompt="Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k.",
+        negative_prompt="",
+        height=480,
+        width=848,
+        num_frames=85,
+        num_inference_steps=50,
+        guidance_scale=4.5,
+        num_videos_per_prompt=1,
+        generator=torch.Generator(device="cuda").manual_seed(0),
+        max_sequence_length=256,
+        output_type="pil",
+    ).frames[0]
+
+export_to_video(frames, "output.mp4", fps=30)
 ```
 
 ## MochiPipeline
