@@ -138,13 +138,12 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         inputs = self.get_dummy_inputs(torch_device)
         prompt = inputs.pop("prompt")
 
-        prompt_outputs = pipe.encode_prompt(
+        (prompt_embeds, pooled_prompt_embeds, text_ids) = pipe.encode_prompt(
             prompt,
             prompt_2=None,
             device=torch_device,
             max_sequence_length=inputs["max_sequence_length"],
         )
-        prompt_embeds, pooled_prompt_embeds = prompt_outputs[0], prompt_outputs[1]
         output_with_embeds = pipe(
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
