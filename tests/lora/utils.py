@@ -89,12 +89,12 @@ class PeftLoraLoaderMixinTests:
 
     has_two_text_encoders = False
     has_three_text_encoders = False
-    text_encoder_cls, text_encoder_id, text_encoder_subfolder = None, None, None
-    text_encoder_2_cls, text_encoder_2_id, text_encoder_2_subfolder = None, None, None
-    text_encoder_3_cls, text_encoder_3_id, text_encoder_3_subfolder = None, None, None
-    tokenizer_cls, tokenizer_id, tokenizer_subfolder = None, None, None
-    tokenizer_2_cls, tokenizer_2_id, tokenizer_2_subfolder = None, None, None
-    tokenizer_3_cls, tokenizer_3_id, tokenizer_3_subfolder = None, None, None
+    text_encoder_cls, text_encoder_id, text_encoder_subfolder = None, None, ""
+    text_encoder_2_cls, text_encoder_2_id, text_encoder_2_subfolder = None, None, ""
+    text_encoder_3_cls, text_encoder_3_id, text_encoder_3_subfolder = None, None, ""
+    tokenizer_cls, tokenizer_id, tokenizer_subfolder = None, None, ""
+    tokenizer_2_cls, tokenizer_2_id, tokenizer_2_subfolder = None, None, ""
+    tokenizer_3_cls, tokenizer_3_id, tokenizer_3_subfolder = None, None, ""
 
     unet_kwargs = None
     transformer_cls = None
