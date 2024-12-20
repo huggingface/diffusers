@@ -100,7 +100,7 @@ image
   </div>
 </div>
 
-OmniGen has some interesting features, such as the ability to infer user needs, as shown in the example below.
+OmniGen has some interesting features, such as visual reasoning, as shown in the example below.
 ```py
 prompt="If the woman is thirsty, what should she take? Find it in the image and highlight it in blue. <img><|image_1|></img>"
 input_images=[load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/edit.png")]
