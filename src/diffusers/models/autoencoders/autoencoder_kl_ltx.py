@@ -137,13 +137,13 @@ class LTXResnetBlock3d(nn.Module):
             self.conv_shortcut = LTXCausalConv3d(
                 in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, is_causal=is_causal
             )
-        
+
         self.scale1 = None
         self.scale2 = None
         if inject_noise:
             self.scale1 = nn.Parameter(torch.zeros(in_channels, 1, 1))
             self.scale2 = nn.Parameter(torch.zeros(in_channels, 1, 1))
-        
+
         self.scale_shift_table = None
         if timestep_conditioning:
             self.scale_shift_table = nn.Parameter(torch.randn(4, in_channels) / in_channels**0.5)
@@ -166,7 +166,7 @@ class LTXResnetBlock3d(nn.Module):
 
         if self.scale_shift_table is not None:
             hidden_states = hidden_states * (1 + scale_1) + shift_1
-        
+
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states)
@@ -210,7 +210,6 @@ class LTXUpsampler3d(nn.Module):
             stride=1,
             is_causal=is_causal,
         )
-
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
@@ -495,7 +494,17 @@ class LTXUpBlock3d(nn.Module):
 
         self.upsamplers = None
         if spatio_temporal_scale:
-            self.upsamplers = nn.ModuleList([LTXUpsampler3d(out_channels * upscale_factor, stride=(2, 2, 2), is_causal=is_causal, residual=upsample_residual, upscale_factor=upscale_factor)])
+            self.upsamplers = nn.ModuleList(
+                [
+                    LTXUpsampler3d(
+                        out_channels * upscale_factor,
+                        stride=(2, 2, 2),
+                        is_causal=is_causal,
+                        residual=upsample_residual,
+                        upscale_factor=upscale_factor,
+                    )
+                ]
+            )
 
         resnets = []
         for _ in range(num_layers):
@@ -508,7 +517,7 @@ class LTXUpBlock3d(nn.Module):
                     non_linearity=resnet_act_fn,
                     is_causal=is_causal,
                     inject_noise=inject_noise,
-                    timestep_conditioning=timestep_conditioning
+                    timestep_conditioning=timestep_conditioning,
                 )
             )
         self.resnets = nn.ModuleList(resnets)
@@ -518,7 +527,7 @@ class LTXUpBlock3d(nn.Module):
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         if self.conv_in is not None:
             hidden_states = self.conv_in(hidden_states)
-        
+
         if self.time_embedder is not None:
             temb = self.time_embedder(
                 timestep=temb.flatten(),
@@ -744,7 +753,12 @@ class LTXDecoder3d(nn.Module):
         )
 
         self.mid_block = LTXMidBlock3d(
-            in_channels=output_channel, num_layers=layers_per_block[0], resnet_eps=resnet_norm_eps, is_causal=is_causal, inject_noise=inject_noise[0], timestep_conditioning=timestep_conditioning
+            in_channels=output_channel,
+            num_layers=layers_per_block[0],
+            resnet_eps=resnet_norm_eps,
+            is_causal=is_causal,
+            inject_noise=inject_noise[0],
+            timestep_conditioning=timestep_conditioning,
         )
 
         # up blocks

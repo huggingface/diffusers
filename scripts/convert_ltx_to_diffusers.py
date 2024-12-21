@@ -1,6 +1,6 @@
 import argparse
-from typing import Any, Dict
 from pathlib import Path
+from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
@@ -133,7 +133,7 @@ def convert_transformer(
 
 def convert_vae(ckpt_path: str, config, dtype: torch.dtype):
     PREFIX_KEY = "vae."
-    
+
     original_state_dict = get_state_dict(load_file(ckpt_path))
     with init_empty_weights():
         vae = AutoencoderKLLTXVideo(**config)
@@ -155,54 +155,6 @@ def convert_vae(ckpt_path: str, config, dtype: torch.dtype):
     vae.load_state_dict(original_state_dict, strict=True, assign=True)
     return vae
 
-# OURS_VAE_CONFIG = {
-#     "_class_name": "CausalVideoAutoencoder",
-#     "dims": 3,
-#     "in_channels": 3,
-#     "out_channels": 3,
-#     "latent_channels": 128,
-#     "blocks": [
-#         ["res_x", 4],
-#         ["compress_all", 1],
-#         ["res_x_y", 1],
-#         ["res_x", 3],
-#         ["compress_all", 1],
-#         ["res_x_y", 1],
-#         ["res_x", 3],
-#         ["compress_all", 1],
-#         ["res_x", 3],
-#         ["res_x", 4],
-#     ],
-#     "scaling_factor": 1.0,
-#     "norm_layer": "pixel_norm",
-#     "patch_size": 4,
-#     "latent_log_var": "uniform",
-#     "use_quant_conv": False,
-#     "causal_decoder": False,
-# }
-
-# {
-#   "_class_name": "CausalVideoAutoencoder",
-#   "dims": 3, "in_channels": 3, "out_channels": 3, "latent_channels": 128,
-# "encoder_blocks": [["res_x", {"num_layers": 4}], ["compress_all", {}], ["res_x_y", 1], ["res_x", {"num_layers": 3}], ["compress_all", {}], ["res_x_y", 1], ["res_x", {"num_layers": 3}], ["compress_all", {}], ["res_x", {"num_layers": 3}], ["res_x", {"num_layers": 4}]],
-
-# previous decoder
-# mid: resx
-# resx
-# compress_all, resx
-# resxy, compress_all, resx
-# resxy, compress_all, resx
-
-# "decoder_blocks": [["res_x", {"num_layers": 5, "inject_noise": true}], ["compress_all", {"residual": true, "multiplier": 2}], ["res_x", {"num_layers": 6, "inject_noise": true}], ["compress_all", {"residual": true, "multiplier": 2}], ["res_x", {"num_layers": 7, "inject_noise": true}], ["compress_all", {"residual": true, "multiplier": 2}], ["res_x", {"num_layers": 8, "inject_noise": false}]],
-
-# current decoder
-# mid: resx
-# compress_all, resx
-# compress_all, resx
-# compress_all, resx
-
-# "scaling_factor": 1.0, "norm_layer": "pixel_norm", "patch_size": 4, "latent_log_var": "uniform", "use_quant_conv": false, "causal_decoder": false, "timestep_conditioning": true
-# }
 
 def get_vae_config(version: str) -> Dict[str, Any]:
     if version == "0.9.0":
@@ -272,7 +224,9 @@ def get_args():
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="fp32", help="Torch dtype to save the model in.")
-    parser.add_argument("--version", type=str, default="0.9.0", choices=["0.9.0", "0.9.1"], help="Version of the LTX model")
+    parser.add_argument(
+        "--version", type=str, default="0.9.0", choices=["0.9.0", "0.9.1"], help="Version of the LTX model"
+    )
     return parser.parse_args()
 
 
