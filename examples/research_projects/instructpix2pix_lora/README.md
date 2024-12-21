@@ -9,7 +9,7 @@ export MODEL_ID="timbrooks/instruct-pix2pix"
 export DATASET_ID="instruction-tuning-sd/cartoonization"
 export OUTPUT_DIR="instructPix2Pix-cartoonization"
 
-accelerate launch finetune_instruct_pix2pix.py \
+accelerate launch train_instruct_pix2pix_lora.py \
   --pretrained_model_name_or_path=$MODEL_ID \
   --dataset_name=$DATASET_ID \
   --enable_xformers_memory_efficient_attention \
