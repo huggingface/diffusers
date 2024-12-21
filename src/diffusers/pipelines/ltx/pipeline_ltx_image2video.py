@@ -872,7 +872,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                     :, None, None, None, None
                 ]
                 latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
-            
+
             video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
