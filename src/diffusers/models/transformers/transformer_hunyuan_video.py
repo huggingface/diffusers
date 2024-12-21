@@ -540,6 +540,12 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = [
+        "HunyuanVideoTransformerBlock",
+        "HunyuanVideoSingleTransformerBlock",
+        "HunyuanVideoPatchEmbed",
+        "HunyuanVideoTokenRefiner",
+    ]
 
     @register_to_config
     def __init__(

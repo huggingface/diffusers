@@ -210,6 +210,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["CogVideoXBlock", "CogVideoXPatchEmbed"]
 
     @register_to_config
     def __init__(
