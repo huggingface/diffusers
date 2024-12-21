@@ -272,8 +272,8 @@ class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         pipe.vae.enable_tiling(
             tile_sample_min_height=96,
             tile_sample_min_width=96,
-            tile_overlap_factor_height=1 / 12,
-            tile_overlap_factor_width=1 / 12,
+            tile_sample_stride_height=64,
+            tile_sample_stride_width=64,
         )
         inputs = self.get_dummy_inputs(generator_device)
         inputs["height"] = inputs["width"] = 128
