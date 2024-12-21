@@ -775,7 +775,7 @@ class FluxPipeline(
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        do_true_cfg = true_cfg_scale > 1 or negative_prompt is not None
+        do_true_cfg = true_cfg_scale > 1 and negative_prompt is not None
         (
             prompt_embeds,
             pooled_prompt_embeds,
