@@ -511,6 +511,8 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        decode_timestep: Union[float, List[float]] = 0.05,
+        decode_noise_scale: Union[float, List[float]] = 0.025,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -753,7 +755,25 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
             latents = latents.to(prompt_embeds.dtype)
-            video = self.vae.decode(latents, return_dict=False)[0]
+
+            if not self.vae.config.timestep_conditioning:
+                timestep = None
+            else:
+                noise = torch.randn(latents.shape, generator=generator, device=device, dtype=latents.dtype)
+                if not isinstance(decode_timestep, list):
+                    decode_timestep = [decode_timestep] * batch_size
+                if decode_noise_scale is None:
+                    decode_noise_scale = decode_timestep
+                elif not isinstance(decode_noise_scale, list):
+                    decode_noise_scale = [decode_noise_scale] * batch_size
+
+                timestep = torch.tensor(decode_timestep, device=device, dtype=latents.dtype)
+                decode_noise_scale = torch.tensor(decode_noise_scale, device=device, dtype=latents.dtype)[
+                    :, None, None, None, None
+                ]
+                latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+            video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         # Offload all models

@@ -70,8 +70,6 @@ VAE_091_RENAME_DICT = {
     "up_blocks.7": "up_blocks.3.upsamplers.0",
     "up_blocks.8": "up_blocks.3",
     # common
-    "per_channel_scale1": "scale1",
-    "per_channel_scale2": "scale2",
     "last_time_embedder": "time_embedder",
     "last_scale_shift_table": "scale_shift_table",
 }
@@ -168,7 +166,7 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "decoder_layers_per_block": (4, 3, 3, 3, 4),
             "spatio_temporal_scaling": (True, True, True, False),
             "decoder_spatio_temporal_scaling": (True, True, True, False),
-            "decoder_inject_noise": (False, False, False, False),
+            "decoder_inject_noise": (False, False, False, False, False),
             "upsample_residual": (False, False, False, False),
             "upsample_factor": (1, 1, 1, 1),
             "patch_size": 4,
@@ -190,7 +188,7 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "decoder_layers_per_block": (5, 6, 7, 8),
             "spatio_temporal_scaling": (True, True, True, False),
             "decoder_spatio_temporal_scaling": (True, True, True),
-            "decoder_inject_noise": (False, True, True, True),
+            "decoder_inject_noise": (True, True, True, False),
             "upsample_residual": (True, True, True),
             "upsample_factor": (2, 2, 2),
             "timestep_conditioning": True,
