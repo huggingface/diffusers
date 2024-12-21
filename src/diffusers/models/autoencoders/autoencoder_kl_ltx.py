@@ -22,6 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
+from ..embeddings import PixArtAlphaCombinedTimestepSizeEmbeddings
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
@@ -109,7 +110,9 @@ class LTXResnetBlock3d(nn.Module):
         elementwise_affine: bool = False,
         non_linearity: str = "swish",
         is_causal: bool = True,
-    ):
+        inject_noise: bool = False,
+        timestep_conditioning: bool = False,
+    ) -> None:
         super().__init__()
 
         out_channels = out_channels or in_channels
@@ -134,18 +137,44 @@ class LTXResnetBlock3d(nn.Module):
             self.conv_shortcut = LTXCausalConv3d(
                 in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, is_causal=is_causal
             )
+        
+        self.scale1 = None
+        self.scale2 = None
+        if inject_noise:
+            self.scale1 = nn.Parameter(torch.zeros(in_channels, 1, 1))
+            self.scale2 = nn.Parameter(torch.zeros(in_channels, 1, 1))
+        
+        self.scale_shift_table = None
+        if timestep_conditioning:
+            self.scale_shift_table = nn.Parameter(torch.randn(4, in_channels) / in_channels**0.5)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = inputs
 
         hidden_states = self.norm1(hidden_states.movedim(1, -1)).movedim(-1, 1)
+        scale_1, shift_1, scale_2, shift_2 = self.scale_shift_table.unbind(dim=0)
+
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.conv1(hidden_states)
 
+        if self.scale1 is not None:
+            spatial_shape = hidden_states.shape[-2:]
+            spatial_noise = torch.randn(spatial_shape, device=hidden_states.device, dtype=hidden_states.dtype)
+            hidden_states = hidden_states + (spatial_noise * self.scale1)[None, :, None, :, :]
+
         hidden_states = self.norm2(hidden_states.movedim(1, -1)).movedim(-1, 1)
+
+        if self.scale_shift_table is not None:
+            hidden_states = hidden_states * (1 + scale_1) + shift_1
+        
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states)
+
+        if self.scale2 is not None:
+            spatial_shape = hidden_states.shape[-2:]
+            spatial_noise = torch.randn(spatial_shape, device=hidden_states.device, dtype=hidden_states.dtype)
+            hidden_states = hidden_states + (spatial_noise * self.scale2)[None, :, None, :, :]
 
         if self.norm3 is not None:
             inputs = self.norm3(inputs.movedim(1, -1)).movedim(-1, 1)
@@ -163,12 +192,16 @@ class LTXUpsampler3d(nn.Module):
         in_channels: int,
         stride: Union[int, Tuple[int, int, int]] = 1,
         is_causal: bool = True,
+        residual: bool = False,
+        upscale_factor: int = 1,
     ) -> None:
         super().__init__()
 
         self.stride = stride if isinstance(stride, tuple) else (stride, stride, stride)
+        self.residual = residual
+        self.upscale_factor = upscale_factor
 
-        out_channels = in_channels * stride[0] * stride[1] * stride[2]
+        out_channels = (in_channels * stride[0] * stride[1] * stride[2]) // upscale_factor
 
         self.conv = LTXCausalConv3d(
             in_channels=in_channels,
@@ -178,8 +211,18 @@ class LTXUpsampler3d(nn.Module):
             is_causal=is_causal,
         )
 
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
+
+        if self.residual:
+            residual = hidden_states.reshape(
+                batch_size, -1, self.stride[0], self.stride[1], self.stride[2], num_frames, height, width
+            )
+            residual = residual.permute(0, 1, 5, 2, 6, 3, 7, 4).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+            repeats = (self.stride[0] * self.stride[1] * self.stride[2]) // self.upscale_factor
+            residual = residual.repeat(1, repeats, 1, 1, 1)
+            residual = residual[:, :, self.stride[0] - 1 :]
 
         hidden_states = self.conv(hidden_states)
         hidden_states = hidden_states.reshape(
@@ -187,6 +230,9 @@ class LTXUpsampler3d(nn.Module):
         )
         hidden_states = hidden_states.permute(0, 1, 5, 2, 6, 3, 7, 4).flatten(6, 7).flatten(4, 5).flatten(2, 3)
         hidden_states = hidden_states[:, :, self.stride[0] - 1 :]
+
+        if self.residual:
+            hidden_states = hidden_states + residual
 
         return hidden_states
 
@@ -329,8 +375,14 @@ class LTXMidBlock3d(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         is_causal: bool = True,
+        inject_noise: bool = False,
+        timestep_conditioning: bool = False,
     ) -> None:
         super().__init__()
+
+        self.time_embedder = None
+        if timestep_conditioning:
+            self.time_embedder = PixArtAlphaCombinedTimestepSizeEmbeddings(in_channels * 4, 0)
 
         resnets = []
         for _ in range(num_layers):
@@ -342,14 +394,26 @@ class LTXMidBlock3d(nn.Module):
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
                     is_causal=is_causal,
+                    inject_noise=inject_noise,
+                    timestep_conditioning=timestep_conditioning,
                 )
             )
         self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         r"""Forward method of the `LTXMidBlock3D` class."""
+
+        if self.time_embedder is not None:
+            temb = self.time_embedder(
+                timestep=temb.flatten(),
+                resolution=None,
+                aspect_ratio=None,
+                batch_size=hidden_states.size(0),
+                hidden_dtype=hidden_states.dtype,
+            )
+            temb = temb.view(hidden_states.size(0), -1, 1, 1, 1)
 
         for i, resnet in enumerate(self.resnets):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -360,9 +424,9 @@ class LTXMidBlock3d(nn.Module):
 
                     return create_forward
 
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states)
+                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
             else:
-                hidden_states = resnet(hidden_states)
+                hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
 
@@ -403,10 +467,18 @@ class LTXUpBlock3d(nn.Module):
         resnet_act_fn: str = "swish",
         spatio_temporal_scale: bool = True,
         is_causal: bool = True,
+        inject_noise: bool = False,
+        timestep_conditioning: bool = False,
+        upsample_residual: bool = False,
+        upscale_factor: int = 1,
     ):
         super().__init__()
 
         out_channels = out_channels or in_channels
+
+        self.time_embedder = None
+        if timestep_conditioning:
+            self.time_embedder = PixArtAlphaCombinedTimestepSizeEmbeddings(in_channels * 4, 0)
 
         self.conv_in = None
         if in_channels != out_channels:
@@ -417,11 +489,13 @@ class LTXUpBlock3d(nn.Module):
                 eps=resnet_eps,
                 non_linearity=resnet_act_fn,
                 is_causal=is_causal,
+                inject_noise=inject_noise,
+                timestep_conditioning=timestep_conditioning,
             )
 
         self.upsamplers = None
         if spatio_temporal_scale:
-            self.upsamplers = nn.ModuleList([LTXUpsampler3d(out_channels, stride=(2, 2, 2), is_causal=is_causal)])
+            self.upsamplers = nn.ModuleList([LTXUpsampler3d(out_channels * upscale_factor, stride=(2, 2, 2), is_causal=is_causal, residual=upsample_residual, upscale_factor=upscale_factor)])
 
         resnets = []
         for _ in range(num_layers):
@@ -433,15 +507,27 @@ class LTXUpBlock3d(nn.Module):
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
                     is_causal=is_causal,
+                    inject_noise=inject_noise,
+                    timestep_conditioning=timestep_conditioning
                 )
             )
         self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         if self.conv_in is not None:
             hidden_states = self.conv_in(hidden_states)
+        
+        if self.time_embedder is not None:
+            temb = self.time_embedder(
+                timestep=temb.flatten(),
+                resolution=None,
+                aspect_ratio=None,
+                batch_size=hidden_states.size(0),
+                hidden_dtype=hidden_states.dtype,
+            )
+            temb = temb.view(hidden_states.size(0), -1, 1, 1, 1)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -622,6 +708,8 @@ class LTXDecoder3d(nn.Module):
             Epsilon value for ResNet normalization layers.
         is_causal (`bool`, defaults to `False`):
             Whether this layer behaves causally (future frames depend only on past frames) or not.
+        timestep_conditioning (`bool`, defaults to `False`):
+            Whether to condition the model on timesteps.
     """
 
     def __init__(
@@ -635,6 +723,10 @@ class LTXDecoder3d(nn.Module):
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
         is_causal: bool = False,
+        inject_noise: Tuple[bool, ...] = (False, False, False, False),
+        timestep_conditioning: bool = False,
+        upsample_residual: Tuple[bool, ...] = (False, False, False, False),
+        upsample_factor: Tuple[bool, ...] = (1, 1, 1, 1),
     ) -> None:
         super().__init__()
 
@@ -652,15 +744,15 @@ class LTXDecoder3d(nn.Module):
         )
 
         self.mid_block = LTXMidBlock3d(
-            in_channels=output_channel, num_layers=layers_per_block[0], resnet_eps=resnet_norm_eps, is_causal=is_causal
+            in_channels=output_channel, num_layers=layers_per_block[0], resnet_eps=resnet_norm_eps, is_causal=is_causal, inject_noise=inject_noise[0], timestep_conditioning=timestep_conditioning
         )
 
         # up blocks
         num_block_out_channels = len(block_out_channels)
         self.up_blocks = nn.ModuleList([])
         for i in range(num_block_out_channels):
-            input_channel = output_channel
-            output_channel = block_out_channels[i]
+            input_channel = output_channel // upsample_factor[i]
+            output_channel = block_out_channels[i] // upsample_factor[i]
 
             up_block = LTXUpBlock3d(
                 in_channels=input_channel,
@@ -669,6 +761,10 @@ class LTXDecoder3d(nn.Module):
                 resnet_eps=resnet_norm_eps,
                 spatio_temporal_scale=spatio_temporal_scaling[i],
                 is_causal=is_causal,
+                inject_noise=inject_noise[i + 1],
+                timestep_conditioning=timestep_conditioning,
+                upsample_residual=upsample_residual[i],
+                upscale_factor=upsample_factor[i],
             )
 
             self.up_blocks.append(up_block)
@@ -680,9 +776,16 @@ class LTXDecoder3d(nn.Module):
             in_channels=output_channel, out_channels=self.out_channels, kernel_size=3, stride=1, is_causal=is_causal
         )
 
+        # timestep embedding
+        self.time_embedder = None
+        self.scale_shift_table = None
+        if timestep_conditioning:
+            self.time_embedder = PixArtAlphaCombinedTimestepSizeEmbeddings(output_channel * 2, 0)
+            self.scale_shift_table = nn.Parameter(torch.randn(2, output_channel) / output_channel**0.5)
+
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.conv_in(hidden_states)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -704,6 +807,20 @@ class LTXDecoder3d(nn.Module):
                 hidden_states = up_block(hidden_states)
 
         hidden_states = self.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
+
+        if self.time_embedder is not None:
+            embedded_timestep = self.time_embedder(
+                timestep=temb.flatten(),
+                resolution=None,
+                aspect_ratio=None,
+                batch_size=hidden_states.size(0),
+                hidden_dtype=hidden_states.dtype,
+            )
+            embedded_timestep = embedded_timestep.view(hidden_states.size(0), -1, 1, 1, 1).unflatten(1, (2, -1))
+            embedded_timestep = embedded_timestep + self.scale_shift_table[None, :, None, None, None]
+            shift, scale = embedded_timestep.unbind(dim=1)
+            hidden_states = hidden_states * (1 + scale) + shift
+
         hidden_states = self.conv_act(hidden_states)
         hidden_states = self.conv_out(hidden_states)
 
@@ -766,8 +883,15 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         out_channels: int = 3,
         latent_channels: int = 128,
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
-        spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, False),
+        decoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: Tuple[int, ...] = (4, 3, 3, 3, 4),
+        decoder_layers_per_block: Tuple[int, ...] = (4, 3, 3, 3, 4),
+        spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, False),
+        decoder_spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, False),
+        decoder_inject_noise: Tuple[bool, ...] = (False, False, False, False),
+        upsample_residual: Tuple[bool, ...] = (False, False, False, False),
+        upsample_factor: Tuple[int, ...] = (1, 1, 1, 1),
+        timestep_conditioning: bool = False,
         patch_size: int = 4,
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
@@ -791,13 +915,17 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.decoder = LTXDecoder3d(
             in_channels=latent_channels,
             out_channels=out_channels,
-            block_out_channels=block_out_channels,
-            spatio_temporal_scaling=spatio_temporal_scaling,
-            layers_per_block=layers_per_block,
+            block_out_channels=decoder_block_out_channels,
+            spatio_temporal_scaling=decoder_spatio_temporal_scaling,
+            layers_per_block=decoder_layers_per_block,
             patch_size=patch_size,
             patch_size_t=patch_size_t,
             resnet_norm_eps=resnet_norm_eps,
             is_causal=decoder_causal,
+            timestep_conditioning=timestep_conditioning,
+            inject_noise=decoder_inject_noise,
+            upsample_residual=upsample_residual,
+            upsample_factor=upsample_factor,
         )
 
         latents_mean = torch.zeros((latent_channels,), requires_grad=False)
