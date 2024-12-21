@@ -177,6 +177,9 @@ class FromOriginalModelMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            disable_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
+                is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -223,6 +226,7 @@ class FromOriginalModelMixin:
         torch_dtype = kwargs.pop("torch_dtype", None)
         quantization_config = kwargs.pop("quantization_config", None)
         device = kwargs.pop("device", None)
+        disable_mmap = kwargs.pop("disable_mmap", False)
 
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
@@ -235,6 +239,7 @@ class FromOriginalModelMixin:
                 cache_dir=cache_dir,
                 local_files_only=local_files_only,
                 revision=revision,
+                disable_mmap=disable_mmap,
             )
         if quantization_config is not None:
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
@@ -356,7 +361,9 @@ class FromOriginalModelMixin:
             )
 
         else:
-            _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
+            _, unexpected_keys = model.load_state_dict(
+                diffusers_format_checkpoint, strict=False, disable_mmap=disable_mmap
+            )
 
         if model._keys_to_ignore_on_load_unexpected is not None:
             for pat in model._keys_to_ignore_on_load_unexpected:
