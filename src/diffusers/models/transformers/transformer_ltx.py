@@ -35,7 +35,7 @@ from ..normalization import AdaLayerNormSingle, RMSNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class LTXAttentionProcessor2_0:
+class LTXVideoAttentionProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the LTX model. It applies a normalization layer and rotary embedding on the query and key vector.
@@ -44,7 +44,7 @@ class LTXAttentionProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "LTXAttentionProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "LTXVideoAttentionProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -92,7 +92,7 @@ class LTXAttentionProcessor2_0:
         return hidden_states
 
 
-class LTXRotaryPosEmbed(nn.Module):
+class LTXVideoRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -164,7 +164,7 @@ class LTXRotaryPosEmbed(nn.Module):
 
 
 @maybe_allow_in_graph
-class LTXTransformerBlock(nn.Module):
+class LTXVideoTransformerBlock(nn.Module):
     r"""
     Transformer block used in [LTX](https://huggingface.co/Lightricks/LTX-Video).
 
@@ -208,7 +208,7 @@ class LTXTransformerBlock(nn.Module):
             cross_attention_dim=None,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
-            processor=LTXAttentionProcessor2_0(),
+            processor=LTXVideoAttentionProcessor2_0(),
         )
 
         self.norm2 = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine)
@@ -221,7 +221,7 @@ class LTXTransformerBlock(nn.Module):
             bias=attention_bias,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
-            processor=LTXAttentionProcessor2_0(),
+            processor=LTXVideoAttentionProcessor2_0(),
         )
 
         self.ff = FeedForward(dim, activation_fn=activation_fn)
@@ -327,7 +327,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
 
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
 
-        self.rope = LTXRotaryPosEmbed(
+        self.rope = LTXVideoRotaryPosEmbed(
             dim=inner_dim,
             base_num_frames=20,
             base_height=2048,
@@ -339,7 +339,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
 
         self.transformer_blocks = nn.ModuleList(
             [
-                LTXTransformerBlock(
+                LTXVideoTransformerBlock(
                     dim=inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
