@@ -167,8 +167,8 @@ class LTXResnetBlock3d(nn.Module):
             spatial_shape = hidden_states.shape[-2:]
             spatial_noise = torch.randn(
                 spatial_shape, generator=generator, device=hidden_states.device, dtype=hidden_states.dtype
-            )
-            hidden_states = hidden_states + (spatial_noise * self.per_channel_scale1)[None, :, None, :, :]
+            )[None]
+            hidden_states = hidden_states + (spatial_noise * self.per_channel_scale1)[None, :, None, ...]
 
         hidden_states = self.norm2(hidden_states.movedim(1, -1)).movedim(-1, 1)
 
@@ -183,8 +183,8 @@ class LTXResnetBlock3d(nn.Module):
             spatial_shape = hidden_states.shape[-2:]
             spatial_noise = torch.randn(
                 spatial_shape, generator=generator, device=hidden_states.device, dtype=hidden_states.dtype
-            )
-            hidden_states = hidden_states + (spatial_noise * self.per_channel_scale2)[None, :, None, :, :]
+            )[None]
+            hidden_states = hidden_states + (spatial_noise * self.per_channel_scale2)[None, :, None, ...]
 
         if self.norm3 is not None:
             inputs = self.norm3(inputs.movedim(1, -1)).movedim(-1, 1)
