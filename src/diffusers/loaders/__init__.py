@@ -70,6 +70,7 @@ if is_torch_available():
             "LoraLoaderMixin",
             "FluxLoraLoaderMixin",
             "CogVideoXLoraLoaderMixin",
+            "ConsisIDLoraLoaderMixin",
             "Mochi1LoraLoaderMixin",
             "HunyuanVideoLoraLoaderMixin",
             "SanaLoraLoaderMixin",
@@ -98,6 +99,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
+                ConsisIDLoraLoaderMixin,
                 FluxLoraLoaderMixin,
                 HunyuanVideoLoraLoaderMixin,
                 LoraLoaderMixin,

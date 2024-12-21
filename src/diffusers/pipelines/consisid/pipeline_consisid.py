@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Any, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -23,6 +23,7 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...loaders import ConsisIDLoraLoaderMixin
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLCogVideoX, ConsisIDTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
@@ -241,7 +242,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class ConsisIDPipeline(DiffusionPipeline):
+class ConsisIDPipeline(DiffusionPipeline, ConsisIDLoraLoaderMixin):
     r"""
     Pipeline for image-to-video generation using ConsisID.
 
@@ -645,6 +646,10 @@ class ConsisIDPipeline(DiffusionPipeline):
         return self._num_timesteps
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -669,6 +674,7 @@ class ConsisIDPipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: str = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -736,6 +742,10 @@ class ConsisIDPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
                 of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -748,6 +758,18 @@ class ConsisIDPipeline(DiffusionPipeline):
             max_sequence_length (`int`, defaults to `226`):
                 Maximum sequence length in encoded prompt. Must be consistent with
                 `self.transformer.config.max_text_seq_length` otherwise may lead to poor results.
+            id_vit_hidden (`Optional[torch.Tensor]`, *optional*):
+                The tensor representing the hidden features extracted from the face model, which are used to condition the local
+                facial extractor. This is crucial for the model to obtain high-frequency information of the face. If not provided, 
+                the local facial extractor will not run normally.
+            id_cond (`Optional[torch.Tensor]`, *optional*):
+                The tensor representing the hidden features extracted from the clip model, which are used to condition the local
+                facial extractor. This is crucial for the model to edit facial features If not provided, the local facial extractor 
+                will not run normally.
+            kps_cond (`Optional[torch.Tensor]`, *optional*):
+                A tensor that determines whether the global facial extractor use keypoint information for conditioning.
+                If provided, this tensor controls whether facial keypoints such as eyes, nose, and mouth landmarks are used
+                during the generation process. This helps ensure the model retains more facial low-frequency information.
 
         Examples:
 
@@ -779,6 +801,7 @@ class ConsisIDPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
         )
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 2. Default call parameters
@@ -878,6 +901,7 @@ class ConsisIDPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     image_rotary_emb=image_rotary_emb,
+                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                     id_vit_hidden=id_vit_hidden,
                     id_cond=id_cond,
