@@ -29,6 +29,17 @@ else:
     _import_structure["pipeline_stable_diffusion_xl_img2img"] = ["StableDiffusionXLImg2ImgPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_inpaint"] = ["StableDiffusionXLInpaintPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_instruct_pix2pix"] = ["StableDiffusionXLInstructPix2PixPipeline"]
+    _import_structure["pipeline_stable_diffusion_xl_modular"] = [
+        "StableDiffusionXLControlNetDenoiseStep",
+        "StableDiffusionXLDecodeLatentsStep",
+        "StableDiffusionXLDenoiseStep",
+        "StableDiffusionXLInputStep",
+        "StableDiffusionXLModularPipeline",
+        "StableDiffusionXLPrepareAdditionalConditioningStep",
+        "StableDiffusionXLPrepareLatentsStep",
+        "StableDiffusionXLSetTimestepsStep",
+        "StableDiffusionXLTextEncoderStep",
+    ]
 
 if is_transformers_available() and is_flax_available():
     from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
@@ -48,6 +59,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline
         from .pipeline_stable_diffusion_xl_inpaint import StableDiffusionXLInpaintPipeline
         from .pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
+        from .pipeline_stable_diffusion_xl_modular import (
+            StableDiffusionXLControlNetDenoiseStep,
+            StableDiffusionXLDecodeLatentsStep,
+            StableDiffusionXLDenoiseStep,
+            StableDiffusionXLInputStep,
+            StableDiffusionXLModularPipeline,
+            StableDiffusionXLPrepareAdditionalConditioningStep,
+            StableDiffusionXLPrepareLatentsStep,
+            StableDiffusionXLSetTimestepsStep,
+            StableDiffusionXLTextEncoderStep,
+        )
 
     try:
         if not (is_transformers_available() and is_flax_available()):
