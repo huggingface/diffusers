@@ -143,7 +143,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     Args:
         text_encoder ([`LlamaModel`]):
             [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
-        tokenizer_2 (`LlamaTokenizer`):
+        tokenizer (`LlamaTokenizer`):
             Tokenizer from [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
         transformer ([`HunyuanVideoTransformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.

@@ -446,7 +446,7 @@ class StableAudioPipeline(DiffusionPipeline):
                     f"`initial_audio_waveforms` must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)` but has `{initial_audio_waveforms.ndim}` dimensions"
                 )
 
-            audio_vae_length = self.transformer.config.sample_size * self.vae.hop_length
+            audio_vae_length = int(self.transformer.config.sample_size) * self.vae.hop_length
             audio_shape = (batch_size // num_waveforms_per_prompt, audio_channels, audio_vae_length)
 
             # check num_channels

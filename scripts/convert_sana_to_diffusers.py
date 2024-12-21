@@ -25,6 +25,7 @@ from diffusers.utils.import_utils import is_accelerate_available
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
 ckpt_ids = [
+    "Efficient-Large-Model/Sana_1600M_2Kpx_BF16/checkpoints/Sana_1600M_2Kpx_BF16.pth",
     "Efficient-Large-Model/Sana_1600M_1024px_MultiLing/checkpoints/Sana_1600M_1024px_MultiLing.pth",
     "Efficient-Large-Model/Sana_1600M_1024px_BF16/checkpoints/Sana_1600M_1024px_BF16.pth",
     "Efficient-Large-Model/Sana_1600M_512px_MultiLing/checkpoints/Sana_1600M_512px_MultiLing.pth",
@@ -265,9 +266,9 @@ if __name__ == "__main__":
         "--image_size",
         default=1024,
         type=int,
-        choices=[512, 1024],
+        choices=[512, 1024, 2048],
         required=False,
-        help="Image size of pretrained model, 512 or 1024.",
+        help="Image size of pretrained model, 512, 1024 or 2048.",
     )
     parser.add_argument(
         "--model_type", default="SanaMS_1600M_P1_D20", type=str, choices=["SanaMS_1600M_P1_D20", "SanaMS_600M_P1_D28"]

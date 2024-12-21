@@ -79,7 +79,6 @@ transformer = LTXVideoTransformer3DModel.from_single_file(
 pipe = LTXPipeline.from_pretrained(
     "Lightricks/LTX-Video",
     transformer=transformer,
-    generator=torch.manual_seed(0),
     torch_dtype=torch.bfloat16,
 )
 pipe.enable_model_cpu_offload()
