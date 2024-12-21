@@ -73,7 +73,7 @@ class FluxTransformer2DLoadersMixin:
                     cross_attention_dim=cross_attention_dim,
                     image_embed_dim=clip_embeddings_dim,
                     num_image_text_embeds=num_image_text_embeds,
-                )
+                ).eval()
 
             for key, value in state_dict.items():
                 diffusers_name = key.replace("proj", "image_embeds")
@@ -139,7 +139,7 @@ class FluxTransformer2DLoadersMixin:
                         num_tokens=num_image_text_embeds,
                         dtype=self.dtype,
                         device=self.device,
-                    )
+                    ).eval()
 
                 value_dict = {}
                 for i, state_dict in enumerate(state_dicts):
@@ -175,5 +175,5 @@ class FluxTransformer2DLoadersMixin:
             )
             image_projection_layers.append(image_projection_layer)
 
-        self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers)
+        self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers).eval()
         self.config.encoder_hid_dim_type = "ip_image_proj"
