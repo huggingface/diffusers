@@ -1,7 +1,9 @@
 import argparse
+from pathlib import Path
 from typing import Any, Dict
 
 import torch
+from accelerate import init_empty_weights
 from safetensors.torch import load_file
 from transformers import T5EncoderModel, T5Tokenizer
 
@@ -21,7 +23,9 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "k_norm": "norm_k",
 }
 
-TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+TRANSFORMER_SPECIAL_KEYS_REMAP = {
+    "vae": remove_keys_,
+}
 
 VAE_KEYS_RENAME_DICT = {
     # decoder
@@ -54,10 +58,31 @@ VAE_KEYS_RENAME_DICT = {
     "per_channel_statistics.std-of-means": "latents_std",
 }
 
+VAE_091_RENAME_DICT = {
+    # decoder
+    "up_blocks.0": "mid_block",
+    "up_blocks.1": "up_blocks.0.upsamplers.0",
+    "up_blocks.2": "up_blocks.0",
+    "up_blocks.3": "up_blocks.1.upsamplers.0",
+    "up_blocks.4": "up_blocks.1",
+    "up_blocks.5": "up_blocks.2.upsamplers.0",
+    "up_blocks.6": "up_blocks.2",
+    "up_blocks.7": "up_blocks.3.upsamplers.0",
+    "up_blocks.8": "up_blocks.3",
+    # common
+    "last_time_embedder": "time_embedder",
+    "last_scale_shift_table": "scale_shift_table",
+}
+
 VAE_SPECIAL_KEYS_REMAP = {
     "per_channel_statistics.channel": remove_keys_,
     "per_channel_statistics.mean-of-means": remove_keys_,
     "per_channel_statistics.mean-of-stds": remove_keys_,
+    "model.diffusion_model": remove_keys_,
+}
+
+VAE_091_SPECIAL_KEYS_REMAP = {
+    "timestep_scale_multiplier": remove_keys_,
 }
 
 
@@ -80,13 +105,16 @@ def convert_transformer(
     ckpt_path: str,
     dtype: torch.dtype,
 ):
-    PREFIX_KEY = ""
+    PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(load_file(ckpt_path))
-    transformer = LTXVideoTransformer3DModel().to(dtype=dtype)
+    with init_empty_weights():
+        transformer = LTXVideoTransformer3DModel()
 
     for key in list(original_state_dict.keys()):
-        new_key = key[len(PREFIX_KEY) :]
+        new_key = key[:]
+        if new_key.startswith(PREFIX_KEY):
+            new_key = key[len(PREFIX_KEY) :]
         for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
         update_state_dict_inplace(original_state_dict, key, new_key)
@@ -97,16 +125,21 @@ def convert_transformer(
                 continue
             handler_fn_inplace(key, original_state_dict)
 
-    transformer.load_state_dict(original_state_dict, strict=True)
+    transformer.load_state_dict(original_state_dict, strict=True, assign=True)
     return transformer
 
 
-def convert_vae(ckpt_path: str, dtype: torch.dtype):
+def convert_vae(ckpt_path: str, config, dtype: torch.dtype):
+    PREFIX_KEY = "vae."
+
     original_state_dict = get_state_dict(load_file(ckpt_path))
-    vae = AutoencoderKLLTXVideo().to(dtype=dtype)
+    with init_empty_weights():
+        vae = AutoencoderKLLTXVideo(**config)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
+        if new_key.startswith(PREFIX_KEY):
+            new_key = key[len(PREFIX_KEY) :]
         for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
         update_state_dict_inplace(original_state_dict, key, new_key)
@@ -117,8 +150,58 @@ def convert_vae(ckpt_path: str, dtype: torch.dtype):
                 continue
             handler_fn_inplace(key, original_state_dict)
 
-    vae.load_state_dict(original_state_dict, strict=True)
+    vae.load_state_dict(original_state_dict, strict=True, assign=True)
     return vae
+
+
+def get_vae_config(version: str) -> Dict[str, Any]:
+    if version == "0.9.0":
+        config = {
+            "in_channels": 3,
+            "out_channels": 3,
+            "latent_channels": 128,
+            "block_out_channels": (128, 256, 512, 512),
+            "decoder_block_out_channels": (128, 256, 512, 512),
+            "layers_per_block": (4, 3, 3, 3, 4),
+            "decoder_layers_per_block": (4, 3, 3, 3, 4),
+            "spatio_temporal_scaling": (True, True, True, False),
+            "decoder_spatio_temporal_scaling": (True, True, True, False),
+            "decoder_inject_noise": (False, False, False, False, False),
+            "upsample_residual": (False, False, False, False),
+            "upsample_factor": (1, 1, 1, 1),
+            "patch_size": 4,
+            "patch_size_t": 1,
+            "resnet_norm_eps": 1e-6,
+            "scaling_factor": 1.0,
+            "encoder_causal": True,
+            "decoder_causal": False,
+            "timestep_conditioning": False,
+        }
+    elif version == "0.9.1":
+        config = {
+            "in_channels": 3,
+            "out_channels": 3,
+            "latent_channels": 128,
+            "block_out_channels": (128, 256, 512, 512),
+            "decoder_block_out_channels": (256, 512, 1024),
+            "layers_per_block": (4, 3, 3, 3, 4),
+            "decoder_layers_per_block": (5, 6, 7, 8),
+            "spatio_temporal_scaling": (True, True, True, False),
+            "decoder_spatio_temporal_scaling": (True, True, True),
+            "decoder_inject_noise": (True, True, True, False),
+            "upsample_residual": (True, True, True),
+            "upsample_factor": (2, 2, 2),
+            "timestep_conditioning": True,
+            "patch_size": 4,
+            "patch_size_t": 1,
+            "resnet_norm_eps": 1e-6,
+            "scaling_factor": 1.0,
+            "encoder_causal": True,
+            "decoder_causal": False,
+        }
+        VAE_KEYS_RENAME_DICT.update(VAE_091_RENAME_DICT)
+        VAE_SPECIAL_KEYS_REMAP.update(VAE_091_SPECIAL_KEYS_REMAP)
+    return config
 
 
 def get_args():
@@ -139,6 +222,9 @@ def get_args():
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="fp32", help="Torch dtype to save the model in.")
+    parser.add_argument(
+        "--version", type=str, default="0.9.0", choices=["0.9.0", "0.9.1"], help="Version of the LTX model"
+    )
     return parser.parse_args()
 
 
@@ -161,6 +247,7 @@ if __name__ == "__main__":
     transformer = None
     dtype = DTYPE_MAPPING[args.dtype]
     variant = VARIANT_MAPPING[args.dtype]
+    output_path = Path(args.output_path)
 
     if args.save_pipeline:
         assert args.transformer_ckpt_path is not None and args.vae_ckpt_path is not None
@@ -169,13 +256,14 @@ if __name__ == "__main__":
         transformer: LTXVideoTransformer3DModel = convert_transformer(args.transformer_ckpt_path, dtype)
         if not args.save_pipeline:
             transformer.save_pretrained(
-                args.output_path, safe_serialization=True, max_shard_size="5GB", variant=variant
+                output_path / "transformer", safe_serialization=True, max_shard_size="5GB", variant=variant
             )
 
     if args.vae_ckpt_path is not None:
-        vae: AutoencoderKLLTXVideo = convert_vae(args.vae_ckpt_path, dtype)
+        config = get_vae_config(args.version)
+        vae: AutoencoderKLLTXVideo = convert_vae(args.vae_ckpt_path, config, dtype)
         if not args.save_pipeline:
-            vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB", variant=variant)
+            vae.save_pretrained(output_path / "vae", safe_serialization=True, max_shard_size="5GB", variant=variant)
 
     if args.save_pipeline:
         text_encoder_id = "google/t5-v1_1-xxl"
