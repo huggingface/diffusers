@@ -590,8 +590,7 @@ def main():
         weight_dtype = torch.bfloat16
 
     # Freeze the unet parameters before adding adapters
-    for param in unet.parameters():
-        param.requires_grad_(False)
+    unet.requires_grad_(False)
 
     unet_lora_config = LoraConfig(
         r=args.rank,
@@ -628,7 +627,7 @@ def main():
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
+    trainable_params = filter(lambda p: p.requires_grad, unet.parameters())
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -699,7 +698,7 @@ def main():
 
     # train on only lora_layers
     optimizer = optimizer_cls(
-        lora_layers,
+        trainable_params,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -1014,7 +1013,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(lora_layers, args.max_grad_norm)
+                    accelerator.clip_grad_norm_(trainable_params, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -1022,7 +1021,7 @@ def main():
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 if args.use_ema:
-                    ema_unet.step(lora_layers)
+                    ema_unet.step(trainable_params)
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
