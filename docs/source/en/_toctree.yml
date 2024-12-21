@@ -238,6 +238,8 @@
       title: Textual Inversion
     - local: api/loaders/unet
       title: UNet
+    - local: api/loaders/transformer_sd3
+      title: SD3Transformer2D
     - local: api/loaders/peft
       title: PEFT
     title: Loaders
@@ -400,6 +402,8 @@
       title: DiT
     - local: api/pipelines/flux
       title: Flux
+    - local: api/pipelines/control_flux_inpaint
+      title: FluxControlInpaint
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
     - local: api/pipelines/hunyuan_video

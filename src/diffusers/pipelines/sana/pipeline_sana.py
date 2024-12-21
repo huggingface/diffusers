@@ -16,21 +16,25 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
+from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
+    USE_PEFT_BACKEND,
     is_bs4_available,
     is_ftfy_available,
     logging,
     replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -130,7 +134,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class SanaPipeline(DiffusionPipeline):
+class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using [Sana](https://huggingface.co/papers/2410.10629).
     """
@@ -177,6 +181,7 @@ class SanaPipeline(DiffusionPipeline):
         clean_caption: bool = False,
         max_sequence_length: int = 300,
         complex_human_instruction: Optional[List[str]] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -209,6 +214,15 @@ class SanaPipeline(DiffusionPipeline):
 
         if device is None:
             device = self._execution_device
+
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, SanaLoraLoaderMixin):
+            self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            if self.text_encoder is not None and USE_PEFT_BACKEND:
+                scale_lora_layers(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -304,6 +318,11 @@ class SanaPipeline(DiffusionPipeline):
         else:
             negative_prompt_embeds = None
             negative_prompt_attention_mask = None
+
+        if self.text_encoder is not None:
+            if isinstance(self, SanaLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
@@ -555,6 +574,10 @@ class SanaPipeline(DiffusionPipeline):
         return self._guidance_scale
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1.0
 
@@ -590,6 +613,7 @@ class SanaPipeline(DiffusionPipeline):
         return_dict: bool = True,
         clean_caption: bool = True,
         use_resolution_binning: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 300,
@@ -662,6 +686,10 @@ class SanaPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
+            attention_kwargs:
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             clean_caption (`bool`, *optional*, defaults to `True`):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
@@ -722,6 +750,7 @@ class SanaPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 2. Default height and width to transformer
@@ -733,6 +762,7 @@ class SanaPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
 
         # 3. Encode input prompt
         (
@@ -753,6 +783,7 @@ class SanaPipeline(DiffusionPipeline):
             clean_caption=clean_caption,
             max_sequence_length=max_sequence_length,
             complex_human_instruction=complex_human_instruction,
+            lora_scale=lora_scale,
         )
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -801,6 +832,7 @@ class SanaPipeline(DiffusionPipeline):
                     encoder_attention_mask=prompt_attention_mask,
                     timestep=timestep,
                     return_dict=False,
+                    attention_kwargs=self.attention_kwargs,
                 )[0]
                 noise_pred = noise_pred.float()
 
