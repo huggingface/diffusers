@@ -565,6 +565,10 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
             negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
+            decode_timestep (`float`, defaults to `0.05`):
+                The timestep at which generated video is decoded.
+            decode_noise_scale (`float`, defaults to `0.025`):
+                The interpolation factor between random noise and denoised latents at the decode timestep.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
