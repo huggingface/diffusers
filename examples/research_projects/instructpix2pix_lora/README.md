@@ -9,7 +9,7 @@ export MODEL_ID="timbrooks/instruct-pix2pix"
 export DATASET_ID="instruction-tuning-sd/cartoonization"
 export OUTPUT_DIR="instructPix2Pix-cartoonization"
 
-accelerate launch finetune_instruct_pix2pix.py \
+accelerate launch train_instruct_pix2pix_lora.py \
   --pretrained_model_name_or_path=$MODEL_ID \
   --dataset_name=$DATASET_ID \
   --enable_xformers_memory_efficient_attention \
@@ -24,7 +24,10 @@ accelerate launch finetune_instruct_pix2pix.py \
   --rank=4 \
   --output_dir=$OUTPUT_DIR \
   --report_to=wandb \
-  --push_to_hub
+  --push_to_hub \
+  --original_image_column="original_image" \
+  --edited_image_column="cartoonized_image" \
+  --edit_prompt_column="edit_prompt"
 ```
 
 ## Inference
