@@ -28,7 +28,7 @@ from ...loaders import ConsisIDLoraLoaderMixin
 from ...models import AutoencoderKLCogVideoX, ConsisIDTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
-from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
+from ...schedulers import CogVideoXDPMScheduler
 from ...utils import (
     logging,
     replace_example_docstring,
