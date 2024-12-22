@@ -21,6 +21,8 @@ from typing import Any, Dict, Tuple, List, Type
 import torch
 
 from ..utils import get_logger
+from .attention import FeedForward, LuminaFeedForward
+from .embeddings import LuminaPatchEmbed, CogVideoXPatchEmbed, CogView3PlusPatchEmbed, TimestepEmbedding, HunyuanDiTAttentionPool, AttentionPooling, MochiAttentionPool, GLIGENTextBoundingboxProjection, PixArtAlphaTextProjection
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -249,16 +251,58 @@ def align_maybe_tensor_dtype(input: Any, dtype: torch.dtype) -> Any:
 
 
 class LayerwiseUpcastingGranualarity(str, Enum):
+    r"""
+    An enumeration class that defines the granularity of the layerwise upcasting process.
+
+    Granularity can be one of the following:
+        - `DIFFUSERS_MODEL`:
+            Applies layerwise upcasting to the entire model at the highest diffusers modeling level. This
+            will cast all the layers of model to the specified storage dtype. This results in the lowest
+            memory usage for storing the model in memory, but may incur significant loss in quality because
+            layers that perform normalization with learned parameters (e.g., RMSNorm with elementwise affinity)
+            are cast to a lower dtype, but this is known to cause quality issues. This method will not reduce the
+            memory required for the forward pass (which comprises of intermediate activations and gradients) of a
+            given modeling component, but may be useful in cases like lowering the memory footprint of text
+            encoders in a pipeline.
+        - `DIFFUSERS_BLOCK`:
+            TODO???
+        - `DIFFUSERS_LAYER`:
+            Applies layerwise upcasting to the lower-level diffusers layers of the model. This is more granular
+            than the `DIFFUSERS_MODEL` level, but less granular than the `PYTORCH_LAYER` level. This method is
+            applied to only those layers that are a group of linear layers, while excluding precision-critical
+            layers like modulation and normalization layers.
+        - `PYTORCH_LAYER`:
+            Applies layerwise upcasting to lower-level PyTorch primitive layers of the model. This is the most
+            granular level of layerwise upcasting. The memory footprint for inference and training is greatly
+            reduced, while also ensuring important operations like normalization with learned parameters remain
+            unaffected from the downcasting/upcasting process, by default. As not all parameters are casted to
+            lower precision, the memory footprint for storing the model may be slightly higher than the alternatives.
+            This method causes the highest number of casting operations, which may contribute to a slight increase
+            in the overall computation time.
+        
+        Note: try and ensure that precision-critical layers like modulation and normalization layers are not casted
+        to lower precision, as this may lead to significant quality loss.
+    """
+    
     DIFFUSERS_MODEL = "diffusers_model"
     DIFFUSERS_LAYER = "diffusers_layer"
     PYTORCH_LAYER = "pytorch_layer"
 
 # fmt: off
+_SUPPORTED_DIFFUSERS_LAYERS = [
+    AttentionPooling, MochiAttentionPool, HunyuanDiTAttentionPool,
+    CogVideoXPatchEmbed, CogView3PlusPatchEmbed, LuminaPatchEmbed,
+    TimestepEmbedding,  GLIGENTextBoundingboxProjection, PixArtAlphaTextProjection,
+    FeedForward, LuminaFeedForward,
+]
+
 _SUPPORTED_PYTORCH_LAYERS = [
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
     torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
     torch.nn.Linear,
 ]
+
+_DEFAULT_PYTORCH_LAYER_SKIP_MODULES_PATTERN = ["pos_embed", "patch_embed", "norm"]
 # fmt: on
 
 
@@ -291,9 +335,9 @@ def apply_layerwise_upcasting(
     skip_modules_classes: List[Type[torch.nn.Module]] = [],
 ) -> torch.nn.Module:
     if granularity == LayerwiseUpcastingGranualarity.DIFFUSERS_MODEL:
-        return _apply_layerwise_upcasting_diffusers_model(module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes)
+        return _apply_layerwise_upcasting_diffusers_model(module, storage_dtype, compute_dtype)
     if granularity == LayerwiseUpcastingGranualarity.DIFFUSERS_LAYER:
-        raise NotImplementedError(f"{LayerwiseUpcastingGranualarity.DIFFUSERS_LAYER} is not yet supported")
+        return _apply_layerwise_upcasting_diffusers_layer(module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes)
     if granularity == LayerwiseUpcastingGranualarity.PYTORCH_LAYER:
         return _apply_layerwise_upcasting_pytorch_layer(module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes)
 
@@ -302,16 +346,29 @@ def _apply_layerwise_upcasting_diffusers_model(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: List[str] = [],
-    skip_modules_classes: List[Type[torch.nn.Module]] = [],
 ) -> torch.nn.Module:
     from .modeling_utils import ModelMixin
 
+    if not isinstance(module, ModelMixin):
+        raise ValueError("The input module must be an instance of ModelMixin")
+
+    logger.debug(f"Applying layerwise upcasting to model \"{module.__class__.__name__}\"")
+    apply_layerwise_upcasting_hook(module, storage_dtype, compute_dtype)
+    return module
+
+
+def _apply_layerwise_upcasting_diffusers_layer(
+    module: torch.nn.Module,
+    storage_dtype: torch.dtype,
+    compute_dtype: torch.dtype,
+    skip_modules_pattern: List[str] = _DEFAULT_PYTORCH_LAYER_SKIP_MODULES_PATTERN,
+    skip_modules_classes: List[Type[torch.nn.Module]] = [],
+) -> torch.nn.Module:
     for name, submodule in module.named_modules():
         if (
             any(re.search(pattern, name) for pattern in skip_modules_pattern)
             or any(isinstance(submodule, module_class) for module_class in skip_modules_classes)
-            or not isinstance(submodule, ModelMixin)
+            or not isinstance(submodule, tuple(_SUPPORTED_DIFFUSERS_LAYERS))
         ):
             logger.debug(f"Skipping layerwise upcasting for layer \"{name}\"")
             continue
@@ -324,7 +381,7 @@ def _apply_layerwise_upcasting_pytorch_layer(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: List[str] = [],
+    skip_modules_pattern: List[str] = _DEFAULT_PYTORCH_LAYER_SKIP_MODULES_PATTERN,
     skip_modules_classes: List[Type[torch.nn.Module]] = [],
 ) -> torch.nn.Module:
     for name, submodule in module.named_modules():
