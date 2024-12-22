@@ -17,7 +17,7 @@ Quantization techniques focus on representing data with less information while a
 
 <Tip>
 
-Interested in adding a new quantization method to Transformers? Refer to the [Contribute new quantization method guide](https://huggingface.co/docs/transformers/main/en/quantization/contribute) to learn more about adding a new quantization method.
+Interested in adding a new quantization method to Diffusers? Refer to the [Contribute new quantization method guide](https://huggingface.co/docs/transformers/main/en/quantization/contribute) to learn more about adding a new quantization method.
 
 </Tip>
 
@@ -32,4 +32,9 @@ If you are new to the quantization field, we recommend you to check out these be
 
 ## When to use what?
 
-This section will be expanded once Diffusers has multiple quantization backends. Currently, we only support `bitsandbytes`. [This resource](https://huggingface.co/docs/transformers/main/en/quantization/overview#when-to-use-what) provides a good overview of the pros and cons of different quantization techniques. 
+Diffusers currently supports the following quantization methods.
+- [BitsandBytes](./bitsandbytes)
+- [TorchAO](./torchao)
+- [GGUF](./gguf)
+
+[This resource](https://huggingface.co/docs/transformers/main/en/quantization/overview#when-to-use-what) provides a good overview of the pros and cons of different quantization techniques.

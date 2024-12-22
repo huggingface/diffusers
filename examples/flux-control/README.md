@@ -36,6 +36,7 @@ accelerate launch train_control_lora_flux.py \
   --max_train_steps=5000 \
   --validation_image="openpose.png" \
   --validation_prompt="A couple, 4k photo, highly detailed" \
+  --offload \
   --seed="0" \
   --push_to_hub
 ```
@@ -154,6 +155,7 @@ accelerate launch --config_file=accelerate_ds2.yaml train_control_flux.py \
   --validation_steps=200 \
   --validation_image "2_pose_1024.jpg" "3_pose_1024.jpg" \
   --validation_prompt "two friends sitting by each other enjoying a day at the park, full hd, cinematic" "person enjoying a day at the park, full hd, cinematic" \
+  --offload \
   --seed="0" \
   --push_to_hub
 ```
