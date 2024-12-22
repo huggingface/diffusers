@@ -294,22 +294,15 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
-        # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
-        # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
-        # their prefixes.
-        keys = list(state_dict.keys())
-        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-        if not only_text_encoder:
-            # Load the layers corresponding to UNet.
-            logger.info(f"Loading {cls.unet_name}.")
-            unet.load_lora_adapter(
-                state_dict,
-                prefix=cls.unet_name,
-                network_alphas=network_alphas,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        # Load the layers corresponding to UNet.
+        unet.load_lora_adapter(
+            state_dict,
+            prefix=cls.unet_name,
+            network_alphas=network_alphas,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     def load_lora_into_text_encoder(
@@ -461,6 +454,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
+
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
 
     @classmethod
     def save_lora_weights(
@@ -660,18 +658,16 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
         )
-        text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
-        if len(text_encoder_state_dict) > 0:
-            self.load_lora_into_text_encoder(
-                text_encoder_state_dict,
-                network_alphas=network_alphas,
-                text_encoder=self.text_encoder,
-                prefix="text_encoder",
-                lora_scale=self.lora_scale,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        self.load_lora_into_text_encoder(
+            state_dict,
+            network_alphas=network_alphas,
+            text_encoder=self.text_encoder,
+            prefix="text_encoder",
+            lora_scale=self.lora_scale,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
         if len(text_encoder_2_state_dict) > 0:
@@ -836,22 +832,15 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
-        # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
-        # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
-        # their prefixes.
-        keys = list(state_dict.keys())
-        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-        if not only_text_encoder:
-            # Load the layers corresponding to UNet.
-            logger.info(f"Loading {cls.unet_name}.")
-            unet.load_lora_adapter(
-                state_dict,
-                prefix=cls.unet_name,
-                network_alphas=network_alphas,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        # Load the layers corresponding to UNet.
+        unet.load_lora_adapter(
+            state_dict,
+            prefix=cls.unet_name,
+            network_alphas=network_alphas,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -1004,6 +993,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
+
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
 
     @classmethod
     def save_lora_weights(
@@ -1288,43 +1282,35 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        transformer_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k}
-        if len(transformer_state_dict) > 0:
-            self.load_lora_into_transformer(
-                state_dict,
-                transformer=getattr(self, self.transformer_name)
-                if not hasattr(self, "transformer")
-                else self.transformer,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
-        text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
-        if len(text_encoder_state_dict) > 0:
-            self.load_lora_into_text_encoder(
-                text_encoder_state_dict,
-                network_alphas=None,
-                text_encoder=self.text_encoder,
-                prefix="text_encoder",
-                lora_scale=self.lora_scale,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        self.load_lora_into_text_encoder(
+            state_dict,
+            network_alphas=None,
+            text_encoder=self.text_encoder,
+            prefix="text_encoder",
+            lora_scale=self.lora_scale,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
-        text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
-        if len(text_encoder_2_state_dict) > 0:
-            self.load_lora_into_text_encoder(
-                text_encoder_2_state_dict,
-                network_alphas=None,
-                text_encoder=self.text_encoder_2,
-                prefix="text_encoder_2",
-                lora_scale=self.lora_scale,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        self.load_lora_into_text_encoder(
+            state_dict,
+            network_alphas=None,
+            text_encoder=self.text_encoder_2,
+            prefix="text_encoder_2",
+            lora_scale=self.lora_scale,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     def load_lora_into_transformer(
@@ -1353,7 +1339,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
@@ -1513,6 +1498,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
+
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
 
     @classmethod
     def save_lora_weights(
@@ -1844,7 +1834,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("Invalid LoRA checkpoint.")
 
         transformer_lora_state_dict = {
-            k: state_dict.pop(k) for k in list(state_dict.keys()) if "transformer." in k and "lora" in k
+            k: state_dict.get(k) for k in list(state_dict.keys()) if "transformer." in k and "lora" in k
         }
         transformer_norm_state_dict = {
             k: state_dict.pop(k)
@@ -1867,15 +1857,14 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             transformer=transformer, lora_state_dict=transformer_lora_state_dict
         )
 
-        if len(transformer_lora_state_dict) > 0:
-            self.load_lora_into_transformer(
-                transformer_lora_state_dict,
-                network_alphas=network_alphas,
-                transformer=transformer,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        self.load_lora_into_transformer(
+            state_dict,
+            network_alphas=network_alphas,
+            transformer=transformer,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
         if len(transformer_norm_state_dict) > 0:
             transformer._transformer_norm_layers = self._load_norm_into_transformer(
@@ -1884,18 +1873,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 discard_original_layers=False,
             )
 
-        text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
-        if len(text_encoder_state_dict) > 0:
-            self.load_lora_into_text_encoder(
-                text_encoder_state_dict,
-                network_alphas=network_alphas,
-                text_encoder=self.text_encoder,
-                prefix="text_encoder",
-                lora_scale=self.lora_scale,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        self.load_lora_into_text_encoder(
+            state_dict,
+            network_alphas=network_alphas,
+            text_encoder=self.text_encoder,
+            prefix="text_encoder",
+            lora_scale=self.lora_scale,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     def load_lora_into_transformer(
@@ -1928,17 +1915,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        keys = list(state_dict.keys())
-        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
-        if transformer_present:
-            logger.info(f"Loading {cls.transformer_name}.")
-            transformer.load_lora_adapter(
-                state_dict,
-                network_alphas=network_alphas,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=network_alphas,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     def _load_norm_into_transformer(
@@ -2145,6 +2128,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
+
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights with unet->transformer
@@ -2473,17 +2461,13 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             )
 
         # Load the layers corresponding to transformer.
-        keys = list(state_dict.keys())
-        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
-        if transformer_present:
-            logger.info(f"Loading {cls.transformer_name}.")
-            transformer.load_lora_adapter(
-                state_dict,
-                network_alphas=network_alphas,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=network_alphas,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -2636,6 +2620,11 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
+
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
 
     @classmethod
     def save_lora_weights(
@@ -2876,7 +2865,6 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
@@ -3184,7 +3172,6 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
@@ -3492,7 +3479,6 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
@@ -3800,7 +3786,6 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
@@ -4108,7 +4093,6 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
