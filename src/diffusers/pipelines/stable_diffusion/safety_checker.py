@@ -59,11 +59,11 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
                 Negative values decrease the filtering strength, while positive values increase it.
         """
         Level_dict = {
-            "WEAK": -0.10,
-            "MEDIUM": -0.01,
-            "NOMAL": 0.00,
-            "STRONG": 0.01,
-            "MAX": 0.10,
+            "WEAK": -0.0690,
+            "MEDIUM": -0.0175,
+            "NOMAL": 0.0,
+            "STRONG": 0.0150,
+            "MAX": 0.0740,
         }
 
         # If the provided Level is a predefined string, convert it to the corresponding float value
