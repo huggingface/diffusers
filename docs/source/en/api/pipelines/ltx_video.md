@@ -121,6 +121,8 @@ video = pipe(
     width=768,
     height=512,
     num_frames=161,
+    decode_timestep=0.03,
+    decode_noise_scale=0.025,
     num_inference_steps=50,
 ).frames[0]
 export_to_video(video, "output.mp4", fps=24)
