@@ -803,17 +803,6 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         id_vit_hidden: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
-        # fuse clip and insightface
-        if self.is_train_face:
-            assert id_cond is not None and id_vit_hidden is not None
-            id_cond = id_cond.to(device=hidden_states.device, dtype=hidden_states.dtype)
-            id_vit_hidden = [
-                tensor.to(device=hidden_states.device, dtype=hidden_states.dtype) for tensor in id_vit_hidden
-            ]
-            valid_face_emb = self.local_facial_extractor(
-                id_cond, id_vit_hidden
-            )  # torch.Size([1, 1280]), list[5](torch.Size([1, 577, 1024]))  ->  torch.Size([1, 32, 2048])
-
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -828,6 +817,17 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 logger.warning(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
+
+        # fuse clip and insightface
+        if self.is_train_face:
+            assert id_cond is not None and id_vit_hidden is not None
+            id_cond = id_cond.to(device=hidden_states.device, dtype=hidden_states.dtype)
+            id_vit_hidden = [
+                tensor.to(device=hidden_states.device, dtype=hidden_states.dtype) for tensor in id_vit_hidden
+            ]
+            valid_face_emb = self.local_facial_extractor(
+                id_cond, id_vit_hidden
+            )  # torch.Size([1, 1280]), list[5](torch.Size([1, 577, 1024]))  ->  torch.Size([1, 32, 2048])
 
         batch_size, num_frames, channels, height, width = hidden_states.shape
 

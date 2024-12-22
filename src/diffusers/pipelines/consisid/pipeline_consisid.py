@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Callable, Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -23,8 +23,8 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...loaders import ConsisIDLoraLoaderMixin
 from ...image_processor import PipelineImageInput
+from ...loaders import ConsisIDLoraLoaderMixin
 from ...models import AutoencoderKLCogVideoX, ConsisIDTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -759,17 +759,18 @@ class ConsisIDPipeline(DiffusionPipeline, ConsisIDLoraLoaderMixin):
                 Maximum sequence length in encoded prompt. Must be consistent with
                 `self.transformer.config.max_text_seq_length` otherwise may lead to poor results.
             id_vit_hidden (`Optional[torch.Tensor]`, *optional*):
-                The tensor representing the hidden features extracted from the face model, which are used to condition the local
-                facial extractor. This is crucial for the model to obtain high-frequency information of the face. If not provided, 
-                the local facial extractor will not run normally.
+                The tensor representing the hidden features extracted from the face model, which are used to condition
+                the local facial extractor. This is crucial for the model to obtain high-frequency information of the
+                face. If not provided, the local facial extractor will not run normally.
             id_cond (`Optional[torch.Tensor]`, *optional*):
-                The tensor representing the hidden features extracted from the clip model, which are used to condition the local
-                facial extractor. This is crucial for the model to edit facial features If not provided, the local facial extractor 
-                will not run normally.
+                The tensor representing the hidden features extracted from the clip model, which are used to condition
+                the local facial extractor. This is crucial for the model to edit facial features If not provided, the
+                local facial extractor will not run normally.
             kps_cond (`Optional[torch.Tensor]`, *optional*):
                 A tensor that determines whether the global facial extractor use keypoint information for conditioning.
-                If provided, this tensor controls whether facial keypoints such as eyes, nose, and mouth landmarks are used
-                during the generation process. This helps ensure the model retains more facial low-frequency information.
+                If provided, this tensor controls whether facial keypoints such as eyes, nose, and mouth landmarks are
+                used during the generation process. This helps ensure the model retains more facial low-frequency
+                information.
 
         Examples:
 

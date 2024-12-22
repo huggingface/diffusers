@@ -45,8 +45,8 @@ from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa:
 class ConsisIDLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = ConsisIDPipeline
     scheduler_cls = CogVideoXDPMScheduler
-    scheduler_kwargs = {"timestep_spacing": "trailing"}
     scheduler_classes = [CogVideoXDPMScheduler]
+    scheduler_kwargs = {"timestep_spacing": "trailing"}
 
     transformer_kwargs = {
         "num_attention_heads": 4,
@@ -81,6 +81,7 @@ class ConsisIDLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     vae_kwargs = {
         "in_channels": 3,
         "out_channels": 3,
+        "latent_channels": 4,
         "down_block_types": (
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
@@ -94,14 +95,14 @@ class ConsisIDLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "CogVideoXUpBlock3D",
         ),
         "block_out_channels": (8, 8, 8, 8),
-        "latent_channels": 4,
         "layers_per_block": 1,
         "norm_num_groups": 2,
+        "scaling_factor": 0.7,
         "temporal_compression_ratio": 4,
     }
     vae_cls = AutoencoderKLCogVideoX
-    tokenizer_cls, tokenizer_id = AutoTokenizer, "/storage/ysh/Ckpts/hf-internal-testing/tiny-random-t5/"
-    text_encoder_cls, text_encoder_id = T5EncoderModel, "/storage/ysh/Ckpts/hf-internal-testing/tiny-random-t5/"
+    tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
+    text_encoder_cls, text_encoder_id = T5EncoderModel, "hf-internal-testing/tiny-random-t5"
 
     text_encoder_target_modules = ["q", "k", "v", "o"]
 
@@ -116,15 +117,15 @@ class ConsisIDLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         num_frames = 9
         num_latent_frames = 3
         sizes = (2, 2)
-
-        generator = torch.manual_seed(0)
         image_height = 16
         image_width = 16
+
+        generator = torch.manual_seed(0)
         image = Image.new("RGB", (image_width, image_height))
         noise = floats_tensor((batch_size, num_latent_frames, num_channels) + sizes)
         input_ids = torch.randint(1, sequence_length, size=(batch_size, sequence_length), generator=generator)
-        id_vit_hidden = [torch.ones([batch_size, 2, 2]).to(torch_device)] * 5
-        id_cond = torch.ones(batch_size, 2).to(torch_device)
+        id_vit_hidden = [torch.ones([batch_size, 2, 2])] * 5
+        id_cond = torch.ones(batch_size, 2)
 
         pipeline_inputs = {
             "image": image,
@@ -132,8 +133,8 @@ class ConsisIDLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "num_frames": num_frames,
             "num_inference_steps": 1,
             "guidance_scale": 6.0,
-            "height": 16,
-            "width": 16,
+            "height": image_height,
+            "width": image_width,
             "max_sequence_length": sequence_length,
             "id_vit_hidden": id_vit_hidden,
             "id_cond": id_cond,
@@ -157,7 +158,7 @@ class ConsisIDLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
-            
+
             pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
 
             self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
