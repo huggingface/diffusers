@@ -43,6 +43,7 @@ logger = logging.get_logger(__name__)
 
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
+    GGUF = "gguf"
     TORCHAO = "torchao"
 
 
@@ -392,6 +393,29 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
                 serializable_config_dict[key] = value
 
         return serializable_config_dict
+
+
+@dataclass
+class GGUFQuantizationConfig(QuantizationConfigMixin):
+    """This is a config class for GGUF Quantization techniques.
+
+    Args:
+        compute_dtype: (`torch.dtype`, defaults to `torch.float32`):
+            This sets the computational type which might be different than the input type. For example, inputs might be
+            fp32, but computation can be set to bf16 for speedups.
+
+    """
+
+    def __init__(self, compute_dtype: Optional["torch.dtype"] = None):
+        self.quant_method = QuantizationMethod.GGUF
+        self.compute_dtype = compute_dtype
+        self.pre_quantized = True
+
+        # TODO: (Dhruv) Add this as an init argument when we can support loading unquantized checkpoints.
+        self.modules_to_not_convert = None
+
+        if self.compute_dtype is None:
+            self.compute_dtype = torch.float32
 
 
 @dataclass
