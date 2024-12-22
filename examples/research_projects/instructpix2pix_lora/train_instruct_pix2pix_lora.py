@@ -106,6 +106,7 @@ These are LoRA adaption weights for {base_model}. The weights were fine-tuned on
         "stable-diffusion",
         "stable-diffusion-diffusers",
         "text-to-image",
+        "instruct-pix2pix",
         "diffusers",
         "diffusers-training",
         "lora",
