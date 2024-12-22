@@ -280,7 +280,7 @@ class ConsisIDPipeline(DiffusionPipeline, ConsisIDLoraLoaderMixin):
         text_encoder: T5EncoderModel,
         vae: AutoencoderKLCogVideoX,
         transformer: ConsisIDTransformer3DModel,
-        scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
+        scheduler: CogVideoXDPMScheduler,
     ):
         super().__init__()
 

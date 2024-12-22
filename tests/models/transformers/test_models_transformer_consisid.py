@@ -47,7 +47,7 @@ class ConsisIDTransformerTests(ModelTesterMixin, unittest.TestCase):
         hidden_states = torch.randn((batch_size, num_frames, num_channels, height, width)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
-        id_vit_hidden = [torch.ones([batch_size, 2, 2]).to(torch_device)] * 5
+        id_vit_hidden = [torch.ones([batch_size, 2, 2]).to(torch_device)] * 1
         id_cond = torch.ones(batch_size, 2).to(torch_device)
 
         return {
@@ -95,6 +95,7 @@ class ConsisIDTransformerTests(ModelTesterMixin, unittest.TestCase):
             "LFE_num_querie": 1,
             "LFE_output_dim": 10,
             "LFE_ff_mult": 1,
+            "LFE_num_scale": 1,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict

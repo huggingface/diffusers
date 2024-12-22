@@ -91,6 +91,7 @@ class ConsisIDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             LFE_num_querie=1,
             LFE_output_dim=21,
             LFE_ff_mult=1,
+            LFE_num_scale=1,
         )
 
         torch.manual_seed(0)
@@ -139,7 +140,7 @@ class ConsisIDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_height = 16
         image_width = 16
         image = Image.new("RGB", (image_width, image_height))
-        id_vit_hidden = [torch.ones([1, 2, 2])] * 5
+        id_vit_hidden = [torch.ones([1, 2, 2])] * 1
         id_cond = torch.ones(1, 2)
         inputs = {
             "image": image,
@@ -336,7 +337,7 @@ class ConsisIDPipelineIntegrationTests(unittest.TestCase):
 
         prompt = self.prompt
         image = load_image("https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/2.png?raw=true")
-        id_vit_hidden = [torch.ones([1, 2, 2])] * 5
+        id_vit_hidden = [torch.ones([1, 2, 2])] * 1
         id_cond = torch.ones(1, 2)
 
         videos = pipe(
