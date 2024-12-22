@@ -14,15 +14,24 @@
 
 import functools
 import re
-from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Tuple, List, Type
+from typing import Any, Dict, List, Tuple, Type
 
 import torch
 
 from ..utils import get_logger
 from .attention import FeedForward, LuminaFeedForward
-from .embeddings import LuminaPatchEmbed, CogVideoXPatchEmbed, CogView3PlusPatchEmbed, TimestepEmbedding, HunyuanDiTAttentionPool, AttentionPooling, MochiAttentionPool, GLIGENTextBoundingboxProjection, PixArtAlphaTextProjection
+from .embeddings import (
+    AttentionPooling,
+    CogVideoXPatchEmbed,
+    CogView3PlusPatchEmbed,
+    GLIGENTextBoundingboxProjection,
+    HunyuanDiTAttentionPool,
+    LuminaPatchEmbed,
+    MochiAttentionPool,
+    PixArtAlphaTextProjection,
+    TimestepEmbedding,
+)
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -38,6 +47,7 @@ class ModelHook:
     def init_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when a model is initialized.
+
         Args:
             module (`torch.nn.Module`):
                 The module attached to this hook.
@@ -47,6 +57,7 @@ class ModelHook:
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
         r"""
         Hook that is executed just before the forward method of the model.
+
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass will be executed just after this event.
@@ -63,6 +74,7 @@ class ModelHook:
     def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
         r"""
         Hook that is executed just after the forward method of the model.
+
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass been executed just before this event.
@@ -76,6 +88,7 @@ class ModelHook:
     def detach_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when the hook is detached from a module.
+
         Args:
             module (`torch.nn.Module`):
                 The module detached from this hook.
@@ -112,10 +125,10 @@ class SequentialHook(ModelHook):
 
 class LayerwiseUpcastingHook(ModelHook):
     r"""
-    A hook that cast the input tensors and torch.nn.Module to a pre-specified dtype before the forward pass
-    and cast the module back to the original dtype after the forward pass. This is useful when a model is
-    loaded/stored in a lower precision dtype but performs computation in a higher precision dtype. This
-    process may lead to quality loss in the output, but can significantly reduce the memory footprint.
+    A hook that cast the input tensors and torch.nn.Module to a pre-specified dtype before the forward pass and cast
+    the module back to the original dtype after the forward pass. This is useful when a model is loaded/stored in a
+    lower precision dtype but performs computation in a higher precision dtype. This process may lead to quality loss
+    in the output, but can significantly reduce the memory footprint.
     """
 
     def __init__(self, storage_dtype: torch.dtype, compute_dtype: torch.dtype) -> None:
@@ -144,10 +157,14 @@ def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = 
     r"""
     Adds a hook to a given module. This will rewrite the `forward` method of the module to include the hook, to remove
     this behavior and restore the original `forward` method, use `remove_hook_from_module`.
+
     <Tip warning={true}>
+
     If the module already contains a hook, this will replace it with the new hook passed by default. To chain two hooks
     together, pass `append=True`, so it chains the current and new hook into an instance of the `SequentialHook` class.
+
     </Tip>
+
     Args:
         module (`torch.nn.Module`):
             The module to attach a hook to.
@@ -198,6 +215,7 @@ def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = 
 def remove_hook_from_module(module: torch.nn.Module, recurse: bool = False) -> torch.nn.Module:
     """
     Removes any hook attached to a module via `add_hook_to_module`.
+
     Args:
         module (`torch.nn.Module`):
             The module to attach a hook to.
@@ -231,10 +249,11 @@ def remove_hook_from_module(module: torch.nn.Module, recurse: bool = False) -> t
 def align_maybe_tensor_dtype(input: Any, dtype: torch.dtype) -> Any:
     r"""
     Aligns the dtype of a tensor or a list of tensors to a given dtype.
+
     Args:
         input (`Any`):
-            The input tensor, list of tensors, or dictionary of tensors to align. If the input is neither
-            of these types, it will be returned as is.
+            The input tensor, list of tensors, or dictionary of tensors to align. If the input is neither of these
+            types, it will be returned as is.
         dtype (`torch.dtype`):
             The dtype to align the tensor(s) to.
     Returns:
@@ -256,37 +275,37 @@ class LayerwiseUpcastingGranualarity(str, Enum):
 
     Granularity can be one of the following:
         - `DIFFUSERS_MODEL`:
-            Applies layerwise upcasting to the entire model at the highest diffusers modeling level. This
-            will cast all the layers of model to the specified storage dtype. This results in the lowest
-            memory usage for storing the model in memory, but may incur significant loss in quality because
-            layers that perform normalization with learned parameters (e.g., RMSNorm with elementwise affinity)
-            are cast to a lower dtype, but this is known to cause quality issues. This method will not reduce the
-            memory required for the forward pass (which comprises of intermediate activations and gradients) of a
-            given modeling component, but may be useful in cases like lowering the memory footprint of text
-            encoders in a pipeline.
+            Applies layerwise upcasting to the entire model at the highest diffusers modeling level. This will cast all
+            the layers of model to the specified storage dtype. This results in the lowest memory usage for storing the
+            model in memory, but may incur significant loss in quality because layers that perform normalization with
+            learned parameters (e.g., RMSNorm with elementwise affinity) are cast to a lower dtype, but this is known
+            to cause quality issues. This method will not reduce the memory required for the forward pass (which
+            comprises of intermediate activations and gradients) of a given modeling component, but may be useful in
+            cases like lowering the memory footprint of text encoders in a pipeline.
         - `DIFFUSERS_BLOCK`:
             TODO???
         - `DIFFUSERS_LAYER`:
-            Applies layerwise upcasting to the lower-level diffusers layers of the model. This is more granular
-            than the `DIFFUSERS_MODEL` level, but less granular than the `PYTORCH_LAYER` level. This method is
-            applied to only those layers that are a group of linear layers, while excluding precision-critical
-            layers like modulation and normalization layers.
+            Applies layerwise upcasting to the lower-level diffusers layers of the model. This is more granular than
+            the `DIFFUSERS_MODEL` level, but less granular than the `PYTORCH_LAYER` level. This method is applied to
+            only those layers that are a group of linear layers, while excluding precision-critical layers like
+            modulation and normalization layers.
         - `PYTORCH_LAYER`:
-            Applies layerwise upcasting to lower-level PyTorch primitive layers of the model. This is the most
-            granular level of layerwise upcasting. The memory footprint for inference and training is greatly
-            reduced, while also ensuring important operations like normalization with learned parameters remain
-            unaffected from the downcasting/upcasting process, by default. As not all parameters are casted to
-            lower precision, the memory footprint for storing the model may be slightly higher than the alternatives.
-            This method causes the highest number of casting operations, which may contribute to a slight increase
-            in the overall computation time.
-        
-        Note: try and ensure that precision-critical layers like modulation and normalization layers are not casted
-        to lower precision, as this may lead to significant quality loss.
+            Applies layerwise upcasting to lower-level PyTorch primitive layers of the model. This is the most granular
+            level of layerwise upcasting. The memory footprint for inference and training is greatly reduced, while
+            also ensuring important operations like normalization with learned parameters remain unaffected from the
+            downcasting/upcasting process, by default. As not all parameters are casted to lower precision, the memory
+            footprint for storing the model may be slightly higher than the alternatives. This method causes the
+            highest number of casting operations, which may contribute to a slight increase in the overall computation
+            time.
+
+        Note: try and ensure that precision-critical layers like modulation and normalization layers are not casted to
+        lower precision, as this may lead to significant quality loss.
     """
-    
+
     DIFFUSERS_MODEL = "diffusers_model"
     DIFFUSERS_LAYER = "diffusers_layer"
     PYTORCH_LAYER = "pytorch_layer"
+
 
 # fmt: off
 _SUPPORTED_DIFFUSERS_LAYERS = [
@@ -306,10 +325,12 @@ _DEFAULT_PYTORCH_LAYER_SKIP_MODULES_PATTERN = ["pos_embed", "patch_embed", "norm
 # fmt: on
 
 
-def apply_layerwise_upcasting_hook(module: torch.nn.Module, storage_dtype: torch.dtype, compute_dtype: torch.dtype) -> torch.nn.Module:
+def apply_layerwise_upcasting_hook(
+    module: torch.nn.Module, storage_dtype: torch.dtype, compute_dtype: torch.dtype
+) -> torch.nn.Module:
     r"""
     Applies a `LayerwiseUpcastingHook` to a given module.
-    
+
     Args:
         module (`torch.nn.Module`):
             The module to attach the hook to.
@@ -317,7 +338,7 @@ def apply_layerwise_upcasting_hook(module: torch.nn.Module, storage_dtype: torch
             The dtype to cast the module to before the forward pass.
         compute_dtype (`torch.dtype`):
             The dtype to cast the module to during the forward pass.
-    
+
     Returns:
         `torch.nn.Module`:
             The same module, with the hook attached (the module is modified in place, so the result can be discarded).
@@ -337,9 +358,13 @@ def apply_layerwise_upcasting(
     if granularity == LayerwiseUpcastingGranualarity.DIFFUSERS_MODEL:
         return _apply_layerwise_upcasting_diffusers_model(module, storage_dtype, compute_dtype)
     if granularity == LayerwiseUpcastingGranualarity.DIFFUSERS_LAYER:
-        return _apply_layerwise_upcasting_diffusers_layer(module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes)
+        return _apply_layerwise_upcasting_diffusers_layer(
+            module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes
+        )
     if granularity == LayerwiseUpcastingGranualarity.PYTORCH_LAYER:
-        return _apply_layerwise_upcasting_pytorch_layer(module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes)
+        return _apply_layerwise_upcasting_pytorch_layer(
+            module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes
+        )
 
 
 def _apply_layerwise_upcasting_diffusers_model(
@@ -352,7 +377,7 @@ def _apply_layerwise_upcasting_diffusers_model(
     if not isinstance(module, ModelMixin):
         raise ValueError("The input module must be an instance of ModelMixin")
 
-    logger.debug(f"Applying layerwise upcasting to model \"{module.__class__.__name__}\"")
+    logger.debug(f'Applying layerwise upcasting to model "{module.__class__.__name__}"')
     apply_layerwise_upcasting_hook(module, storage_dtype, compute_dtype)
     return module
 
@@ -370,9 +395,9 @@ def _apply_layerwise_upcasting_diffusers_layer(
             or any(isinstance(submodule, module_class) for module_class in skip_modules_classes)
             or not isinstance(submodule, tuple(_SUPPORTED_DIFFUSERS_LAYERS))
         ):
-            logger.debug(f"Skipping layerwise upcasting for layer \"{name}\"")
+            logger.debug(f'Skipping layerwise upcasting for layer "{name}"')
             continue
-        logger.debug(f"Applying layerwise upcasting to layer \"{name}\"")
+        logger.debug(f'Applying layerwise upcasting to layer "{name}"')
         apply_layerwise_upcasting_hook(submodule, storage_dtype, compute_dtype)
     return module
 
@@ -390,8 +415,8 @@ def _apply_layerwise_upcasting_pytorch_layer(
             or any(isinstance(submodule, module_class) for module_class in skip_modules_classes)
             or not isinstance(submodule, tuple(_SUPPORTED_PYTORCH_LAYERS))
         ):
-            logger.debug(f"Skipping layerwise upcasting for layer \"{name}\"")
+            logger.debug(f'Skipping layerwise upcasting for layer "{name}"')
             continue
-        logger.debug(f"Applying layerwise upcasting to layer \"{name}\"")
+        logger.debug(f'Applying layerwise upcasting to layer "{name}"')
         apply_layerwise_upcasting_hook(submodule, storage_dtype, compute_dtype)
     return module
