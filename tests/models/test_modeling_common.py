@@ -1013,6 +1013,8 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
+        buffer_size = compute_module_sizes(model, buffers_only=True)[""]
+        model_size = model_size - buffer_size
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1043,6 +1045,8 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
+        buffer_size = compute_module_sizes(model, buffers_only=True)[""]
+        model_size = model_size - buffer_size
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
 
@@ -1077,6 +1081,8 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
+        buffer_size = compute_module_sizes(model, buffers_only=True)[""]
+        model_size = model_size - buffer_size
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
@@ -1105,6 +1111,8 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
+        buffer_size = compute_module_sizes(model, buffers_only=True)[""]
+        model_size = model_size - buffer_size
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1133,6 +1141,8 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
+        buffer_size = compute_module_sizes(model, buffers_only=True)[""]
+        model_size = model_size - buffer_size
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
@@ -1165,6 +1175,8 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
+        buffer_size = compute_module_sizes(model, buffers_only=True)[""]
+        model_size = model_size - buffer_size
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         variant = "fp16"
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1205,6 +1217,8 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
+        buffer_size = compute_module_sizes(model, buffers_only=True)[""]
+        model_size = model_size - buffer_size
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
@@ -1234,6 +1248,8 @@ class ModelTesterMixin:
             model = self.model_class(**config).eval()
 
             model_size = compute_module_sizes(model)[""]
+            buffer_size = compute_module_sizes(model, buffers_only=True)[""]
+            model_size = model_size - buffer_size
             max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
             variant = "fp16"
             with tempfile.TemporaryDirectory() as tmp_dir:
