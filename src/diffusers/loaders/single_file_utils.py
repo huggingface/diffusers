@@ -163,7 +163,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "autoencoder-dc-f32c32": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-mix-1.0-diffusers"},
     "autoencoder-dc-f32c32-sana": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"},
     "mochi-1-preview": {"pretrained_model_name_or_path": "genmo/mochi-1-preview"},
-    "hunyuan-video": {"pretrained_model_name_or_path": "tencent/HunyuanVideo"},
+    "hunyuan-video": {"pretrained_model_name_or_path": "hunyuanvideo-community/HunyuanVideo"},
 }
 
 # Use to configure model sample size when original config is provided
