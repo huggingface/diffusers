@@ -1328,7 +1328,7 @@ def main(args):
             text_encoder_two_ = None
 
             while len(models) > 0:
-                model = models.pop()
+                model = models.pop( )
 
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_ = model
@@ -1338,29 +1338,6 @@ def main(args):
                     text_encoder_two_ = model
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
-
-            lora_state_dict = StableDiffusion3Pipeline.lora_state_dict(input_dir)
-
-            transformer_state_dict = {
-                f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
-            }
-            transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
-            incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
-            if incompatible_keys is not None:
-                # check only for unexpected keys
-                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-                if unexpected_keys:
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                        f" {unexpected_keys}. "
-                    )
-            if args.train_text_encoder:
-                # Do we need to call `scale_lora_layers()` here?
-                _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
-
-                _set_state_dict_into_text_encoder(
-                    lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_two_
-                )
 
             # Make sure the trainable params are in float32. This is again needed since the base models
             # are in `weight_dtype`. More details:
