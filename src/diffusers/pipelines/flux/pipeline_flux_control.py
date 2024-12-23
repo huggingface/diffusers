@@ -575,6 +575,7 @@ class FluxControlPipeline(
         if isinstance(image, torch.Tensor):
             pass
         else:
+            print(f"{type(image)=}")
             image = self.image_processor.preprocess(image, height=height, width=width)
 
         image_batch_size = image.shape[0]
