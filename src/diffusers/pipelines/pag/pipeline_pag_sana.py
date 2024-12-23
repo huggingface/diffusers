@@ -59,13 +59,13 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import SanaPAGPipeline
 
         >>> pipe = SanaPAGPipeline.from_pretrained(
-        ...     "Efficient-Large-Model/Sana_1600M_1024px_diffusers",
+        ...     "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers",
         ...     pag_applied_layers=["transformer_blocks.8"],
         ...     torch_dtype=torch.float32,
         ... )
         >>> pipe.to("cuda")
         >>> pipe.text_encoder.to(torch.bfloat16)
-        >>> pipe.transformer = pipe.transformer.to(torch.float16)
+        >>> pipe.transformer = pipe.transformer.to(torch.bfloat16)
 
         >>> image = pipe(prompt='a cyberpunk cat with a neon sign that says "Sana"')[0]
         >>> image[0].save("output.png")
@@ -170,7 +170,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             pag_attn_processors=(PAGCFGSanaLinearAttnProcessor2_0(), PAGIdentitySanaLinearAttnProcessor2_0()),
         )
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
