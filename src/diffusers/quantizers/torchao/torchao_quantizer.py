@@ -93,6 +93,11 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             raise ImportError(
                 "Loading a TorchAO quantized model requires the torchao library. Please install with `pip install torchao`"
             )
+        torchao_version = version.parse(importlib.metadata.version("torch"))
+        if torchao_version < version.parse("0.7.0"):
+            raise RuntimeError(
+                f"The minimum required version of `torchao` is 0.7.0, but the current version is {torchao_version}. Please upgrade with `pip install -U torchao`."
+            )
 
         self.offload = False
 
