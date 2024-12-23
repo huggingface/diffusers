@@ -1991,6 +1991,8 @@ class PeftLoraLoaderMixinTests:
 
     @require_peft_version_greater("0.13.2")
     def test_lora_B_bias(self):
+        # Currently, this test is only relevant for Flux Control LoRA as we are not
+        # aware of any other LoRA checkpoint that has its `lora_B` biases trained.
         components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)

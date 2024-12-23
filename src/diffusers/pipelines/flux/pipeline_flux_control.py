@@ -403,7 +403,6 @@ class FluxControlPipeline(
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
