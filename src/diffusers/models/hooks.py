@@ -267,7 +267,7 @@ def align_maybe_tensor_dtype(input: Any, dtype: torch.dtype) -> Any:
     return input
 
 
-class LayerwiseUpcastingGranualarity(str, Enum):
+class LayerwiseUpcastingGranularity(str, Enum):
     r"""
     An enumeration class that defines the granularity of the layerwise upcasting process.
 
@@ -349,17 +349,17 @@ def apply_layerwise_upcasting(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    granularity: LayerwiseUpcastingGranualarity = LayerwiseUpcastingGranualarity.PYTORCH_LAYER,
+    granularity: LayerwiseUpcastingGranularity = LayerwiseUpcastingGranularity.PYTORCH_LAYER,
     skip_modules_pattern: List[str] = [],
     skip_modules_classes: List[Type[torch.nn.Module]] = [],
 ) -> torch.nn.Module:
-    if granularity == LayerwiseUpcastingGranualarity.DIFFUSERS_MODEL:
+    if granularity == LayerwiseUpcastingGranularity.DIFFUSERS_MODEL:
         return _apply_layerwise_upcasting_diffusers_model(module, storage_dtype, compute_dtype)
-    if granularity == LayerwiseUpcastingGranualarity.DIFFUSERS_LAYER:
+    if granularity == LayerwiseUpcastingGranularity.DIFFUSERS_LAYER:
         return _apply_layerwise_upcasting_diffusers_layer(
             module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes
         )
-    if granularity == LayerwiseUpcastingGranualarity.PYTORCH_LAYER:
+    if granularity == LayerwiseUpcastingGranularity.PYTORCH_LAYER:
         return _apply_layerwise_upcasting_pytorch_layer(
             module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes
         )
