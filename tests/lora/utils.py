@@ -1568,7 +1568,7 @@ class PeftLoraLoaderMixinTests:
 
             # without we should not see an error, but every image will be black
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-            out = pipe("test", num_inference_steps=2, output_type="np")[0]
+            out = pipe(**inputs)[0]
 
             self.assertTrue(np.isnan(out).all())
 
