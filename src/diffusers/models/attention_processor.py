@@ -732,7 +732,7 @@ class Attention(nn.Module):
         return attention_mask
 
     def prepare_joint_attention_mask(
-        self, attention_mask: torch.Tensor, target_length: int
+        self, attention_mask: torch.Tensor, target_length: int, dtype: torch.dtype
     ) -> torch.Tensor:
         if attention_mask is None:
             return attention_mask
@@ -758,6 +758,13 @@ class Attention(nn.Module):
             # we boardcast both the heads and the target sequences,
             # there is no need to mask all the lines for target padding token as it would not affect other non-padding tokens
             attention_mask = attention_mask[:, None, None, :]
+
+         # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+        # masked positions, this operation will create a tensor which is 0.0 for
+        # positions we want to attend and the dtype's smallest value for masked positions.
+        # Since we are adding it to the raw scores before the softmax, this is
+        # effectively the same as removing these entirely.
+        attention_mask = (1.0 - attention_mask) * torch.finfo(dtype).min
 
         return attention_mask
 
@@ -1489,7 +1496,9 @@ class JointAttnProcessor2_0:
             value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
 
             if attention_mask is not None:
-                attention_mask = attn.prepare_joint_attention_mask(attention_mask, query.shape[2])
+                attention_mask = attn.prepare_joint_attention_mask(attention_mask, key.shape[2], key.dtype)
+        else:
+            attention_mask = None
 
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
@@ -2348,7 +2357,9 @@ class FluxAttnProcessor2_0:
             value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
 
             if attention_mask is not None:
-                attention_mask = attn.prepare_joint_attention_mask(attention_mask, query.shape[2])
+                attention_mask = attn.prepare_joint_attention_mask(attention_mask, key.shape[2], key.dtype)
+        else:
+            attention_mask = None
 
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
