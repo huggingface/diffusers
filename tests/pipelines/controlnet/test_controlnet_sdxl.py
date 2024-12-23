@@ -1019,7 +1019,7 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         )
 
         controlnet = ControlNetModel.from_unet(unet, conditioning_channels=4)
-        assert type(controlnet.mid_block) == UNetMidBlock2D
+        assert type(controlnet.mid_block) is UNetMidBlock2D
         assert controlnet.conditioning_channels == 4
 
     def get_dummy_components(self, time_cond_proj_dim=None):

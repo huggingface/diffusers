@@ -26,6 +26,7 @@ from ...models import AutoencoderOobleck, StableAudioDiTModel
 from ...models.embeddings import get_1d_rotary_pos_embed
 from ...schedulers import EDMDPMSolverMultistepScheduler
 from ...utils import (
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -33,6 +34,13 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_stable_audio import StableAudioProjectionModel
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -438,7 +446,7 @@ class StableAudioPipeline(DiffusionPipeline):
                     f"`initial_audio_waveforms` must be of shape `(batch_size, num_channels, audio_length)` or `(batch_size, audio_length)` but has `{initial_audio_waveforms.ndim}` dimensions"
                 )
 
-            audio_vae_length = self.transformer.config.sample_size * self.vae.hop_length
+            audio_vae_length = int(self.transformer.config.sample_size) * self.vae.hop_length
             audio_shape = (batch_size // num_waveforms_per_prompt, audio_channels, audio_vae_length)
 
             # check num_channels
@@ -725,6 +733,9 @@ class StableAudioPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         # 9. Post-processing
         if not output_type == "latent":

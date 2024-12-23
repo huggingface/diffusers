@@ -16,13 +16,14 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..test_pipelines_common import (
+    FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
 )
 
 
-class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
@@ -91,6 +92,8 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_2": tokenizer_2,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
@@ -296,3 +299,112 @@ class FluxPipelineSlowTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4
+
+
+@slow
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
+class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
+    pipeline_class = FluxPipeline
+    repo_id = "black-forest-labs/FLUX.1-dev"
+    image_encoder_pretrained_model_name_or_path = "openai/clip-vit-large-patch14"
+    weight_name = "ip_adapter.safetensors"
+    ip_adapter_repo_id = "XLabs-AI/flux-ip-adapter"
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        prompt_embeds = torch.load(
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
+        )
+        pooled_prompt_embeds = torch.load(
+            hf_hub_download(
+                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+            )
+        )
+        negative_prompt_embeds = torch.zeros_like(prompt_embeds)
+        negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
+        ip_adapter_image = np.zeros((1024, 1024, 3), dtype=np.uint8)
+        return {
+            "prompt_embeds": prompt_embeds,
+            "pooled_prompt_embeds": pooled_prompt_embeds,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_pooled_prompt_embeds": negative_pooled_prompt_embeds,
+            "ip_adapter_image": ip_adapter_image,
+            "num_inference_steps": 2,
+            "guidance_scale": 3.5,
+            "true_cfg_scale": 4.0,
+            "max_sequence_length": 256,
+            "output_type": "np",
+            "generator": generator,
+        }
+
+    def test_flux_ip_adapter_inference(self):
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
+        )
+        pipe.load_ip_adapter(
+            self.ip_adapter_repo_id,
+            weight_name=self.weight_name,
+            image_encoder_pretrained_model_name_or_path=self.image_encoder_pretrained_model_name_or_path,
+        )
+        pipe.set_ip_adapter_scale(1.0)
+        pipe.enable_model_cpu_offload()
+
+        inputs = self.get_inputs(torch_device)
+
+        image = pipe(**inputs).images[0]
+        image_slice = image[0, :10, :10]
+
+        expected_slice = np.array(
+            [
+                0.1855,
+                0.1680,
+                0.1406,
+                0.1953,
+                0.1699,
+                0.1465,
+                0.2012,
+                0.1738,
+                0.1484,
+                0.2051,
+                0.1797,
+                0.1523,
+                0.2012,
+                0.1719,
+                0.1445,
+                0.2070,
+                0.1777,
+                0.1465,
+                0.2090,
+                0.1836,
+                0.1484,
+                0.2129,
+                0.1875,
+                0.1523,
+                0.2090,
+                0.1816,
+                0.1484,
+                0.2110,
+                0.1836,
+                0.1543,
+            ],
+            dtype=np.float32,
+        )
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
+
+        assert max_diff < 1e-4, f"{image_slice} != {expected_slice}"
