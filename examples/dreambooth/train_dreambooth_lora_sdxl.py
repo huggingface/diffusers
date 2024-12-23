@@ -1229,26 +1229,21 @@ def main(args):
             text_encoder_two_lora_layers_to_save = None
 
             for model in models:
-                if isinstance(unwrap_model(model), type(unwrap_model(unet))):
+                if isinstance(model, type(unwrap_model(unet))):
                     unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))) and args.train_text_encoder:
+                elif isinstance(model, type(unwrap_model(text_encoder_one))):
                     text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
                         get_peft_model_state_dict(model)
                     )
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_two))) and args.train_text_encoder:
+                elif isinstance(model, type(unwrap_model(text_encoder_two))):
                     text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
                         get_peft_model_state_dict(model)
                     )
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))) and not args.train_text_encoder:
-                    text_encoder_one_lora_layers_to_save = None
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_two))) and not args.train_text_encoder:
-                    text_encoder_two_lora_layers_to_save = None
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
-                if weights:
-                    weights.pop()
+                weights.pop()
 
             StableDiffusionXLPipeline.save_lora_weights(
                 output_dir,
@@ -1570,7 +1565,7 @@ def main(args):
     first_epoch = 0
 
     # Potentially load in the weights and states from a previous save
-    if args.resume_from_checkpoint and not accelerator.distributed_type == DistributedType.DEEPSPEED:
+    if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
         else:

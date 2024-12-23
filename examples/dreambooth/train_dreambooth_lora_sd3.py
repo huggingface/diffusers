@@ -1322,54 +1322,55 @@ def main(args):
             )
 
     def load_model_hook(models, input_dir):
-        transformer_ = None
-        text_encoder_one_ = None
-        text_encoder_two_ = None
+        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
+            transformer_ = None
+            text_encoder_one_ = None
+            text_encoder_two_ = None
 
-        while len(models) > 0:
-            model = models.pop()
+            while len(models) > 0:
+                model = models.pop()
 
-            if isinstance(model, type(unwrap_model(transformer))):
-                transformer_ = model
-            elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                text_encoder_one_ = model
-            elif isinstance(model, type(unwrap_model(text_encoder_two))):
-                text_encoder_two_ = model
-            else:
-                raise ValueError(f"unexpected save model: {model.__class__}")
+                if isinstance(model, type(unwrap_model(transformer))):
+                    transformer_ = model
+                elif isinstance(model, type(unwrap_model(text_encoder_one))):
+                    text_encoder_one_ = model
+                elif isinstance(model, type(unwrap_model(text_encoder_two))):
+                    text_encoder_two_ = model
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict = StableDiffusion3Pipeline.lora_state_dict(input_dir)
+            lora_state_dict = StableDiffusion3Pipeline.lora_state_dict(input_dir)
 
-        transformer_state_dict = {
-            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
-        }
-        transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
-        incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
-        if incompatible_keys is not None:
-            # check only for unexpected keys
-            unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-            if unexpected_keys:
-                logger.warning(
-                    f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                    f" {unexpected_keys}. "
-                )
-        if args.train_text_encoder:
-            # Do we need to call `scale_lora_layers()` here?
-            _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
-
-            _set_state_dict_into_text_encoder(
-                lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_two_
-            )
-
-        # Make sure the trainable params are in float32. This is again needed since the base models
-        # are in `weight_dtype`. More details:
-        # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
-        if args.mixed_precision == "fp16":
-            models = [transformer_]
+            transformer_state_dict = {
+                f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
+            }
+            transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
+            incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
+            if incompatible_keys is not None:
+                # check only for unexpected keys
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                        f" {unexpected_keys}. "
+                    )
             if args.train_text_encoder:
-                models.extend([text_encoder_one_, text_encoder_two_])
-            # only upcast trainable parameters (LoRA) into fp32
-            cast_training_params(models)
+                # Do we need to call `scale_lora_layers()` here?
+                _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
+
+                _set_state_dict_into_text_encoder(
+                    lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_two_
+                )
+
+            # Make sure the trainable params are in float32. This is again needed since the base models
+            # are in `weight_dtype`. More details:
+            # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
+            if args.mixed_precision == "fp16":
+                models = [transformer_]
+                if args.train_text_encoder:
+                    models.extend([text_encoder_one_, text_encoder_two_])
+                # only upcast trainable parameters (LoRA) into fp32
+                cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1646,7 +1647,7 @@ def main(args):
     first_epoch = 0
 
     # Potentially load in the weights and states from a previous save
-    if args.resume_from_checkpoint and not accelerator.distributed_type == DistributedType.DEEPSPEED:
+    if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
         else:
