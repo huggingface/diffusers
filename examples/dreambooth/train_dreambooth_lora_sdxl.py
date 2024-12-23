@@ -1570,7 +1570,7 @@ def main(args):
     first_epoch = 0
 
     # Potentially load in the weights and states from a previous save
-    if args.resume_from_checkpoint:
+    if args.resume_from_checkpoint and not accelerator.distributed_type == DistributedType.DEEPSPEED:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
         else:
