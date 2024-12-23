@@ -139,7 +139,6 @@ class LayerwiseUpcastingHook(ModelHook):
         module.to(dtype=self.storage_dtype)
         return module
 
-    @torch._dynamo.disable(recursive=False)
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
         module.to(dtype=self.compute_dtype)
         # How do we account for LongTensor, BoolTensor, etc.?
@@ -147,7 +146,6 @@ class LayerwiseUpcastingHook(ModelHook):
         # kwargs = {k: align_maybe_tensor_dtype(v, self.compute_dtype) for k, v in kwargs.items()}
         return args, kwargs
 
-    @torch._dynamo.disable(recursive=False)
     def post_forward(self, module: torch.nn.Module, output):
         module.to(dtype=self.storage_dtype)
         return output
