@@ -626,7 +626,7 @@ def infer_diffusers_model_type(checkpoint):
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["mochi-1-preview"]):
         model_type = "mochi-1-preview"
 
-    if CHECKPOINT_KEY_NAMES["hunyuan-video"] in checkpoint:
+    elif CHECKPOINT_KEY_NAMES["hunyuan-video"] in checkpoint:
         model_type = "hunyuan-video"
 
     else:
