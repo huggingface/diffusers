@@ -1304,9 +1304,6 @@ def main(args):
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
                     elif hidden_size == 1280:
                         text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))) and not args.train_text_encoder:
-                    text_encoder_one_lora_layers_to_save = None
-                    text_encoder_two_lora_layers_to_save = None
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1367,8 +1364,6 @@ def main(args):
         models = [transformer]
         if args.train_text_encoder:
             models.extend([text_encoder_one, text_encoder_two])
-        # only upcast trainable parameters (LoRA) into fp32
-        cast_training_params(models, dtype=torch.float32)
 
     transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
     if args.train_text_encoder:
