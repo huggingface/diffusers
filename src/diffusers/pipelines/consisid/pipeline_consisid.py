@@ -664,7 +664,7 @@ class ConsisIDPipeline(DiffusionPipeline, ConsisIDLoraLoaderMixin):
         width: int = 720,
         num_frames: int = 49,
         num_inference_steps: int = 50,
-        guidance_scale: float = 6,
+        guidance_scale: float = 6.0,
         use_dynamic_cfg: bool = False,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
