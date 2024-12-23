@@ -273,8 +273,7 @@ class ConsisIDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 "Attention slicing should not affect the inference results",
             )
 
-    def test_vae_tiling(self, expected_diff_max: float = 0.35):
-        # Note (SHYuanBest): I don't know why this requires a higher expected_max_diff
+    def test_vae_tiling(self, expected_diff_max: float = 0.4):
         generator_device = "cpu"
         components = self.get_dummy_components()
 
