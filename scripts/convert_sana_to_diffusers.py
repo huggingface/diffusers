@@ -88,13 +88,18 @@ def main(args):
     # y norm
     converted_state_dict["caption_norm.weight"] = state_dict.pop("attention_y_norm.weight")
 
+    # scheduler
     flow_shift = 3.0
+
+    # model config
     if args.model_type == "SanaMS_1600M_P1_D20":
         layer_num = 20
     elif args.model_type == "SanaMS_600M_P1_D28":
         layer_num = 28
     else:
         raise ValueError(f"{args.model_type} is not supported.")
+    # Positional embedding interpolation scale.
+    interpolation_scale = {512: None, 1024: None, 2048: 1.0}
 
     for depth in range(layer_num):
         # Transformer blocks.
@@ -176,6 +181,7 @@ def main(args):
             patch_size=1,
             norm_elementwise_affine=False,
             norm_eps=1e-6,
+            interpolation_scale=interpolation_scale[args.image_size],
         )
 
     if is_accelerate_available():
