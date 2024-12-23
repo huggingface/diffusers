@@ -109,6 +109,7 @@ CHECKPOINT_KEY_NAMES = {
     "autoencoder-dc-sana": "encoder.project_in.conv.bias",
     "mochi-1-preview": ["model.diffusion_model.blocks.0.attn.qkv_x.weight", "blocks.0.attn.qkv_x.weight"],
     "hunyuan-video": "txt_in.individual_token_refiner.blocks.0.adaLN_modulation.1.bias",
+    "instruct-pix2pix": "model.diffusion_model.input_blocks.0.0.weight",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -164,6 +165,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "autoencoder-dc-f32c32-sana": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"},
     "mochi-1-preview": {"pretrained_model_name_or_path": "genmo/mochi-1-preview"},
     "hunyuan-video": {"pretrained_model_name_or_path": "hunyuanvideo-community/HunyuanVideo"},
+    "instruct-pix2pix": {"pretrained_model_name_or_path": "timbrooks/instruct-pix2pix"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -628,6 +630,12 @@ def infer_diffusers_model_type(checkpoint):
 
     elif CHECKPOINT_KEY_NAMES["hunyuan-video"] in checkpoint:
         model_type = "hunyuan-video"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["instruct-pix2pix"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["instruct-pix2pix"]].shape[1] == 8
+    ):
+        model_type = "instruct-pix2pix"
 
     else:
         model_type = "v1"
