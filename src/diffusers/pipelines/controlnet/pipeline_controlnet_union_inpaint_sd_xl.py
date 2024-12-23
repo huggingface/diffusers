@@ -205,11 +205,8 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
-        "negative_prompt_embeds",
         "add_text_embeds",
         "add_time_ids",
-        "negative_pooled_prompt_embeds",
-        "add_neg_time_ids",
         "mask",
         "masked_image_latents",
     ]

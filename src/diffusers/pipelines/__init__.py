@@ -128,6 +128,7 @@ else:
     ]
     _import_structure["flux"] = [
         "FluxControlPipeline",
+        "FluxControlInpaintPipeline",
         "FluxControlImg2ImgPipeline",
         "FluxControlNetPipeline",
         "FluxControlNetImg2ImgPipeline",
@@ -214,6 +215,7 @@ else:
         "IFSuperResolutionPipeline",
     ]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
+    _import_structure["hunyuan_video"] = ["HunyuanVideoPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -538,6 +540,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .flux import (
             FluxControlImg2ImgPipeline,
+            FluxControlInpaintPipeline,
             FluxControlNetImg2ImgPipeline,
             FluxControlNetInpaintPipeline,
             FluxControlNetPipeline,
@@ -549,6 +552,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
+        from .hunyuan_video import HunyuanVideoPipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (

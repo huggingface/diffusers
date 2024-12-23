@@ -157,6 +157,10 @@
     title: Getting Started
   - local: quantization/bitsandbytes
     title: bitsandbytes
+  - local: quantization/gguf
+    title: gguf
+  - local: quantization/torchao
+    title: torchao
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
@@ -234,6 +238,8 @@
       title: Textual Inversion
     - local: api/loaders/unet
       title: UNet
+    - local: api/loaders/transformer_sd3
+      title: SD3Transformer2D
     - local: api/loaders/peft
       title: PEFT
     title: Loaders
@@ -270,6 +276,8 @@
         title: FluxTransformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
+      - local: api/models/hunyuan_video_transformer_3d
+        title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
@@ -316,6 +324,8 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoder_kl_hunyuan_video
+        title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_mochi
@@ -392,8 +402,12 @@
       title: DiT
     - local: api/pipelines/flux
       title: Flux
+    - local: api/pipelines/control_flux_inpaint
+      title: FluxControlInpaint
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
+    - local: api/pipelines/hunyuan_video
+      title: HunyuanVideo
     - local: api/pipelines/i2vgenxl
       title: I2VGen-XL
     - local: api/pipelines/pix2pix
@@ -415,7 +429,7 @@
     - local: api/pipelines/ledits_pp
       title: LEDITS++
     - local: api/pipelines/ltx_video
-      title: LTX
+      title: LTXVideo
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
