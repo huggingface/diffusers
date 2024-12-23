@@ -1444,7 +1444,7 @@ class JointAttnProcessor2_0:
     ) -> torch.FloatTensor:
         residual = hidden_states
 
-        batch_size, sequence_length, _ = hidden_states.shape
+        batch_size = hidden_states.shape[0]
 
         # `sample` projections.
         query = attn.to_q(hidden_states)
