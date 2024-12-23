@@ -82,11 +82,11 @@ class AutoencoderKLLTXVideo090Tests(ModelTesterMixin, UNetTesterMixin, unittest.
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
-            "LTXEncoder3d",
-            "LTXDecoder3d",
-            "LTXDownBlock3D",
-            "LTXMidBlock3d",
-            "LTXUpBlock3d",
+            "LTXVideoEncoder3d",
+            "LTXVideoDecoder3d",
+            "LTXVideoDownBlock3D",
+            "LTXVideoMidBlock3d",
+            "LTXVideoUpBlock3d",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
@@ -152,11 +152,11 @@ class AutoencoderKLLTXVideo091Tests(ModelTesterMixin, UNetTesterMixin, unittest.
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
-            "LTXEncoder3d",
-            "LTXDecoder3d",
-            "LTXDownBlock3D",
-            "LTXMidBlock3d",
-            "LTXUpBlock3d",
+            "LTXVideoEncoder3d",
+            "LTXVideoDecoder3d",
+            "LTXVideoDownBlock3D",
+            "LTXVideoMidBlock3d",
+            "LTXVideoUpBlock3d",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
