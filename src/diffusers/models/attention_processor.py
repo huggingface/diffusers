@@ -2349,11 +2349,7 @@ class FluxAttnProcessor2_0:
             key = apply_rotary_emb(key, image_rotary_emb)
 
         hidden_states = F.scaled_dot_product_attention(
-<<<<<<< HEAD
-            query, key, value, dropout_p=0.0, is_causal=False, attention_mask=attention_mask
-=======
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
->>>>>>> main
         )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
