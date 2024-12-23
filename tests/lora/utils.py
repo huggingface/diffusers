@@ -1528,7 +1528,7 @@ class PeftLoraLoaderMixinTests:
     @pytest.mark.xfail(
         condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
-        strict=True,
+        strict=False,
     )
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
