@@ -1095,7 +1095,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
                 # predict the noise residual
-                if self.controlnet.config.guidance_embeds:
+                if isinstance(self.controlnet, FluxMultiControlNetModel):
+                    use_guidance = self.controlnet.nets[0].config.guidance_embeds
+                else:
+                    use_guidance = self.controlnet.config.guidance_embeds
+                if use_guidance:
                     guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
                     guidance = guidance.expand(latents.shape[0])
                 else:
