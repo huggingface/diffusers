@@ -1823,6 +1823,16 @@ class PipelineFastTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
 
+    def test_wrong_model(self):
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        with self.assertRaises(ValueError) as error_context:
+            _ = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", text_encoder=tokenizer
+            )
+
+        assert "is of type" in str(error_context.exception)
+        assert "but should be" in str(error_context.exception)
+
 
 @slow
 @require_torch_gpu

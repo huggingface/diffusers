@@ -62,11 +62,11 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import SanaPipeline
 
         >>> pipe = SanaPipeline.from_pretrained(
-        ...     "Efficient-Large-Model/Sana_1600M_1024px_diffusers", torch_dtype=torch.float32
+        ...     "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers", torch_dtype=torch.float32
         ... )
         >>> pipe.to("cuda")
         >>> pipe.text_encoder.to(torch.bfloat16)
-        >>> pipe.transformer = pipe.transformer.to(torch.float16)
+        >>> pipe.transformer = pipe.transformer.to(torch.bfloat16)
 
         >>> image = pipe(prompt='a cyberpunk cat with a neon sign that says "Sana"')[0]
         >>> image[0].save("output.png")
