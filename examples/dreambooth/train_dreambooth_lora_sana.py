@@ -1370,7 +1370,6 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Predict the noise residual
-                print(f"{noisy_model_input.dtype=}, {prompt_embeds.dtype=}")
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
