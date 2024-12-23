@@ -22,9 +22,18 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 </Tip>
 
+Available models:
+
+|  Model name   | Recommended dtype |
+|:-------------:|:-----------------:|
+| [`LTX Video 0.9.0`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.safetensors) | `torch.bfloat16` |
+| [`LTX Video 0.9.1`](https://huggingface.co/Lightricks/LTX-Video/blob/main/ltx-video-2b-v0.9.1.safetensors) | `torch.bfloat16` |
+
+Note: The recommended dtype is for the transformer component. The VAE and text encoders can be either `torch.float32`, `torch.bfloat16` or `torch.float16` but the recommended dtype is `torch.bfloat16` as used in the original repository.
+
 ## Loading Single Files
 
-Loading the original LTX Video checkpoints is also possible with [`~ModelMixin.from_single_file`].
+Loading the original LTX Video checkpoints is also possible with [`~ModelMixin.from_single_file`]. We recommend using `from_single_file` for the Lightricks series of models, as they plan to release multiple models in the future in the single file format.
 
 ```python
 import torch
