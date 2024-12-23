@@ -29,7 +29,7 @@ from ..normalization import RMSNorm
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
-class LTXCausalConv3d(nn.Module):
+class LTXVideoCausalConv3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -80,9 +80,9 @@ class LTXCausalConv3d(nn.Module):
         return hidden_states
 
 
-class LTXResnetBlock3d(nn.Module):
+class LTXVideoResnetBlock3d(nn.Module):
     r"""
-    A 3D ResNet block used in the LTX model.
+    A 3D ResNet block used in the LTXVideo model.
 
     Args:
         in_channels (`int`):
@@ -120,13 +120,13 @@ class LTXResnetBlock3d(nn.Module):
         self.nonlinearity = get_activation(non_linearity)
 
         self.norm1 = RMSNorm(in_channels, eps=1e-8, elementwise_affine=elementwise_affine)
-        self.conv1 = LTXCausalConv3d(
+        self.conv1 = LTXVideoCausalConv3d(
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal
         )
 
         self.norm2 = RMSNorm(out_channels, eps=1e-8, elementwise_affine=elementwise_affine)
         self.dropout = nn.Dropout(dropout)
-        self.conv2 = LTXCausalConv3d(
+        self.conv2 = LTXVideoCausalConv3d(
             in_channels=out_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal
         )
 
@@ -134,7 +134,7 @@ class LTXResnetBlock3d(nn.Module):
         self.conv_shortcut = None
         if in_channels != out_channels:
             self.norm3 = nn.LayerNorm(in_channels, eps=eps, elementwise_affine=True, bias=True)
-            self.conv_shortcut = LTXCausalConv3d(
+            self.conv_shortcut = LTXVideoCausalConv3d(
                 in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, is_causal=is_causal
             )
 
@@ -196,7 +196,7 @@ class LTXResnetBlock3d(nn.Module):
         return hidden_states
 
 
-class LTXUpsampler3d(nn.Module):
+class LTXVideoUpsampler3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -213,7 +213,7 @@ class LTXUpsampler3d(nn.Module):
 
         out_channels = (in_channels * stride[0] * stride[1] * stride[2]) // upscale_factor
 
-        self.conv = LTXCausalConv3d(
+        self.conv = LTXVideoCausalConv3d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=3,
@@ -246,9 +246,9 @@ class LTXUpsampler3d(nn.Module):
         return hidden_states
 
 
-class LTXDownBlock3D(nn.Module):
+class LTXVideoDownBlock3D(nn.Module):
     r"""
-    Down block used in the LTX model.
+    Down block used in the LTXVideo model.
 
     Args:
         in_channels (`int`):
@@ -290,7 +290,7 @@ class LTXDownBlock3D(nn.Module):
         resnets = []
         for _ in range(num_layers):
             resnets.append(
-                LTXResnetBlock3d(
+                LTXVideoResnetBlock3d(
                     in_channels=in_channels,
                     out_channels=in_channels,
                     dropout=dropout,
@@ -305,7 +305,7 @@ class LTXDownBlock3D(nn.Module):
         if spatio_temporal_scale:
             self.downsamplers = nn.ModuleList(
                 [
-                    LTXCausalConv3d(
+                    LTXVideoCausalConv3d(
                         in_channels=in_channels,
                         out_channels=in_channels,
                         kernel_size=3,
@@ -317,7 +317,7 @@ class LTXDownBlock3D(nn.Module):
 
         self.conv_out = None
         if in_channels != out_channels:
-            self.conv_out = LTXResnetBlock3d(
+            self.conv_out = LTXVideoResnetBlock3d(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 dropout=dropout,
@@ -362,9 +362,9 @@ class LTXDownBlock3D(nn.Module):
 
 
 # Adapted from diffusers.models.autoencoders.autoencoder_kl_cogvideox.CogVideoMidBlock3d
-class LTXMidBlock3d(nn.Module):
+class LTXVideoMidBlock3d(nn.Module):
     r"""
-    A middle block used in the LTX model.
+    A middle block used in the LTXVideo model.
 
     Args:
         in_channels (`int`):
@@ -403,7 +403,7 @@ class LTXMidBlock3d(nn.Module):
         resnets = []
         for _ in range(num_layers):
             resnets.append(
-                LTXResnetBlock3d(
+                LTXVideoResnetBlock3d(
                     in_channels=in_channels,
                     out_channels=in_channels,
                     dropout=dropout,
@@ -454,9 +454,9 @@ class LTXMidBlock3d(nn.Module):
         return hidden_states
 
 
-class LTXUpBlock3d(nn.Module):
+class LTXVideoUpBlock3d(nn.Module):
     r"""
-    Up block used in the LTX model.
+    Up block used in the LTXVideo model.
 
     Args:
         in_channels (`int`):
@@ -505,7 +505,7 @@ class LTXUpBlock3d(nn.Module):
 
         self.conv_in = None
         if in_channels != out_channels:
-            self.conv_in = LTXResnetBlock3d(
+            self.conv_in = LTXVideoResnetBlock3d(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 dropout=dropout,
@@ -520,7 +520,7 @@ class LTXUpBlock3d(nn.Module):
         if spatio_temporal_scale:
             self.upsamplers = nn.ModuleList(
                 [
-                    LTXUpsampler3d(
+                    LTXVideoUpsampler3d(
                         out_channels * upscale_factor,
                         stride=(2, 2, 2),
                         is_causal=is_causal,
@@ -533,7 +533,7 @@ class LTXUpBlock3d(nn.Module):
         resnets = []
         for _ in range(num_layers):
             resnets.append(
-                LTXResnetBlock3d(
+                LTXVideoResnetBlock3d(
                     in_channels=out_channels,
                     out_channels=out_channels,
                     dropout=dropout,
@@ -589,9 +589,9 @@ class LTXUpBlock3d(nn.Module):
         return hidden_states
 
 
-class LTXEncoder3d(nn.Module):
+class LTXVideoEncoder3d(nn.Module):
     r"""
-    The `LTXEncoder3D` layer of a variational autoencoder that encodes input video samples to its latent
+    The `LTXVideoEncoder3d` layer of a variational autoencoder that encodes input video samples to its latent
     representation.
 
     Args:
@@ -635,7 +635,7 @@ class LTXEncoder3d(nn.Module):
 
         output_channel = block_out_channels[0]
 
-        self.conv_in = LTXCausalConv3d(
+        self.conv_in = LTXVideoCausalConv3d(
             in_channels=self.in_channels,
             out_channels=output_channel,
             kernel_size=3,
@@ -650,7 +650,7 @@ class LTXEncoder3d(nn.Module):
             input_channel = output_channel
             output_channel = block_out_channels[i + 1] if i + 1 < num_block_out_channels else block_out_channels[i]
 
-            down_block = LTXDownBlock3D(
+            down_block = LTXVideoDownBlock3D(
                 in_channels=input_channel,
                 out_channels=output_channel,
                 num_layers=layers_per_block[i],
@@ -662,7 +662,7 @@ class LTXEncoder3d(nn.Module):
             self.down_blocks.append(down_block)
 
         # mid block
-        self.mid_block = LTXMidBlock3d(
+        self.mid_block = LTXVideoMidBlock3d(
             in_channels=output_channel,
             num_layers=layers_per_block[-1],
             resnet_eps=resnet_norm_eps,
@@ -672,14 +672,14 @@ class LTXEncoder3d(nn.Module):
         # out
         self.norm_out = RMSNorm(out_channels, eps=1e-8, elementwise_affine=False)
         self.conv_act = nn.SiLU()
-        self.conv_out = LTXCausalConv3d(
+        self.conv_out = LTXVideoCausalConv3d(
             in_channels=output_channel, out_channels=out_channels + 1, kernel_size=3, stride=1, is_causal=is_causal
         )
 
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        r"""The forward method of the `LTXEncoder3D` class."""
+        r"""The forward method of the `LTXVideoEncoder3d` class."""
 
         p = self.patch_size
         p_t = self.patch_size_t
@@ -725,9 +725,10 @@ class LTXEncoder3d(nn.Module):
         return hidden_states
 
 
-class LTXDecoder3d(nn.Module):
+class LTXVideoDecoder3d(nn.Module):
     r"""
-    The `LTXDecoder3d` layer of a variational autoencoder that decodes its latent representation into an output sample.
+    The `LTXVideoDecoder3d` layer of a variational autoencoder that decodes its latent representation into an output
+    sample.
 
     Args:
         in_channels (`int`, defaults to 128):
@@ -782,11 +783,11 @@ class LTXDecoder3d(nn.Module):
         upsample_factor = tuple(reversed(upsample_factor))
         output_channel = block_out_channels[0]
 
-        self.conv_in = LTXCausalConv3d(
+        self.conv_in = LTXVideoCausalConv3d(
             in_channels=in_channels, out_channels=output_channel, kernel_size=3, stride=1, is_causal=is_causal
         )
 
-        self.mid_block = LTXMidBlock3d(
+        self.mid_block = LTXVideoMidBlock3d(
             in_channels=output_channel,
             num_layers=layers_per_block[0],
             resnet_eps=resnet_norm_eps,
@@ -802,7 +803,7 @@ class LTXDecoder3d(nn.Module):
             input_channel = output_channel // upsample_factor[i]
             output_channel = block_out_channels[i] // upsample_factor[i]
 
-            up_block = LTXUpBlock3d(
+            up_block = LTXVideoUpBlock3d(
                 in_channels=input_channel,
                 out_channels=output_channel,
                 num_layers=layers_per_block[i + 1],
@@ -820,7 +821,7 @@ class LTXDecoder3d(nn.Module):
         # out
         self.norm_out = RMSNorm(out_channels, eps=1e-8, elementwise_affine=False)
         self.conv_act = nn.SiLU()
-        self.conv_out = LTXCausalConv3d(
+        self.conv_out = LTXVideoCausalConv3d(
             in_channels=output_channel, out_channels=self.out_channels, kernel_size=3, stride=1, is_causal=is_causal
         )
 
@@ -951,7 +952,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     ) -> None:
         super().__init__()
 
-        self.encoder = LTXEncoder3d(
+        self.encoder = LTXVideoEncoder3d(
             in_channels=in_channels,
             out_channels=latent_channels,
             block_out_channels=block_out_channels,
@@ -962,7 +963,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             resnet_norm_eps=resnet_norm_eps,
             is_causal=encoder_causal,
         )
-        self.decoder = LTXDecoder3d(
+        self.decoder = LTXVideoDecoder3d(
             in_channels=latent_channels,
             out_channels=out_channels,
             block_out_channels=decoder_block_out_channels,
@@ -1015,7 +1016,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_sample_stride_width = 448
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (LTXEncoder3d, LTXDecoder3d)):
+        if isinstance(module, (LTXVideoEncoder3d, LTXVideoDecoder3d)):
             module.gradient_checkpointing = value
 
     def enable_tiling(
