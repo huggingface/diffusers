@@ -575,7 +575,7 @@ class Attention(nn.Module):
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
 
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
-        quiet_attn_parameters = {"ip_adapter_masks"}
+        quiet_attn_parameters = {"ip_adapter_masks", "ip_hidden_states"}
         unused_kwargs = [
             k for k, _ in cross_attention_kwargs.items() if k not in attn_parameters and k not in quiet_attn_parameters
         ]
@@ -2649,6 +2649,149 @@ class FusedFluxAttnProcessor2_0_NPU:
             encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
             return hidden_states, encoder_hidden_states
+        else:
+            return hidden_states
+
+
+class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
+    """Flux Attention processor for IP-Adapter."""
+
+    def __init__(
+        self, hidden_size: int, cross_attention_dim: int, num_tokens=(4,), scale=1.0, device=None, dtype=None
+    ):
+        super().__init__()
+
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+
+        if not isinstance(num_tokens, (tuple, list)):
+            num_tokens = [num_tokens]
+
+        if not isinstance(scale, list):
+            scale = [scale] * len(num_tokens)
+        if len(scale) != len(num_tokens):
+            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
+        self.scale = scale
+
+        self.to_k_ip = nn.ModuleList(
+            [
+                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
+                for _ in range(len(num_tokens))
+            ]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [
+                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
+                for _ in range(len(num_tokens))
+            ]
+        )
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        ip_hidden_states: Optional[List[torch.Tensor]] = None,
+        ip_adapter_masks: Optional[torch.Tensor] = None,
+    ) -> torch.FloatTensor:
+        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+
+        # `sample` projections.
+        hidden_states_query_proj = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        hidden_states_query_proj = hidden_states_query_proj.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            hidden_states_query_proj = attn.norm_q(hidden_states_query_proj)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
+        if encoder_hidden_states is not None:
+            # `context` projections.
+            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+            # attention
+            query = torch.cat([encoder_hidden_states_query_proj, hidden_states_query_proj], dim=2)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+
+        if image_rotary_emb is not None:
+            from .embeddings import apply_rotary_emb
+
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if encoder_hidden_states is not None:
+            encoder_hidden_states, hidden_states = (
+                hidden_states[:, : encoder_hidden_states.shape[1]],
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+            )
+
+            # linear proj
+            hidden_states = attn.to_out[0](hidden_states)
+            # dropout
+            hidden_states = attn.to_out[1](hidden_states)
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+            # IP-adapter
+            ip_query = hidden_states_query_proj
+            ip_attn_output = None
+            # for ip-adapter
+            # TODO: support for multiple adapters
+            for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+            ):
+                ip_key = to_k_ip(current_ip_hidden_states)
+                ip_value = to_v_ip(current_ip_hidden_states)
+
+                ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                # the output of sdp = (batch, num_heads, seq_len, head_dim)
+                # TODO: add support for attn.scale when we move to Torch 2.1
+                ip_attn_output = F.scaled_dot_product_attention(
+                    ip_query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+                )
+                ip_attn_output = ip_attn_output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                ip_attn_output = scale * ip_attn_output
+                ip_attn_output = ip_attn_output.to(ip_query.dtype)
+
+            return hidden_states, encoder_hidden_states, ip_attn_output
         else:
             return hidden_states
 
@@ -5243,6 +5386,177 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
         return hidden_states
 
 
+class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
+    """
+    Attention processor for IP-Adapter used typically in processing the SD3-like self-attention projections, with
+    additional image-based information and timestep embeddings.
+
+    Args:
+        hidden_size (`int`):
+            The number of hidden channels.
+        ip_hidden_states_dim (`int`):
+            The image feature dimension.
+        head_dim (`int`):
+            The number of head channels.
+        timesteps_emb_dim (`int`, defaults to 1280):
+            The number of input channels for timestep embedding.
+        scale (`float`, defaults to 0.5):
+            IP-Adapter scale.
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        ip_hidden_states_dim: int,
+        head_dim: int,
+        timesteps_emb_dim: int = 1280,
+        scale: float = 0.5,
+    ):
+        super().__init__()
+
+        # To prevent circular import
+        from .normalization import AdaLayerNorm, RMSNorm
+
+        self.norm_ip = AdaLayerNorm(timesteps_emb_dim, output_dim=ip_hidden_states_dim * 2, norm_eps=1e-6, chunk_dim=1)
+        self.to_k_ip = nn.Linear(ip_hidden_states_dim, hidden_size, bias=False)
+        self.to_v_ip = nn.Linear(ip_hidden_states_dim, hidden_size, bias=False)
+        self.norm_q = RMSNorm(head_dim, 1e-6)
+        self.norm_k = RMSNorm(head_dim, 1e-6)
+        self.norm_ip_k = RMSNorm(head_dim, 1e-6)
+        self.scale = scale
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        ip_hidden_states: torch.FloatTensor = None,
+        temb: torch.FloatTensor = None,
+    ) -> torch.FloatTensor:
+        """
+        Perform the attention computation, integrating image features (if provided) and timestep embeddings.
+
+        If `ip_hidden_states` is `None`, this is equivalent to using JointAttnProcessor2_0.
+
+        Args:
+            attn (`Attention`):
+                Attention instance.
+            hidden_states (`torch.FloatTensor`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.FloatTensor`, *optional*):
+                The encoder hidden states.
+            attention_mask (`torch.FloatTensor`, *optional*):
+                Attention mask.
+            ip_hidden_states (`torch.FloatTensor`, *optional*):
+                Image embeddings.
+            temb (`torch.FloatTensor`, *optional*):
+                Timestep embeddings.
+
+        Returns:
+            `torch.FloatTensor`: Output hidden states.
+        """
+        residual = hidden_states
+
+        batch_size = hidden_states.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        img_query = query
+        img_key = key
+        img_value = value
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # `context` projections.
+        if encoder_hidden_states is not None:
+            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+            query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
+            key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
+            value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
+
+        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if encoder_hidden_states is not None:
+            # Split the attention outputs.
+            hidden_states, encoder_hidden_states = (
+                hidden_states[:, : residual.shape[1]],
+                hidden_states[:, residual.shape[1] :],
+            )
+            if not attn.context_pre_only:
+                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        # IP Adapter
+        if self.scale != 0 and ip_hidden_states is not None:
+            # Norm image features
+            norm_ip_hidden_states = self.norm_ip(ip_hidden_states, temb=temb)
+
+            # To k and v
+            ip_key = self.to_k_ip(norm_ip_hidden_states)
+            ip_value = self.to_v_ip(norm_ip_hidden_states)
+
+            # Reshape
+            ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+            # Norm
+            query = self.norm_q(img_query)
+            img_key = self.norm_k(img_key)
+            ip_key = self.norm_ip_k(ip_key)
+
+            # cat img
+            key = torch.cat([img_key, ip_key], dim=2)
+            value = torch.cat([img_value, ip_value], dim=2)
+
+            ip_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+            ip_hidden_states = ip_hidden_states.transpose(1, 2).view(batch_size, -1, attn.heads * head_dim)
+            ip_hidden_states = ip_hidden_states.to(query.dtype)
+
+            hidden_states = hidden_states + ip_hidden_states * self.scale
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if encoder_hidden_states is not None:
+            return hidden_states, encoder_hidden_states
+        else:
+            return hidden_states
+
+
 class PAGIdentitySelfAttnProcessor2_0:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
@@ -5725,6 +6039,7 @@ CROSS_ATTENTION_PROCESSORS = (
     SlicedAttnProcessor,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
+    FluxIPAdapterJointAttnProcessor2_0,
 )
 
 AttentionProcessor = Union[
@@ -5772,6 +6087,7 @@ AttentionProcessor = Union[
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
     IPAdapterXFormersAttnProcessor,
+    SD3IPAdapterJointAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
     PAGCFGIdentitySelfAttnProcessor2_0,
     LoRAAttnProcessor,
