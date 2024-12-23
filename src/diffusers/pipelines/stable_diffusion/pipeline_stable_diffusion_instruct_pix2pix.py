@@ -25,11 +25,12 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import PIL_INTERPOLATION, deprecate, logging, is_torch_xla_available
+from ...utils import PIL_INTERPOLATION, deprecate, is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -463,7 +464,7 @@ class StableDiffusionInstructPix2PixPipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
-                        
+
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
