@@ -577,20 +577,25 @@ class SlowTorchAoTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_dummy_components(self, quantization_config: TorchAoConfig):
+        # This is just for convenience, so that we can modify it at one place for custom environments and locally testing
+        cache_dir = None
         model_id = "black-forest-labs/FLUX.1-dev"
         transformer = FluxTransformer2DModel.from_pretrained(
             model_id,
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            cache_dir=cache_dir,
         )
-        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16)
+        text_encoder = CLIPTextModel.from_pretrained(
+            model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16, cache_dir=cache_dir
+        )
         text_encoder_2 = T5EncoderModel.from_pretrained(
-            model_id, subfolder="text_encoder_2", torch_dtype=torch.bfloat16
+            model_id, subfolder="text_encoder_2", torch_dtype=torch.bfloat16, cache_dir=cache_dir
         )
-        tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
-        tokenizer_2 = AutoTokenizer.from_pretrained(model_id, subfolder="tokenizer_2")
-        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.bfloat16)
+        tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer", cache_dir=cache_dir)
+        tokenizer_2 = AutoTokenizer.from_pretrained(model_id, subfolder="tokenizer_2", cache_dir=cache_dir)
+        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.bfloat16, cache_dir=cache_dir)
         scheduler = FlowMatchEulerDiscreteScheduler()
 
         return {
@@ -624,9 +629,9 @@ class SlowTorchAoTests(unittest.TestCase):
         components = self.get_dummy_components(quantization_config)
         pipe = FluxPipeline(**components)
         pipe.enable_model_cpu_offload()
-        
+
         weight = pipe.transformer.transformer_blocks[0].ff.net[2].weight
-        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
+        self.assertTrue(isinstance(weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)))
 
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0].flatten()
@@ -643,7 +648,7 @@ class SlowTorchAoTests(unittest.TestCase):
         if TorchAoConfig._is_cuda_capability_atleast_8_9():
             QUANTIZATION_TYPES_TO_TEST.extend([
                 ("float8wo_e4m3", np.array([0.0546, 0.0722, 0.1328, 0.0468, 0.0585, 0.1367, 0.0605, 0.0703, 0.1328, 0.0625, 0.0703, 0.1445, 0.0585, 0.0703, 0.1406, 0.0605, 0.3496, 0.7109, 0.4843, 0.4042, 0.7226, 0.5000, 0.4160, 0.7031, 0.4824, 0.3886, 0.6757, 0.4667, 0.3710, 0.6679, 0.4902, 0.4238])),
-                ("fp5_e3m1", np.array([0.0527, 0.0742, 0.1289, 0.0449, 0.0625, 0.1308, 0.0585, 0.0742, 0.1269, 0.0585, 0.0722, 0.1328, 0.0566, 0.0742, 0.1347, 0.0585, 0.3691, 0.7578, 0.5429, 0.4355, 0.7695, 0.5546, 0.4414, 0.7578, 0.5468, 0.4179, 0.7265, 0.5273, 0.3945, 0.6992, 0.5234, 0.4316])),
+                ("fp5_e3m1", np.array([0.0527, 0.0762, 0.1309, 0.0449, 0.0645, 0.1328, 0.0566, 0.0723, 0.125, 0.0566, 0.0703, 0.1328, 0.0566, 0.0742, 0.1348, 0.0566, 0.3633, 0.7617, 0.5273, 0.4277, 0.7891, 0.5469, 0.4375, 0.8008, 0.5586, 0.4336, 0.7383, 0.5156, 0.3906, 0.6992, 0.5156, 0.4375])),
             ])
         # fmt: on
 
@@ -667,29 +672,35 @@ class SlowTorchAoTests(unittest.TestCase):
         output = pipe(**inputs)[0].flatten()
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pipe.save_pretrained(tmp_dir, safe_serialization=False)
-            del pipe
+            pipe.transformer.save_pretrained(tmp_dir, safe_serialization=False)
+            pipe.remove_all_hooks()
+            del pipe.transformer
             gc.collect()
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
-            loaded_pipe = FluxPipeline.from_pretrained(tmp_dir, use_safetensors=False)
-            loaded_pipe.enable_model_cpu_offload()
+            transformer = FluxTransformer2DModel.from_pretrained(
+                tmp_dir, torch_dtype=torch.bfloat16, use_safetensors=False
+            )
+            pipe.transformer = transformer
+            pipe.enable_model_cpu_offload()
 
-        weight = loaded_pipe.transformer.x_embedder.weight
+        weight = transformer.x_embedder.weight
         self.assertTrue(isinstance(weight, AffineQuantizedTensor))
 
-        loaded_output = loaded_pipe(**inputs)[0].flatten()
+        loaded_output = pipe(**inputs)[0].flatten()
         self.assertTrue(np.allclose(output, loaded_output, atol=1e-3, rtol=1e-3))
 
     def test_memory_footprint_int4wo(self):
         # The original checkpoints are in bf16 and about 24 GB
         expected_memory_in_gb = 6.0
         quantization_config = TorchAoConfig("int4wo")
+        cache_dir = None
         transformer = FluxTransformer2DModel.from_pretrained(
             "black-forest-labs/FLUX.1-dev",
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            cache_dir=cache_dir,
         )
         int4wo_memory_in_gb = get_model_size_in_bytes(transformer) / 1024**3
         self.assertTrue(int4wo_memory_in_gb < expected_memory_in_gb)
@@ -698,11 +709,13 @@ class SlowTorchAoTests(unittest.TestCase):
         # The original checkpoints are in bf16 and about 24 GB
         expected_memory_in_gb = 12.0
         quantization_config = TorchAoConfig("int8wo")
+        cache_dir = None
         transformer = FluxTransformer2DModel.from_pretrained(
             "black-forest-labs/FLUX.1-dev",
             subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
+            cache_dir=cache_dir,
         )
         int8wo_memory_in_gb = get_model_size_in_bytes(transformer) / 1024**3
         self.assertTrue(int8wo_memory_in_gb < expected_memory_in_gb)
