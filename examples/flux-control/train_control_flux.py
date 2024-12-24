@@ -1166,6 +1166,11 @@ def main(args):
             flux_transformer.to(torch.float32)
         flux_transformer.save_pretrained(args.output_dir)
 
+        del flux_transformer
+        del text_encoding_pipeline
+        del vae
+        free_memory()
+
         # Run a final round of validation.
         image_logs = None
         if args.validation_prompt is not None:

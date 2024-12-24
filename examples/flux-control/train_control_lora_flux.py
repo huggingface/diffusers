@@ -1319,6 +1319,11 @@ def main(args):
             transformer_lora_layers=transformer_lora_layers,
         )
 
+        del flux_transformer
+        del text_encoding_pipeline
+        del vae
+        free_memory()
+
         # Run a final round of validation.
         image_logs = None
         if args.validation_prompt is not None:
