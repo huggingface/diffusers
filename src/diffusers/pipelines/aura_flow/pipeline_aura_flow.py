@@ -25,6 +25,7 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
+
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
 
