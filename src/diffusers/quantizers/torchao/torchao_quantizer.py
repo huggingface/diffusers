@@ -33,23 +33,29 @@ if TYPE_CHECKING:
 
 if is_torch_available():
     import torch
-    import torch.nn as nn
 
-    SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
-        # At the moment, only int8 is supported for integer quantization dtypes.
-        # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
-        # to support more quantization methods, such as intx_weight_only.
-        torch.int8,
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-        torch.uint1,
-        torch.uint2,
-        torch.uint3,
-        torch.uint4,
-        torch.uint5,
-        torch.uint6,
-        torch.uint7,
-    )
+    if version.parse(torch.__version__) >= version.parse('2.6'):
+        SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
+            # At the moment, only int8 is supported for integer quantization dtypes.
+            # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
+            # to support more quantization methods, such as intx_weight_only.
+            torch.int8,
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+            torch.uint1,
+            torch.uint2,
+            torch.uint3,
+            torch.uint4,
+            torch.uint5,
+            torch.uint6,
+            torch.uint7,
+        )
+    else:
+        SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
+            torch.int8,
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
 
 if is_torchao_available():
     from torchao.quantization import quantize_
