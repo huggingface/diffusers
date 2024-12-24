@@ -830,7 +830,7 @@ def main(args):
         flux_transformer.x_embedder = new_linear
 
     assert torch.all(flux_transformer.x_embedder.weight[:, initial_input_channels:].data == 0)
-    flux_transformer.register_to_config(in_channels=initial_input_channels * 2)
+    flux_transformer.register_to_config(in_channels=initial_input_channels * 2, out_channels=initial_input_channels)
 
     if args.train_norm_layers:
         for name, param in flux_transformer.named_parameters():
