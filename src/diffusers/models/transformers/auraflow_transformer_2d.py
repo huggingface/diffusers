@@ -187,7 +187,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
         * No bias in the attention blocks
         * Most LayerNorms are in FP32
 
-    Parameters:
+    Args:
         dim (`int`): The number of channels in the input and output.
         num_attention_heads (`int`): The number of heads to use for multi-head attention.
         attention_head_dim (`int`): The number of channels in each head.
@@ -257,21 +257,21 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
     r"""
     A 2D Transformer model as introduced in AuraFlow (https://blog.fal.ai/auraflow/).
 
-    Parameters:
+    Args:
         sample_size (`int`): The width of the latent images. This is fixed during training since
             it is used to learn a number of position embeddings.
         patch_size (`int`): Patch size to turn the input data into small patches.
-        in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
-        num_mmdit_layers (`int`, *optional*, defaults to 4): The number of layers of MMDiT Transformer blocks to use.
-        num_single_dit_layers (`int`, *optional*, defaults to 4):
+        in_channels (`int`, *optional*, defaults to `16`): The number of channels in the input.
+        num_mmdit_layers (`int`, *optional*, defaults to `4`): The number of layers of MMDiT Transformer blocks to use.
+        num_single_dit_layers (`int`, *optional*, defaults to `4`):
             The number of layers of Transformer blocks to use. These blocks use concatenated image and text
             representations.
-        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
-        num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*, defaults to `64`): The number of channels in each head.
+        num_attention_heads (`int`, *optional*, defaults to `18`): The number of heads to use for multi-head attention.
         joint_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
         caption_projection_dim (`int`): Number of dimensions to use when projecting the `encoder_hidden_states`.
-        out_channels (`int`, defaults to 16): Number of output channels.
-        pos_embed_max_size (`int`, defaults to 4096): Maximum positions to embed from the image latents.
+        out_channels (`int`, defaults to `16`): Number of output channels.
+        pos_embed_max_size (`int`, defaults to `4096`): Maximum positions to embed from the image latents.
     """
 
     _no_split_modules = ["AuraFlowJointTransformerBlock", "AuraFlowSingleTransformerBlock", "AuraFlowPatchEmbed"]
@@ -347,8 +347,9 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
+            [`dict[`attention processors`]`]
+                A dictionary containing all attention processors used in the model with
+                indexed by its weight name.
         """
         # set recursively
         processors = {}
@@ -372,13 +373,13 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         r"""
         Sets the attention processor to use to compute attention.
 
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+        Args:
+            processor (`AttentionProcessor` or `Dict[str, AttentionProcessor]`]):
+                The instantiated processor class or a dictionary of processor classes to be set as the processor
                 for **all** `Attention` layers.
 
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
+                If `processor` is a dict, the key needs to define the path to the corresponding cross-attention processor. 
+                This is strongly recommended when setting trainable attention processors.
 
         """
         count = len(self.attn_processors.keys())
@@ -405,8 +406,10 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections with FusedAttnProcessor2_0->FusedAuraFlowAttnProcessor2_0
     def fuse_qkv_projections(self):
         """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
-        are fused. For cross-attention modules, key and value projection matrices are fused.
+        Enables fused QKV projections. 
+
+        For self-attention modules, all projection matrices (i.e., query, key, value) are fused. 
+        For cross-attention modules, only key and value projection matrices are fused.
 
         <Tip warning={true}>
 
