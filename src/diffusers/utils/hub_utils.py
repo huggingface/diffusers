@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
+    DDUFEntry,
     ModelCard,
     ModelCardData,
     create_repo,
@@ -291,9 +292,26 @@ def _get_model_file(
     user_agent: Optional[Union[Dict, str]] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-    if os.path.isfile(pretrained_model_name_or_path):
+
+    if dduf_entries:
+        if subfolder is not None:
+            raise ValueError(
+                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
+                "Please check the DDUF structure"
+            )
+        model_file = (
+            weights_name
+            if pretrained_model_name_or_path == ""
+            else "/".join([pretrained_model_name_or_path, weights_name])
+        )
+        if model_file in dduf_entries:
+            return model_file
+        else:
+            raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
+    elif os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
