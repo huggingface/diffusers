@@ -92,7 +92,7 @@ export_to_video(video.frames[0], "output.mp4", fps=8)
   </tr>
 </table>
 
-## Citation
+## Resources
 
 通过以下资源了解有关 ConsisID 的更多信息：
 
