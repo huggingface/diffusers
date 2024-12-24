@@ -22,12 +22,14 @@ import traceback
 import unittest
 import unittest.mock as mock
 import uuid
-from typing import Dict, List, Tuple
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import requests_mock
 import torch
-from accelerate.utils import compute_module_sizes
+import torch.nn as nn
+from accelerate.utils.modeling import _get_proper_dtype, dtype_byte_size
 from huggingface_hub import ModelCard, delete_repo, snapshot_download
 from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
@@ -111,6 +113,72 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
     results = {"error": error}
     out_queue.put(results, timeout=timeout)
     out_queue.join()
+
+
+def named_persistent_module_tensors(
+    module: nn.Module,
+    recurse: bool = False,
+):
+    """
+    A helper function that gathers all the tensors (parameters + persistent buffers) of a given module.
+
+    Args:
+        module (`torch.nn.Module`):
+            The module we want the tensors on.
+        recurse (`bool`, *optional`, defaults to `False`):
+            Whether or not to go look in every submodule or just return the direct parameters and buffers.
+    """
+    yield from module.named_parameters(recurse=recurse)
+
+    for named_buffer in module.named_buffers(recurse=recurse):
+        name, _ = named_buffer
+        # Get parent by splitting on dots and traversing the model
+        parent = module
+        if "." in name:
+            parent_name = name.rsplit(".", 1)[0]
+            for part in parent_name.split("."):
+                parent = getattr(parent, part)
+            name = name.split(".")[-1]
+        if name not in parent._non_persistent_buffers_set:
+            yield named_buffer
+
+
+def compute_module_persistent_sizes(
+    model: nn.Module,
+    dtype: Optional[Union[str, torch.device]] = None,
+    special_dtypes: Optional[Dict[str, Union[str, torch.device]]] = None,
+):
+    """
+    Compute the size of each submodule of a given model (parameters + persistent buffers).
+    """
+    if dtype is not None:
+        dtype = _get_proper_dtype(dtype)
+        dtype_size = dtype_byte_size(dtype)
+    if special_dtypes is not None:
+        special_dtypes = {key: _get_proper_dtype(dtyp) for key, dtyp in special_dtypes.items()}
+        special_dtypes_size = {key: dtype_byte_size(dtyp) for key, dtyp in special_dtypes.items()}
+    module_sizes = defaultdict(int)
+
+    module_list = []
+
+    module_list = named_persistent_module_tensors(model, recurse=True)
+
+    for name, tensor in module_list:
+        if special_dtypes is not None and name in special_dtypes:
+            size = tensor.numel() * special_dtypes_size[name]
+        elif dtype is None:
+            size = tensor.numel() * dtype_byte_size(tensor.dtype)
+        elif str(tensor.dtype).startswith(("torch.uint", "torch.int", "torch.bool")):
+            # According to the code in set_module_tensor_to_device, these types won't be converted
+            # so use their original size here
+            size = tensor.numel() * dtype_byte_size(tensor.dtype)
+        else:
+            size = tensor.numel() * min(dtype_size, dtype_byte_size(tensor.dtype))
+        name_parts = name.split(".")
+        for idx in range(len(name_parts) + 1):
+            module_sizes[".".join(name_parts[:idx])] += size
+
+    return module_sizes
 
 
 class ModelUtilsTest(unittest.TestCase):
@@ -803,7 +871,7 @@ class ModelTesterMixin:
         self.assertFalse(model.is_gradient_checkpointing)
 
     @require_torch_accelerator_with_training
-    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5):
+    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip: set[str] = {}):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
 
@@ -849,6 +917,8 @@ class ModelTesterMixin:
 
         for name, param in named_params.items():
             if "post_quant_conv" in name:
+                continue
+            if name in skip:
                 continue
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=param_grad_tol))
 
@@ -1010,7 +1080,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1040,7 +1110,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
 
@@ -1074,7 +1144,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
@@ -1102,7 +1172,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1130,7 +1200,7 @@ class ModelTesterMixin:
 
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
@@ -1162,7 +1232,7 @@ class ModelTesterMixin:
 
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         variant = "fp16"
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1202,7 +1272,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
@@ -1231,7 +1301,7 @@ class ModelTesterMixin:
             config, _ = self.prepare_init_args_and_inputs_for_common()
             model = self.model_class(**config).eval()
 
-            model_size = compute_module_sizes(model)[""]
+            model_size = compute_module_persistent_sizes(model)[""]
             max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
             variant = "fp16"
             with tempfile.TemporaryDirectory() as tmp_dir:

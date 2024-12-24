@@ -28,10 +28,12 @@ from .single_file_utils import (
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_flux_transformer_checkpoint_to_diffusers,
+    convert_hunyuan_video_transformer_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
+    convert_mochi_transformer_checkpoint_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
@@ -96,6 +98,14 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "default_subfolder": "vae",
     },
     "AutoencoderDC": {"checkpoint_mapping_fn": convert_autoencoder_dc_checkpoint_to_diffusers},
+    "MochiTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_mochi_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "HunyuanVideoTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_hunyuan_video_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
 }
 
 
@@ -215,6 +225,7 @@ class FromOriginalModelMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
+        config_revision = kwargs.pop("config_revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         quantization_config = kwargs.pop("quantization_config", None)
         device = kwargs.pop("device", None)
@@ -292,7 +303,7 @@ class FromOriginalModelMixin:
                 subfolder=subfolder,
                 local_files_only=local_files_only,
                 token=token,
-                revision=revision,
+                revision=config_revision,
             )
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
