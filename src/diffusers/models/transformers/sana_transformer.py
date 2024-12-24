@@ -82,6 +82,20 @@ class GLUMBConv(nn.Module):
         return hidden_states
 
 
+class SanaModulatedNorm(nn.Module):
+    def __init__(self, dim: int, elementwise_affine: bool = False, eps: float = 1e-6):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim, elementwise_affine=elementwise_affine, eps=eps)
+    
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, scale_shift_table: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.norm(hidden_states)
+        shift, scale = (
+            scale_shift_table[None] + temb[:, None].to(scale_shift_table.device)
+        ).chunk(2, dim=1)
+        hidden_states = hidden_states * (1 + scale) + shift
+        return hidden_states
+
+
 class SanaTransformerBlock(nn.Module):
     r"""
     Transformer block introduced in [Sana](https://huggingface.co/papers/2410.10629).
@@ -288,8 +302,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         # 4. Output blocks
         self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
-
-        self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
+        self.norm_out = SanaModulatedNorm(inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
@@ -462,13 +475,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
 
         # 3. Normalization
-        shift, scale = (
-            self.scale_shift_table[None] + embedded_timestep[:, None].to(self.scale_shift_table.device)
-        ).chunk(2, dim=1)
-        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.norm_out(hidden_states, embedded_timestep, self.scale_shift_table)
 
-        # 4. Modulation
-        hidden_states = hidden_states * (1 + scale) + shift
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
