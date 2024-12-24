@@ -418,7 +418,7 @@ class TorchAoTest(unittest.TestCase):
             quantization_config = TorchAoConfig("int8_weight_only")
             components = self.get_dummy_components(quantization_config, model_id=model_id)
             pipe = FluxPipeline(**components)
-            pipe.to(device=torch_device, dtype=torch.bfloat16)
+            pipe.to(device=torch_device)
 
             inputs = self.get_dummy_inputs(torch_device)
             normal_output = pipe(**inputs)[0].flatten()[-32:]
