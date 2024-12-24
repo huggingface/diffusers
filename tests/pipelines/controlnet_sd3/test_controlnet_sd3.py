@@ -150,6 +150,8 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             "transformer": transformer,
             "vae": vae,
             "controlnet": controlnet,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
