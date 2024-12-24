@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Pipeline callbacks
 
-The denoising loop of a pipeline can be modified with custom defined functions using the `callback_on_step_end` parameter. The callback function is executed at the end of each step, and modifies the pipeline attributes and variables for the next step. This is really useful for *dynamically* adjusting certain pipeline attributes or modifying tensor variables. This versatility allows for interesting use-cases such as changing the prompt embeddings at each timestep, assigning different weights to the prompt embeddings, and editing the guidance scale. With callbacks, you can implement new features without modifying the underlying code!
+The denoising loop of a pipeline can be modified with custom defined functions using the `callback_on_step_end` parameter. The callback function is executed at the end of each step, and modifies the pipeline attributes and variables for the next step. This is really useful for *dynamically* adjusting certain pipeline attributes or modifying tensor variables. This versatility allows for interesting use cases such as changing the prompt embeddings at each timestep, assigning different weights to the prompt embeddings, and editing the guidance scale. With callbacks, you can implement new features without modifying the underlying code!
 
 > [!TIP]
 > 🤗 Diffusers currently only supports `callback_on_step_end`, but feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you have a cool use-case and require a callback function with a different execution point!
@@ -75,7 +75,7 @@ out.images[0].save("official_callback.png")
     <figcaption class="mt-2 text-center text-sm text-gray-500">without SDXLCFGCutoffCallback</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/with_cfg_callback.png" alt="generated image of a a sports car at the road with cfg callback" />
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/with_cfg_callback.png" alt="generated image of a sports car at the road with cfg callback" />
     <figcaption class="mt-2 text-center text-sm text-gray-500">with SDXLCFGCutoffCallback</figcaption>
   </div>
 </div>
@@ -109,7 +109,7 @@ Now, you can pass the callback function to the `callback_on_step_end` parameter 
 import torch
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
 pipeline = pipeline.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -139,7 +139,7 @@ In this example, the diffusion process is stopped after 10 steps even though `nu
 ```python
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 pipeline.enable_model_cpu_offload()
 num_inference_steps = 50
 
@@ -171,14 +171,13 @@ def latents_to_rgb(latents):
     weights = (
         (60, -60, 25, -70),
         (60,  -5, 15, -50),
-        (60,  10, -5, -35)
+        (60,  10, -5, -35),
     )
 
     weights_tensor = torch.t(torch.tensor(weights, dtype=latents.dtype).to(latents.device))
     biases_tensor = torch.tensor((150, 140, 130), dtype=latents.dtype).to(latents.device)
     rgb_tensor = torch.einsum("...lxy,lr -> ...rxy", latents, weights_tensor) + biases_tensor.unsqueeze(-1).unsqueeze(-1)
-    image_array = rgb_tensor.clamp(0, 255)[0].byte().cpu().numpy()
-    image_array = image_array.transpose(1, 2, 0)
+    image_array = rgb_tensor.clamp(0, 255).byte().cpu().numpy().transpose(1, 2, 0)
 
     return Image.fromarray(image_array)
 ```
@@ -189,7 +188,7 @@ def latents_to_rgb(latents):
 def decode_tensors(pipe, step, timestep, callback_kwargs):
     latents = callback_kwargs["latents"]
 
-    image = latents_to_rgb(latents)
+    image = latents_to_rgb(latents[0])
     image.save(f"{step}.png")
 
     return callback_kwargs

@@ -178,6 +178,46 @@ class StableDiffusionLatentUpscalePipelineFastTests(
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    def test_stable_diffusion_latent_upscaler_negative_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionLatentUpscalePipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        negative_prompt = "french fries"
+        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array(
+            [0.43865365, 0.404124, 0.42618454, 0.44333526, 0.40564927, 0.43818694, 0.4411913, 0.43404633, 0.46392226]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_latent_upscaler_multiple_init_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionLatentUpscalePipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * 2
+        inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
+        image = sd_pipe(**inputs).images
+        image_slice = image[-1, -3:, -3:, -1]
+
+        assert image.shape == (2, 256, 256, 3)
+        expected_slice = np.array(
+            [0.38730142, 0.35695046, 0.40646142, 0.40967226, 0.3981609, 0.4195988, 0.4248805, 0.430259, 0.45694894]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=7e-3)
 

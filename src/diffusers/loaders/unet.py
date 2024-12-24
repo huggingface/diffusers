@@ -37,6 +37,7 @@ from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     convert_unet_state_dict_to_peft,
+    deprecate,
     get_adapter_name,
     get_peft_kwargs,
     is_accelerate_available,
@@ -116,6 +117,9 @@ class UNet2DConditionLoadersMixin:
                 `default_{i}` where i is the total number of adapters being loaded.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
 
         Example:
 
@@ -143,7 +147,13 @@ class UNet2DConditionLoadersMixin:
         adapter_name = kwargs.pop("adapter_name", None)
         _pipeline = kwargs.pop("_pipeline", None)
         network_alphas = kwargs.pop("network_alphas", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
         allow_pickle = False
+
+        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         if use_safetensors is None:
             use_safetensors = True
@@ -201,6 +211,10 @@ class UNet2DConditionLoadersMixin:
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
+        if is_lora:
+            deprecation_message = "Using the `load_attn_procs()` method has been deprecated and will be removed in a future version. Please use `load_lora_adapter()`."
+            deprecate("load_attn_procs", "0.40.0", deprecation_message)
+
         if is_custom_diffusion:
             attn_processors = self._process_custom_diffusion(state_dict=state_dict)
         elif is_lora:
@@ -210,6 +224,7 @@ class UNet2DConditionLoadersMixin:
                 network_alphas=network_alphas,
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
         else:
             raise ValueError(
@@ -269,7 +284,9 @@ class UNet2DConditionLoadersMixin:
 
         return attn_processors
 
-    def _process_lora(self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline):
+    def _process_lora(
+        self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline, low_cpu_mem_usage
+    ):
         # This method does the following things:
         # 1. Filters the `state_dict` with keys matching  `unet_identifier_key` when using the non-legacy
         #    format. For legacy format no filtering is applied.
@@ -336,18 +353,37 @@ class UNet2DConditionLoadersMixin:
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name)
+            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
+            warn_msg = ""
             if incompatible_keys is not None:
-                # check only for unexpected keys
+                # Check only for unexpected keys.
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
                 if unexpected_keys:
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                        f" {unexpected_keys}. "
-                    )
+                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
+                    if lora_unexpected_keys:
+                        warn_msg = (
+                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}. "
+                        )
+
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
+                    if lora_missing_keys:
+                        warn_msg += (
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}."
+                        )
+
+            if warn_msg:
+                logger.warning(warn_msg)
 
         return is_model_cpu_offload, is_sequential_cpu_offload
 
@@ -457,6 +493,9 @@ class UNet2DConditionLoadersMixin:
                     )
                 state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
         else:
+            deprecation_message = "Using the `save_attn_procs()` method has been deprecated and will be removed in a future version. Please use `save_lora_adapter()`."
+            deprecate("save_attn_procs", "0.40.0", deprecation_message)
+
             if not USE_PEFT_BACKEND:
                 raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
 
@@ -749,6 +788,7 @@ class UNet2DConditionLoadersMixin:
         from ..models.attention_processor import (
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
+            IPAdapterXFormersAttnProcessor,
         )
 
         if low_cpu_mem_usage:
@@ -788,11 +828,15 @@ class UNet2DConditionLoadersMixin:
             if cross_attention_dim is None or "motion_modules" in name:
                 attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
-
             else:
-                attn_processor_class = (
-                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
-                )
+                if "XFormers" in str(self.attn_processors[name].__class__):
+                    attn_processor_class = IPAdapterXFormersAttnProcessor
+                else:
+                    attn_processor_class = (
+                        IPAdapterAttnProcessor2_0
+                        if hasattr(F, "scaled_dot_product_attention")
+                        else IPAdapterAttnProcessor
+                    )
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
                     if state_dict["image_proj"] is None:

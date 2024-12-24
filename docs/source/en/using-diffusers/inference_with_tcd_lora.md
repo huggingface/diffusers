@@ -35,7 +35,7 @@ This guide will show you how to perform inference with TCD-LoRAs for a variety o
 
 | Base model                                                                                      | TCD-LoRA checkpoint                                            |
 |-------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
-| [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)                  | [TCD-SD15](https://huggingface.co/h1t/TCD-SD15-LoRA)           |
+| [stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)                  | [TCD-SD15](https://huggingface.co/h1t/TCD-SD15-LoRA)           |
 | [stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base)       | [TCD-SD21-base](https://huggingface.co/h1t/TCD-SD21-base-LoRA) |
 | [stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) | [TCD-SDXL](https://huggingface.co/h1t/TCD-SDXL-LoRA)           |
 
@@ -212,14 +212,14 @@ TCD-LoRA is very versatile, and it can be combined with other adapter types like
 import torch
 import numpy as np
 from PIL import Image
-from transformers import DPTFeatureExtractor, DPTForDepthEstimation
+from transformers import DPTImageProcessor, DPTForDepthEstimation
 from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
 from diffusers.utils import load_image, make_image_grid
 from scheduling_tcd import TCDScheduler
 
 device = "cuda"
 depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to(device)
-feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")
+feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
 
 def get_depth_map(image):
     image = feature_extractor(images=image, return_tensors="pt").pixel_values.to(device)

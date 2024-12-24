@@ -11,20 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...models.attention import JointTransformerBlock
-from ...models.attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, SD3Transformer2DLoadersMixin
+from ...models.attention import FeedForward, JointTransformerBlock
+from ...models.attention_processor import (
+    Attention,
+    AttentionProcessor,
+    FusedJointAttnProcessor2_0,
+    JointAttnProcessor2_0,
+)
 from ...models.modeling_utils import ModelMixin
-from ...models.normalization import AdaLayerNormContinuous
+from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 
@@ -32,7 +37,75 @@ from ..modeling_outputs import Transformer2DModelOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+@maybe_allow_in_graph
+class SD3SingleTransformerBlock(nn.Module):
+    r"""
+    A Single Transformer block as part of the MMDiT architecture, used in Stable Diffusion 3 ControlNet.
+
+    Reference: https://arxiv.org/abs/2403.03206
+
+    Parameters:
+        dim (`int`): The number of channels in the input and output.
+        num_attention_heads (`int`): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`): The number of channels in each head.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+    ):
+        super().__init__()
+
+        self.norm1 = AdaLayerNormZero(dim)
+
+        if hasattr(F, "scaled_dot_product_attention"):
+            processor = JointAttnProcessor2_0()
+        else:
+            raise ValueError(
+                "The current PyTorch version does not support the `scaled_dot_product_attention` function."
+            )
+
+        self.attn = Attention(
+            query_dim=dim,
+            dim_head=attention_head_dim,
+            heads=num_attention_heads,
+            out_dim=dim,
+            bias=True,
+            processor=processor,
+            eps=1e-6,
+        )
+
+        self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+        self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
+
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor):
+        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        # Attention.
+        attn_output = self.attn(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=None,
+        )
+
+        # Process attention outputs for the `hidden_states`.
+        attn_output = gate_msa.unsqueeze(1) * attn_output
+        hidden_states = hidden_states + attn_output
+
+        norm_hidden_states = self.norm2(hidden_states)
+        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+
+        ff_output = self.ff(norm_hidden_states)
+        ff_output = gate_mlp.unsqueeze(1) * ff_output
+
+        hidden_states = hidden_states + ff_output
+
+        return hidden_states
+
+
+class SD3Transformer2DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, SD3Transformer2DLoadersMixin
+):
     """
     The Transformer model introduced in Stable Diffusion 3.
 
@@ -69,6 +142,10 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         pooled_projection_dim: int = 2048,
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
+        dual_attention_layers: Tuple[
+            int, ...
+        ] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         default_out_channels = in_channels
@@ -97,6 +174,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
                     context_pre_only=i == num_layers - 1,
+                    qk_norm=qk_norm,
+                    use_dual_attention=True if i in dual_attention_layers else False,
                 )
                 for i in range(self.config.num_layers)
             ]
@@ -262,6 +341,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         block_controlnet_hidden_states: List = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
+        skip_layers: Optional[List[int]] = None,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
         The [`SD3Transformer2DModel`] forward method.
@@ -271,11 +351,11 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 Input `hidden_states`.
             encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
-                from the embeddings of input conditions.
-            timestep ( `torch.LongTensor`):
+            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`):
+                Embeddings projected from the embeddings of input conditions.
+            timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
+            block_controlnet_hidden_states (`list` of `torch.Tensor`):
                 A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
@@ -284,6 +364,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+            skip_layers (`list` of `int`, *optional*):
+                A list of layer indices to skip during the forward pass.
 
         Returns:
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
@@ -310,8 +392,17 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         temb = self.time_text_embed(timestep, pooled_projections)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
+        if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
+            ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
+            ip_hidden_states, ip_temb = self.image_proj(ip_adapter_image_embeds, timestep)
+
+            joint_attention_kwargs.update(ip_hidden_states=ip_hidden_states, temb=ip_temb)
+
         for index_block, block in enumerate(self.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+            # Skip specified layers
+            is_skip = True if skip_layers is not None and index_block in skip_layers else False
+
+            if torch.is_grad_enabled() and self.gradient_checkpointing and not is_skip:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -328,18 +419,21 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     hidden_states,
                     encoder_hidden_states,
                     temb,
+                    joint_attention_kwargs,
                     **ckpt_kwargs,
                 )
-
-            else:
+            elif not is_skip:
                 encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=temb,
+                    joint_attention_kwargs=joint_attention_kwargs,
                 )
 
             # controlnet residual
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
-                interval_control = len(self.transformer_blocks) // len(block_controlnet_hidden_states)
-                hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
+                interval_control = len(self.transformer_blocks) / len(block_controlnet_hidden_states)
+                hidden_states = hidden_states + block_controlnet_hidden_states[int(index_block / interval_control)]
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)

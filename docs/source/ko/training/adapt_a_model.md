@@ -18,12 +18,12 @@ specific language governing permissions and limitations under the License.
 
 ## UNet2DConditionModel 파라미터 구성
 
-[`UNet2DConditionModel`]은 [input sample](https://huggingface.co/docs/diffusers/v0.16.0/en/api/models#diffusers.UNet2DConditionModel.in_channels)에서 4개의 채널을 기본적으로 허용합니다. 예를 들어,  [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)와 같은 사전학습된 text-to-image 모델을 불러오고 `in_channels`의 수를 확인합니다:
+[`UNet2DConditionModel`]은 [input sample](https://huggingface.co/docs/diffusers/v0.16.0/en/api/models#diffusers.UNet2DConditionModel.in_channels)에서 4개의 채널을 기본적으로 허용합니다. 예를 들어,  [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)와 같은 사전학습된 text-to-image 모델을 불러오고 `in_channels`의 수를 확인합니다:
 
 ```py
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 pipeline.unet.config["in_channels"]
 4
 ```
@@ -45,7 +45,7 @@ pipeline.unet.config["in_channels"]
 ```py
 from diffusers import UNet2DConditionModel
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 unet = UNet2DConditionModel.from_pretrained(
     model_id, subfolder="unet", in_channels=9, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
 )

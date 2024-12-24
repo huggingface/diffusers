@@ -1078,7 +1078,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         )
 
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            if self.training and self.gradient_checkpointing:  # TODO
+            if torch.is_grad_enabled() and self.gradient_checkpointing:  # TODO
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1168,7 +1168,7 @@ class DownBlockSpatioTemporal(nn.Module):
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         output_states = ()
         for resnet in self.resnets:
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1281,7 +1281,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
 
         blocks = list(zip(self.resnets, self.attentions))
         for resnet, attn in blocks:
-            if self.training and self.gradient_checkpointing:  # TODO
+            if torch.is_grad_enabled() and self.gradient_checkpointing:  # TODO
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1375,6 +1375,7 @@ class UpBlockSpatioTemporal(nn.Module):
         res_hidden_states_tuple: Tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        upsample_size: Optional[int] = None,
     ) -> torch.Tensor:
         for resnet in self.resnets:
             # pop res hidden states
@@ -1383,7 +1384,7 @@ class UpBlockSpatioTemporal(nn.Module):
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1415,7 +1416,7 @@ class UpBlockSpatioTemporal(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
@@ -1485,6 +1486,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        upsample_size: Optional[int] = None,
     ) -> torch.Tensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -1493,7 +1495,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:  # TODO
+            if torch.is_grad_enabled() and self.gradient_checkpointing:  # TODO
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1533,6 +1535,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states

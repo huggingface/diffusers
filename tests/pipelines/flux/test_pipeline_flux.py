@@ -2,25 +2,34 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
+from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import (
+    FluxIPAdapterTesterMixin,
+    PipelineTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+)
 
 
-@unittest.skipIf(torch_device == "mps", "Flux has a float64 operation which is not supported in MPS.")
-class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
+
+    # there is no xformers processor for Flux
+    test_xformers_attention = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -83,6 +92,8 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_2": tokenizer_2,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
@@ -143,9 +154,64 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         max_diff = np.abs(output_with_prompt - output_with_embeds).max()
         assert max_diff < 1e-4
 
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        original_image_slice = image[0, -3:, -3:, -1]
+
+        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
+        # to the pipeline level.
+        pipe.transformer.fuse_qkv_projections()
+        assert check_qkv_fusion_processors_exist(
+            pipe.transformer
+        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_fused = image[0, -3:, -3:, -1]
+
+        pipe.transformer.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_disabled = image[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."
+
+    def test_flux_image_output_shape(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        height_width_pairs = [(32, 32), (72, 57)]
+        for height, width in height_width_pairs:
+            expected_height = height - height % (pipe.vae_scale_factor * 2)
+            expected_width = width - width % (pipe.vae_scale_factor * 2)
+
+            inputs.update({"height": height, "width": width})
+            image = pipe(**inputs).images[0]
+            output_height, output_width, _ = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width)
+
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class FluxPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
@@ -166,18 +232,28 @@ class FluxPipelineSlowTests(unittest.TestCase):
         else:
             generator = torch.Generator(device="cpu").manual_seed(seed)
 
+        prompt_embeds = torch.load(
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
+        )
+        pooled_prompt_embeds = torch.load(
+            hf_hub_download(
+                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+            )
+        )
         return {
-            "prompt": "A photo of a cat",
+            "prompt_embeds": prompt_embeds,
+            "pooled_prompt_embeds": pooled_prompt_embeds,
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
+            "guidance_scale": 0.0,
+            "max_sequence_length": 256,
             "output_type": "np",
             "generator": generator,
         }
 
-    # TODO: Dhruv. Move large model tests to a dedicated runner)
-    @unittest.skip("We cannot run inference on this model with the current CI hardware")
     def test_flux_inference(self):
-        pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
+        )
         pipe.enable_model_cpu_offload()
 
         inputs = self.get_inputs(torch_device)
@@ -186,16 +262,36 @@ class FluxPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, :10, :10]
         expected_slice = np.array(
             [
-                [0.36132812, 0.30004883, 0.25830078],
-                [0.36669922, 0.31103516, 0.23754883],
-                [0.34814453, 0.29248047, 0.23583984],
-                [0.35791016, 0.30981445, 0.23999023],
-                [0.36328125, 0.31274414, 0.2607422],
-                [0.37304688, 0.32177734, 0.26171875],
-                [0.3671875, 0.31933594, 0.25756836],
-                [0.36035156, 0.31103516, 0.2578125],
-                [0.3857422, 0.33789062, 0.27563477],
-                [0.3701172, 0.31982422, 0.265625],
+                0.3242,
+                0.3203,
+                0.3164,
+                0.3164,
+                0.3125,
+                0.3125,
+                0.3281,
+                0.3242,
+                0.3203,
+                0.3301,
+                0.3262,
+                0.3242,
+                0.3281,
+                0.3242,
+                0.3203,
+                0.3262,
+                0.3262,
+                0.3164,
+                0.3262,
+                0.3281,
+                0.3184,
+                0.3281,
+                0.3281,
+                0.3203,
+                0.3281,
+                0.3281,
+                0.3164,
+                0.3320,
+                0.3320,
+                0.3203,
             ],
             dtype=np.float32,
         )
@@ -203,3 +299,112 @@ class FluxPipelineSlowTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4
+
+
+@slow
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
+class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
+    pipeline_class = FluxPipeline
+    repo_id = "black-forest-labs/FLUX.1-dev"
+    image_encoder_pretrained_model_name_or_path = "openai/clip-vit-large-patch14"
+    weight_name = "ip_adapter.safetensors"
+    ip_adapter_repo_id = "XLabs-AI/flux-ip-adapter"
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        prompt_embeds = torch.load(
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
+        )
+        pooled_prompt_embeds = torch.load(
+            hf_hub_download(
+                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+            )
+        )
+        negative_prompt_embeds = torch.zeros_like(prompt_embeds)
+        negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
+        ip_adapter_image = np.zeros((1024, 1024, 3), dtype=np.uint8)
+        return {
+            "prompt_embeds": prompt_embeds,
+            "pooled_prompt_embeds": pooled_prompt_embeds,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_pooled_prompt_embeds": negative_pooled_prompt_embeds,
+            "ip_adapter_image": ip_adapter_image,
+            "num_inference_steps": 2,
+            "guidance_scale": 3.5,
+            "true_cfg_scale": 4.0,
+            "max_sequence_length": 256,
+            "output_type": "np",
+            "generator": generator,
+        }
+
+    def test_flux_ip_adapter_inference(self):
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
+        )
+        pipe.load_ip_adapter(
+            self.ip_adapter_repo_id,
+            weight_name=self.weight_name,
+            image_encoder_pretrained_model_name_or_path=self.image_encoder_pretrained_model_name_or_path,
+        )
+        pipe.set_ip_adapter_scale(1.0)
+        pipe.enable_model_cpu_offload()
+
+        inputs = self.get_inputs(torch_device)
+
+        image = pipe(**inputs).images[0]
+        image_slice = image[0, :10, :10]
+
+        expected_slice = np.array(
+            [
+                0.1855,
+                0.1680,
+                0.1406,
+                0.1953,
+                0.1699,
+                0.1465,
+                0.2012,
+                0.1738,
+                0.1484,
+                0.2051,
+                0.1797,
+                0.1523,
+                0.2012,
+                0.1719,
+                0.1445,
+                0.2070,
+                0.1777,
+                0.1465,
+                0.2090,
+                0.1836,
+                0.1484,
+                0.2129,
+                0.1875,
+                0.1523,
+                0.2090,
+                0.1816,
+                0.1484,
+                0.2110,
+                0.1836,
+                0.1543,
+            ],
+            dtype=np.float32,
+        )
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
+
+        assert max_diff < 1e-4, f"{image_slice} != {expected_slice}"

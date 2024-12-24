@@ -43,7 +43,7 @@ from PIL import Image
 from torch.utils.data import default_collate
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, DPTFeatureExtractor, DPTForDepthEstimation, PretrainedConfig
+from transformers import AutoTokenizer, DPTForDepthEstimation, DPTImageProcessor, PretrainedConfig
 from webdataset.tariterators import (
     base_plus_ext,
     tar_file_expander,
@@ -205,7 +205,7 @@ class Text2ImageDataset:
         pin_memory: bool = False,
         persistent_workers: bool = False,
         control_type: str = "canny",
-        feature_extractor: Optional[DPTFeatureExtractor] = None,
+        feature_extractor: Optional[DPTImageProcessor] = None,
     ):
         if not isinstance(train_shards_path_or_url, str):
             train_shards_path_or_url = [list(braceexpand(urls)) for urls in train_shards_path_or_url]
@@ -1011,7 +1011,7 @@ def main(args):
         controlnet = pre_controlnet
 
     if args.control_type == "depth":
-        feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")
+        feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
         depth_model = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas")
         depth_model.requires_grad_(False)
     else:

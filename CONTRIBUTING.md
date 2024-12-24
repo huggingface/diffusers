@@ -57,7 +57,7 @@ Any question or comment related to the Diffusers library can be asked on the [di
 - ...
 
 Every question that is asked on the forum or on Discord actively encourages the community to publicly
-share knowledge and might very well help a beginner in the future that has the same question you're
+share knowledge and might very well help a beginner in the future who has the same question you're
 having. Please do pose any questions you might have.
 In the same spirit, you are of immense help to the community by answering such questions because this way you are publicly documenting knowledge for everybody to learn from.
 

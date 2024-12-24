@@ -45,6 +45,15 @@ Many schedulers are implemented from the [k-diffusion](https://github.com/crowso
 | N/A                 | [`DEISMultistepScheduler`]          |                                                                                                               |
 | N/A                 | [`UniPCMultistepScheduler`]         |                                                                                                               |
 
+## Noise schedules and schedule types
+| A1111/k-diffusion        | 🤗 Diffusers                                                               |
+|--------------------------|----------------------------------------------------------------------------|
+| Karras                   | init with `use_karras_sigmas=True`                                         |
+| sgm_uniform              | init with `timestep_spacing="trailing"`                                    |
+| simple                   | init with `timestep_spacing="trailing"`                                    |
+| exponential              | init with `timestep_spacing="linspace"`, `use_exponential_sigmas=True`     |
+| beta                     | init with `timestep_spacing="linspace"`, `use_beta_sigmas=True`            |
+
 All schedulers are built from the base [`SchedulerMixin`] class which implements low level utilities shared by all schedulers.
 
 ## SchedulerMixin

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 import json
 import os
@@ -21,14 +22,17 @@ import traceback
 import unittest
 import unittest.mock as mock
 import uuid
-from typing import Dict, List, Tuple
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import requests_mock
 import torch
-from accelerate.utils import compute_module_sizes
-from huggingface_hub import ModelCard, delete_repo
+import torch.nn as nn
+from accelerate.utils.modeling import _get_proper_dtype, dtype_byte_size
+from huggingface_hub import ModelCard, delete_repo, snapshot_download
 from huggingface_hub.utils import is_jinja_available
+from parameterized import parameterized
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
@@ -39,7 +43,14 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.training_utils import EMAModel
-from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_torch_npu_available, is_xformers_available, logging
+from diffusers.utils import (
+    SAFE_WEIGHTS_INDEX_NAME,
+    WEIGHTS_INDEX_NAME,
+    is_peft_available,
+    is_torch_npu_available,
+    is_xformers_available,
+    logging,
+)
 from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -50,10 +61,15 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     require_torch_multi_gpu,
     run_test_in_subprocess,
+    torch_all_close,
     torch_device,
 )
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
+
+
+if is_peft_available():
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
 
 def caculate_expected_num_shards(index_map_path):
@@ -63,6 +79,16 @@ def caculate_expected_num_shards(index_map_path):
     weight_loc = weight_map_dict[first_key]  # e.g., diffusion_pytorch_model-00001-of-00002.safetensors
     expected_num_shards = int(weight_loc.split("-")[-1].split(".")[0])
     return expected_num_shards
+
+
+def check_if_lora_correctly_set(model) -> bool:
+    """
+    Checks if the LoRA layers are correctly set with peft
+    """
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            return True
+    return False
 
 
 # Will be run via run_test_in_subprocess
@@ -89,6 +115,72 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
     out_queue.join()
 
 
+def named_persistent_module_tensors(
+    module: nn.Module,
+    recurse: bool = False,
+):
+    """
+    A helper function that gathers all the tensors (parameters + persistent buffers) of a given module.
+
+    Args:
+        module (`torch.nn.Module`):
+            The module we want the tensors on.
+        recurse (`bool`, *optional`, defaults to `False`):
+            Whether or not to go look in every submodule or just return the direct parameters and buffers.
+    """
+    yield from module.named_parameters(recurse=recurse)
+
+    for named_buffer in module.named_buffers(recurse=recurse):
+        name, _ = named_buffer
+        # Get parent by splitting on dots and traversing the model
+        parent = module
+        if "." in name:
+            parent_name = name.rsplit(".", 1)[0]
+            for part in parent_name.split("."):
+                parent = getattr(parent, part)
+            name = name.split(".")[-1]
+        if name not in parent._non_persistent_buffers_set:
+            yield named_buffer
+
+
+def compute_module_persistent_sizes(
+    model: nn.Module,
+    dtype: Optional[Union[str, torch.device]] = None,
+    special_dtypes: Optional[Dict[str, Union[str, torch.device]]] = None,
+):
+    """
+    Compute the size of each submodule of a given model (parameters + persistent buffers).
+    """
+    if dtype is not None:
+        dtype = _get_proper_dtype(dtype)
+        dtype_size = dtype_byte_size(dtype)
+    if special_dtypes is not None:
+        special_dtypes = {key: _get_proper_dtype(dtyp) for key, dtyp in special_dtypes.items()}
+        special_dtypes_size = {key: dtype_byte_size(dtyp) for key, dtyp in special_dtypes.items()}
+    module_sizes = defaultdict(int)
+
+    module_list = []
+
+    module_list = named_persistent_module_tensors(model, recurse=True)
+
+    for name, tensor in module_list:
+        if special_dtypes is not None and name in special_dtypes:
+            size = tensor.numel() * special_dtypes_size[name]
+        elif dtype is None:
+            size = tensor.numel() * dtype_byte_size(tensor.dtype)
+        elif str(tensor.dtype).startswith(("torch.uint", "torch.int", "torch.bool")):
+            # According to the code in set_module_tensor_to_device, these types won't be converted
+            # so use their original size here
+            size = tensor.numel() * dtype_byte_size(tensor.dtype)
+        else:
+            size = tensor.numel() * min(dtype_size, dtype_byte_size(tensor.dtype))
+        name_parts = name.split(".")
+        for idx in range(len(name_parts) + 1):
+            module_sizes[".".join(name_parts[:idx])] += size
+
+    return module_sizes
+
+
 class ModelUtilsTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -99,6 +191,52 @@ class ModelUtilsTest(unittest.TestCase):
 
         # make sure that error message states what keys are missing
         assert "conv_out.bias" in str(error_context.exception)
+
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds", "unet", False),
+            ("hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds", "unet", True),
+            ("hf-internal-testing/tiny-sd-unet-with-sharded-ckpt", None, False),
+            ("hf-internal-testing/tiny-sd-unet-with-sharded-ckpt", None, True),
+        ]
+    )
+    def test_variant_sharded_ckpt_legacy_format_raises_warning(self, repo_id, subfolder, use_local):
+        def load_model(path):
+            kwargs = {"variant": "fp16"}
+            if subfolder:
+                kwargs["subfolder"] = subfolder
+            return UNet2DConditionModel.from_pretrained(path, **kwargs)
+
+        with self.assertWarns(FutureWarning) as warning:
+            if use_local:
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    tmpdirname = snapshot_download(repo_id=repo_id)
+                    _ = load_model(tmpdirname)
+            else:
+                _ = load_model(repo_id)
+
+        warning_message = str(warning.warnings[0].message)
+        self.assertIn("This serialization format is now deprecated to standardize the serialization", warning_message)
+
+    # Local tests are already covered down below.
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", None, "fp16"),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "unet", "fp16"),
+            ("hf-internal-testing/tiny-sd-unet-sharded-no-variants", None, None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-no-variants-subfolder", "unet", None),
+        ]
+    )
+    def test_variant_sharded_ckpt_loads_from_hub(self, repo_id, subfolder, variant=None):
+        def load_model():
+            kwargs = {}
+            if variant:
+                kwargs["variant"] = variant
+            if subfolder:
+                kwargs["subfolder"] = subfolder
+            return UNet2DConditionModel.from_pretrained(repo_id, **kwargs)
+
+        assert load_model()
 
     def test_cached_files_are_used_when_no_internet(self):
         # A mock response for an HTTP head request to emulate server down
@@ -183,17 +321,6 @@ class ModelUtilsTest(unittest.TestCase):
 
 
 class UNetTesterMixin:
-    def test_forward_signature(self):
-        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
-
-        model = self.model_class(**init_dict)
-        signature = inspect.signature(model.forward)
-        # signature.parameters is an OrderedDict => so arg_names order is deterministic
-        arg_names = [*signature.parameters.keys()]
-
-        expected_arg_names = ["sample", "timestep"]
-        self.assertListEqual(arg_names[:2], expected_arg_names)
-
     def test_forward_with_norm_groups(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -220,6 +347,7 @@ class ModelTesterMixin:
     base_precision = 1e-3
     forward_requires_fresh_args = False
     model_split_percents = [0.5, 0.7, 0.9]
+    uses_custom_attn_processor = False
 
     def check_device_map_is_respected(self, model, device_map):
         for param_name, param in model.named_parameters():
@@ -417,6 +545,9 @@ class ModelTesterMixin:
 
     @require_torch_gpu
     def test_set_attn_processor_for_determinism(self):
+        if self.uses_custom_attn_processor:
+            return
+
         torch.use_deterministic_algorithms(False)
         if self.forward_requires_fresh_args:
             model = self.model_class(**self.init_dict)
@@ -739,6 +870,96 @@ class ModelTesterMixin:
         model.disable_gradient_checkpointing()
         self.assertFalse(model.is_gradient_checkpointing)
 
+    @require_torch_accelerator_with_training
+    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip: set[str] = {}):
+        if not self.model_class._supports_gradient_checkpointing:
+            return  # Skip test if model does not support gradient checkpointing
+
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        inputs_dict_copy = copy.deepcopy(inputs_dict)
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        assert not model.is_gradient_checkpointing and model.training
+
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+
+        labels = torch.randn_like(out)
+        loss = (out - labels).mean()
+        loss.backward()
+
+        # re-instantiate the model now enabling gradient checkpointing
+        torch.manual_seed(0)
+        model_2 = self.model_class(**init_dict)
+        # clone model
+        model_2.load_state_dict(model.state_dict())
+        model_2.to(torch_device)
+        model_2.enable_gradient_checkpointing()
+
+        assert model_2.is_gradient_checkpointing and model_2.training
+
+        out_2 = model_2(**inputs_dict_copy).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model_2.zero_grad()
+        loss_2 = (out_2 - labels).mean()
+        loss_2.backward()
+
+        # compare the output and parameters gradients
+        self.assertTrue((loss - loss_2).abs() < loss_tolerance)
+        named_params = dict(model.named_parameters())
+        named_params_2 = dict(model_2.named_parameters())
+
+        for name, param in named_params.items():
+            if "post_quant_conv" in name:
+                continue
+            if name in skip:
+                continue
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=param_grad_tol))
+
+    @unittest.skipIf(torch_device == "mps", "This test is not supported for MPS devices.")
+    def test_gradient_checkpointing_is_applied(
+        self, expected_set=None, attention_head_dim=None, num_attention_heads=None, block_out_channels=None
+    ):
+        if not self.model_class._supports_gradient_checkpointing:
+            return  # Skip test if model does not support gradient checkpointing
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        if attention_head_dim is not None:
+            init_dict["attention_head_dim"] = attention_head_dim
+        if num_attention_heads is not None:
+            init_dict["num_attention_heads"] = num_attention_heads
+        if block_out_channels is not None:
+            init_dict["block_out_channels"] = block_out_channels
+
+        model_class_copy = copy.copy(self.model_class)
+
+        modules_with_gc_enabled = {}
+
+        # now monkey patch the following function:
+        #     def _set_gradient_checkpointing(self, module, value=False):
+        #         if hasattr(module, "gradient_checkpointing"):
+        #             module.gradient_checkpointing = value
+
+        def _set_gradient_checkpointing_new(self, module, value=False):
+            if hasattr(module, "gradient_checkpointing"):
+                module.gradient_checkpointing = value
+                modules_with_gc_enabled[module.__class__.__name__] = True
+
+        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
+
+        model = model_class_copy(**init_dict)
+        model.enable_gradient_checkpointing()
+
+        assert set(modules_with_gc_enabled.keys()) == expected_set
+        assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
+
     def test_deprecated_kwargs(self):
         has_kwarg_in_model_class = "kwargs" in inspect.signature(self.model_class.__init__).parameters
         has_deprecated_kwarg = len(self.model_class._deprecated_kwargs) > 0
@@ -759,6 +980,94 @@ class ModelTesterMixin:
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
 
+    @parameterized.expand([True, False])
+    @torch.no_grad()
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
+    def test_save_load_lora_adapter(self, use_dora=False):
+        import safetensors
+        from peft import LoraConfig
+        from peft.utils import get_peft_model_state_dict
+
+        from diffusers.loaders.peft import PeftAdapterMixin
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        if not issubclass(model.__class__, PeftAdapterMixin):
+            return
+
+        torch.manual_seed(0)
+        output_no_lora = model(**inputs_dict, return_dict=False)[0]
+
+        denoiser_lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=use_dora,
+        )
+        model.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        torch.manual_seed(0)
+        outputs_with_lora = model(**inputs_dict, return_dict=False)[0]
+
+        self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora, atol=1e-4, rtol=1e-4))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_lora_adapter(tmpdir)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            state_dict_loaded = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+
+            model.unload_lora()
+            self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+            model.load_lora_adapter(tmpdir, prefix=None, use_safetensors=True)
+            state_dict_retrieved = get_peft_model_state_dict(model, adapter_name="default_0")
+
+            for k in state_dict_loaded:
+                loaded_v = state_dict_loaded[k]
+                retrieved_v = state_dict_retrieved[k].to(loaded_v.device)
+                self.assertTrue(torch.allclose(loaded_v, retrieved_v))
+
+            self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        torch.manual_seed(0)
+        outputs_with_lora_2 = model(**inputs_dict, return_dict=False)[0]
+
+        self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
+        self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
+
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
+    def test_wrong_adapter_name_raises_error(self):
+        from peft import LoraConfig
+
+        from diffusers.loaders.peft import PeftAdapterMixin
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        if not issubclass(model.__class__, PeftAdapterMixin):
+            return
+
+        denoiser_lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        model.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wrong_name = "foo"
+            with self.assertRaises(ValueError) as err_context:
+                model.save_lora_adapter(tmpdir, adapter_name=wrong_name)
+
+            self.assertTrue(f"Adapter name {wrong_name} not found in the model." in str(err_context.exception))
+
     @require_torch_gpu
     def test_cpu_offload(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -771,7 +1080,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -801,7 +1110,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
 
@@ -835,7 +1144,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
@@ -863,7 +1172,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -891,7 +1200,7 @@ class ModelTesterMixin:
 
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
@@ -923,7 +1232,7 @@ class ModelTesterMixin:
 
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         variant = "fp16"
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -931,6 +1240,7 @@ class ModelTesterMixin:
             # testing if loading works with the variant when the checkpoint is sharded should be
             # enough.
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB", variant=variant)
+
             index_filename = _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, index_filename)))
 
@@ -962,7 +1272,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_sizes(model)[""]
+        model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
@@ -976,13 +1286,50 @@ class ModelTesterMixin:
             self.assertTrue(actual_num_shards == expected_num_shards)
 
             new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto")
-            new_model = new_model.to(torch_device)
 
             torch.manual_seed(0)
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    # This test is okay without a GPU because we're not running any execution. We're just serializing
+    # and check if the resultant files are following an expected format.
+    def test_variant_sharded_ckpt_right_format(self):
+        for use_safe in [True, False]:
+            extension = ".safetensors" if use_safe else ".bin"
+            config, _ = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**config).eval()
+
+            model_size = compute_module_persistent_sizes(model)[""]
+            max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
+            variant = "fp16"
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                model.cpu().save_pretrained(
+                    tmp_dir, variant=variant, max_shard_size=f"{max_shard_size}KB", safe_serialization=use_safe
+                )
+                index_variant = _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safe else WEIGHTS_INDEX_NAME, variant)
+                self.assertTrue(os.path.exists(os.path.join(tmp_dir, index_variant)))
+
+                # Now check if the right number of shards exists. First, let's get the number of shards.
+                # Since this number can be dependent on the model being tested, it's important that we calculate it
+                # instead of hardcoding it.
+                expected_num_shards = caculate_expected_num_shards(os.path.join(tmp_dir, index_variant))
+                actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(extension)])
+                self.assertTrue(actual_num_shards == expected_num_shards)
+
+                # Check if the variant is present as a substring in the checkpoints.
+                shard_files = [
+                    file
+                    for file in os.listdir(tmp_dir)
+                    if file.endswith(extension) or ("index" in file and "json" in file)
+                ]
+                assert all(variant in f for f in shard_files)
+
+                # Check if the sharded checkpoints were serialized in the right format.
+                shard_files = [file for file in os.listdir(tmp_dir) if file.endswith(extension)]
+                # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
+                assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
 
 
 @is_staging_test

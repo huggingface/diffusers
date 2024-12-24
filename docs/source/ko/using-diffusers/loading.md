@@ -41,7 +41,7 @@ diffusion 모델의 훈련과 추론에 필요한 모든 것은 [`DiffusionPipel
 ```python
 from diffusers import DiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = DiffusionPipeline.from_pretrained(repo_id)
 ```
 
@@ -50,16 +50,16 @@ pipe = DiffusionPipeline.from_pretrained(repo_id)
 ```python
 from diffusers import StableDiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(repo_id)
 ```
 
-[CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4)이나 [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) 같은 체크포인트들의 경우, 하나 이상의 다양한 태스크에 활용될 수 있습니다. (예를 들어 위의 두 체크포인트의 경우, text-to-image와 image-to-image에 모두 활용될 수 있습니다.)  만약 이러한 체크포인트들을 기본 설정 태스크가 아닌 다른 태스크에 활용하고자 한다면, 해당 태스크에 대응되는 파이프라인(task-specific pipeline)을 사용해야 합니다.
+[CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4)이나 [stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 같은 체크포인트들의 경우, 하나 이상의 다양한 태스크에 활용될 수 있습니다. (예를 들어 위의 두 체크포인트의 경우, text-to-image와 image-to-image에 모두 활용될 수 있습니다.)  만약 이러한 체크포인트들을 기본 설정 태스크가 아닌 다른 태스크에 활용하고자 한다면, 해당 태스크에 대응되는 파이프라인(task-specific pipeline)을 사용해야 합니다.
 
 ```python
 from diffusers import StableDiffusionImg2ImgPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
 ```
 
@@ -71,7 +71,7 @@ pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
 
 ```bash
 git lfs install
-git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ```
 
 그런 다음 해당 로컬 경로를 [`~DiffusionPipeline.from_pretrained`] 메서드에 전달합니다.
@@ -100,19 +100,19 @@ stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
 ```python
 from diffusers import DiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
 stable_diffusion.scheduler.compatibles
 ```
 
-이번에는 [`SchedulerMixin.from_pretrained`] 메서드를 사용해서, 기존 기본 스케줄러였던 [`PNDMScheduler`]를 보다 우수한 성능의 [`EulerDiscreteScheduler`]로 바꿔봅시다. 스케줄러를 로드할 때는 `subfolder` 인자를 통해, 해당 파이프라인의 리포지토리에서 [스케줄러에 관한 하위폴더](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler)를  명시해주어야 합니다.
+이번에는 [`SchedulerMixin.from_pretrained`] 메서드를 사용해서, 기존 기본 스케줄러였던 [`PNDMScheduler`]를 보다 우수한 성능의 [`EulerDiscreteScheduler`]로 바꿔봅시다. 스케줄러를 로드할 때는 `subfolder` 인자를 통해, 해당 파이프라인의 리포지토리에서 [스케줄러에 관한 하위폴더](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main/scheduler)를  명시해주어야 합니다.
 
 그 다음 새롭게 생성한 [`EulerDiscreteScheduler`] 인스턴스를 [`DiffusionPipeline`]의 `scheduler` 인자에 전달합니다.
 
 ```python
 from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultistepScheduler
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
 scheduler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
 
@@ -126,7 +126,7 @@ stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=schedule
 ```python
 from diffusers import DiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=None)
 ```
 
@@ -137,7 +137,7 @@ stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=Non
 ```python
 from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id)
 
 components = stable_diffusion_txt2img.components
@@ -154,7 +154,7 @@ stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(**components)
 ```python
 from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id)
 stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(
     vae=stable_diffusion_txt2img.vae,
@@ -197,10 +197,10 @@ from diffusers import DiffusionPipeline
 
 # load fp16 variant
 stable_diffusion = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
 )
 # load non_ema variant
-stable_diffusion = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
+stable_diffusion = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", variant="non_ema")
 ```
 
 다른 부동소수점 타입의 가중치 혹은 non-EMA 가중치를 사용하는 체크포인트를 저장하기 위해서는, [`DiffusionPipeline.save_pretrained`] 메서드를 사용해야 하며, 이 때 `variant` 인자를 명시해줘야 합니다. 원래의 체크포인트와 동일한 폴더에 variant를 저장해야 하며, 이렇게 하면 동일한 폴더에서 오리지널 체크포인트과 variant를 모두 불러올 수 있습니다.
@@ -209,9 +209,9 @@ stable_diffusion = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-
 from diffusers import DiffusionPipeline
 
 # save as fp16 variant
-stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="fp16")
+stable_diffusion.save_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", variant="fp16")
 # save as non-ema variant
-stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
+stable_diffusion.save_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", variant="non_ema")
 ```
 
 만약 variant를 기존 폴더에 저장하지 않을 경우, `variant` 인자를 반드시 명시해야 합니다. 그렇게 하지 않을 경우 원래의 오리지널 체크포인트를 찾을 수 없게 되기 때문에 에러가 발생합니다.
@@ -229,12 +229,12 @@ stable_diffusion = DiffusionPipeline.from_pretrained(
 
 모델들은 [`ModelMixin.from_pretrained`] 메서드를 통해 불러올 수 있습니다. 해당 메서드는 최신 버전의 모델 가중치 파일과 설정 파일(configurations)을 다운로드하고 캐싱합니다. 만약 이러한 파일들이 최신 버전으로 로컬 캐시에 저장되어 있다면, [`ModelMixin.from_pretrained`]는 굳이 해당 파일들을 다시 다운로드하지 않으며, 그저 캐시에 있는 최신 파일들을 재사용합니다.
 
-모델은 `subfolder` 인자에 명시된 하위 폴더로부터 로드됩니다. 예를 들어 `runwayml/stable-diffusion-v1-5`의 UNet 모델의 가중치는 [`unet`](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/unet) 폴더에 저장되어 있습니다.
+모델은 `subfolder` 인자에 명시된 하위 폴더로부터 로드됩니다. 예를 들어 `stable-diffusion-v1-5/stable-diffusion-v1-5`의 UNet 모델의 가중치는 [`unet`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main/unet) 폴더에 저장되어 있습니다.
 
 ```python
 from diffusers import UNet2DConditionModel
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet")
 ```
 
@@ -252,7 +252,7 @@ model = UNet2DModel.from_pretrained(repo_id)
 ```python
 from diffusers import UNet2DConditionModel
 
-model = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non-ema")
+model = UNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet", variant="non-ema")
 model.save_pretrained("./local-unet", variant="non-ema")
 ```
 
@@ -274,7 +274,7 @@ from diffusers import (
     DPMSolverMultistepScheduler,
 )
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
 ddpm = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
 ddim = DDIMScheduler.from_pretrained(repo_id, subfolder="scheduler")
@@ -295,19 +295,19 @@ pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
 - 첫째로, `from_pretrained` 메서드는 최신 버전의 파이프라인을 다운로드하고, 캐시에 저장합니다. 이미 로컬 캐시에 최신 버전의 파이프라인이 저장되어 있다면, [`DiffusionPipeline.from_pretrained`]은 해당 파일들을 다시 다운로드하지 않고, 로컬 캐시에 저장되어 있는 파이프라인을 불러옵니다.
 -  `model_index.json` 파일을 통해 체크포인트에 대응되는 적합한 파이프라인 클래스로 불러옵니다.
 
-파이프라인의 폴더 구조는 해당 파이프라인 클래스의 구조와 직접적으로 일치합니다. 예를 들어 [`StableDiffusionPipeline`] 클래스는 [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) 리포지토리와 대응되는 구조를 갖습니다.
+파이프라인의 폴더 구조는 해당 파이프라인 클래스의 구조와 직접적으로 일치합니다. 예를 들어 [`StableDiffusionPipeline`] 클래스는 [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 리포지토리와 대응되는 구조를 갖습니다.
 
 ```python
 from diffusers import DiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipeline = DiffusionPipeline.from_pretrained(repo_id)
 print(pipeline)
 ```
 
 위의 코드 출력 결과를 확인해보면, `pipeline`은 [`StableDiffusionPipeline`]의 인스턴스이며, 다음과 같이 총 7개의 컴포넌트로 구성된다는 것을 알 수 있습니다.
 
-- `"feature_extractor"`: [`~transformers.CLIPFeatureExtractor`]의 인스턴스
+- `"feature_extractor"`: [`~transformers.CLIPImageProcessor`]의 인스턴스
 - `"safety_checker"`: 유해한 컨텐츠를 스크리닝하기 위한 [컴포넌트](https://github.com/huggingface/diffusers/blob/e55687e1e15407f60f32242027b7bb8170e58266/src/diffusers/pipelines/stable_diffusion/safety_checker.py#L32)
 - `"scheduler"`: [`PNDMScheduler`]의 인스턴스
 - `"text_encoder"`: [`~transformers.CLIPTextModel`]의 인스턴스
@@ -348,7 +348,7 @@ StableDiffusionPipeline {
 }
 ```
 
-파이프라인 인스턴스의 컴포넌트들을  [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)의 폴더 구조와 비교해볼 경우, 각각의 컴포넌트마다 별도의 폴더가 있음을 확인할 수 있습니다.
+파이프라인 인스턴스의 컴포넌트들을  [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)의 폴더 구조와 비교해볼 경우, 각각의 컴포넌트마다 별도의 폴더가 있음을 확인할 수 있습니다.
 
 ```
 .

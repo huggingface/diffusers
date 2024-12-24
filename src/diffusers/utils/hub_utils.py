@@ -271,8 +271,7 @@ if cache_version < 1:
 def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
-        split_index = -2 if weights_name.endswith(".index.json") else -1
-        splits = splits[:-split_index] + [variant] + splits[-split_index:]
+        splits = splits[:-1] + [variant] + splits[-1:]
         weights_name = ".".join(splits)
 
     return weights_name
@@ -456,50 +455,54 @@ def _get_checkpoint_shard_files(
         allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
 
     ignore_patterns = ["*.json", "*.md"]
-    if not local_files_only:
-        # `model_info` call must guarded with the above condition.
-        model_files_info = model_info(pretrained_model_name_or_path, revision=revision)
-        for shard_file in original_shard_filenames:
-            shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
-            if not shard_file_present:
-                raise EnvironmentError(
-                    f"{shards_path} does not appear to have a file named {shard_file} which is "
-                    "required according to the checkpoint index."
-                )
-
-        try:
-            # Load from URL
-            cached_folder = snapshot_download(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                allow_patterns=allow_patterns,
-                ignore_patterns=ignore_patterns,
-                user_agent=user_agent,
-            )
-            if subfolder is not None:
-                cached_folder = os.path.join(cached_folder, subfolder)
-
-        # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
-        # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-        except HTTPError as e:
+    # `model_info` call must guarded with the above condition.
+    model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
+    for shard_file in original_shard_filenames:
+        shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
+        if not shard_file_present:
             raise EnvironmentError(
-                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
-                " again after checking your internet connection."
-            ) from e
+                f"{shards_path} does not appear to have a file named {shard_file} which is "
+                "required according to the checkpoint index."
+            )
 
-    # If `local_files_only=True`, `cached_folder` may not contain all the shard files.
-    elif local_files_only:
-        _check_if_shards_exist_locally(
-            local_dir=cache_dir, subfolder=subfolder, original_shard_filenames=original_shard_filenames
+    try:
+        # Load from URL
+        cached_folder = snapshot_download(
+            pretrained_model_name_or_path,
+            cache_dir=cache_dir,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            allow_patterns=allow_patterns,
+            ignore_patterns=ignore_patterns,
+            user_agent=user_agent,
         )
         if subfolder is not None:
             cached_folder = os.path.join(cached_folder, subfolder)
 
+    # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
+    # we don't have to catch them here. We have also dealt with EntryNotFoundError.
+    except HTTPError as e:
+        raise EnvironmentError(
+            f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+            " again after checking your internet connection."
+        ) from e
+
     return cached_folder, sharded_metadata
+
+
+def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
+    if filenames and folder:
+        raise ValueError("Both `filenames` and `folder` cannot be provided.")
+    if not filenames:
+        filenames = []
+        for _, _, files in os.walk(folder):
+            for file in files:
+                filenames.append(os.path.basename(file))
+    transformers_index_format = r"\d{5}-of-\d{5}"
+    variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
+    return any(variant_file_re.match(f) is not None for f in filenames)
 
 
 class PushToHubMixin:
@@ -552,7 +555,8 @@ class PushToHubMixin:
             commit_message (`str`, *optional*):
                 Message to commit while pushing. Default to `"Upload {object}"`.
             private (`bool`, *optional*):
-                Whether or not the repository created should be private.
+                Whether to make the repo private. If `None` (default), the repo will be public unless the
+                organization's default is private. This value is ignored if the repo already exists.
             token (`str`, *optional*):
                 The token to use as HTTP bearer authorization for remote files. The token generated when running
                 `huggingface-cli login` (stored in `~/.huggingface`).

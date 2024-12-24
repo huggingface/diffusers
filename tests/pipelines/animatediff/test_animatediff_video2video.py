@@ -17,8 +17,9 @@ from diffusers import (
     UNet2DConditionModel,
     UNetMotionModel,
 )
+from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available, logging
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import require_accelerator, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS, VIDEO_TO_VIDEO_BATCH_PARAMS
 from ..test_pipelines_common import IPAdapterTesterMixin, PipelineFromPipeTesterMixin, PipelineTesterMixin
@@ -114,7 +115,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0, num_frames: int = 2):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -122,8 +123,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
 
         video_height = 32
         video_width = 32
-        video_num_frames = 2
-        video = [Image.new("RGB", (video_width, video_height))] * video_num_frames
+        video = [Image.new("RGB", (video_width, video_height))] * num_frames
 
         inputs = {
             "video": video,
@@ -175,7 +175,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         pass
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
 
         if torch_device == "cpu":
@@ -201,7 +201,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
                     0.5378,
                 ]
             )
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_inference_batch_single_identical(
         self,
@@ -258,7 +258,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
         max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -274,14 +274,14 @@ class AnimateDiffVideoToVideoPipelineFastTests(
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
@@ -428,3 +428,119 @@ class AnimateDiffVideoToVideoPipelineFastTests(
                 1e1,
                 "Enabling of FreeInit should lead to results different from the default pipeline results",
             )
+
+    def test_free_noise_blocks(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffVideoToVideoPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        pipe.enable_free_noise()
+        for block in pipe.unet.down_blocks:
+            for motion_module in block.motion_modules:
+                for transformer_block in motion_module.transformer_blocks:
+                    self.assertTrue(
+                        isinstance(transformer_block, FreeNoiseTransformerBlock),
+                        "Motion module transformer blocks must be an instance of `FreeNoiseTransformerBlock` after enabling FreeNoise.",
+                    )
+
+        pipe.disable_free_noise()
+        for block in pipe.unet.down_blocks:
+            for motion_module in block.motion_modules:
+                for transformer_block in motion_module.transformer_blocks:
+                    self.assertFalse(
+                        isinstance(transformer_block, FreeNoiseTransformerBlock),
+                        "Motion module transformer blocks must not be an instance of `FreeNoiseTransformerBlock` after disabling FreeNoise.",
+                    )
+
+    def test_free_noise(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffVideoToVideoPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs_normal = self.get_dummy_inputs(torch_device, num_frames=16)
+        inputs_normal["num_inference_steps"] = 2
+        inputs_normal["strength"] = 0.5
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        for context_length in [8, 9]:
+            for context_stride in [4, 6]:
+                pipe.enable_free_noise(context_length, context_stride)
+
+                inputs_enable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
+                inputs_enable_free_noise["num_inference_steps"] = 2
+                inputs_enable_free_noise["strength"] = 0.5
+                frames_enable_free_noise = pipe(**inputs_enable_free_noise).frames[0]
+
+                pipe.disable_free_noise()
+                inputs_disable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
+                inputs_disable_free_noise["num_inference_steps"] = 2
+                inputs_disable_free_noise["strength"] = 0.5
+                frames_disable_free_noise = pipe(**inputs_disable_free_noise).frames[0]
+
+                sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_noise)).sum()
+                max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_noise)).max()
+                self.assertGreater(
+                    sum_enabled,
+                    1e1,
+                    "Enabling of FreeNoise should lead to results different from the default pipeline results",
+                )
+                self.assertLess(
+                    max_diff_disabled,
+                    1e-4,
+                    "Disabling of FreeNoise should lead to results similar to the default pipeline results",
+                )
+
+    def test_free_noise_split_inference(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffVideoToVideoPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        pipe.enable_free_noise(8, 4)
+
+        inputs_normal = self.get_dummy_inputs(torch_device, num_frames=16)
+        inputs_normal["num_inference_steps"] = 2
+        inputs_normal["strength"] = 0.5
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        # Test FreeNoise with split inference memory-optimization
+        pipe.enable_free_noise_split_inference(spatial_split_size=16, temporal_split_size=4)
+
+        inputs_enable_split_inference = self.get_dummy_inputs(torch_device, num_frames=16)
+        inputs_enable_split_inference["num_inference_steps"] = 2
+        inputs_enable_split_inference["strength"] = 0.5
+        frames_enable_split_inference = pipe(**inputs_enable_split_inference).frames[0]
+
+        sum_split_inference = np.abs(to_np(frames_normal) - to_np(frames_enable_split_inference)).sum()
+        self.assertLess(
+            sum_split_inference,
+            1e-4,
+            "Enabling FreeNoise Split Inference memory-optimizations should lead to results similar to the default pipeline results",
+        )
+
+    def test_free_noise_multi_prompt(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffVideoToVideoPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        context_length = 8
+        context_stride = 4
+        pipe.enable_free_noise(context_length, context_stride)
+
+        # Make sure that pipeline works when prompt indices are within num_frames bounds
+        inputs = self.get_dummy_inputs(torch_device, num_frames=16)
+        inputs["prompt"] = {0: "Caterpillar on a leaf", 10: "Butterfly on a leaf"}
+        inputs["num_inference_steps"] = 2
+        inputs["strength"] = 0.5
+        pipe(**inputs).frames[0]
+
+        with self.assertRaises(ValueError):
+            # Ensure that prompt indices are within bounds
+            inputs = self.get_dummy_inputs(torch_device, num_frames=16)
+            inputs["num_inference_steps"] = 2
+            inputs["strength"] = 0.5
+            inputs["prompt"] = {0: "Caterpillar on a leaf", 10: "Butterfly on a leaf", 42: "Error on a leaf"}
+            pipe(**inputs).frames[0]

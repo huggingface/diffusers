@@ -54,7 +54,7 @@ Textual inversion은 임베딩을 생성하기 때문에 DreamBooth처럼 단독
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
 ```
 
 이제 [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] 메서드를 사용하여 textual inversion 임베딩을 불러와 이미지를 생성할 수 있습니다. [sd-concepts-library/gta5-artwork](https://huggingface.co/sd-concepts-library/gta5-artwork) 임베딩을 불러와 보겠습니다. 이를 트리거하려면 프롬프트에 특수 단어 `<gta5-artwork>`를 포함시켜야 합니다:
@@ -269,7 +269,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 from diffusers.utils import load_image
 
-pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
 ```
 
 그런 다음 IP-Adapter 가중치를 불러와 [`~loaders.IPAdapterMixin.load_ip_adapter`] 메서드를 사용하여 파이프라인에 추가합니다.
@@ -350,7 +350,7 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     image_encoder=image_encoder,
     torch_dtype=torch.float16
 ).to("cuda")

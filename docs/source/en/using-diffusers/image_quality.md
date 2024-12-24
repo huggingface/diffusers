@@ -30,7 +30,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
 ).to("cuda")
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
 generator = torch.Generator(device="cpu").manual_seed(33)

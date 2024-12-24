@@ -68,7 +68,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():
@@ -478,7 +478,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--debug_loss",
         action="store_true",
-        help="debug loss for each image, if filenames are awailable in the dataset",
+        help="debug loss for each image, if filenames are available in the dataset",
     )
 
     if input_args is not None:

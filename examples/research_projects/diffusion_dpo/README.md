@@ -13,7 +13,7 @@ We provide implementations for both Stable Diffusion (SD) and Stable Diffusion X
 
 ```bash
 accelerate launch train_diffusion_dpo.py \
-  --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5  \
+  --pretrained_model_name_or_path=stable-diffusion-v1-5/stable-diffusion-v1-5  \
   --output_dir="diffusion-dpo" \
   --mixed_precision="fp16" \
   --dataset_name=kashif/pickascore \

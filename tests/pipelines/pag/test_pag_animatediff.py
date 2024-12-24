@@ -17,8 +17,9 @@ from diffusers import (
     UNet2DConditionModel,
     UNetMotionModel,
 )
+from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import require_accelerator, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
@@ -174,7 +175,7 @@ class AnimateDiffPAGPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         pass
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
 
         if torch_device == "cpu":
@@ -209,7 +210,7 @@ class AnimateDiffPAGPipelineFastTests(
                     0.5538,
                 ]
             )
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
@@ -217,7 +218,7 @@ class AnimateDiffPAGPipelineFastTests(
             expected_slice = np.array([0.5295, 0.3947, 0.5300, 0.4864, 0.4518, 0.5315, 0.5440, 0.4775, 0.5538])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -233,14 +234,14 @@ class AnimateDiffPAGPipelineFastTests(
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
@@ -346,6 +347,64 @@ class AnimateDiffPAGPipelineFastTests(
                 1e1,
                 "Enabling of FreeInit should lead to results different from the default pipeline results",
             )
+
+    def test_free_noise_blocks(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffPAGPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        pipe.enable_free_noise()
+        for block in pipe.unet.down_blocks:
+            for motion_module in block.motion_modules:
+                for transformer_block in motion_module.transformer_blocks:
+                    self.assertTrue(
+                        isinstance(transformer_block, FreeNoiseTransformerBlock),
+                        "Motion module transformer blocks must be an instance of `FreeNoiseTransformerBlock` after enabling FreeNoise.",
+                    )
+
+        pipe.disable_free_noise()
+        for block in pipe.unet.down_blocks:
+            for motion_module in block.motion_modules:
+                for transformer_block in motion_module.transformer_blocks:
+                    self.assertFalse(
+                        isinstance(transformer_block, FreeNoiseTransformerBlock),
+                        "Motion module transformer blocks must not be an instance of `FreeNoiseTransformerBlock` after disabling FreeNoise.",
+                    )
+
+    def test_free_noise(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffPAGPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs_normal = self.get_dummy_inputs(torch_device)
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        for context_length in [8, 9]:
+            for context_stride in [4, 6]:
+                pipe.enable_free_noise(context_length, context_stride)
+
+                inputs_enable_free_noise = self.get_dummy_inputs(torch_device)
+                frames_enable_free_noise = pipe(**inputs_enable_free_noise).frames[0]
+
+                pipe.disable_free_noise()
+
+                inputs_disable_free_noise = self.get_dummy_inputs(torch_device)
+                frames_disable_free_noise = pipe(**inputs_disable_free_noise).frames[0]
+
+                sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_noise)).sum()
+                max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_noise)).max()
+                self.assertGreater(
+                    sum_enabled,
+                    1e1,
+                    "Enabling of FreeNoise should lead to results different from the default pipeline results",
+                )
+                self.assertLess(
+                    max_diff_disabled,
+                    1e-4,
+                    "Disabling of FreeNoise should lead to results similar to the default pipeline results",
+                )
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

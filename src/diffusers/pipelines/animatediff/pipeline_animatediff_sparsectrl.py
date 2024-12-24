@@ -24,7 +24,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
-from ...models.controlnet_sparsectrl import SparseControlNetModel
+from ...models.controlnets.controlnet_sparsectrl import SparseControlNetModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_motion_model import MotionAdapter
 from ...schedulers import KarrasDiffusionSchedulers
@@ -877,6 +877,8 @@ class AnimateDiffSparseControlNetPipeline(
         # to avoid doing two forward passes
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+
+        prompt_embeds = prompt_embeds.repeat_interleave(repeats=num_frames, dim=0)
 
         # 4. Prepare IP-Adapter embeddings
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:

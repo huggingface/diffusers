@@ -20,7 +20,7 @@ The abstract from the paper is:
 
 *Recent studies have demonstrated that diffusion models are capable of generating high-quality samples, but their quality heavily depends on sampling guidance techniques, such as classifier guidance (CG) and classifier-free guidance (CFG). These techniques are often not applicable in unconditional generation or in various downstream tasks such as image restoration. In this paper, we propose a novel sampling guidance, called Perturbed-Attention Guidance (PAG), which improves diffusion sample quality across both unconditional and conditional settings, achieving this without requiring additional training or the integration of external modules. PAG is designed to progressively enhance the structure of samples throughout the denoising process. It involves generating intermediate samples with degraded structure by substituting selected self-attention maps in diffusion U-Net with an identity matrix, by considering the self-attention mechanisms' ability to capture structural information, and guiding the denoising process away from these degraded samples. In both ADM and Stable Diffusion, PAG surprisingly improves sample quality in conditional and even unconditional scenarios. Moreover, PAG significantly improves the baseline performance in various downstream tasks where existing guidances such as CG or CFG cannot be fully utilized, including ControlNet with empty prompts and image restoration such as inpainting and deblurring.*
 
-PAG can be used by specifying the `pag_applied_layers` as a parameter when instantiating a PAG pipeline. It can be a single string or a list of strings. Each string can be a unique layer identifier or a regular expression to identify one or more layers. 
+PAG can be used by specifying the `pag_applied_layers` as a parameter when instantiating a PAG pipeline. It can be a single string or a list of strings. Each string can be a unique layer identifier or a regular expression to identify one or more layers.
 
 - Full identifier as a normal string: `down_blocks.2.attentions.0.transformer_blocks.0.attn1.processor`
 - Full identifier as a RegEx: `down_blocks.2.(attentions|motion_modules).0.transformer_blocks.0.attn1.processor`
@@ -43,13 +43,31 @@ Since RegEx is supported as a way for matching layer identifiers, it is crucial 
   - all
   - __call__
 
+## KolorsPAGPipeline
+[[autodoc]] KolorsPAGPipeline
+  - all
+  - __call__
+
+## StableDiffusionPAGInpaintPipeline
+[[autodoc]] StableDiffusionPAGInpaintPipeline
+	- all
+	- __call__
+
 ## StableDiffusionPAGPipeline
 [[autodoc]] StableDiffusionPAGPipeline
 	- all
 	- __call__
 
+## StableDiffusionPAGImg2ImgPipeline
+[[autodoc]] StableDiffusionPAGImg2ImgPipeline
+	- all
+	- __call__
+
 ## StableDiffusionControlNetPAGPipeline
 [[autodoc]] StableDiffusionControlNetPAGPipeline
+
+## StableDiffusionControlNetPAGInpaintPipeline
+[[autodoc]] StableDiffusionControlNetPAGInpaintPipeline
 	- all
 	- __call__
 
@@ -73,6 +91,20 @@ Since RegEx is supported as a way for matching layer identifiers, it is crucial 
 	- all
 	- __call__
 
+## StableDiffusionXLControlNetPAGImg2ImgPipeline
+[[autodoc]] StableDiffusionXLControlNetPAGImg2ImgPipeline
+	- all
+	- __call__
+
+## StableDiffusion3PAGPipeline
+[[autodoc]] StableDiffusion3PAGPipeline
+	- all
+	- __call__
+
+## StableDiffusion3PAGImg2ImgPipeline
+[[autodoc]] StableDiffusion3PAGImg2ImgPipeline
+	- all
+	- __call__
 
 ## PixArtSigmaPAGPipeline
 [[autodoc]] PixArtSigmaPAGPipeline

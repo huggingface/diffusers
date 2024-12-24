@@ -33,8 +33,10 @@ from diffusers import (
     StableDiffusionXLPipeline,
     T2IAdapter,
 )
+from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
+    CaptureLogger,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
@@ -111,6 +113,7 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 
 @slow
+@nightly
 @require_torch_gpu
 @require_peft_backend
 class LoraSDXLIntegrationTests(unittest.TestCase):
@@ -123,71 +126,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-
-    def test_sdxl_0_9_lora_one(self):
-        generator = torch.Generator().manual_seed(0)
-
-        pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        lora_model_id = "hf-internal-testing/sdxl-0.9-daiton-lora"
-        lora_filename = "daiton-xl-lora-test.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
-        pipe.enable_model_cpu_offload()
-
-        images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
-        ).images
-
-        images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.3838, 0.3482, 0.3588, 0.3162, 0.319, 0.3369, 0.338, 0.3366, 0.3213])
-
-        max_diff = numpy_cosine_similarity_distance(expected, images)
-        assert max_diff < 1e-3
-        pipe.unload_lora_weights()
-        release_memory(pipe)
-
-    def test_sdxl_0_9_lora_two(self):
-        generator = torch.Generator().manual_seed(0)
-
-        pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        lora_model_id = "hf-internal-testing/sdxl-0.9-costumes-lora"
-        lora_filename = "saijo.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
-        pipe.enable_model_cpu_offload()
-
-        images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
-        ).images
-
-        images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.3137, 0.3269, 0.3355, 0.255, 0.2577, 0.2563, 0.2679, 0.2758, 0.2626])
-
-        max_diff = numpy_cosine_similarity_distance(expected, images)
-        assert max_diff < 1e-3
-
-        pipe.unload_lora_weights()
-        release_memory(pipe)
-
-    def test_sdxl_0_9_lora_three(self):
-        generator = torch.Generator().manual_seed(0)
-
-        pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        lora_model_id = "hf-internal-testing/sdxl-0.9-kamepan-lora"
-        lora_filename = "kame_sdxl_v2-000020-16rank.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
-        pipe.enable_model_cpu_offload()
-
-        images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
-        ).images
-
-        images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4015, 0.3761, 0.3616, 0.3745, 0.3462, 0.3337, 0.3564, 0.3649, 0.3468])
-
-        max_diff = numpy_cosine_similarity_distance(expected, images)
-        assert max_diff < 5e-3
-
-        pipe.unload_lora_weights()
-        release_memory(pipe)
 
     def test_sdxl_1_0_lora(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -682,17 +620,21 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     @nightly
     def test_integration_logits_for_dora_lora(self):
         pipeline = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipeline.load_lora_weights("hf-internal-testing/dora-trained-on-kohya")
-        pipeline.enable_model_cpu_offload()
 
-        images = pipeline(
-            "photo of ohwx dog",
-            num_inference_steps=10,
-            generator=torch.manual_seed(0),
-            output_type="np",
-        ).images
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            pipeline.load_lora_weights("hf-internal-testing/dora-trained-on-kohya")
+            pipeline.enable_model_cpu_offload()
+            images = pipeline(
+                "photo of ohwx dog",
+                num_inference_steps=10,
+                generator=torch.manual_seed(0),
+                output_type="np",
+            ).images
+        assert "It seems like you are using a DoRA checkpoint" in cap_logger.out
 
         predicted_slice = images[0, -3:, -3:, -1].flatten()
-        expected_slice_scale = np.array([0.3932, 0.3742, 0.4429, 0.3737, 0.3504, 0.433, 0.3948, 0.3769, 0.4516])
+        expected_slice_scale = np.array([0.1817, 0.0697, 0.2346, 0.0900, 0.1261, 0.2279, 0.1767, 0.1991, 0.2886])
         max_diff = numpy_cosine_similarity_distance(expected_slice_scale, predicted_slice)
         assert max_diff < 1e-3

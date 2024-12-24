@@ -2,13 +2,14 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
@@ -102,6 +103,8 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_3": tokenizer_3,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
@@ -224,9 +227,43 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
 
+    def test_skip_guidance_layers(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        output_full = pipe(**inputs)[0]
+
+        inputs_with_skip = inputs.copy()
+        inputs_with_skip["skip_guidance_layers"] = [0]
+        output_skip = pipe(**inputs_with_skip)[0]
+
+        self.assertFalse(
+            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
+        inputs["num_images_per_prompt"] = 2
+        output_full = pipe(**inputs)[0]
+
+        inputs_with_skip = inputs.copy()
+        inputs_with_skip["skip_guidance_layers"] = [0]
+        output_skip = pipe(**inputs_with_skip)[0]
+
+        self.assertFalse(
+            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class StableDiffusion3PipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Pipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
@@ -265,18 +302,37 @@ class StableDiffusion3PipelineSlowTests(unittest.TestCase):
         image_slice = image[0, :10, :10]
         expected_slice = np.array(
             [
-                [0.36132812, 0.30004883, 0.25830078],
-                [0.36669922, 0.31103516, 0.23754883],
-                [0.34814453, 0.29248047, 0.23583984],
-                [0.35791016, 0.30981445, 0.23999023],
-                [0.36328125, 0.31274414, 0.2607422],
-                [0.37304688, 0.32177734, 0.26171875],
-                [0.3671875, 0.31933594, 0.25756836],
-                [0.36035156, 0.31103516, 0.2578125],
-                [0.3857422, 0.33789062, 0.27563477],
-                [0.3701172, 0.31982422, 0.265625],
-            ],
-            dtype=np.float32,
+                0.4648,
+                0.4404,
+                0.4177,
+                0.5063,
+                0.4800,
+                0.4287,
+                0.5425,
+                0.5190,
+                0.4717,
+                0.5430,
+                0.5195,
+                0.4766,
+                0.5361,
+                0.5122,
+                0.4612,
+                0.4871,
+                0.4749,
+                0.4058,
+                0.4756,
+                0.4678,
+                0.3804,
+                0.4832,
+                0.4822,
+                0.3799,
+                0.5103,
+                0.5034,
+                0.3953,
+                0.5073,
+                0.4839,
+                0.3884,
+            ]
         )
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())

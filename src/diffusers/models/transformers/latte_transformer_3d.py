@@ -156,9 +156,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
 
         # define temporal positional embedding
         temp_pos_embed = get_1d_sincos_pos_embed_from_grid(
-            inner_dim, torch.arange(0, video_length).unsqueeze(1)
+            inner_dim, torch.arange(0, video_length).unsqueeze(1), output_type="pt"
         )  # 1152 hidden size
-        self.register_buffer("temp_pos_embed", torch.from_numpy(temp_pos_embed).float().unsqueeze(0), persistent=False)
+        self.register_buffer("temp_pos_embed", temp_pos_embed.float().unsqueeze(0), persistent=False)
 
         self.gradient_checkpointing = False
 
@@ -238,7 +238,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         for i, (spatial_block, temp_block) in enumerate(
             zip(self.transformer_blocks, self.temporal_transformer_blocks)
         ):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     spatial_block,
                     hidden_states,
@@ -271,7 +271,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                 if i == 0 and num_frame > 1:
                     hidden_states = hidden_states + self.temp_pos_embed
 
-                if self.training and self.gradient_checkpointing:
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         temp_block,
                         hidden_states,
