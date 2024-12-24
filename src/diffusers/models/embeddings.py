@@ -748,11 +748,10 @@ class CogVideoXPatchEmbed(nn.Module):
                 pos_embedding = self._get_positional_embeddings(
                     height, width, pre_time_compression_frames, device=embeds.device
                 )
-                pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             else:
                 pos_embedding = self.pos_embedding
 
-            pos_embedding = pos_embedding.to(embeds.device)
+            pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             embeds = embeds + pos_embedding
 
         return embeds
