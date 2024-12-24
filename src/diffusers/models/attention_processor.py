@@ -4923,10 +4923,9 @@ class IPAdapterAttnProcessor(nn.Module):
 
         return hidden_states
 
-
-class IPAdapterAttnProcessor2_0(torch.nn.Module):
+class CustomIPAdapterAttnProcessor2_0(torch.nn.Module):
     r"""
-    Attention processor for IP-Adapter for PyTorch 2.0.
+    Custom Attention processor for Both Text and IP-Adapter Masks for PyTorch 2.0.
 
     Args:
         hidden_size (`int`):
@@ -5024,26 +5023,6 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
         if ip_adapter_masks is not None:
             if not isinstance(ip_adapter_masks, List):
                 # for backward compatibility, we accept `ip_adapter_mask` as a tensor of shape [num_ip_adapter, 1, height, width]
@@ -5074,6 +5053,40 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                         )
         else:
             ip_adapter_masks = [None] * len(self.scale)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if ip_adapter_masks is not None:
+            # [scale] * mask.shape[1] for setting strength. disabled by default
+            scale = ip_adapter_masks[0].shape[1] 
+            print(f'text prompt strength = {scale}')
+            mask_downsample = IPAdapterMaskProcessor.downsample(
+                ip_adapter_masks[0][:, i, :, :],
+                batch_size,
+                hidden_states.shape[1],
+                hidden_states.shape[2],
+            )
+
+            mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+            hidden_states = scale * (hidden_states * mask_downsample)
 
         # for ip-adapter
         for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
