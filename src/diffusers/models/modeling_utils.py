@@ -720,7 +720,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if hf_quantizer is not None:
             if device_map is not None:
                 raise NotImplementedError(
-                    "Currently, `device_map` is automatically inferred for quantized models. Support for providing `device_map` as an input will be added in the future."
+                    "Currently, providing `device_map` is not supported for quantized models. Providing `device_map` as an input will be added in the future."
                 )
 
             hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
