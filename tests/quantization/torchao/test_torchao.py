@@ -654,3 +654,25 @@ class SlowTorchAoTests(unittest.TestCase):
             gc.collect()
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
+    
+    def test_serialization(self):
+        quantization_config = TorchAoConfig("int8wo")
+        components = self.get_dummy_components(quantization_config)
+        pipe = FluxPipeline(**components)
+        pipe.enable_model_cpu_offload()
+
+        weight = pipe.transformer.x_embedder.weight
+        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)[0].flatten()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipe.save_pretrained(tmp_dir, safe_serialization=False)
+            loaded_pipe = FluxPipeline.from_pretrained(tmp_dir, use_safetensors=False).to(torch_device)
+
+        weight = loaded_pipe.transformer.x_embedder.weight
+        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
+        
+        loaded_output = loaded_pipe(**inputs)[0].flatten()
+        self.assertTrue(np.allclose(output, loaded_output, atol=1e-3, rtol=1e-3))
