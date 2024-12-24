@@ -443,6 +443,16 @@ class TorchAoTest(unittest.TestCase):
             transformer_int8wo = self.get_dummy_components(TorchAoConfig("int8wo"), model_id=model_id)["transformer"]
             transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
 
+            self.assertTrue(
+                isinstance(transformer_int4wo.transformer_blocks[0].ff.net[2].weight, AffineQuantizedTensor)
+            )
+            self.assertTrue(
+                isinstance(transformer_int4wo_gs32.transformer_blocks[0].ff.net[2].weight, AffineQuantizedTensor)
+            )
+            self.assertTrue(
+                isinstance(transformer_int8wo.transformer_blocks[0].ff.net[2].weight, AffineQuantizedTensor)
+            )
+
             total_int4wo = get_model_size_in_bytes(transformer_int4wo)
             total_int4wo_gs32 = get_model_size_in_bytes(transformer_int4wo_gs32)
             total_int8wo = get_model_size_in_bytes(transformer_int8wo)
@@ -514,6 +524,8 @@ class TorchAoSerializationTest(unittest.TestCase):
         inputs = self.get_dummy_tensor_inputs(torch_device)
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+        weight = quantized_model.transformer_blocks[0].ff.net[2].weight
+        self.assertTrue(isinstance(weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)))
         self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
     def _check_serialization_expected_slice(self, quant_method, quant_method_kwargs, expected_slice, device):
