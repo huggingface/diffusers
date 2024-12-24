@@ -143,6 +143,7 @@ if _onnx_available:
         "ort_nightly_directml",
         "onnxruntime-rocm",
         "onnxruntime-training",
+        "onnxruntime-vitisai",
     )
     _onnxruntime_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
