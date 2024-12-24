@@ -681,7 +681,7 @@ class SlowTorchAoTests(unittest.TestCase):
         self.assertTrue(isinstance(weight, AffineQuantizedTensor))
 
         inputs = self.get_dummy_inputs(torch_device)
-        output = pipe(**inputs)[0].flatten()
+        output = pipe(**inputs)[0].flatten()[:128]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             pipe.transformer.save_pretrained(tmp_dir, safe_serialization=False)
@@ -699,8 +699,12 @@ class SlowTorchAoTests(unittest.TestCase):
         weight = transformer.x_embedder.weight
         self.assertTrue(isinstance(weight, AffineQuantizedTensor))
 
-        loaded_output = pipe(**inputs)[0].flatten()
-        self.assertTrue(np.allclose(output, loaded_output, atol=1e-3, rtol=1e-3))
+        loaded_output = pipe(**inputs)[0].flatten()[:128]
+        # Seems to require higher tolerance depending on which machine it is being run.
+        # A difference of 0.06 in normalized pixel space (-1 to 1), corresponds to a difference of
+        # 0.06 / 2 * 255 = 7.65 in pixel space (0 to 255). On our CI runners, the difference is about 0.04,
+        # on DGX it is 0.06, and on audace it is 0.037. So, we are using a tolerance of 0.06 here.
+        self.assertTrue(np.allclose(output, loaded_output, atol=0.06))
 
     def test_memory_footprint_int4wo(self):
         # The original checkpoints are in bf16 and about 24 GB
