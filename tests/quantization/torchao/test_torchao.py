@@ -624,13 +624,13 @@ class SlowTorchAoTests(unittest.TestCase):
         components = self.get_dummy_components(quantization_config)
         pipe = FluxPipeline(**components)
         pipe.enable_model_cpu_offload()
+        
+        weight = pipe.transformer.transformer_blocks[0].ff.net[2].weight
+        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
 
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0].flatten()
         output_slice = np.concatenate((output[:16], output[-16:]))
-
-        weight = pipe.transformer.x_embedder.weight
-        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
         self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
     def test_quantization(self):
