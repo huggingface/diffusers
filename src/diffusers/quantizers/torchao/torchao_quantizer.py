@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from packaging import version
 
-from ...utils import get_module_from_name, is_torch_available, is_torchao_available, logging
+from ...utils import get_module_from_name, is_torch_available, is_torch_version, is_torchao_available, logging
 from ..base import DiffusersQuantizer
 
 
@@ -33,8 +33,9 @@ if TYPE_CHECKING:
 
 if is_torch_available():
     import torch
+    import torch.nn as nn
 
-    if version.parse(torch.__version__) >= version.parse('2.6'):
+    if is_torch_version(">=", "2.5"):
         SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
             # At the moment, only int8 is supported for integer quantization dtypes.
             # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
