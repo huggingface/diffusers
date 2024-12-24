@@ -88,6 +88,39 @@ Some quantization methods are aliases (for example, `int8wo` is the commonly use
 
 Refer to the official torchao documentation for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
 
+## Serializing and Deserializing quantized models
+
+To serialize a quantized model in a given dtype, first load the model with the desired quantization dtype and then save it using the [`~ModelMixin.save_pretrained`] method.
+
+```python
+import torch
+from diffusers import FluxTransformer2DModel, TorchAoConfig
+
+quantization_config = TorchAoConfig("int8wo")
+transformer = FluxTransformer2DModel.from_pretrained(
+    "black-forest-labs/Flux.1-Dev",
+    subfolder="transformer",
+    quantization_config=quantization_config,
+    torch_dtype=torch.bfloat16,
+)
+transformer.save_pretrained("/path/to/flux_int8wo", safe_serialization=False)
+```
+
+To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] method.
+
+```python
+import torch
+from diffusers import FluxPipeline, FluxTransformer2DModel
+
+transformer = FluxTransformer2DModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
+pipe = FluxPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+prompt = "A cat holding a sign that says hello world"
+image = pipe(prompt, num_inference_steps=30, guidance_scale=7.0).images[0]
+image.save("output.png")
+``` 
+
 ## Resources
 
 - [TorchAO Quantization API](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md)
