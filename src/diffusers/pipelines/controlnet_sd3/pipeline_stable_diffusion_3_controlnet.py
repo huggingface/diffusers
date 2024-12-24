@@ -806,6 +806,7 @@ class StableDiffusion3ControlNetPipeline(
 
         return image_embeds.to(device=device)
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, *args, **kwargs):
         if self.image_encoder is not None and "image_encoder" not in self._exclude_from_cpu_offload:
             logger.warning(
