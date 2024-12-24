@@ -131,7 +131,9 @@ class TorchAoTest(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_dummy_components(self, quantization_config: TorchAoConfig, model_id: str = "hf-internal-testing/tiny-flux-pipe"):
+    def get_dummy_components(
+        self, quantization_config: TorchAoConfig, model_id: str = "hf-internal-testing/tiny-flux-pipe"
+    ):
         transformer = FluxTransformer2DModel.from_pretrained(
             model_id,
             subfolder="transformer",
@@ -436,7 +438,9 @@ class TorchAoTest(unittest.TestCase):
         """
         for model_id in ["hf-internal-testing/tiny-flux-pipe", "hf-internal-testing/tiny-flux-sharded"]:
             transformer_int4wo = self.get_dummy_components(TorchAoConfig("int4wo"), model_id=model_id)["transformer"]
-            transformer_int4wo_gs32 = self.get_dummy_components(TorchAoConfig("int4wo", group_size=32), model_id=model_id)["transformer"]
+            transformer_int4wo_gs32 = self.get_dummy_components(
+                TorchAoConfig("int4wo", group_size=32), model_id=model_id
+            )["transformer"]
             transformer_int8wo = self.get_dummy_components(TorchAoConfig("int8wo"), model_id=model_id)["transformer"]
             transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
 
@@ -654,7 +658,7 @@ class SlowTorchAoTests(unittest.TestCase):
             gc.collect()
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
-    
+
     def test_serialization(self):
         quantization_config = TorchAoConfig("int8wo")
         components = self.get_dummy_components(quantization_config)
@@ -673,6 +677,6 @@ class SlowTorchAoTests(unittest.TestCase):
 
         weight = loaded_pipe.transformer.x_embedder.weight
         self.assertTrue(isinstance(weight, AffineQuantizedTensor))
-        
+
         loaded_output = loaded_pipe(**inputs)[0].flatten()
         self.assertTrue(np.allclose(output, loaded_output, atol=1e-3, rtol=1e-3))
