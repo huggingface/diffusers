@@ -22,7 +22,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import SanaTransformer2DModel
 
-transformer = SanaTransformer2DModel.from_pretrained("Efficient-Large-Model/Sana_1600M_1024px_diffusers", subfolder="transformer", torch_dtype=torch.float16)
+transformer = SanaTransformer2DModel.from_pretrained("Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 ```
 
 ## SanaTransformer2DModel

@@ -193,15 +193,15 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models (`unet`, `text_encoder`, `vae`, and `safety checker` state dicts) to CPU using 🤗
         Accelerate, significantly reducing memory usage. Models are moved to a `torch.device('meta')` and loaded on a
         GPU only when their specific submodule's `forward` method is called. Offloading happens on a submodule basis.
         Memory savings are higher than using `enable_model_cpu_offload`, but performance is lower.
         """
-        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
-        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
+        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
 
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
@@ -411,7 +411,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -419,8 +419,8 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
-        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
-        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
+        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
 
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
@@ -652,7 +652,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -660,8 +660,8 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
-        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
-        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
+        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
 
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
