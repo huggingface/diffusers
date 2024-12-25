@@ -446,6 +446,10 @@ class TextToVideoZeroPipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+                
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+                    
         return latents.clone().detach()
 
     # Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.StableDiffusionKDiffusionPipeline.check_inputs
