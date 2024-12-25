@@ -73,11 +73,12 @@ EXAMPLE_DOC_STRING = """
 
 def calculate_shift(
     image_seq_len,
-    base_seq_len: int = 256,
-    max_seq_len: int = 4096,
-    base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    scheduler,
 ):
+    base_seq_len = scheduler.config.get('base_image_seq_len', 256)
+    max_seq_len = scheduler.config.get('max_image_seq_len', 4096)
+    base_shift = scheduler.config.get('base_shift', 0.5)
+    max_shift = scheduler.config.get('max_shift', 1.16)
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
     mu = image_seq_len * m + b
@@ -824,10 +825,7 @@ class FluxPipeline(
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler,
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
