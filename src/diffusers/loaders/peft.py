@@ -257,15 +257,8 @@ class PeftAdapterMixin:
             model_keys = [k for k in keys if k.startswith(f"{prefix}.")]
             if len(model_keys) > 0:
                 state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
-            else:
-                state_dict = {}
 
         if len(state_dict) > 0:
-            if prefix is None:
-                component_name = "unet" if "UNet" in self.__class__.__name__ else "transformer"
-            else:
-                component_name = prefix
-            logger.info(f"Loading {component_name}.")
             if adapter_name in getattr(self, "peft_config", {}):
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."
@@ -375,11 +368,6 @@ class PeftAdapterMixin:
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
-
-        else:
-            logger.info(
-                f"No LoRA keys found in the provided state dict for {self.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
-            )
 
     def save_lora_adapter(
         self,
