@@ -39,7 +39,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
         >>> from diffusers.utils import export_to_video
 
-        >>> model_id = "tencent/HunyuanVideo"
+        >>> model_id = "hunyuanvideo-community/HunyuanVideo"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
         ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
         ... )
@@ -143,7 +143,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     Args:
         text_encoder ([`LlamaModel`]):
             [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
-        tokenizer_2 (`LlamaTokenizer`):
+        tokenizer (`LlamaTokenizer`):
             Tokenizer from [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
         transformer ([`HunyuanVideoTransformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.

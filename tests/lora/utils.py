@@ -1528,7 +1528,7 @@ class PeftLoraLoaderMixinTests:
     @pytest.mark.xfail(
         condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
-        strict=True,
+        strict=False,
     )
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
@@ -1568,7 +1568,7 @@ class PeftLoraLoaderMixinTests:
 
             # without we should not see an error, but every image will be black
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-            out = pipe("test", num_inference_steps=2, output_type="np")[0]
+            out = pipe(**inputs)[0]
 
             self.assertTrue(np.isnan(out).all())
 
@@ -2029,3 +2029,113 @@ class PeftLoraLoaderMixinTests:
                     np.allclose(output_lora_scale_wo_kwargs, output_lora_from_pretrained, atol=1e-3, rtol=1e-3),
                     "Loading from saved checkpoints should give same results as set_adapters().",
                 )
+
+    @require_peft_version_greater("0.13.2")
+    def test_lora_B_bias(self):
+        # Currently, this test is only relevant for Flux Control LoRA as we are not
+        # aware of any other LoRA checkpoint that has its `lora_B` biases trained.
+        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # keep track of the bias values of the base layers to perform checks later.
+        bias_values = {}
+        denoiser = pipe.unet if self.unet_kwargs is not None else pipe.transformer
+        for name, module in denoiser.named_modules():
+            if any(k in name for k in ["to_q", "to_k", "to_v", "to_out.0"]):
+                if module.bias is not None:
+                    bias_values[name] = module.bias.data.clone()
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(logging.INFO)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        denoiser_lora_config.lora_bias = False
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_bias_false_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        pipe.delete_adapters("adapter-1")
+
+        denoiser_lora_config.lora_bias = True
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_bias_true_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertFalse(np.allclose(original_output, lora_bias_false_output, atol=1e-3, rtol=1e-3))
+        self.assertFalse(np.allclose(original_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
+        self.assertFalse(np.allclose(lora_bias_false_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
+
+    def test_correct_lora_configs_with_different_ranks(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+
+        lora_output_same_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        if self.unet_kwargs is not None:
+            pipe.unet.delete_adapters("adapter-1")
+        else:
+            pipe.transformer.delete_adapters("adapter-1")
+
+        denoiser = pipe.unet if self.unet_kwargs is not None else pipe.transformer
+        for name, _ in denoiser.named_modules():
+            if "to_k" in name and "attn" in name and "lora" not in name:
+                module_name_to_rank_update = name.replace(".base_layer.", ".")
+                break
+
+        # change the rank_pattern
+        updated_rank = denoiser_lora_config.r * 2
+        denoiser_lora_config.rank_pattern = {module_name_to_rank_update: updated_rank}
+
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+            updated_rank_pattern = pipe.unet.peft_config["adapter-1"].rank_pattern
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+            updated_rank_pattern = pipe.transformer.peft_config["adapter-1"].rank_pattern
+
+        self.assertTrue(updated_rank_pattern == {module_name_to_rank_update: updated_rank})
+
+        lora_output_diff_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(not np.allclose(original_output, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+        self.assertTrue(not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+
+        if self.unet_kwargs is not None:
+            pipe.unet.delete_adapters("adapter-1")
+        else:
+            pipe.transformer.delete_adapters("adapter-1")
+
+        # similarly change the alpha_pattern
+        updated_alpha = denoiser_lora_config.lora_alpha * 2
+        denoiser_lora_config.alpha_pattern = {module_name_to_rank_update: updated_alpha}
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+            self.assertTrue(
+                pipe.unet.peft_config["adapter-1"].alpha_pattern == {module_name_to_rank_update: updated_alpha}
+            )
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+            self.assertTrue(
+                pipe.transformer.peft_config["adapter-1"].alpha_pattern == {module_name_to_rank_update: updated_alpha}
+            )
+
+        lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
+        self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
