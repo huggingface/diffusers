@@ -76,7 +76,7 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             torch_dtype=torch.float16,
             safety_checker=None,
         )
-        pipe_single_file.enable_model_cpu_offload()
+        pipe_single_file.enable_model_cpu_offload(device=torch_device)
         pipe_single_file.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs()
@@ -88,7 +88,7 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             torch_dtype=torch.float16,
             safety_checker=None,
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs()
         images = pipe(**inputs).images[0]

@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from packaging import version
 
-from ...utils import get_module_from_name, is_torch_available, is_torchao_available, logging
+from ...utils import get_module_from_name, is_torch_available, is_torch_version, is_torchao_available, logging
 from ..base import DiffusersQuantizer
 
 
@@ -35,21 +35,28 @@ if is_torch_available():
     import torch
     import torch.nn as nn
 
-    SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
-        # At the moment, only int8 is supported for integer quantization dtypes.
-        # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
-        # to support more quantization methods, such as intx_weight_only.
-        torch.int8,
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-        torch.uint1,
-        torch.uint2,
-        torch.uint3,
-        torch.uint4,
-        torch.uint5,
-        torch.uint6,
-        torch.uint7,
-    )
+    if is_torch_version(">=", "2.5"):
+        SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
+            # At the moment, only int8 is supported for integer quantization dtypes.
+            # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
+            # to support more quantization methods, such as intx_weight_only.
+            torch.int8,
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+            torch.uint1,
+            torch.uint2,
+            torch.uint3,
+            torch.uint4,
+            torch.uint5,
+            torch.uint6,
+            torch.uint7,
+        )
+    else:
+        SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
+            torch.int8,
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
 
 if is_torchao_available():
     from torchao.quantization import quantize_
@@ -93,6 +100,11 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             raise ImportError(
                 "Loading a TorchAO quantized model requires the torchao library. Please install with `pip install torchao`"
             )
+        torchao_version = version.parse(importlib.metadata.version("torch"))
+        if torchao_version < version.parse("0.7.0"):
+            raise RuntimeError(
+                f"The minimum required version of `torchao` is 0.7.0, but the current version is {torchao_version}. Please upgrade with `pip install -U torchao`."
+            )
 
         self.offload = False
 
@@ -120,7 +132,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def update_torch_dtype(self, torch_dtype):
         quant_type = self.quantization_config.quant_type
 
-        if quant_type.startswith("int"):
+        if quant_type.startswith("int") or quant_type.startswith("uint"):
             if torch_dtype is not None and torch_dtype != torch.bfloat16:
                 logger.warning(
                     f"You are trying to set torch_dtype to {torch_dtype} for int4/int8/uintx quantization, but "

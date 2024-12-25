@@ -45,12 +45,11 @@ transformer = FluxTransformer2DModel.from_single_file(
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
-    generator=torch.manual_seed(0),
     torch_dtype=torch.bfloat16,
 )
 pipe.enable_model_cpu_offload()
 prompt = "A cat holding a sign that says hello world"
-image = pipe(prompt).images[0]
+image = pipe(prompt, generator=torch.manual_seed(0)).images[0]
 image.save("flux-gguf.png")
 ```
 
