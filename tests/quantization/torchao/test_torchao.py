@@ -450,8 +450,6 @@ class TorchAoTest(unittest.TestCase):
 
             # Will quantize all the linear layers except x_embedder
             for name, module in transformer_int4wo_gs32.named_modules():
-                if name == "x_embedder":
-                    print(module)
                 if isinstance(module, nn.Linear) and name not in ["x_embedder"]:
                     self.assertTrue(isinstance(module.weight, AffineQuantizedTensor))
 
