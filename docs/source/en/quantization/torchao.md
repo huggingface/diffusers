@@ -25,6 +25,7 @@ Quantize a model by passing [`TorchAoConfig`] to [`~ModelMixin.from_pretrained`]
 The example below only quantizes the weights to int8.
 
 ```python
+import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
@@ -43,6 +44,10 @@ pipe = FluxPipeline.from_pretrained(
     torch_dtype=dtype,
 )
 pipe.to("cuda")
+
+# Without quantization: ~31.447 GB
+# With quantization: ~20.40 GB
+print(f"Pipeline memory usage: {torch.cuda.max_memory_reserved() / 1024**3:.3f} GB")
 
 prompt = "A cat holding a sign that says hello world"
 image = pipe(

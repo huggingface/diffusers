@@ -443,21 +443,29 @@ class TorchAoTest(unittest.TestCase):
             transformer_int8wo = self.get_dummy_components(TorchAoConfig("int8wo"), model_id=model_id)["transformer"]
             transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
 
-            self.assertTrue(
-                isinstance(transformer_int4wo.transformer_blocks[0].ff.net[2].weight, AffineQuantizedTensor)
-            )
-            self.assertTrue(
-                isinstance(transformer_int4wo_gs32.transformer_blocks[0].ff.net[2].weight, AffineQuantizedTensor)
-            )
-            self.assertTrue(
-                isinstance(transformer_int8wo.transformer_blocks[0].ff.net[2].weight, AffineQuantizedTensor)
-            )
+            # Will not quantized all the layers by default due to the model weights shapes not being divisible by group_size=64
+            for block in transformer_int4wo.transformer_blocks:
+                self.assertTrue(isinstance(block.ff.net[2].weight, AffineQuantizedTensor))
+                self.assertTrue(isinstance(block.ff_context.net[2].weight, AffineQuantizedTensor))
+
+            # Will quantize all the linear layers except x_embedder
+            for name, module in transformer_int4wo_gs32.named_modules():
+                if name == "x_embedder":
+                    print(module)
+                if isinstance(module, nn.Linear) and name not in ["x_embedder"]:
+                    self.assertTrue(isinstance(module.weight, AffineQuantizedTensor))
+
+            # Will quantize all the linear layers
+            for module in transformer_int8wo.modules():
+                if isinstance(module, nn.Linear):
+                    self.assertTrue(isinstance(module.weight, AffineQuantizedTensor))
 
             total_int4wo = get_model_size_in_bytes(transformer_int4wo)
             total_int4wo_gs32 = get_model_size_in_bytes(transformer_int4wo_gs32)
             total_int8wo = get_model_size_in_bytes(transformer_int8wo)
             total_bf16 = get_model_size_in_bytes(transformer_bf16)
 
+            # TODO: refactor to align with other quantization tests
             # Latter has smaller group size, so more groups -> more scales and zero points
             self.assertTrue(total_int4wo < total_int4wo_gs32)
             # int8 quantizes more layers compare to int4 with default group size
@@ -735,3 +743,60 @@ class SlowTorchAoTests(unittest.TestCase):
         )
         int8wo_memory_in_gb = get_model_size_in_bytes(transformer) / 1024**3
         self.assertTrue(int8wo_memory_in_gb < expected_memory_in_gb)
+
+
+@require_torch
+@require_torch_gpu
+@require_torchao_version_greater_or_equal("0.7.0")
+@slow
+@nightly
+class SlowTorchAoPreserializedModelTests(unittest.TestCase):
+    def tearDown(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_dummy_inputs(self, device: torch.device, seed: int = 0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator().manual_seed(seed)
+
+        inputs = {
+            "prompt": "an astronaut riding a horse in space",
+            "height": 512,
+            "width": 512,
+            "num_inference_steps": 20,
+            "output_type": "np",
+            "generator": generator,
+        }
+
+        return inputs
+
+    def test_transformer_int8wo(self):
+        # fmt: off
+        expected_slice = np.array([0.0505, 0.0742, 0.1367, 0.0429, 0.0585, 0.1386, 0.0585, 0.0703, 0.1367, 0.0566, 0.0703, 0.1464, 0.0546, 0.0703, 0.1425, 0.0546, 0.3535, 0.7578, 0.5000, 0.4062, 0.7656, 0.5117, 0.4121, 0.7656, 0.5117, 0.3984, 0.7578, 0.5234, 0.4023, 0.7382, 0.5390, 0.4570])
+        # fmt: on
+
+        # This is just for convenience, so that we can modify it at one place for custom environments and locally testing
+        cache_dir = None
+        transformer = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/FLUX.1-Dev-TorchAO-int8wo-transformer",
+            torch_dtype=torch.bfloat16,
+            use_safetensors=False,
+            cache_dir=cache_dir,
+        )
+        pipe = FluxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev", transformer=transformer, torch_dtype=torch.bfloat16, cache_dir=cache_dir
+        )
+        pipe.enable_model_cpu_offload()
+
+        # Verify that all linear layer weights are quantized
+        for name, module in pipe.transformer.named_modules():
+            if isinstance(module, nn.Linear):
+                self.assertTrue(isinstance(module.weight, AffineQuantizedTensor))
+
+        # Verify outputs match expected slice
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)[0].flatten()
+        output_slice = np.concatenate((output[:16], output[-16:]))
+        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
