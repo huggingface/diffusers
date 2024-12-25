@@ -17,8 +17,8 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
-    is_torch_xla_available,
     BaseOutput,
+    is_torch_xla_available,
     logging,
     scale_lora_layers,
     unscale_lora_layers,
@@ -26,6 +26,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionSafetyChecker
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
