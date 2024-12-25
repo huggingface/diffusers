@@ -671,7 +671,7 @@ class SlowTorchAoTests(unittest.TestCase):
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
 
-    def test_serialization(self):
+    def test_serialization_int8wo(self):
         quantization_config = TorchAoConfig("int8wo")
         components = self.get_dummy_components(quantization_config)
         pipe = FluxPipeline(**components)
