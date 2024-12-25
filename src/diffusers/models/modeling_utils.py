@@ -819,6 +819,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     revision=revision,
                     subfolder=subfolder or "",
                 )
+                # TODO: https://github.com/huggingface/diffusers/issues/10013
                 if hf_quantizer is not None:
                     model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
                     logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
