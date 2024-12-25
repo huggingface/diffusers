@@ -1863,6 +1863,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 "As a result, the state_dict of the transformer has been expanded to match the LoRA parameter shapes. "
                 "To get a comprehensive list of parameter names that were modified, enable debug logging."
             )
+        transformer_lora_state_dict = self._maybe_expand_lora_state_dict(
+            transformer=transformer, lora_state_dict=transformer_lora_state_dict
+        )
 
         if len(transformer_lora_state_dict) > 0:
             self.load_lora_into_transformer(
@@ -2355,15 +2358,17 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         has_param_with_shape_update = False
         overwritten_params = {}
 
+        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
                 module_weight = module.weight.data
                 module_bias = module.bias.data if module.bias is not None else None
                 bias = module_bias is not None
 
-                lora_A_weight_name = f"{name}.lora_A.weight"
-                lora_B_weight_name = f"{name}.lora_B.weight"
-                if lora_A_weight_name not in state_dict.keys():
+                lora_base_name = name.replace(".base_layer", "") if is_peft_loaded else name
+                lora_A_weight_name = f"{lora_base_name}.lora_A.weight"
+                lora_B_weight_name = f"{lora_base_name}.lora_B.weight"
+                if lora_A_weight_name not in state_dict:
                     continue
 
                 in_features = state_dict[lora_A_weight_name].shape[1]
@@ -2374,54 +2379,58 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     continue
 
                 module_out_features, module_in_features = module_weight.shape
-                if out_features < module_out_features or in_features < module_in_features:
-                    raise NotImplementedError(
-                        f"Only LoRAs with input/output features higher than the current module's input/output features "
-                        f"are currently supported. The provided LoRA contains {in_features=} and {out_features=}, which "
-                        f"are lower than {module_in_features=} and {module_out_features=}. If you require support for "
-                        f"this please open an issue at https://github.com/huggingface/diffusers/issues."
+                debug_message = ""
+                if in_features > module_in_features:
+                    debug_message += (
+                        f'Expanding the nn.Linear input/output features for module="{name}" because the provided LoRA '
+                        f"checkpoint contains higher number of features than expected. The number of input_features will be "
+                        f"expanded from {module_in_features} to {in_features}"
                     )
-
-                debug_message = (
-                    f'Expanding the nn.Linear input/output features for module="{name}" because the provided LoRA '
-                    f"checkpoint contains higher number of features than expected. The number of input_features will be "
-                    f"expanded from {module_in_features} to {in_features}"
-                )
-                if module_out_features != out_features:
+                if out_features > module_out_features:
                     debug_message += (
                         ", and the number of output features will be "
                         f"expanded from {module_out_features} to {out_features}."
                     )
                 else:
                     debug_message += "."
-                logger.debug(debug_message)
+                if debug_message:
+                    logger.debug(debug_message)
 
-                has_param_with_shape_update = True
-                parent_module_name, _, current_module_name = name.rpartition(".")
-                parent_module = transformer.get_submodule(parent_module_name)
+                if out_features > module_out_features or in_features > module_in_features:
+                    has_param_with_shape_update = True
+                    parent_module_name, _, current_module_name = name.rpartition(".")
+                    parent_module = transformer.get_submodule(parent_module_name)
 
-                # TODO: consider initializing this under meta device for optims.
-                expanded_module = torch.nn.Linear(
-                    in_features, out_features, bias=bias, device=module_weight.device, dtype=module_weight.dtype
-                )
-                # Only weights are expanded and biases are not.
-                new_weight = torch.zeros_like(
-                    expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
-                )
-                slices = tuple(slice(0, dim) for dim in module_weight.shape)
-                new_weight[slices] = module_weight
-                expanded_module.weight.data.copy_(new_weight)
-                if module_bias is not None:
-                    expanded_module.bias.data.copy_(module_bias)
+                    with torch.device("meta"):
+                        expanded_module = torch.nn.Linear(
+                            in_features, out_features, bias=bias, dtype=module_weight.dtype
+                        )
+                    # Only weights are expanded and biases are not. This is because only the input dimensions
+                    # are changed while the output dimensions remain the same. The shape of the weight tensor
+                    # is (out_features, in_features), while the shape of bias tensor is (out_features,), which
+                    # explains the reason why only weights are expanded.
+                    new_weight = torch.zeros_like(
+                        expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
+                    )
+                    slices = tuple(slice(0, dim) for dim in module_weight.shape)
+                    new_weight[slices] = module_weight
+                    tmp_state_dict = {"weight": new_weight}
+                    if module_bias is not None:
+                        tmp_state_dict["bias"] = module_bias
+                    expanded_module.load_state_dict(tmp_state_dict, strict=True, assign=True)
 
-                setattr(parent_module, current_module_name, expanded_module)
+                    setattr(parent_module, current_module_name, expanded_module)
 
-                if current_module_name in _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX:
-                    attribute_name = _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX[current_module_name]
-                    new_value = int(expanded_module.weight.data.shape[1])
-                    old_value = getattr(transformer.config, attribute_name)
-                    setattr(transformer.config, attribute_name, new_value)
-                    logger.info(f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}.")
+                    del tmp_state_dict
+
+                    if current_module_name in _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX:
+                        attribute_name = _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX[current_module_name]
+                        new_value = int(expanded_module.weight.data.shape[1])
+                        old_value = getattr(transformer.config, attribute_name)
+                        setattr(transformer.config, attribute_name, new_value)
+                        logger.info(
+                            f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}."
+                        )
 
                     # For `unload_lora_weights()`.
                     # TODO: this could lead to more memory overhead if the number of overwritten params
@@ -2434,6 +2443,51 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             transformer._overwritten_params = overwritten_params
 
         return has_param_with_shape_update
+
+    @classmethod
+    def _maybe_expand_lora_state_dict(cls, transformer, lora_state_dict):
+        expanded_module_names = set()
+        transformer_state_dict = transformer.state_dict()
+        prefix = f"{cls.transformer_name}."
+
+        lora_module_names = [
+            key[: -len(".lora_A.weight")] for key in lora_state_dict if key.endswith(".lora_A.weight")
+        ]
+        lora_module_names = [name[len(prefix) :] for name in lora_module_names if name.startswith(prefix)]
+        lora_module_names = sorted(set(lora_module_names))
+        transformer_module_names = sorted({name for name, _ in transformer.named_modules()})
+        unexpected_modules = set(lora_module_names) - set(transformer_module_names)
+        if unexpected_modules:
+            logger.debug(f"Found unexpected modules: {unexpected_modules}. These will be ignored.")
+
+        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
+        for k in lora_module_names:
+            if k in unexpected_modules:
+                continue
+
+            base_param_name = (
+                f"{k.replace(prefix, '')}.base_layer.weight" if is_peft_loaded else f"{k.replace(prefix, '')}.weight"
+            )
+            base_weight_param = transformer_state_dict[base_param_name]
+            lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
+
+            if base_weight_param.shape[1] > lora_A_param.shape[1]:
+                shape = (lora_A_param.shape[0], base_weight_param.shape[1])
+                expanded_state_dict_weight = torch.zeros(shape, device=base_weight_param.device)
+                expanded_state_dict_weight[:, : lora_A_param.shape[1]].copy_(lora_A_param)
+                lora_state_dict[f"{prefix}{k}.lora_A.weight"] = expanded_state_dict_weight
+                expanded_module_names.add(k)
+            elif base_weight_param.shape[1] < lora_A_param.shape[1]:
+                raise NotImplementedError(
+                    f"This LoRA param ({k}.lora_A.weight) has an incompatible shape {lora_A_param.shape}. Please open an issue to file for a feature request - https://github.com/huggingface/diffusers/issues/new."
+                )
+
+        if expanded_module_names:
+            logger.info(
+                f"The following LoRA modules were zero padded to match the state dict of {cls.transformer_name}: {expanded_module_names}. Please open an issue if you think this was unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
+
+        return lora_state_dict
 
 
 # The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially

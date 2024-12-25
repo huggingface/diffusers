@@ -268,6 +268,43 @@ images = pipe(
 images[0].save("flux-redux.png")
 ```
 
+## Combining Flux Turbo LoRAs with Flux Control, Fill, and Redux
+
+We can combine Flux Turbo LoRAs with Flux Control and other pipelines like Fill and Redux to enable few-steps' inference. The example below shows how to do that for Flux Control LoRA for depth and turbo LoRA from [`ByteDance/Hyper-SD`](https://hf.co/ByteDance/Hyper-SD).
+
+```py
+from diffusers import FluxControlPipeline
+from image_gen_aux import DepthPreprocessor
+from diffusers.utils import load_image
+from huggingface_hub import hf_hub_download
+import torch
+
+control_pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+control_pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora", adapter_name="depth")
+control_pipe.load_lora_weights(
+    hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
+)
+control_pipe.set_adapters(["depth", "hyper-sd"], adapter_weights=[0.85, 0.125])
+control_pipe.enable_model_cpu_offload()
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = DepthPreprocessor.from_pretrained("LiheYoung/depth-anything-large-hf")
+control_image = processor(control_image)[0].convert("RGB")
+
+image = control_pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=8,
+    guidance_scale=10.0,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("output.png")
+```
+
 ## Running FP16 inference
 
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
