@@ -795,7 +795,7 @@ def main(args):
         flux_transformer.x_embedder = new_linear
 
     assert torch.all(flux_transformer.x_embedder.weight[:, initial_input_channels:].data == 0)
-    flux_transformer.register_to_config(in_channels=initial_input_channels * 2)
+    flux_transformer.register_to_config(in_channels=initial_input_channels * 2, out_channels=initial_input_channels)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1165,6 +1165,11 @@ def main(args):
         if args.upcast_before_saving:
             flux_transformer.to(torch.float32)
         flux_transformer.save_pretrained(args.output_dir)
+
+        del flux_transformer
+        del text_encoding_pipeline
+        del vae
+        free_memory()
 
         # Run a final round of validation.
         image_logs = None

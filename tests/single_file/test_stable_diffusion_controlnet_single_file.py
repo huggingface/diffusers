@@ -67,14 +67,14 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
         pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         pipe_sf = self.pipeline_class.from_single_file(
             self.ckpt_path,
             controlnet=controlnet,
         )
         pipe_sf.unet.set_default_attn_processor()
-        pipe_sf.enable_model_cpu_offload()
+        pipe_sf.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs()
         output = pipe(**inputs).images[0]

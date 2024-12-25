@@ -69,7 +69,7 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
             self.ckpt_path, controlnet=controlnet, torch_dtype=torch.float16
         )
         pipe_single_file.unet.set_default_attn_processor()
-        pipe_single_file.enable_model_cpu_offload()
+        pipe_single_file.enable_model_cpu_offload(device=torch_device)
         pipe_single_file.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
@@ -77,7 +77,7 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
 
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet, torch_dtype=torch.float16)
         pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         images = pipe(**inputs).images[0]
