@@ -5268,6 +5268,8 @@ class CustomIPAdapterAttnProcessor2_0(torch.nn.Module):
                 )
             else:
                 for index, (mask, scale, ip_state) in enumerate(zip(ip_adapter_masks, self.scale, ip_hidden_states)):
+                    if mask is None:
+                        continue
                     if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
                         raise ValueError(
                             "Each element of the ip_adapter_masks array should be a tensor with shape "
