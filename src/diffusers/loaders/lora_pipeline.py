@@ -1263,17 +1263,13 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        transformer_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k}
-        if len(transformer_state_dict) > 0:
-            self.load_lora_into_transformer(
-                state_dict,
-                transformer=getattr(self, self.transformer_name)
-                if not hasattr(self, "transformer")
-                else self.transformer,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=None,
@@ -1809,12 +1805,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_state_dict = {
             k: state_dict.get(k)
             for k in list(state_dict.keys())
-            if k.startswith(self.transformer_name) and "lora" in k
+            if k.startswith(f"{self.transformer_name}.") and "lora" in k
         }
         transformer_norm_state_dict = {
             k: state_dict.pop(k)
             for k in list(state_dict.keys())
-            if k.startswith(self.transformer_name)
+            if k.startswith(f"{self.transformer_name}.")
             and any(norm_key in k for norm_key in self._control_lora_supported_norm_keys)
         }
 
