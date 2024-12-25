@@ -168,6 +168,7 @@ class HunyuanVideoResnetBlockCausal3D(nn.Module):
             self.conv_shortcut = HunyuanVideoCausalConv3d(in_channels, out_channels, 1, 1, 0)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = hidden_states.contiguous()
         residual = hidden_states
 
         hidden_states = self.norm1(hidden_states)
@@ -792,12 +793,12 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         # The minimal tile height and width for spatial tiling to be used
         self.tile_sample_min_height = 256
         self.tile_sample_min_width = 256
-        self.tile_sample_min_num_frames = 64
+        self.tile_sample_min_num_frames = 16
 
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
-        self.tile_sample_stride_num_frames = 48
+        self.tile_sample_stride_num_frames = 12
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (HunyuanVideoEncoder3D, HunyuanVideoDecoder3D)):
@@ -1003,7 +1004,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         for i in range(0, height, self.tile_sample_stride_height):
             row = []
             for j in range(0, width, self.tile_sample_stride_width):
-                tile = x[:, :, :, i : i + self.tile_sample_min_size, j : j + self.tile_sample_min_size]
+                tile = x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
                 tile = self.encoder(tile)
                 tile = self.quant_conv(tile)
                 row.append(tile)
@@ -1020,7 +1021,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
                 if j > 0:
                     tile = self.blend_h(row[j - 1], tile, blend_width)
                 result_row.append(tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width])
-            result_rows.append(torch.cat(result_row, dim=-1))
+            result_rows.append(torch.cat(result_row, dim=4))
 
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
         return enc
