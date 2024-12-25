@@ -1923,7 +1923,8 @@ class PeftLoraLoaderMixinTests:
             pipe.load_lora_weights(no_op_state_dict)
         out_after_lora_attempt = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-        self.assertTrue(cap_logger.out.startswith("No LoRA keys found in the provided state dict"))
+        denoiser = getattr(pipe, "unet") if self.unet_kwargs is not None else getattr(pipe, "transformer")
+        self.assertTrue(cap_logger.out.startswith(f"No LoRA keys associated to {denoiser.__class__.__name__}"))
         self.assertTrue(np.allclose(original_out, out_after_lora_attempt, atol=1e-5, rtol=1e-5))
 
         # test only for text encoder
@@ -1943,7 +1944,9 @@ class PeftLoraLoaderMixinTests:
                         no_op_state_dict, network_alphas=None, text_encoder=text_encoder, prefix=prefix
                     )
 
-                self.assertTrue(cap_logger.out.startswith("No LoRA keys found in the provided state dict"))
+                self.assertTrue(
+                    cap_logger.out.startswith(f"No LoRA keys associated to {text_encoder.__class__.__name__}")
+                )
 
     def test_set_adapters_match_attention_kwargs(self):
         """Test to check if outputs after `set_adapters()` and attention kwargs match."""

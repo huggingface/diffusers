@@ -1807,7 +1807,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("Invalid LoRA checkpoint.")
 
         transformer_lora_state_dict = {
-            k: state_dict.pop(k)
+            k: state_dict.get(k)
             for k in list(state_dict.keys())
             if k.startswith(self.transformer_name) and "lora" in k
         }
@@ -1819,9 +1819,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         }
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        has_param_with_expanded_shape = self._maybe_expand_transformer_param_shape_or_error_(
-            transformer, transformer_lora_state_dict, transformer_norm_state_dict
-        )
+        has_param_with_expanded_shape = False
+        if len(transformer_lora_state_dict) > 0:
+            has_param_with_expanded_shape = self._maybe_expand_transformer_param_shape_or_error_(
+                transformer, transformer_lora_state_dict, transformer_norm_state_dict
+            )
 
         if has_param_with_expanded_shape:
             logger.info(
@@ -1829,19 +1831,21 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 "As a result, the state_dict of the transformer has been expanded to match the LoRA parameter shapes. "
                 "To get a comprehensive list of parameter names that were modified, enable debug logging."
             )
-        transformer_lora_state_dict = self._maybe_expand_lora_state_dict(
-            transformer=transformer, lora_state_dict=transformer_lora_state_dict
-        )
-
         if len(transformer_lora_state_dict) > 0:
-            self.load_lora_into_transformer(
-                transformer_lora_state_dict,
-                network_alphas=network_alphas,
-                transformer=transformer,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
+            transformer_lora_state_dict = self._maybe_expand_lora_state_dict(
+                transformer=transformer, lora_state_dict=transformer_lora_state_dict
             )
+            for k in transformer_lora_state_dict:
+                state_dict.update({k: transformer_lora_state_dict[k]})
+
+        self.load_lora_into_transformer(
+            state_dict,
+            network_alphas=network_alphas,
+            transformer=transformer,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
         if len(transformer_norm_state_dict) > 0:
             transformer._transformer_norm_layers = self._load_norm_into_transformer(

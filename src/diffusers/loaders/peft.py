@@ -254,7 +254,7 @@ class PeftAdapterMixin:
 
         if prefix is not None:
             state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
-
+        print(f"{len(state_dict)=}")
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}):
                 raise ValueError(
