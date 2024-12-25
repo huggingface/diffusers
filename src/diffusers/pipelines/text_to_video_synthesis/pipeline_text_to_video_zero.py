@@ -15,7 +15,14 @@ from ...loaders import FromSingleFileMixin, StableDiffusionLoraLoaderMixin, Text
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import USE_PEFT_BACKEND, is_torch_xla_available, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    is_torch_xla_available,
+    BaseOutput,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionSafetyChecker
@@ -288,7 +295,11 @@ def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_s
 
 
 class TextToVideoZeroPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for zero-shot text-to-video generation using Stable Diffusion.
@@ -446,10 +457,10 @@ class TextToVideoZeroPipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
-                
+
                 if XLA_AVAILABLE:
                     xm.mark_step()
-                    
+
         return latents.clone().detach()
 
     # Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.StableDiffusionKDiffusionPipeline.check_inputs
