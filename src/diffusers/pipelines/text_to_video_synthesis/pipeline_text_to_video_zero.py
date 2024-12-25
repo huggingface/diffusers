@@ -11,7 +11,7 @@ from torch.nn.functional import grid_sample
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
@@ -282,7 +282,7 @@ def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_s
 
 
 class TextToVideoZeroPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
+    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for zero-shot text-to-video generation using Stable Diffusion.
