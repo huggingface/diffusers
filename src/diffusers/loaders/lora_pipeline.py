@@ -36,6 +36,7 @@ from ..utils import (
 from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, LoraBaseMixin, _fetch_state_dict  # noqa
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
+    _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
@@ -4026,6 +4027,10 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_original_hunyuan_video = any("img_attn_qkv" in k for k in state_dict)
+        if is_original_hunyuan_video:
+            state_dict = _convert_hunyuan_video_lora_to_diffusers(state_dict)
 
         return state_dict
 
