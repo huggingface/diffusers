@@ -1678,7 +1678,7 @@ def main(args):
                     if "EDM" in scheduler_type:
                         inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
                     else:
-                        inp_noisy_latents = noisy_model_input / ((sigmas**2 + 1) ** 0.5)
+                        inp_noisy_latents = noisy_model_input / ((sigmas**2 + 0.5**2) ** 0.5)
 
                 # time ids
                 add_time_ids = torch.cat(
