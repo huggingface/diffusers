@@ -411,6 +411,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
+
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
+            )
+
         if device and torch.device(device).type == "cuda":
             if pipeline_is_sequentially_offloaded and not pipeline_has_bnb:
                 raise ValueError(
@@ -421,12 +428,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 raise ValueError(
                     "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
                 )
-
-        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
-        if is_pipeline_device_mapped:
-            raise ValueError(
-                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
-            )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
