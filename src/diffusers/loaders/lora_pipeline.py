@@ -2460,13 +2460,17 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if unexpected_modules:
             logger.debug(f"Found unexpected modules: {unexpected_modules}. These will be ignored.")
 
-        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
+        transformer_base_layer_keys = {
+            k[: -len(".base_layer.weight")] for k in transformer_state_dict.keys() if ".base_layer.weight" in k
+        }
         for k in lora_module_names:
             if k in unexpected_modules:
                 continue
 
             base_param_name = (
-                f"{k.replace(prefix, '')}.base_layer.weight" if is_peft_loaded else f"{k.replace(prefix, '')}.weight"
+                f"{k.replace(prefix, '')}.base_layer.weight"
+                if k in transformer_base_layer_keys
+                else f"{k.replace(prefix, '')}.weight"
             )
             base_weight_param = transformer_state_dict[base_param_name]
             lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
