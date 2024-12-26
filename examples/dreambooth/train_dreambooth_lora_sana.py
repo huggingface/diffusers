@@ -70,7 +70,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -943,7 +943,7 @@ def main(args):
 
     # Load scheduler and models
     noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler"
+        args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
     text_encoder = Gemma2Model.from_pretrained(
@@ -964,15 +964,6 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
-    # Initialize a text encoding pipeline and keep it to CPU for now.
-    text_encoding_pipeline = SanaPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=None,
-        transformer=None,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-    )
-
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -992,6 +983,15 @@ def main(args):
     transformer.to(accelerator.device, dtype=weight_dtype)
     # because Gemma2 is particularly suited for bfloat16.
     text_encoder.to(dtype=torch.bfloat16)
+
+    # Initialize a text encoding pipeline and keep it to CPU for now.
+    text_encoding_pipeline = SanaPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=None,
+        transformer=None,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+    )
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
@@ -1182,6 +1182,7 @@ def main(args):
             )
         if args.offload:
             text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+        prompt_embeds = prompt_embeds.to(transformer.dtype)
         return prompt_embeds, prompt_attention_mask
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
@@ -1216,7 +1217,7 @@ def main(args):
     vae_config_scaling_factor = vae.config.scaling_factor
     if args.cache_latents:
         latents_cache = []
-        vae = vae.to("cuda")
+        vae = vae.to(accelerator.device)
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
                 batch["pixel_values"] = batch["pixel_values"].to(
