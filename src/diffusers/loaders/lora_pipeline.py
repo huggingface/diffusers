@@ -2468,6 +2468,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             base_param_name = (
                 f"{k.replace(prefix, '')}.base_layer.weight" if is_peft_loaded else f"{k.replace(prefix, '')}.weight"
             )
+            # This means the corresponding layer doesn't have any LoRA.
+            if base_param_name not in transformer_state_dict:
+                continue
             base_weight_param = transformer_state_dict[base_param_name]
             lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
 
