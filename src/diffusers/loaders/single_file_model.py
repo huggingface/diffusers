@@ -17,16 +17,23 @@ import re
 from contextlib import nullcontext
 from typing import Optional
 
+import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
+from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
+    convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_flux_transformer_checkpoint_to_diffusers,
+    convert_hunyuan_video_transformer_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
+    convert_ltx_transformer_checkpoint_to_diffusers,
+    convert_ltx_vae_checkpoint_to_diffusers,
+    convert_mochi_transformer_checkpoint_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
@@ -80,6 +87,23 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "FluxTransformer2DModel": {
         "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "LTXVideoTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "AutoencoderKLLTXVideo": {
+        "checkpoint_mapping_fn": convert_ltx_vae_checkpoint_to_diffusers,
+        "default_subfolder": "vae",
+    },
+    "AutoencoderDC": {"checkpoint_mapping_fn": convert_autoencoder_dc_checkpoint_to_diffusers},
+    "MochiTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_mochi_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "HunyuanVideoTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_hunyuan_video_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
 }
@@ -201,7 +225,10 @@ class FromOriginalModelMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
+        config_revision = kwargs.pop("config_revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        quantization_config = kwargs.pop("quantization_config", None)
+        device = kwargs.pop("device", None)
 
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
@@ -215,11 +242,17 @@ class FromOriginalModelMixin:
                 local_files_only=local_files_only,
                 revision=revision,
             )
+        if quantization_config is not None:
+            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
+            hf_quantizer.validate_environment()
+
+        else:
+            hf_quantizer = None
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
-        if original_config:
+        if original_config is not None:
             if "config_mapping_fn" in mapping_functions:
                 config_mapping_fn = mapping_functions["config_mapping_fn"]
             else:
@@ -243,7 +276,7 @@ class FromOriginalModelMixin:
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
             )
         else:
-            if config:
+            if config is not None:
                 if isinstance(config, str):
                     default_pretrained_model_config_name = config
                 else:
@@ -270,6 +303,7 @@ class FromOriginalModelMixin:
                 subfolder=subfolder,
                 local_files_only=local_files_only,
                 token=token,
+                revision=config_revision,
             )
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
@@ -296,8 +330,36 @@ class FromOriginalModelMixin:
         with ctx():
             model = cls.from_config(diffusers_model_config)
 
+        # Check if `_keep_in_fp32_modules` is not None
+        use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
+            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
+        )
+        if use_keep_in_fp32_modules:
+            keep_in_fp32_modules = cls._keep_in_fp32_modules
+            if not isinstance(keep_in_fp32_modules, list):
+                keep_in_fp32_modules = [keep_in_fp32_modules]
+
+        else:
+            keep_in_fp32_modules = []
+
+        if hf_quantizer is not None:
+            hf_quantizer.preprocess_model(
+                model=model,
+                device_map=None,
+                state_dict=diffusers_format_checkpoint,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+            )
+
         if is_accelerate_available():
-            unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+            param_device = torch.device(device) if device else torch.device("cpu")
+            unexpected_keys = load_model_dict_into_meta(
+                model,
+                diffusers_format_checkpoint,
+                dtype=torch_dtype,
+                device=param_device,
+                hf_quantizer=hf_quantizer,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+            )
 
         else:
             _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
@@ -311,7 +373,11 @@ class FromOriginalModelMixin:
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
-        if torch_dtype is not None:
+        if hf_quantizer is not None:
+            hf_quantizer.postprocess_model(model)
+            model.hf_quantizer = hf_quantizer
+
+        if torch_dtype is not None and hf_quantizer is None:
             model.to(torch_dtype)
 
         model.eval()

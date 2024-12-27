@@ -18,6 +18,7 @@ from collections import OrderedDict
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
+from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
@@ -28,12 +29,18 @@ from .controlnet import (
     StableDiffusionXLControlNetImg2ImgPipeline,
     StableDiffusionXLControlNetInpaintPipeline,
     StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLControlNetUnionImg2ImgPipeline,
+    StableDiffusionXLControlNetUnionInpaintPipeline,
+    StableDiffusionXLControlNetUnionPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .flux import (
+    FluxControlImg2ImgPipeline,
+    FluxControlInpaintPipeline,
     FluxControlNetImg2ImgPipeline,
     FluxControlNetInpaintPipeline,
     FluxControlNetPipeline,
+    FluxControlPipeline,
     FluxImg2ImgPipeline,
     FluxInpaintPipeline,
     FluxPipeline,
@@ -66,6 +73,7 @@ from .pag import (
     StableDiffusionControlNetPAGInpaintPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGImg2ImgPipeline,
+    StableDiffusionPAGInpaintPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGImg2ImgPipeline,
     StableDiffusionXLControlNetPAGPipeline,
@@ -107,6 +115,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky3", Kandinsky3Pipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
+        ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionPipeline),
         ("wuerstchen", WuerstchenCombinedPipeline),
         ("cascade", StableCascadeCombinedPipeline),
         ("lcm", LatentConsistencyModelPipeline),
@@ -119,6 +128,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("pixart-sigma-pag", PixArtSigmaPAGPipeline),
         ("auraflow", AuraFlowPipeline),
         ("flux", FluxPipeline),
+        ("flux-control", FluxControlPipeline),
         ("flux-controlnet", FluxControlNetPipeline),
         ("lumina", LuminaText2ImgPipeline),
         ("cogview3", CogView3PlusPipeline),
@@ -138,11 +148,13 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
+        ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
         ("flux", FluxImg2ImgPipeline),
         ("flux-controlnet", FluxControlNetImg2ImgPipeline),
+        ("flux-control", FluxControlImg2ImgPipeline),
     ]
 )
 
@@ -157,9 +169,12 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
+        ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
         ("flux", FluxInpaintPipeline),
         ("flux-controlnet", FluxControlNetInpaintPipeline),
+        ("flux-control", FluxControlInpaintPipeline),
+        ("stable-diffusion-pag", StableDiffusionPAGInpaintPipeline),
     ]
 )
 
@@ -392,13 +407,20 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
+        if "ControlPipeline" in orig_class_name:
+            to_replace = "ControlPipeline"
+        else:
+            to_replace = "Pipeline"
 
         if "controlnet" in kwargs:
-            orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                orig_class_name = config["_class_name"].replace(to_replace, "ControlNetUnionPipeline")
+            else:
+                orig_class_name = config["_class_name"].replace(to_replace, "ControlNetPipeline")
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
-                orig_class_name = orig_class_name.replace("Pipeline", "PAGPipeline")
+                orig_class_name = orig_class_name.replace(to_replace, "PAGPipeline")
 
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
@@ -682,15 +704,27 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         # the `orig_class_name` can be:
         # `- *Pipeline` (for regular text-to-image checkpoint)
+        #  - `*ControlPipeline` (for Flux tools specific checkpoint)
         # `- *Img2ImgPipeline` (for refiner checkpoint)
-        to_replace = "Img2ImgPipeline" if "Img2Img" in config["_class_name"] else "Pipeline"
+        if "Img2Img" in orig_class_name:
+            to_replace = "Img2ImgPipeline"
+        elif "ControlPipeline" in orig_class_name:
+            to_replace = "ControlPipeline"
+        else:
+            to_replace = "Pipeline"
 
         if "controlnet" in kwargs:
-            orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
+            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                orig_class_name = orig_class_name.replace(to_replace, "ControlNetUnion" + to_replace)
+            else:
+                orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
                 orig_class_name = orig_class_name.replace(to_replace, "PAG" + to_replace)
+
+        if to_replace == "ControlPipeline":
+            orig_class_name = orig_class_name.replace(to_replace, "ControlImg2ImgPipeline")
 
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
@@ -979,15 +1013,26 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         # The `orig_class_name`` can be:
         # `- *InpaintPipeline` (for inpaint-specific checkpoint)
+        #  - `*ControlPipeline` (for Flux tools specific checkpoint)
         #  - or *Pipeline (for regular text-to-image checkpoint)
-        to_replace = "InpaintPipeline" if "Inpaint" in config["_class_name"] else "Pipeline"
+        if "Inpaint" in orig_class_name:
+            to_replace = "InpaintPipeline"
+        elif "ControlPipeline" in orig_class_name:
+            to_replace = "ControlPipeline"
+        else:
+            to_replace = "Pipeline"
 
         if "controlnet" in kwargs:
-            orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
+            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                orig_class_name = orig_class_name.replace(to_replace, "ControlNetUnion" + to_replace)
+            else:
+                orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
                 orig_class_name = orig_class_name.replace(to_replace, "PAG" + to_replace)
+        if to_replace == "ControlPipeline":
+            orig_class_name = orig_class_name.replace(to_replace, "ControlInpaintPipeline")
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
         kwargs = {**load_config_kwargs, **kwargs}
