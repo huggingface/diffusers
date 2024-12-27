@@ -194,8 +194,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.unload_lora_weights()
             pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
-            # modify the state dict to have alpha values following
-            # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA/blob/main/jon_snow.safetensors
+            # Modify the state dict to exclude "x_embedder" related LoRA params.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
             lora_state_dict_without_xembedder = {k: v for k, v in lora_state_dict.items() if "x_embedder" not in k}
 
