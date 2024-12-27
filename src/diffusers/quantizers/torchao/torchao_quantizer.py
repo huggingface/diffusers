@@ -132,7 +132,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def update_torch_dtype(self, torch_dtype):
         quant_type = self.quantization_config.quant_type
 
-        if quant_type.startswith("int"):
+        if quant_type.startswith("int") or quant_type.startswith("uint"):
             if torch_dtype is not None and torch_dtype != torch.bfloat16:
                 logger.warning(
                     f"You are trying to set torch_dtype to {torch_dtype} for int4/int8/uintx quantization, but "
