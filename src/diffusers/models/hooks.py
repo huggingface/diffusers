@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import torch
 
@@ -24,6 +24,8 @@ class ModelHook:
     A hook that contains callbacks to be executed just before and after the forward method of a model. The difference
     with PyTorch existing hooks is that they get passed along the kwargs.
     """
+
+    _is_stateful = False
 
     def init_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
@@ -75,13 +77,17 @@ class ModelHook:
                 The module detached from this hook.
         """
         return module
+    
+    def reset_state(self):
+        if self._is_stateful:
+            raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
 
 
 class SequentialHook(ModelHook):
     r"""A hook that can contain several hooks and iterates through them at each event."""
 
     def __init__(self, *hooks):
-        self.hooks = hooks
+        self.hooks: List[ModelHook] = hooks
 
     def init_hook(self, module):
         for hook in self.hooks:
@@ -102,6 +108,11 @@ class SequentialHook(ModelHook):
         for hook in self.hooks:
             module = hook.detach_hook(module)
         return module
+    
+    def reset_state(self):
+        for hook in self.hooks:
+            if hook._is_stateful:
+                hook.reset_state()
 
 
 def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False):
@@ -195,3 +206,19 @@ def remove_hook_from_module(module: torch.nn.Module, recurse: bool = False) -> t
             remove_hook_from_module(child, recurse)
 
     return module
+
+
+def reset_stateful_hooks(module: torch.nn.Module, recurse: bool = False):
+    """
+    Resets the state of all stateful hooks attached to a module.
+
+    Args:
+        module (`torch.nn.Module`):
+            The module to reset the stateful hooks from.
+    """
+    if hasattr(module, "_diffusers_hook") and (module._diffusers_hook._is_stateful or isinstance(module._diffusers_hook, SequentialHook)):
+        module._diffusers_hook.reset_state(module)
+
+    if recurse:
+        for child in module.children():
+            reset_stateful_hooks(child, recurse)
