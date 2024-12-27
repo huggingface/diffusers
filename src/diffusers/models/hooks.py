@@ -77,7 +77,7 @@ class ModelHook:
                 The module detached from this hook.
         """
         return module
-    
+
     def reset_state(self):
         if self._is_stateful:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
@@ -108,7 +108,7 @@ class SequentialHook(ModelHook):
         for hook in self.hooks:
             module = hook.detach_hook(module)
         return module
-    
+
     def reset_state(self):
         for hook in self.hooks:
             if hook._is_stateful:
@@ -216,7 +216,9 @@ def reset_stateful_hooks(module: torch.nn.Module, recurse: bool = False):
         module (`torch.nn.Module`):
             The module to reset the stateful hooks from.
     """
-    if hasattr(module, "_diffusers_hook") and (module._diffusers_hook._is_stateful or isinstance(module._diffusers_hook, SequentialHook)):
+    if hasattr(module, "_diffusers_hook") and (
+        module._diffusers_hook._is_stateful or isinstance(module._diffusers_hook, SequentialHook)
+    ):
         module._diffusers_hook.reset_state(module)
 
     if recurse:

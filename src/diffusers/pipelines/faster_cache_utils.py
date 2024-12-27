@@ -236,7 +236,7 @@ def _apply_fastercache_on_denoiser(
         is_using_classifier_free_guidance = pipeline.do_classifier_free_guidance
         if not is_using_classifier_free_guidance:
             return False
-        
+
         # We skip the unconditional branch only if the following conditions are met:
         #   1. We have completed at least one iteration of the denoiser
         #   2. The current timestep is within the range specified by the user. This is the optimal timestep range
@@ -326,7 +326,7 @@ def _apply_fastercache_on_attention_class(
 
 class FasterCacheModelHook(ModelHook):
     _is_stateful = True
-    
+
     def __init__(self, uncond_cond_input_kwargs_identifiers: List[str], tensor_format: str) -> None:
         super().__init__()
 
@@ -397,7 +397,7 @@ class FasterCacheModelHook(ModelHook):
         else:
             # TODO(aryan): remove later
             logger.debug("Computing unconditional branch")
-            
+
             uncond_states, cond_states = hidden_states.chunk(2, dim=0)
             if self.tensor_format == "BCFHW":
                 uncond_states = uncond_states.permute(0, 2, 1, 3, 4)
@@ -412,16 +412,16 @@ class FasterCacheModelHook(ModelHook):
             state.high_frequency_delta = high_freq_uncond - high_freq_cond
 
         state.iteration += 1
-        output = (hidden_states, *output[1:]) if isinstance(output, tuple) else hidden_states        
+        output = (hidden_states, *output[1:]) if isinstance(output, tuple) else hidden_states
         return output
-    
+
     def reset_state(self, module: nn.Module) -> None:
         module._fastercache_state.reset()
 
 
 class FasterCacheBlockHook(ModelHook):
     _is_stateful = True
-    
+
     def new_forward(self, module: nn.Module, *args, **kwargs) -> Any:
         args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
         state: FasterCacheState = module._fastercache_state
@@ -443,7 +443,7 @@ class FasterCacheBlockHook(ModelHook):
             # TODO(aryan): remove later
             logger.debug("Skipping layer computation")
             t_2_output, t_output = state.cache
-            
+
             # TODO(aryan): these conditions may not be needed after latest refactor. they exist for safety. do test if they can be removed
             if t_2_output.size(0) != batch_size:
                 # The cache t_2_output contains both batchwise-concatenated unconditional-conditional branch outputs. Just
@@ -455,7 +455,7 @@ class FasterCacheBlockHook(ModelHook):
                 # take the conditional branch outputs.
                 assert t_output.size(0) == 2 * batch_size
                 t_output = t_output[batch_size:]
-            
+
             output = t_output + (t_output - t_2_output) * state.weight_callback(module)
         else:
             output = module._old_forward(*args, **kwargs)
@@ -465,7 +465,7 @@ class FasterCacheBlockHook(ModelHook):
         cache_output = output
         if output.size(0) == state.batch_size:
             cache_output = cache_output.chunk(2, dim=0)[1]
-        
+
         # Just to be safe that the output is of the correct size for both unconditional-conditional branch inference
         # and only-conditional branch inference.
         assert 2 * cache_output.size(0) == state.batch_size
@@ -477,7 +477,7 @@ class FasterCacheBlockHook(ModelHook):
 
         state.iteration += 1
         return module._diffusers_hook.post_forward(module, output)
-    
+
     def reset_state(self, module: nn.Module) -> None:
         module._fastercache_state.reset()
 
