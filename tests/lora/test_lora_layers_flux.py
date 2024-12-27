@@ -192,14 +192,14 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             pipe.unload_lora_weights()
-            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"), adapter_name="one")
 
             # Modify the state dict to exclude "x_embedder" related LoRA params.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
             lora_state_dict_without_xembedder = {k: v for k, v in lora_state_dict.items() if "x_embedder" not in k}
 
-        pipe.unload_lora_weights()
-        pipe.load_lora_weights(lora_state_dict_without_xembedder)
+        pipe.load_lora_weights(lora_state_dict_without_xembedder, adapter_name="two")
+        pipe.set_adapters(["one", "two"])
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
         images_lora_with_absent_keys = pipe(**inputs, generator=torch.manual_seed(0)).images
 
