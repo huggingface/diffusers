@@ -154,7 +154,7 @@ def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name
 
 
 # Copied from PEFT: https://github.com/huggingface/peft/blob/47b3712898539569c02ec5b3ed4a6c36811331a1/src/peft/utils/integrations.py#L41
-def dequantize_bnb_weight(weight: "torch.nn.Parameter", state=None, dtype: torch.dtype = None):
+def dequantize_bnb_weight(weight: "torch.nn.Parameter", state=None, dtype: "torch.dtype" = None):
     """
     Helper function to dequantize 4bit or 8bit bnb weights.
 
