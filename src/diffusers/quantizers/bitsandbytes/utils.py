@@ -267,9 +267,10 @@ def _dequantize_and_replace(
         if len(list(module.children())) > 0:
             _, has_been_replaced = _dequantize_and_replace(
                 module,
-                modules_to_not_convert,
-                current_key_name,
-                quantization_config,
+                dtype=dtype,
+                modules_to_not_convert=modules_to_not_convert,
+                current_key_name=current_key_name,
+                quantization_config=quantization_config,
                 has_been_replaced=has_been_replaced,
             )
         # Remove the last key for recursion
@@ -284,7 +285,7 @@ def dequantize_and_replace(
 ):
     model, has_been_replaced = _dequantize_and_replace(
         model,
-        model.dtype,
+        dtype=model.dtype,
         modules_to_not_convert=modules_to_not_convert,
         quantization_config=quantization_config,
     )
