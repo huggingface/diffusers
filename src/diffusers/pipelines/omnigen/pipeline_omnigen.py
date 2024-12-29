@@ -173,14 +173,14 @@ class OmniGenPipeline(
         )
         self.default_sample_size = 128
 
-    def encod_input_iamges(
+    def encod_input_images(
         self,
         input_pixel_values: List[torch.Tensor],
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
         """
-        get the continues embedding of input images by VAE
+        get the continue embedding of input images by VAE
 
         Args:
             input_pixel_values: normlized pixel of input images
@@ -455,7 +455,7 @@ class OmniGenPipeline(
         processed_data["position_ids"] = processed_data["position_ids"].to(device)
 
         # 4. Encode input images
-        input_img_latents = self.encod_input_iamges(processed_data["input_pixel_values"], device=device)
+        input_img_latents = self.encod_input_images(processed_data["input_pixel_values"], device=device)
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1, 0, num_inference_steps + 1)[:num_inference_steps]
