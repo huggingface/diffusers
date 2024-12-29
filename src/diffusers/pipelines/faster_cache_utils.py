@@ -49,13 +49,12 @@ _UNCOND_COND_INPUT_KWARGS_IDENTIFIERS = (
 class FasterCacheConfig:
     r"""
     Configuration for [FasterCache](https://huggingface.co/papers/2410.19355).
-    """
 
-    num_train_timesteps: int = 1000
+    Attributes:"""
 
     # In the paper and codebase, they hardcode these values to 2. However, it can be made configurable
     # after some testing. We default to 2 if these parameters are not provided.
-    spatial_attention_block_skip_range: Optional[int] = None
+    spatial_attention_block_skip_range: int = 2
     temporal_attention_block_skip_range: Optional[int] = None
 
     # TODO(aryan): write heuristics for what the best way to obtain these values are
@@ -145,6 +144,9 @@ def apply_faster_cache(
     r"""
     Applies [FasterCache](https://huggingface.co/papers/2410.19355) to a given pipeline.
 
+    Note: FasterCache should only be applied when using classifer-free guidance. It will not work as expected even if
+    the inference runs successfully.
+
     Args:
         pipeline (`DiffusionPipeline`):
             The diffusion pipeline to apply FasterCache to.
@@ -162,15 +164,6 @@ def apply_faster_cache(
 
     if config is None:
         config = FasterCacheConfig()
-
-    if config.spatial_attention_block_skip_range is None and config.temporal_attention_block_skip_range is None:
-        logger.warning(
-            "FasterCache requires one of `spatial_attention_block_skip_range` and/or `temporal_attention_block_skip_range` "
-            "to be set to an integer, not `None`. Defaulting to using `spatial_attention_block_skip_range=2` and "
-            "`temporal_attention_block_skip_range=2`. To avoid this warning, please set one of the above parameters."
-        )
-        config.spatial_attention_block_skip_range = 2
-        config.temporal_attention_block_skip_range = 2
 
     if config.attention_weight_callback is None:
         # If the user has not provided a weight callback, we default to 0.5 for all timesteps.
@@ -231,12 +224,6 @@ def _apply_fastercache_on_denoiser(
     pipeline: DiffusionPipeline, denoiser: nn.Module, config: FasterCacheConfig
 ) -> None:
     def uncond_skip_callback(module: nn.Module) -> bool:
-        # If we are not using classifier-free guidance, we cannot skip the denoiser computation. We only compute the
-        # conditional branch in this case.
-        is_using_classifier_free_guidance = pipeline.do_classifier_free_guidance
-        if not is_using_classifier_free_guidance:
-            return False
-
         # We skip the unconditional branch only if the following conditions are met:
         #   1. We have completed at least one iteration of the denoiser
         #   2. The current timestep is within the range specified by the user. This is the optimal timestep range
@@ -298,19 +285,12 @@ def _apply_fastercache_on_attention_class(
         return
 
     def skip_callback(module: nn.Module) -> bool:
-        is_using_classifier_free_guidance = pipeline.do_classifier_free_guidance
-        if not is_using_classifier_free_guidance:
-            return False
-
         fastercache_state: FasterCacheState = module._fastercache_state
         is_within_timestep_range = timestep_skip_range[0] < pipeline._current_timestep < timestep_skip_range[1]
 
         if not is_within_timestep_range:
             # We are still not in the phase of inference where skipping attention is possible without minimal quality
             # loss, as described in the paper. So, the attention computation cannot be skipped
-            return False
-        if fastercache_state.cache is None or fastercache_state.iteration < 2:
-            # We need at least 2 iterations to start skipping attention computation
             return False
 
         should_compute_attention = (
@@ -358,8 +338,6 @@ class FasterCacheModelHook(ModelHook):
             # TODO(aryan): remove later
             logger.debug("Skipping unconditional branch computation")
 
-        if should_skip_uncond:
-            breakpoint()
         output = module._old_forward(*args, **kwargs)
         # TODO(aryan): handle Transformer2DModelOutput
         hidden_states = output[0] if isinstance(output, tuple) else output
@@ -422,6 +400,22 @@ class FasterCacheModelHook(ModelHook):
 class FasterCacheBlockHook(ModelHook):
     _is_stateful = True
 
+    def _compute_approximated_attention_output(
+        self, t_2_output: torch.Tensor, t_output: torch.Tensor, weight: float, batch_size: int
+    ) -> torch.Tensor:
+        # TODO(aryan): these conditions may not be needed after latest refactor. they exist for safety. do test if they can be removed
+        if t_2_output.size(0) != batch_size:
+            # The cache t_2_output contains both batchwise-concatenated unconditional-conditional branch outputs. Just
+            # take the conditional branch outputs.
+            assert t_2_output.size(0) == 2 * batch_size
+            t_2_output = t_2_output[batch_size:]
+        if t_output.size(0) != batch_size:
+            # The cache t_output contains both batchwise-concatenated unconditional-conditional branch outputs. Just
+            # take the conditional branch outputs.
+            assert t_output.size(0) == 2 * batch_size
+            t_output = t_output[batch_size:]
+        return t_output + (t_output - t_2_output) * weight
+
     def new_forward(self, module: nn.Module, *args, **kwargs) -> Any:
         args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
         state: FasterCacheState = module._fastercache_state
@@ -435,40 +429,59 @@ class FasterCacheBlockHook(ModelHook):
             state.batch_size = batch_size
 
         # If we have to skip due to the skip conditions, then let's skip as expected.
-        # But, we can't skip if the denoiser wants to infer both unconditional and conditional branches. So,
-        # if state.batch_size (which is the true unconditional-conditional batch size) is same as the current
-        # batch size, we don't perform the layer skip. Otherwise, we conditionally skip the layer based on
-        # what state.skip_callback returns.
-        if state.skip_callback(module) and state.batch_size != batch_size:
+        # But, we can't skip if the denoiser wants to infer both unconditional and conditional branches. This
+        # is because the expected output shapes of attention layer will not match if we only return values from
+        # the cache (which only caches conditional branch outputs). So, if state.batch_size (which is the true
+        # unconditional-conditional batch size) is same as the current batch size, we don't perform the layer
+        # skip. Otherwise, we conditionally skip the layer based on what state.skip_callback returns.
+        should_skip_attention = state.skip_callback(module) and state.batch_size != batch_size
+
+        if should_skip_attention:
             # TODO(aryan): remove later
-            logger.debug("Skipping layer computation")
-            t_2_output, t_output = state.cache
+            logger.debug("Skipping attention")
 
-            # TODO(aryan): these conditions may not be needed after latest refactor. they exist for safety. do test if they can be removed
-            if t_2_output.size(0) != batch_size:
-                # The cache t_2_output contains both batchwise-concatenated unconditional-conditional branch outputs. Just
-                # take the conditional branch outputs.
-                assert t_2_output.size(0) == 2 * batch_size
-                t_2_output = t_2_output[batch_size:]
-            if t_output.size(0) != batch_size:
-                # The cache t_output contains both batchwise-concatenated unconditional-conditional branch outputs. Just
-                # take the conditional branch outputs.
-                assert t_output.size(0) == 2 * batch_size
-                t_output = t_output[batch_size:]
-
-            output = t_output + (t_output - t_2_output) * state.weight_callback(module)
+            if torch.is_tensor(state.cache):
+                t_2_output, t_output = state.cache
+                weight = state.weight_callback(module)
+                output = self._compute_approximated_attention_output(t_2_output, t_output, weight, batch_size)
+            else:
+                # The cache contains multiple tensors from past N iterations (N=2 for FasterCache). We need to handle all of them.
+                # Diffusers blocks can return multiple tensors - let's call them [A, B, C, ...] for simplicity.
+                # In our cache, we would have [[A_1, B_1, C_1, ...], [A_2, B_2, C_2, ...], ...] where each list is the output from
+                # a forward pass of the block. We need to compute the approximated output for each of these tensors.
+                # The zip(*state.cache) operation will give us [(A_1, A_2, ...), (B_1, B_2, ...), (C_1, C_2, ...), ...] which
+                # allows us to compute the approximated attention output for each tensor in the cache.
+                output = ()
+                for t_2_output, t_output in zip(*state.cache):
+                    result = self._compute_approximated_attention_output(
+                        t_2_output, t_output, state.weight_callback(module), batch_size
+                    )
+                    output += (result,)
         else:
+            logger.debug("Computing attention")
             output = module._old_forward(*args, **kwargs)
 
-        # The output here can be both unconditional-conditional branch outputs or just conditional branch outputs.
-        # This is determined at the higher-level denoiser module. We only want to cache the conditional branch outputs.
-        cache_output = output
-        if output.size(0) == state.batch_size:
-            cache_output = cache_output.chunk(2, dim=0)[1]
+        # Note that the following condition for getting hidden_states should suffice since Diffusers blocks either return
+        # a single hidden_states tensor, or a tuple of (hidden_states, encoder_hidden_states) tensors. We need to handle
+        # both cases.
+        if torch.is_tensor(output):
+            cache_output = output
+            if cache_output.size(0) == state.batch_size:
+                # The output here can be both unconditional-conditional branch outputs or just conditional branch outputs.
+                # This is determined at the higher-level denoiser module. We only want to cache the conditional branch outputs.
+                cache_output = cache_output.chunk(2, dim=0)[1]
 
-        # Just to be safe that the output is of the correct size for both unconditional-conditional branch inference
-        # and only-conditional branch inference.
-        assert 2 * cache_output.size(0) == state.batch_size
+            # Just to be safe that the output is of the correct size for both unconditional-conditional branch inference
+            # and only-conditional branch inference.
+            assert 2 * cache_output.size(0) == state.batch_size
+        else:
+            # Cache all return values and perform the same operation as above
+            cache_output = ()
+            for out in output:
+                if out.size(0) == state.batch_size:
+                    out = out.chunk(2, dim=0)[1]
+                assert 2 * out.size(0) == state.batch_size
+                cache_output += (out,)
 
         if state.cache is None:
             state.cache = [cache_output, cache_output]
