@@ -14,13 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 import itertools
 import json
 import os
 import re
 from collections import OrderedDict
-from functools import partial
+from functools import partial, wraps
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -31,6 +32,8 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
+from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
+from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
@@ -43,6 +46,8 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_bitsandbytes_available,
+    is_bitsandbytes_version,
     is_torch_version,
     logging,
 )
@@ -56,6 +61,7 @@ from .model_loading_utils import (
     _fetch_index_file,
     _fetch_index_file_legacy,
     _load_state_dict_into_model,
+    _merge_sharded_checkpoints,
     load_model_dict_into_meta,
     load_state_dict,
 )
@@ -93,21 +99,39 @@ def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
 
 
 def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
-    try:
-        return next(parameter.parameters()).dtype
-    except StopIteration:
-        try:
-            return next(parameter.buffers()).dtype
-        except StopIteration:
-            # For torch.nn.DataParallel compatibility in PyTorch 1.5
+    """
+    Returns the first found floating dtype in parameters if there is one, otherwise returns the last dtype it found.
+    """
+    last_dtype = None
+    for param in parameter.parameters():
+        last_dtype = param.dtype
+        if param.is_floating_point():
+            return param.dtype
 
-            def find_tensor_attributes(module: torch.nn.Module) -> List[Tuple[str, Tensor]]:
-                tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
-                return tuples
+    for buffer in parameter.buffers():
+        last_dtype = buffer.dtype
+        if buffer.is_floating_point():
+            return buffer.dtype
 
-            gen = parameter._named_members(get_members_fn=find_tensor_attributes)
-            first_tuple = next(gen)
-            return first_tuple[1].dtype
+    if last_dtype is not None:
+        # if no floating dtype was found return whatever the first dtype is
+        return last_dtype
+
+    # For nn.DataParallel compatibility in PyTorch > 1.5
+    def find_tensor_attributes(module: nn.Module) -> List[Tuple[str, Tensor]]:
+        tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
+        return tuples
+
+    gen = parameter._named_members(get_members_fn=find_tensor_attributes)
+    last_tuple = None
+    for tuple in gen:
+        last_tuple = tuple
+        if tuple[1].is_floating_point():
+            return tuple[1].dtype
+
+    if last_tuple is not None:
+        # fallback to the last dtype
+        return last_tuple[1].dtype
 
 
 class ModelMixin(torch.nn.Module, PushToHubMixin):
@@ -125,6 +149,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_unexpected = None
     _no_split_modules = None
+    _keep_in_fp32_modules = None
 
     def __init__(self):
         super().__init__()
@@ -200,6 +225,35 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         """
         self.set_use_npu_flash_attention(False)
+
+    def set_use_xla_flash_attention(
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None
+    ) -> None:
+        # Recursively walk through all the children.
+        # Any children which exposes the set_use_xla_flash_attention method
+        # gets the message
+        def fn_recursive_set_flash_attention(module: torch.nn.Module):
+            if hasattr(module, "set_use_xla_flash_attention"):
+                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec)
+
+            for child in module.children():
+                fn_recursive_set_flash_attention(child)
+
+        for module in self.children():
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_flash_attention(module)
+
+    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None):
+        r"""
+        Enable the flash attention pallals kernel for torch_xla.
+        """
+        self.set_use_xla_flash_attention(True, partition_spec)
+
+    def disable_xla_flash_attention(self):
+        r"""
+        Disable the flash attention pallals kernel for torch_xla.
+        """
+        self.set_use_xla_flash_attention(False)
 
     def set_use_memory_efficient_attention_xformers(
         self, valid: bool, attention_op: Optional[Callable] = None
@@ -308,6 +362,19 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
+        hf_quantizer = getattr(self, "hf_quantizer", None)
+        if hf_quantizer is not None:
+            quantization_serializable = (
+                hf_quantizer is not None
+                and isinstance(hf_quantizer, DiffusersQuantizer)
+                and hf_quantizer.is_serializable
+            )
+            if not quantization_serializable:
+                raise ValueError(
+                    f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
+                    " the logger on the traceback to understand the reason why the quantized model is not serializable."
+                )
+
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
         weights_name = _add_variant(weights_name, variant)
         weights_name_pattern = weights_name.replace(".bin", "{suffix}.bin").replace(
@@ -318,7 +385,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
-            private = kwargs.pop("private", False)
+            private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
@@ -401,6 +468,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 commit_message=commit_message,
                 create_pr=create_pr,
             )
+
+    def dequantize(self):
+        """
+        Potentially dequantize the model in case it has been quantized by a quantization method that support
+        dequantization.
+        """
+        hf_quantizer = getattr(self, "hf_quantizer", None)
+
+        if hf_quantizer is None:
+            raise ValueError("You need to first quantize your model in order to dequantize it")
+
+        return hf_quantizer.dequantize(self)
 
     @classmethod
     @validate_hf_hub_args
@@ -524,6 +603,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        quantization_config = kwargs.pop("quantization_config", None)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -618,6 +698,61 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             user_agent=user_agent,
             **kwargs,
         )
+        # no in-place modification of the original config.
+        config = copy.deepcopy(config)
+
+        # determine initial quantization config.
+        #######################################
+        pre_quantized = "quantization_config" in config and config["quantization_config"] is not None
+        if pre_quantized or quantization_config is not None:
+            if pre_quantized:
+                config["quantization_config"] = DiffusersAutoQuantizer.merge_quantization_configs(
+                    config["quantization_config"], quantization_config
+                )
+            else:
+                config["quantization_config"] = quantization_config
+            hf_quantizer = DiffusersAutoQuantizer.from_config(
+                config["quantization_config"], pre_quantized=pre_quantized
+            )
+        else:
+            hf_quantizer = None
+
+        if hf_quantizer is not None:
+            if device_map is not None:
+                raise NotImplementedError(
+                    "Currently, providing `device_map` is not supported for quantized models. Providing `device_map` as an input will be added in the future."
+                )
+
+            hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
+            torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
+
+            # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
+            user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
+
+            # Force-set to `True` for more mem efficiency
+            if low_cpu_mem_usage is None:
+                low_cpu_mem_usage = True
+                logger.info("Set `low_cpu_mem_usage` to True as `hf_quantizer` is not None.")
+            elif not low_cpu_mem_usage:
+                raise ValueError("`low_cpu_mem_usage` cannot be False or None when using quantization.")
+
+        # Check if `_keep_in_fp32_modules` is not None
+        use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
+            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
+        )
+        if use_keep_in_fp32_modules:
+            keep_in_fp32_modules = cls._keep_in_fp32_modules
+            if not isinstance(keep_in_fp32_modules, list):
+                keep_in_fp32_modules = [keep_in_fp32_modules]
+
+            if low_cpu_mem_usage is None:
+                low_cpu_mem_usage = True
+                logger.info("Set `low_cpu_mem_usage` to True as `_keep_in_fp32_modules` is not None.")
+            elif not low_cpu_mem_usage:
+                raise ValueError("`low_cpu_mem_usage` cannot be False when `keep_in_fp32_modules` is True.")
+        else:
+            keep_in_fp32_modules = []
+        #######################################
 
         # Determine if we're loading from a directory of sharded checkpoints.
         is_sharded = False
@@ -684,6 +819,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     revision=revision,
                     subfolder=subfolder or "",
                 )
+                # TODO: https://github.com/huggingface/diffusers/issues/10013
+                if hf_quantizer is not None:
+                    model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
+                    logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
+                    is_sharded = False
 
             elif use_safetensors and not is_sharded:
                 try:
@@ -729,13 +869,27 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 with accelerate.init_empty_weights():
                     model = cls.from_config(config, **unused_kwargs)
 
+                if hf_quantizer is not None:
+                    hf_quantizer.preprocess_model(
+                        model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
+                    )
+
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
                 if device_map is None and not is_sharded:
-                    param_device = "cpu"
+                    # `torch.cuda.current_device()` is fine here when `hf_quantizer` is not None.
+                    # It would error out during the `validate_environment()` call above in the absence of cuda.
+                    if hf_quantizer is None:
+                        param_device = "cpu"
+                    # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
+                    else:
+                        param_device = torch.device(torch.cuda.current_device())
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
+
                     # move the params from meta device to cpu
                     missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
+                    if hf_quantizer is not None:
+                        missing_keys = hf_quantizer.update_missing_keys(model, missing_keys, prefix="")
                     if len(missing_keys) > 0:
                         raise ValueError(
                             f"Cannot load {cls} from {pretrained_model_name_or_path} because the following keys are"
@@ -750,6 +904,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         device=param_device,
                         dtype=torch_dtype,
                         model_name_or_path=pretrained_model_name_or_path,
+                        hf_quantizer=hf_quantizer,
+                        keep_in_fp32_modules=keep_in_fp32_modules,
                     )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
@@ -765,7 +921,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
                     force_hook = True
-                    device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
+                    device_map = _determine_device_map(
+                        model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
+                    )
                     if device_map is None and is_sharded:
                         # we load the parameters on the cpu
                         device_map = {"": "cpu"}
@@ -843,14 +1001,25 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "error_msgs": error_msgs,
                 }
 
+        if hf_quantizer is not None:
+            hf_quantizer.postprocess_model(model)
+            model.hf_quantizer = hf_quantizer
+
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             raise ValueError(
                 f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
             )
-        elif torch_dtype is not None:
+        # When using `use_keep_in_fp32_modules` if we do a global `to()` here, then we will
+        # completely lose the effectivity of `use_keep_in_fp32_modules`.
+        elif torch_dtype is not None and hf_quantizer is None and not use_keep_in_fp32_modules:
             model = model.to(torch_dtype)
 
-        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        if hf_quantizer is not None:
+            # We also make sure to purge `_pre_quantization_dtype` when we serialize
+            # the model config because `_pre_quantization_dtype` is `torch.dtype`, not JSON serializable.
+            model.register_to_config(_name_or_path=pretrained_model_name_or_path, _pre_quantization_dtype=torch_dtype)
+        else:
+            model.register_to_config(_name_or_path=pretrained_model_name_or_path)
 
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
@@ -858,6 +1027,76 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             return model, loading_info
 
         return model
+
+    # Adapted from `transformers`.
+    @wraps(torch.nn.Module.cuda)
+    def cuda(self, *args, **kwargs):
+        # Checks if the model has been loaded in 4-bit or 8-bit with BNB
+        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
+            if getattr(self, "is_loaded_in_8bit", False):
+                raise ValueError(
+                    "Calling `cuda()` is not supported for `8-bit` quantized models. "
+                    " Please use the model as it is, since the model has already been set to the correct devices."
+                )
+            elif is_bitsandbytes_version("<", "0.43.2"):
+                raise ValueError(
+                    "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
+                )
+        return super().cuda(*args, **kwargs)
+
+    # Adapted from `transformers`.
+    @wraps(torch.nn.Module.to)
+    def to(self, *args, **kwargs):
+        dtype_present_in_args = "dtype" in kwargs
+
+        if not dtype_present_in_args:
+            for arg in args:
+                if isinstance(arg, torch.dtype):
+                    dtype_present_in_args = True
+                    break
+
+        if getattr(self, "is_quantized", False):
+            if dtype_present_in_args:
+                raise ValueError(
+                    "Casting a quantized model to a new `dtype` is unsupported. To set the dtype of unquantized layers, please "
+                    "use the `torch_dtype` argument when loading the model using `from_pretrained` or `from_single_file`"
+                )
+
+        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
+            if getattr(self, "is_loaded_in_8bit", False):
+                raise ValueError(
+                    "`.to` is not supported for `8-bit` bitsandbytes models. Please use the model as it is, since the"
+                    " model has already been set to the correct devices and casted to the correct `dtype`."
+                )
+            elif is_bitsandbytes_version("<", "0.43.2"):
+                raise ValueError(
+                    "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
+                )
+        return super().to(*args, **kwargs)
+
+    # Taken from `transformers`.
+    def half(self, *args):
+        # Checks if the model is quantized
+        if getattr(self, "is_quantized", False):
+            raise ValueError(
+                "`.half()` is not supported for quantized model. Please use the model as it is, since the"
+                " model has already been cast to the correct `dtype`."
+            )
+        else:
+            return super().half(*args)
+
+    # Taken from `transformers`.
+    def float(self, *args):
+        # Checks if the model is quantized
+        if getattr(self, "is_quantized", False):
+            raise ValueError(
+                "`.float()` is not supported for quantized model. Please use the model as it is, since the"
+                " model has already been cast to the correct `dtype`."
+            )
+        else:
+            return super().float(*args)
 
     @classmethod
     def _load_pretrained_model(
@@ -1041,19 +1280,63 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         859520964
         ```
         """
+        is_loaded_in_4bit = getattr(self, "is_loaded_in_4bit", False)
+
+        if is_loaded_in_4bit:
+            if is_bitsandbytes_available():
+                import bitsandbytes as bnb
+            else:
+                raise ValueError(
+                    "bitsandbytes is not installed but it seems that the model has been loaded in 4bit precision, something went wrong"
+                    " make sure to install bitsandbytes with `pip install bitsandbytes`. You also need a GPU. "
+                )
 
         if exclude_embeddings:
             embedding_param_names = [
-                f"{name}.weight"
-                for name, module_type in self.named_modules()
-                if isinstance(module_type, torch.nn.Embedding)
+                f"{name}.weight" for name, module_type in self.named_modules() if isinstance(module_type, nn.Embedding)
             ]
-            non_embedding_parameters = [
+            total_parameters = [
                 parameter for name, parameter in self.named_parameters() if name not in embedding_param_names
             ]
-            return sum(p.numel() for p in non_embedding_parameters if p.requires_grad or not only_trainable)
         else:
-            return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
+            total_parameters = list(self.parameters())
+
+        total_numel = []
+
+        for param in total_parameters:
+            if param.requires_grad or not only_trainable:
+                # For 4bit models, we need to multiply the number of parameters by 2 as half of the parameters are
+                # used for the 4bit quantization (uint8 tensors are stored)
+                if is_loaded_in_4bit and isinstance(param, bnb.nn.Params4bit):
+                    if hasattr(param, "element_size"):
+                        num_bytes = param.element_size()
+                    elif hasattr(param, "quant_storage"):
+                        num_bytes = param.quant_storage.itemsize
+                    else:
+                        num_bytes = 1
+                    total_numel.append(param.numel() * 2 * num_bytes)
+                else:
+                    total_numel.append(param.numel())
+
+        return sum(total_numel)
+
+    def get_memory_footprint(self, return_buffers=True):
+        r"""
+        Get the memory footprint of a model. This will return the memory footprint of the current model in bytes.
+        Useful to benchmark the memory footprint of the current model and design some tests. Solution inspired from the
+        PyTorch discussions: https://discuss.pytorch.org/t/gpu-memory-that-model-uses/56822/2
+
+        Arguments:
+            return_buffers (`bool`, *optional*, defaults to `True`):
+                Whether to return the size of the buffer tensors in the computation of the memory footprint. Buffers
+                are tensors that do not require gradients and not registered as parameters. E.g. mean and std in batch
+                norm layers. Please see: https://discuss.pytorch.org/t/what-pytorch-means-by-buffers/120266/2
+        """
+        mem = sum([param.nelement() * param.element_size() for param in self.parameters()])
+        if return_buffers:
+            mem_bufs = sum([buf.nelement() * buf.element_size() for buf in self.buffers()])
+            mem = mem + mem_bufs
+        return mem
 
     def _convert_deprecated_attention_blocks(self, state_dict: OrderedDict) -> None:
         deprecated_attention_block_paths = []

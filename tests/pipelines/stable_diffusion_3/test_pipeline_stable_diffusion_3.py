@@ -2,13 +2,14 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
@@ -102,6 +103,8 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_3": tokenizer_3,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
@@ -224,9 +227,43 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
 
+    def test_skip_guidance_layers(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        output_full = pipe(**inputs)[0]
+
+        inputs_with_skip = inputs.copy()
+        inputs_with_skip["skip_guidance_layers"] = [0]
+        output_skip = pipe(**inputs_with_skip)[0]
+
+        self.assertFalse(
+            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
+        inputs["num_images_per_prompt"] = 2
+        output_full = pipe(**inputs)[0]
+
+        inputs_with_skip = inputs.copy()
+        inputs_with_skip["skip_guidance_layers"] = [0]
+        output_skip = pipe(**inputs_with_skip)[0]
+
+        self.assertFalse(
+            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class StableDiffusion3PipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Pipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"

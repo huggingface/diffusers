@@ -105,7 +105,7 @@ accelerate launch train_dreambooth_sd3.py \
 
 To better track our training experiments, we're using the following flags in the command above:
 
-* `report_to="wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
+* `report_to="wandb` will ensure the training runs are tracked on [Weights and Biases](https://wandb.ai/site). To use it, be sure to install `wandb` with `pip install wandb`. Don't forget to call `wandb login <your_api_key>` before training if you haven't done it before.
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
 > [!NOTE]
@@ -136,7 +136,7 @@ accelerate launch train_dreambooth_lora_sd3.py \
   --resolution=512 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
-  --learning_rate=1e-5 \
+  --learning_rate=4e-4 \
   --report_to="wandb" \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
@@ -146,6 +146,40 @@ accelerate launch train_dreambooth_lora_sd3.py \
   --seed="0" \
   --push_to_hub
 ```
+
+### Targeting Specific Blocks & Layers
+As image generation models get bigger & more powerful, more fine-tuners come to find that training only part of the 
+transformer blocks (sometimes as little as two) can be enough to get great results. 
+In some cases, it can be even better to maintain some of the blocks/layers frozen.
+
+For **SD3.5-Large** specifically, you may find this information useful (taken from: [Stable Diffusion 3.5 Large Fine-tuning Tutorial](https://stabilityai.notion.site/Stable-Diffusion-3-5-Large-Fine-tuning-Tutorial-11a61cdcd1968027a15bdbd7c40be8c6#12461cdcd19680788a23c650dab26b93):
+> [!NOTE]
+> A commonly believed heuristic that we verified once again during the construction of the SD3.5 family of models is that later/higher layers (i.e. `30 - 37`)* impact tertiary details more heavily. Conversely, earlier layers (i.e. `12 - 24` )* influence the overall composition/primary form more. 
+> So, freezing other layers/targeting specific layers is a viable approach.
+> `*`These suggested layers are speculative and not 100% guaranteed. The tips here are more or less a general idea for next steps.
+> **Photorealism**
+> In preliminary testing, we observed that freezing the last few layers of the architecture significantly improved model training when using a photorealistic dataset, preventing detail degradation introduced by small dataset from happening.
+> **Anatomy preservation**
+> To dampen any possible degradation of anatomy, training only the attention layers and **not** the adaptive linear layers could help. For reference, below is one of the transformer blocks.
+
+
+We've added `--lora_layers` and `--lora_blocks` to make LoRA training modules configurable. 
+- with `--lora_blocks` you can specify the block numbers for training. E.g. passing - 
+```diff
+--lora_blocks "12,13,14,15,16,17,18,19,20,21,22,23,24,30,31,32,33,34,35,36,37"
+```
+will trigger LoRA training of transformer blocks 12-24 and 30-37. By default, all blocks are trained. 
+- with `--lora_layers` you can specify the types of layers you wish to train. 
+By default, the trained layers are -  
+`attn.add_k_proj,attn.add_q_proj,attn.add_v_proj,attn.to_add_out,attn.to_k,attn.to_out.0,attn.to_q,attn.to_v`
+If you wish to have a leaner LoRA / train more blocks over layers you could pass - 
+```diff
++ --lora_layers attn.to_k,attn.to_q,attn.to_v,attn.to_out.0
+```
+This will reduce LoRA size by roughly 50% for the same rank compared to the default. 
+However, if you're after compact LoRAs, it's our impression that maintaining the default setting for `--lora_layers` and
+freezing some of the early & blocks is usually better. 
+
 
 ### Text Encoder Training
 Alongside the transformer, LoRA fine-tuning of the CLIP text encoders is now also supported.

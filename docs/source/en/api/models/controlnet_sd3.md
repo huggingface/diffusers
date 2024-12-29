@@ -38,5 +38,5 @@ pipe = StableDiffusion3ControlNetPipeline.from_pretrained("stabilityai/stable-di
 
 ## SD3ControlNetOutput
 
-[[autodoc]] models.controlnet_sd3.SD3ControlNetOutput
+[[autodoc]] models.controlnets.controlnet_sd3.SD3ControlNetOutput
 

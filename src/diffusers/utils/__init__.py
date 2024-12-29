@@ -23,6 +23,7 @@ from .constants import (
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
     FLAX_WEIGHTS_NAME,
+    GGUF_FILE_EXTENSION,
     HF_MODULES_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     MIN_PEFT_VERSION,
@@ -62,9 +63,12 @@ from .import_utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_available,
+    is_bitsandbytes_version,
     is_bs4_available,
     is_flax_available,
     is_ftfy_available,
+    is_gguf_available,
+    is_gguf_version,
     is_google_colab,
     is_inflect_available,
     is_invisible_watermark_available,
@@ -85,6 +89,8 @@ from .import_utils import (
     is_torch_npu_available,
     is_torch_version,
     is_torch_xla_available,
+    is_torch_xla_version,
+    is_torchao_available,
     is_torchsde_available,
     is_torchvision_available,
     is_transformers_available,
@@ -94,7 +100,7 @@ from .import_utils import (
     is_xformers_available,
     requires_backends,
 )
-from .loading_utils import load_image, load_video
+from .loading_utils import get_module_from_name, load_image, load_video
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (

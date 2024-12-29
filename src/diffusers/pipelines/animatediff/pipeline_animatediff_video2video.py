@@ -119,7 +119,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
@@ -662,12 +662,6 @@ class AnimateDiffVideoToVideoPipeline(
                 self.vae.to(dtype=torch.float32)
 
             if isinstance(generator, list):
-                if len(generator) != batch_size:
-                    raise ValueError(
-                        f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                        f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                    )
-
                 init_latents = [
                     self.encode_video(video[i], generator[i], decode_chunk_size).unsqueeze(0)
                     for i in range(batch_size)

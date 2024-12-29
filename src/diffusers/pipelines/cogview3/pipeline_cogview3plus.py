@@ -38,7 +38,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import CogView3PlusPipeline
 
-        >>> pipe = CogView3PlusPipeline.from_pretrained("THUDM/CogView3Plus-3B", torch_dtype=torch.bfloat16)
+        >>> pipe = CogView3PlusPipeline.from_pretrained("THUDM/CogView3-Plus-3B", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A photo of an astronaut riding a horse on mars"
@@ -57,7 +57,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 

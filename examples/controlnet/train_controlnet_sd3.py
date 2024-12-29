@@ -50,7 +50,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3, free_memory
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -59,20 +59,9 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
-
-
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_validation=False):
@@ -224,7 +213,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             validation_image.save(os.path.join(repo_folder, "image_control.png"))
             img_str += f"prompt: {validation_prompt}\n"
             images = [validation_image] + images
-            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     model_description = f"""
@@ -273,6 +262,12 @@ def parse_args(input_args=None):
         default=None,
         help="Path to pretrained controlnet model or model identifier from huggingface.co/models."
         " If not specified controlnet weights are initialized from unet.",
+    )
+    parser.add_argument(
+        "--num_extra_conditioning_channels",
+        type=int,
+        default=0,
+        help="Number of extra conditioning channels for controlnet.",
     )
     parser.add_argument(
         "--revision",
@@ -549,6 +544,9 @@ def parse_args(input_args=None):
         type=int,
         default=77,
         help="Maximum sequence length to use with with the T5 text encoder",
+    )
+    parser.add_argument(
+        "--dataset_preprocess_batch_size", type=int, default=1000, help="Batch size for preprocessing dataset."
     )
     parser.add_argument(
         "--validation_prompt",
@@ -997,7 +995,9 @@ def main(args):
         controlnet = SD3ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
     else:
         logger.info("Initializing controlnet weights from transformer")
-        controlnet = SD3ControlNetModel.from_transformer(transformer)
+        controlnet = SD3ControlNetModel.from_transformer(
+            transformer, num_extra_conditioning_channels=args.num_extra_conditioning_channels
+        )
 
     transformer.requires_grad_(False)
     vae.requires_grad_(False)
@@ -1134,7 +1134,12 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+        train_dataset = train_dataset.map(
+            compute_embeddings_fn,
+            batched=True,
+            batch_size=args.dataset_preprocess_batch_size,
+            new_fingerprint=new_fingerprint,
+        )
 
     del text_encoder_one, text_encoder_two, text_encoder_three
     del tokenizer_one, tokenizer_two, tokenizer_three

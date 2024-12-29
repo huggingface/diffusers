@@ -62,7 +62,14 @@ CHECKPOINT_KEY_NAMES = {
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
     "upscale": "model.diffusion_model.input_blocks.10.0.skip_connection.bias",
-    "controlnet": "control_model.time_embed.0.weight",
+    "controlnet": [
+        "control_model.time_embed.0.weight",
+        "controlnet_cond_embedding.conv_in.weight",
+    ],
+    # TODO: find non-Diffusers keys for controlnet_xl
+    "controlnet_xl": "add_embedding.linear_1.weight",
+    "controlnet_xl_large": "down_blocks.1.attentions.0.transformer_blocks.0.attn1.to_k.weight",
+    "controlnet_xl_mid": "down_blocks.1.attentions.0.norm.weight",
     "playground-v2-5": "edm_mean",
     "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
     "clip": "cond_stage_model.transformer.text_model.embeddings.position_embedding.weight",
@@ -74,7 +81,14 @@ CHECKPOINT_KEY_NAMES = {
     "open_clip_sd3": "text_encoders.clip_g.transformer.text_model.embeddings.position_embedding.weight",
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
-    "sd3": "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
+    "sd3": [
+        "joint_blocks.0.context_block.adaLN_modulation.1.bias",
+        "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
+    ],
+    "sd35_large": [
+        "joint_blocks.37.x_block.mlp.fc1.weight",
+        "model.diffusion_model.joint_blocks.37.x_block.mlp.fc1.weight",
+    ],
     "animatediff": "down_blocks.0.motion_modules.0.temporal_transformer.transformer_blocks.0.attention_blocks.0.pos_encoder.pe",
     "animatediff_v2": "mid_block.motion_modules.0.temporal_transformer.norm.bias",
     "animatediff_sdxl_beta": "up_blocks.2.motion_modules.0.temporal_transformer.norm.weight",
@@ -84,6 +98,17 @@ CHECKPOINT_KEY_NAMES = {
         "double_blocks.0.img_attn.norm.key_norm.scale",
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
     ],
+    "ltx-video": [
+        "model.diffusion_model.patchify_proj.weight",
+        "model.diffusion_model.transformer_blocks.27.scale_shift_table",
+        "patchify_proj.weight",
+        "transformer_blocks.27.scale_shift_table",
+        "vae.per_channel_statistics.mean-of-means",
+    ],
+    "autoencoder-dc": "decoder.stages.1.op_list.0.main.conv.conv.bias",
+    "autoencoder-dc-sana": "encoder.project_in.conv.bias",
+    "mochi-1-preview": ["model.diffusion_model.blocks.0.attn.qkv_x.weight", "blocks.0.attn.qkv_x.weight"],
+    "hunyuan-video": "txt_in.individual_token_refiner.blocks.0.adaLN_modulation.1.bias",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -95,6 +120,9 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "inpainting": {"pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-inpainting"},
     "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
     "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
+    "controlnet_xl_large": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0"},
+    "controlnet_xl_mid": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0-mid"},
+    "controlnet_xl_small": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0-small"},
     "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
     "v1": {"pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-v1-5"},
     "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
@@ -113,6 +141,12 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "sd3": {
         "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-medium-diffusers",
     },
+    "sd35_large": {
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-large",
+    },
+    "sd35_medium": {
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-medium",
+    },
     "animatediff_v1": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5"},
     "animatediff_v2": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-2"},
     "animatediff_v3": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-3"},
@@ -120,7 +154,17 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "animatediff_scribble": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-scribble"},
     "animatediff_rgb": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-rgb"},
     "flux-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-dev"},
+    "flux-fill": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Fill-dev"},
+    "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
+    "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
+    "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
+    "autoencoder-dc-f128c512": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f128c512-mix-1.0-diffusers"},
+    "autoencoder-dc-f64c128": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f64c128-mix-1.0-diffusers"},
+    "autoencoder-dc-f32c32": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-mix-1.0-diffusers"},
+    "autoencoder-dc-f32c32-sana": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"},
+    "mochi-1-preview": {"pretrained_model_name_or_path": "genmo/mochi-1-preview"},
+    "hunyuan-video": {"pretrained_model_name_or_path": "hunyuanvideo-community/HunyuanVideo"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -477,8 +521,16 @@ def infer_diffusers_model_type(checkpoint):
     elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
         model_type = "upscale"
 
-    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
-        model_type = "controlnet"
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["controlnet"]):
+        if CHECKPOINT_KEY_NAMES["controlnet_xl"] in checkpoint:
+            if CHECKPOINT_KEY_NAMES["controlnet_xl_large"] in checkpoint:
+                model_type = "controlnet_xl_large"
+            elif CHECKPOINT_KEY_NAMES["controlnet_xl_mid"] in checkpoint:
+                model_type = "controlnet_xl_mid"
+            else:
+                model_type = "controlnet_xl_small"
+        else:
+            model_type = "controlnet"
 
     elif (
         CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"] in checkpoint
@@ -504,8 +556,21 @@ def infer_diffusers_model_type(checkpoint):
     ):
         model_type = "stable_cascade_stage_b"
 
-    elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint:
-        model_type = "sd3"
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["sd3"]) and any(
+        checkpoint[key].shape[-1] == 9216 if key in checkpoint else False for key in CHECKPOINT_KEY_NAMES["sd3"]
+    ):
+        if "model.diffusion_model.pos_embed" in checkpoint:
+            key = "model.diffusion_model.pos_embed"
+        else:
+            key = "pos_embed"
+
+        if checkpoint[key].shape[1] == 36864:
+            model_type = "sd3"
+        elif checkpoint[key].shape[1] == 147456:
+            model_type = "sd35_medium"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["sd35_large"]):
+        model_type = "sd35_large"
 
     elif CHECKPOINT_KEY_NAMES["animatediff"] in checkpoint:
         if CHECKPOINT_KEY_NAMES["animatediff_scribble"] in checkpoint:
@@ -530,9 +595,44 @@ def infer_diffusers_model_type(checkpoint):
         if any(
             g in checkpoint for g in ["guidance_in.in_layer.bias", "model.diffusion_model.guidance_in.in_layer.bias"]
         ):
-            model_type = "flux-dev"
+            if checkpoint["img_in.weight"].shape[1] == 384:
+                model_type = "flux-fill"
+
+            elif checkpoint["img_in.weight"].shape[1] == 128:
+                model_type = "flux-depth"
+            else:
+                model_type = "flux-dev"
         else:
             model_type = "flux-schnell"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx-video"]):
+        if "vae.decoder.last_time_embedder.timestep_embedder.linear_1.weight" in checkpoint:
+            model_type = "ltx-video-0.9.1"
+        else:
+            model_type = "ltx-video"
+
+    elif CHECKPOINT_KEY_NAMES["autoencoder-dc"] in checkpoint:
+        encoder_key = "encoder.project_in.conv.conv.bias"
+        decoder_key = "decoder.project_in.main.conv.weight"
+
+        if CHECKPOINT_KEY_NAMES["autoencoder-dc-sana"] in checkpoint:
+            model_type = "autoencoder-dc-f32c32-sana"
+
+        elif checkpoint[encoder_key].shape[-1] == 64 and checkpoint[decoder_key].shape[1] == 32:
+            model_type = "autoencoder-dc-f32c32"
+
+        elif checkpoint[encoder_key].shape[-1] == 64 and checkpoint[decoder_key].shape[1] == 128:
+            model_type = "autoencoder-dc-f64c128"
+
+        else:
+            model_type = "autoencoder-dc-f128c512"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["mochi-1-preview"]):
+        model_type = "mochi-1-preview"
+
+    elif CHECKPOINT_KEY_NAMES["hunyuan-video"] in checkpoint:
+        model_type = "hunyuan-video"
+
     else:
         model_type = "v1"
 
@@ -1065,6 +1165,9 @@ def convert_controlnet_checkpoint(
     config,
     **kwargs,
 ):
+    # Return checkpoint if it's already been converted
+    if "time_embedding.linear_1.weight" in checkpoint:
+        return checkpoint
     # Some controlnet ckpt files are distributed independently from the rest of the
     # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
     if "time_embed.0.weight" in checkpoint:
@@ -1670,6 +1773,28 @@ def swap_scale_shift(weight, dim):
     return new_weight
 
 
+def swap_proj_gate(weight):
+    proj, gate = weight.chunk(2, dim=0)
+    new_weight = torch.cat([gate, proj], dim=0)
+    return new_weight
+
+
+def get_attn2_layers(state_dict):
+    attn2_layers = []
+    for key in state_dict.keys():
+        if "attn2." in key:
+            # Extract the layer number from the key
+            layer_num = int(key.split(".")[1])
+            attn2_layers.append(layer_num)
+
+    return tuple(sorted(set(attn2_layers)))
+
+
+def get_caption_projection_dim(state_dict):
+    caption_projection_dim = state_dict["context_embedder.weight"].shape[0]
+    return caption_projection_dim
+
+
 def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())
@@ -1678,7 +1803,10 @@ def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "joint_blocks" in k))[-1] + 1  # noqa: C401
-    caption_projection_dim = 1536
+    dual_attention_layers = get_attn2_layers(checkpoint)
+
+    caption_projection_dim = get_caption_projection_dim(checkpoint)
+    has_qk_norm = any("ln_q" in key for key in checkpoint.keys())
 
     # Positional and patch embeddings.
     converted_state_dict["pos_embed.pos_embed"] = checkpoint.pop("pos_embed")
@@ -1735,6 +1863,21 @@ def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.weight"] = torch.cat([context_v])
         converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.bias"] = torch.cat([context_v_bias])
 
+        # qk norm
+        if has_qk_norm:
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_q.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.x_block.attn.ln_q.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_k.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.x_block.attn.ln_k.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_added_q.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.attn.ln_q.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_added_k.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.attn.ln_k.weight"
+            )
+
         # output projections.
         converted_state_dict[f"transformer_blocks.{i}.attn.to_out.0.weight"] = checkpoint.pop(
             f"joint_blocks.{i}.x_block.attn.proj.weight"
@@ -1748,6 +1891,38 @@ def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             )
             converted_state_dict[f"transformer_blocks.{i}.attn.to_add_out.bias"] = checkpoint.pop(
                 f"joint_blocks.{i}.context_block.attn.proj.bias"
+            )
+
+        if i in dual_attention_layers:
+            # Q, K, V
+            sample_q2, sample_k2, sample_v2 = torch.chunk(
+                checkpoint.pop(f"joint_blocks.{i}.x_block.attn2.qkv.weight"), 3, dim=0
+            )
+            sample_q2_bias, sample_k2_bias, sample_v2_bias = torch.chunk(
+                checkpoint.pop(f"joint_blocks.{i}.x_block.attn2.qkv.bias"), 3, dim=0
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_q.weight"] = torch.cat([sample_q2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_q.bias"] = torch.cat([sample_q2_bias])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_k.weight"] = torch.cat([sample_k2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_k.bias"] = torch.cat([sample_k2_bias])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_v.weight"] = torch.cat([sample_v2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_v.bias"] = torch.cat([sample_v2_bias])
+
+            # qk norm
+            if has_qk_norm:
+                converted_state_dict[f"transformer_blocks.{i}.attn2.norm_q.weight"] = checkpoint.pop(
+                    f"joint_blocks.{i}.x_block.attn2.ln_q.weight"
+                )
+                converted_state_dict[f"transformer_blocks.{i}.attn2.norm_k.weight"] = checkpoint.pop(
+                    f"joint_blocks.{i}.x_block.attn2.ln_k.weight"
+                )
+
+            # output projections.
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_out.0.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.x_block.attn2.proj.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_out.0.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.x_block.attn2.proj.bias"
             )
 
         # norms.
@@ -2098,3 +2273,411 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     )
 
     return converted_state_dict
+
+
+def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "vae" not in key}
+
+    TRANSFORMER_KEYS_RENAME_DICT = {
+        "model.diffusion_model.": "",
+        "patchify_proj": "proj_in",
+        "adaln_single": "time_embed",
+        "q_norm": "norm_q",
+        "k_norm": "norm_k",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key
+        for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "vae." in key}
+
+    def remove_keys_(key: str, state_dict):
+        state_dict.pop(key)
+
+    VAE_KEYS_RENAME_DICT = {
+        # common
+        "vae.": "",
+        # decoder
+        "up_blocks.0": "mid_block",
+        "up_blocks.1": "up_blocks.0",
+        "up_blocks.2": "up_blocks.1.upsamplers.0",
+        "up_blocks.3": "up_blocks.1",
+        "up_blocks.4": "up_blocks.2.conv_in",
+        "up_blocks.5": "up_blocks.2.upsamplers.0",
+        "up_blocks.6": "up_blocks.2",
+        "up_blocks.7": "up_blocks.3.conv_in",
+        "up_blocks.8": "up_blocks.3.upsamplers.0",
+        "up_blocks.9": "up_blocks.3",
+        # encoder
+        "down_blocks.0": "down_blocks.0",
+        "down_blocks.1": "down_blocks.0.downsamplers.0",
+        "down_blocks.2": "down_blocks.0.conv_out",
+        "down_blocks.3": "down_blocks.1",
+        "down_blocks.4": "down_blocks.1.downsamplers.0",
+        "down_blocks.5": "down_blocks.1.conv_out",
+        "down_blocks.6": "down_blocks.2",
+        "down_blocks.7": "down_blocks.2.downsamplers.0",
+        "down_blocks.8": "down_blocks.3",
+        "down_blocks.9": "mid_block",
+        # common
+        "conv_shortcut": "conv_shortcut.conv",
+        "res_blocks": "resnets",
+        "norm3.norm": "norm3",
+        "per_channel_statistics.mean-of-means": "latents_mean",
+        "per_channel_statistics.std-of-means": "latents_std",
+    }
+
+    VAE_091_RENAME_DICT = {
+        # decoder
+        "up_blocks.0": "mid_block",
+        "up_blocks.1": "up_blocks.0.upsamplers.0",
+        "up_blocks.2": "up_blocks.0",
+        "up_blocks.3": "up_blocks.1.upsamplers.0",
+        "up_blocks.4": "up_blocks.1",
+        "up_blocks.5": "up_blocks.2.upsamplers.0",
+        "up_blocks.6": "up_blocks.2",
+        "up_blocks.7": "up_blocks.3.upsamplers.0",
+        "up_blocks.8": "up_blocks.3",
+        # common
+        "last_time_embedder": "time_embedder",
+        "last_scale_shift_table": "scale_shift_table",
+    }
+
+    VAE_SPECIAL_KEYS_REMAP = {
+        "per_channel_statistics.channel": remove_keys_,
+        "per_channel_statistics.mean-of-means": remove_keys_,
+        "per_channel_statistics.mean-of-stds": remove_keys_,
+        "timestep_scale_multiplier": remove_keys_,
+    }
+
+    if "vae.decoder.last_time_embedder.timestep_embedder.linear_1.weight" in converted_state_dict:
+        VAE_KEYS_RENAME_DICT.update(VAE_091_RENAME_DICT)
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key
+        for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_autoencoder_dc_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    def remap_qkv_(key: str, state_dict):
+        qkv = state_dict.pop(key)
+        q, k, v = torch.chunk(qkv, 3, dim=0)
+        parent_module, _, _ = key.rpartition(".qkv.conv.weight")
+        state_dict[f"{parent_module}.to_q.weight"] = q.squeeze()
+        state_dict[f"{parent_module}.to_k.weight"] = k.squeeze()
+        state_dict[f"{parent_module}.to_v.weight"] = v.squeeze()
+
+    def remap_proj_conv_(key: str, state_dict):
+        parent_module, _, _ = key.rpartition(".proj.conv.weight")
+        state_dict[f"{parent_module}.to_out.weight"] = state_dict.pop(key).squeeze()
+
+    AE_KEYS_RENAME_DICT = {
+        # common
+        "main.": "",
+        "op_list.": "",
+        "context_module": "attn",
+        "local_module": "conv_out",
+        # NOTE: The below two lines work because scales in the available configs only have a tuple length of 1
+        # If there were more scales, there would be more layers, so a loop would be better to handle this
+        "aggreg.0.0": "to_qkv_multiscale.0.proj_in",
+        "aggreg.0.1": "to_qkv_multiscale.0.proj_out",
+        "depth_conv.conv": "conv_depth",
+        "inverted_conv.conv": "conv_inverted",
+        "point_conv.conv": "conv_point",
+        "point_conv.norm": "norm",
+        "conv.conv.": "conv.",
+        "conv1.conv": "conv1",
+        "conv2.conv": "conv2",
+        "conv2.norm": "norm",
+        "proj.norm": "norm_out",
+        # encoder
+        "encoder.project_in.conv": "encoder.conv_in",
+        "encoder.project_out.0.conv": "encoder.conv_out",
+        "encoder.stages": "encoder.down_blocks",
+        # decoder
+        "decoder.project_in.conv": "decoder.conv_in",
+        "decoder.project_out.0": "decoder.norm_out",
+        "decoder.project_out.2.conv": "decoder.conv_out",
+        "decoder.stages": "decoder.up_blocks",
+    }
+
+    AE_F32C32_F64C128_F128C512_KEYS = {
+        "encoder.project_in.conv": "encoder.conv_in.conv",
+        "decoder.project_out.2.conv": "decoder.conv_out.conv",
+    }
+
+    AE_SPECIAL_KEYS_REMAP = {
+        "qkv.conv.weight": remap_qkv_,
+        "proj.conv.weight": remap_proj_conv_,
+    }
+    if "encoder.project_in.conv.bias" not in converted_state_dict:
+        AE_KEYS_RENAME_DICT.update(AE_F32C32_F64C128_F128C512_KEYS)
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in AE_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in AE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_mochi_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    new_state_dict = {}
+
+    # Comfy checkpoints add this prefix
+    keys = list(checkpoint.keys())
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    # Convert patch_embed
+    new_state_dict["patch_embed.proj.weight"] = checkpoint.pop("x_embedder.proj.weight")
+    new_state_dict["patch_embed.proj.bias"] = checkpoint.pop("x_embedder.proj.bias")
+
+    # Convert time_embed
+    new_state_dict["time_embed.timestep_embedder.linear_1.weight"] = checkpoint.pop("t_embedder.mlp.0.weight")
+    new_state_dict["time_embed.timestep_embedder.linear_1.bias"] = checkpoint.pop("t_embedder.mlp.0.bias")
+    new_state_dict["time_embed.timestep_embedder.linear_2.weight"] = checkpoint.pop("t_embedder.mlp.2.weight")
+    new_state_dict["time_embed.timestep_embedder.linear_2.bias"] = checkpoint.pop("t_embedder.mlp.2.bias")
+    new_state_dict["time_embed.pooler.to_kv.weight"] = checkpoint.pop("t5_y_embedder.to_kv.weight")
+    new_state_dict["time_embed.pooler.to_kv.bias"] = checkpoint.pop("t5_y_embedder.to_kv.bias")
+    new_state_dict["time_embed.pooler.to_q.weight"] = checkpoint.pop("t5_y_embedder.to_q.weight")
+    new_state_dict["time_embed.pooler.to_q.bias"] = checkpoint.pop("t5_y_embedder.to_q.bias")
+    new_state_dict["time_embed.pooler.to_out.weight"] = checkpoint.pop("t5_y_embedder.to_out.weight")
+    new_state_dict["time_embed.pooler.to_out.bias"] = checkpoint.pop("t5_y_embedder.to_out.bias")
+    new_state_dict["time_embed.caption_proj.weight"] = checkpoint.pop("t5_yproj.weight")
+    new_state_dict["time_embed.caption_proj.bias"] = checkpoint.pop("t5_yproj.bias")
+
+    # Convert transformer blocks
+    num_layers = 48
+    for i in range(num_layers):
+        block_prefix = f"transformer_blocks.{i}."
+        old_prefix = f"blocks.{i}."
+
+        # norm1
+        new_state_dict[block_prefix + "norm1.linear.weight"] = checkpoint.pop(old_prefix + "mod_x.weight")
+        new_state_dict[block_prefix + "norm1.linear.bias"] = checkpoint.pop(old_prefix + "mod_x.bias")
+        if i < num_layers - 1:
+            new_state_dict[block_prefix + "norm1_context.linear.weight"] = checkpoint.pop(old_prefix + "mod_y.weight")
+            new_state_dict[block_prefix + "norm1_context.linear.bias"] = checkpoint.pop(old_prefix + "mod_y.bias")
+        else:
+            new_state_dict[block_prefix + "norm1_context.linear_1.weight"] = checkpoint.pop(
+                old_prefix + "mod_y.weight"
+            )
+            new_state_dict[block_prefix + "norm1_context.linear_1.bias"] = checkpoint.pop(old_prefix + "mod_y.bias")
+
+        # Visual attention
+        qkv_weight = checkpoint.pop(old_prefix + "attn.qkv_x.weight")
+        q, k, v = qkv_weight.chunk(3, dim=0)
+
+        new_state_dict[block_prefix + "attn1.to_q.weight"] = q
+        new_state_dict[block_prefix + "attn1.to_k.weight"] = k
+        new_state_dict[block_prefix + "attn1.to_v.weight"] = v
+        new_state_dict[block_prefix + "attn1.norm_q.weight"] = checkpoint.pop(old_prefix + "attn.q_norm_x.weight")
+        new_state_dict[block_prefix + "attn1.norm_k.weight"] = checkpoint.pop(old_prefix + "attn.k_norm_x.weight")
+        new_state_dict[block_prefix + "attn1.to_out.0.weight"] = checkpoint.pop(old_prefix + "attn.proj_x.weight")
+        new_state_dict[block_prefix + "attn1.to_out.0.bias"] = checkpoint.pop(old_prefix + "attn.proj_x.bias")
+
+        # Context attention
+        qkv_weight = checkpoint.pop(old_prefix + "attn.qkv_y.weight")
+        q, k, v = qkv_weight.chunk(3, dim=0)
+
+        new_state_dict[block_prefix + "attn1.add_q_proj.weight"] = q
+        new_state_dict[block_prefix + "attn1.add_k_proj.weight"] = k
+        new_state_dict[block_prefix + "attn1.add_v_proj.weight"] = v
+        new_state_dict[block_prefix + "attn1.norm_added_q.weight"] = checkpoint.pop(
+            old_prefix + "attn.q_norm_y.weight"
+        )
+        new_state_dict[block_prefix + "attn1.norm_added_k.weight"] = checkpoint.pop(
+            old_prefix + "attn.k_norm_y.weight"
+        )
+        if i < num_layers - 1:
+            new_state_dict[block_prefix + "attn1.to_add_out.weight"] = checkpoint.pop(
+                old_prefix + "attn.proj_y.weight"
+            )
+            new_state_dict[block_prefix + "attn1.to_add_out.bias"] = checkpoint.pop(old_prefix + "attn.proj_y.bias")
+
+        # MLP
+        new_state_dict[block_prefix + "ff.net.0.proj.weight"] = swap_proj_gate(
+            checkpoint.pop(old_prefix + "mlp_x.w1.weight")
+        )
+        new_state_dict[block_prefix + "ff.net.2.weight"] = checkpoint.pop(old_prefix + "mlp_x.w2.weight")
+        if i < num_layers - 1:
+            new_state_dict[block_prefix + "ff_context.net.0.proj.weight"] = swap_proj_gate(
+                checkpoint.pop(old_prefix + "mlp_y.w1.weight")
+            )
+            new_state_dict[block_prefix + "ff_context.net.2.weight"] = checkpoint.pop(old_prefix + "mlp_y.w2.weight")
+
+    # Output layers
+    new_state_dict["norm_out.linear.weight"] = swap_scale_shift(checkpoint.pop("final_layer.mod.weight"), dim=0)
+    new_state_dict["norm_out.linear.bias"] = swap_scale_shift(checkpoint.pop("final_layer.mod.bias"), dim=0)
+    new_state_dict["proj_out.weight"] = checkpoint.pop("final_layer.linear.weight")
+    new_state_dict["proj_out.bias"] = checkpoint.pop("final_layer.linear.bias")
+
+    new_state_dict["pos_frequencies"] = checkpoint.pop("pos_frequencies")
+
+    return new_state_dict
+
+
+def convert_hunyuan_video_transformer_to_diffusers(checkpoint, **kwargs):
+    def remap_norm_scale_shift_(key, state_dict):
+        weight = state_dict.pop(key)
+        shift, scale = weight.chunk(2, dim=0)
+        new_weight = torch.cat([scale, shift], dim=0)
+        state_dict[key.replace("final_layer.adaLN_modulation.1", "norm_out.linear")] = new_weight
+
+    def remap_txt_in_(key, state_dict):
+        def rename_key(key):
+            new_key = key.replace("individual_token_refiner.blocks", "token_refiner.refiner_blocks")
+            new_key = new_key.replace("adaLN_modulation.1", "norm_out.linear")
+            new_key = new_key.replace("txt_in", "context_embedder")
+            new_key = new_key.replace("t_embedder.mlp.0", "time_text_embed.timestep_embedder.linear_1")
+            new_key = new_key.replace("t_embedder.mlp.2", "time_text_embed.timestep_embedder.linear_2")
+            new_key = new_key.replace("c_embedder", "time_text_embed.text_embedder")
+            new_key = new_key.replace("mlp", "ff")
+            return new_key
+
+        if "self_attn_qkv" in key:
+            weight = state_dict.pop(key)
+            to_q, to_k, to_v = weight.chunk(3, dim=0)
+            state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_q"))] = to_q
+            state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_k"))] = to_k
+            state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_v"))] = to_v
+        else:
+            state_dict[rename_key(key)] = state_dict.pop(key)
+
+    def remap_img_attn_qkv_(key, state_dict):
+        weight = state_dict.pop(key)
+        to_q, to_k, to_v = weight.chunk(3, dim=0)
+        state_dict[key.replace("img_attn_qkv", "attn.to_q")] = to_q
+        state_dict[key.replace("img_attn_qkv", "attn.to_k")] = to_k
+        state_dict[key.replace("img_attn_qkv", "attn.to_v")] = to_v
+
+    def remap_txt_attn_qkv_(key, state_dict):
+        weight = state_dict.pop(key)
+        to_q, to_k, to_v = weight.chunk(3, dim=0)
+        state_dict[key.replace("txt_attn_qkv", "attn.add_q_proj")] = to_q
+        state_dict[key.replace("txt_attn_qkv", "attn.add_k_proj")] = to_k
+        state_dict[key.replace("txt_attn_qkv", "attn.add_v_proj")] = to_v
+
+    def remap_single_transformer_blocks_(key, state_dict):
+        hidden_size = 3072
+
+        if "linear1.weight" in key:
+            linear1_weight = state_dict.pop(key)
+            split_size = (hidden_size, hidden_size, hidden_size, linear1_weight.size(0) - 3 * hidden_size)
+            q, k, v, mlp = torch.split(linear1_weight, split_size, dim=0)
+            new_key = key.replace("single_blocks", "single_transformer_blocks").removesuffix(".linear1.weight")
+            state_dict[f"{new_key}.attn.to_q.weight"] = q
+            state_dict[f"{new_key}.attn.to_k.weight"] = k
+            state_dict[f"{new_key}.attn.to_v.weight"] = v
+            state_dict[f"{new_key}.proj_mlp.weight"] = mlp
+
+        elif "linear1.bias" in key:
+            linear1_bias = state_dict.pop(key)
+            split_size = (hidden_size, hidden_size, hidden_size, linear1_bias.size(0) - 3 * hidden_size)
+            q_bias, k_bias, v_bias, mlp_bias = torch.split(linear1_bias, split_size, dim=0)
+            new_key = key.replace("single_blocks", "single_transformer_blocks").removesuffix(".linear1.bias")
+            state_dict[f"{new_key}.attn.to_q.bias"] = q_bias
+            state_dict[f"{new_key}.attn.to_k.bias"] = k_bias
+            state_dict[f"{new_key}.attn.to_v.bias"] = v_bias
+            state_dict[f"{new_key}.proj_mlp.bias"] = mlp_bias
+
+        else:
+            new_key = key.replace("single_blocks", "single_transformer_blocks")
+            new_key = new_key.replace("linear2", "proj_out")
+            new_key = new_key.replace("q_norm", "attn.norm_q")
+            new_key = new_key.replace("k_norm", "attn.norm_k")
+            state_dict[new_key] = state_dict.pop(key)
+
+    TRANSFORMER_KEYS_RENAME_DICT = {
+        "img_in": "x_embedder",
+        "time_in.mlp.0": "time_text_embed.timestep_embedder.linear_1",
+        "time_in.mlp.2": "time_text_embed.timestep_embedder.linear_2",
+        "guidance_in.mlp.0": "time_text_embed.guidance_embedder.linear_1",
+        "guidance_in.mlp.2": "time_text_embed.guidance_embedder.linear_2",
+        "vector_in.in_layer": "time_text_embed.text_embedder.linear_1",
+        "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
+        "double_blocks": "transformer_blocks",
+        "img_attn_q_norm": "attn.norm_q",
+        "img_attn_k_norm": "attn.norm_k",
+        "img_attn_proj": "attn.to_out.0",
+        "txt_attn_q_norm": "attn.norm_added_q",
+        "txt_attn_k_norm": "attn.norm_added_k",
+        "txt_attn_proj": "attn.to_add_out",
+        "img_mod.linear": "norm1.linear",
+        "img_norm1": "norm1.norm",
+        "img_norm2": "norm2",
+        "img_mlp": "ff",
+        "txt_mod.linear": "norm1_context.linear",
+        "txt_norm1": "norm1.norm",
+        "txt_norm2": "norm2_context",
+        "txt_mlp": "ff_context",
+        "self_attn_proj": "attn.to_out.0",
+        "modulation.linear": "norm.linear",
+        "pre_norm": "norm.norm",
+        "final_layer.norm_final": "norm_out.norm",
+        "final_layer.linear": "proj_out",
+        "fc1": "net.0.proj",
+        "fc2": "net.2",
+        "input_embedder": "proj_in",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {
+        "txt_in": remap_txt_in_,
+        "img_attn_qkv": remap_img_attn_qkv_,
+        "txt_attn_qkv": remap_txt_attn_qkv_,
+        "single_blocks": remap_single_transformer_blocks_,
+        "final_layer.adaLN_modulation.1": remap_norm_scale_shift_,
+    }
+
+    def update_state_dict_(state_dict, old_key, new_key):
+        state_dict[new_key] = state_dict.pop(old_key)
+
+    for key in list(checkpoint.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_(checkpoint, key, new_key)
+
+    for key in list(checkpoint.keys()):
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, checkpoint)
+
+    return checkpoint

@@ -113,6 +113,7 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 
 @slow
+@nightly
 @require_torch_gpu
 @require_peft_backend
 class LoraSDXLIntegrationTests(unittest.TestCase):

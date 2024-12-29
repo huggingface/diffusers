@@ -500,7 +500,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         pred_prev_sample = pred_prev_sample + variance
 
         if not return_dict:
-            return (pred_prev_sample,)
+            return (
+                pred_prev_sample,
+                pred_original_sample,
+            )
 
         return DDPMParallelSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
 
@@ -636,16 +639,12 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.previous_timestep
     def previous_timestep(self, timestep):
-        if self.custom_timesteps:
+        if self.custom_timesteps or self.num_inference_steps:
             index = (self.timesteps == timestep).nonzero(as_tuple=True)[0][0]
             if index == self.timesteps.shape[0] - 1:
                 prev_t = torch.tensor(-1)
             else:
                 prev_t = self.timesteps[index + 1]
         else:
-            num_inference_steps = (
-                self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
-            )
-            prev_t = timestep - self.config.num_train_timesteps // num_inference_steps
-
+            prev_t = timestep - 1
         return prev_t
