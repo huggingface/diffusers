@@ -440,7 +440,7 @@ class FasterCacheBlockHook(ModelHook):
             # TODO(aryan): remove later
             logger.debug("Skipping attention")
 
-            if torch.is_tensor(state.cache):
+            if torch.is_tensor(state.cache[-1]):
                 t_2_output, t_output = state.cache
                 weight = state.weight_callback(module)
                 output = self._compute_approximated_attention_output(t_2_output, t_output, weight, batch_size)
