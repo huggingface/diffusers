@@ -606,7 +606,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         self.assertTrue(pipe.transformer.config.in_channels == 2 * in_features)
         self.assertTrue(cap_logger.out.startswith("Expanding the nn.Linear input/output features for module"))
 
-        control_pipe.unload_lora_weights(reset_to_overwrriten_params=True)
+        control_pipe.unload_lora_weights(reset_to_overwritten_params=True)
         self.assertTrue(
             control_pipe.transformer.config.in_channels == num_channels_without_control,
             f"Expected {num_channels_without_control} channels in the modified transformer but has {control_pipe.transformer.config.in_channels=}",
@@ -672,7 +672,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         self.assertTrue(pipe.transformer.config.in_channels == 2 * in_features)
         self.assertTrue(cap_logger.out.startswith("Expanding the nn.Linear input/output features for module"))
 
-        control_pipe.unload_lora_weights(reset_to_overwrriten_params=False)
+        control_pipe.unload_lora_weights(reset_to_overwritten_params=False)
         self.assertTrue(
             control_pipe.transformer.config.in_channels == 2 * num_channels_without_control,
             f"Expected {num_channels_without_control} channels in the modified transformer but has {control_pipe.transformer.config.in_channels=}",

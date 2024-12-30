@@ -2278,7 +2278,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         super().unfuse_lora(components=components)
 
     # We override this here account for `_transformer_norm_layers`.
-    def unload_lora_weights(self, reset_to_overwrriten_params=False):
+    def unload_lora_weights(self, reset_to_overwritten_params=False):
         super().unload_lora_weights()
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
@@ -2286,7 +2286,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             transformer.load_state_dict(transformer._transformer_norm_layers, strict=False)
             transformer._transformer_norm_layers = None
 
-        if reset_to_overwrriten_params and getattr(transformer, "_overwritten_params", None) is not None:
+        if reset_to_overwritten_params and getattr(transformer, "_overwritten_params", None) is not None:
             overwritten_params = transformer._overwritten_params
             module_names = set()
 
