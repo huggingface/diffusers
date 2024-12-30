@@ -2277,8 +2277,24 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         super().unfuse_lora(components=components)
 
-    # We override this here account for `_transformer_norm_layers`.
+    # We override this here account for `_transformer_norm_layers` and `_overwritten_params`.
     def unload_lora_weights(self, reset_to_overwritten_params=False):
+        """
+        Unloads the LoRA parameters.
+
+        Args:
+            reset_to_overwritten_params (`bool`, defaults to `False`): Whether to reset the LoRA-loaded modules
+                to their original params. Refer to the [Flux
+                documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux) to learn more.
+
+        Examples:
+
+        ```python
+        >>> # Assuming `pipeline` is already loaded with the LoRA parameters.
+        >>> pipeline.unload_lora_weights()
+        >>> ...
+        ```
+        """
         super().unload_lora_weights()
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
