@@ -25,6 +25,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKL, LatteTransformer3DModel
+from ...models.hooks import reset_stateful_hooks
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -848,6 +849,7 @@ class LattePipeline(DiffusionPipeline):
 
         # Offload all models
         self.maybe_free_model_hooks()
+        reset_stateful_hooks(self.transformer, recurse=True)
 
         if not return_dict:
             return (video,)

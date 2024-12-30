@@ -21,9 +21,10 @@ import torch
 # Reference: https://github.com/huggingface/accelerate/blob/ba7ab93f5e688466ea56908ea3b056fae2f9a023/src/accelerate/hooks.py
 class ModelHook:
     r"""
-    A hook that contains callbacks to be executed just before and after the forward method of a model. The difference
-    with PyTorch existing hooks is that they get passed along the kwargs.
+    A hook that contains callbacks to be executed just before and after the forward method of a model.
     """
+
+    _is_stateful = False
 
     def init_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
@@ -78,6 +79,10 @@ class ModelHook:
         """
         return module
 
+    def reset_state(self, module: torch.nn.Module):
+        if self._is_stateful:
+            raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
+
 
 class SequentialHook(ModelHook):
     r"""A hook that can contain several hooks and iterates through them at each event."""
@@ -105,8 +110,13 @@ class SequentialHook(ModelHook):
             module = hook.detach_hook(module)
         return module
 
+    def reset_state(self, module):
+        for hook in self.hooks:
+            if hook._is_stateful:
+                hook.reset_state(module)
 
-def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False):
+
+def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False) -> torch.nn.Module:
     r"""
     Adds a hook to a given module. This will rewrite the `forward` method of the module to include the hook, to remove
     this behavior and restore the original `forward` method, use `remove_hook_from_module`.
@@ -199,3 +209,21 @@ def remove_hook_from_module(module: torch.nn.Module, recurse: bool = False) -> t
             remove_hook_from_module(child, recurse)
 
     return module
+
+
+def reset_stateful_hooks(module: torch.nn.Module, recurse: bool = False):
+    """
+    Resets the state of all stateful hooks attached to a module.
+
+    Args:
+        module (`torch.nn.Module`):
+            The module to reset the stateful hooks from.
+    """
+    if hasattr(module, "_diffusers_hook") and (
+        module._diffusers_hook._is_stateful or isinstance(module._diffusers_hook, SequentialHook)
+    ):
+        module._diffusers_hook.reset_state(module)
+
+    if recurse:
+        for child in module.children():
+            reset_stateful_hooks(child, recurse)

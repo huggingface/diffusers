@@ -28,8 +28,8 @@ from transformers import (
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
-from ...models.autoencoders import AutoencoderKL
-from ...models.transformers import FluxTransformer2DModel
+from ...models import AutoencoderKL, FluxTransformer2DModel
+from ...models.hooks import reset_stateful_hooks
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -953,6 +953,7 @@ class FluxPipeline(
 
         # Offload all models
         self.maybe_free_model_hooks()
+        reset_stateful_hooks(self.transformer, recurse=True)
 
         if not return_dict:
             return (image,)

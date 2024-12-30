@@ -26,6 +26,7 @@ from ...image_processor import PipelineImageInput
 from ...loaders import CogVideoXLoraLoaderMixin
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
+from ...models.hooks import reset_stateful_hooks
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from ...utils import (
@@ -882,6 +883,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
         # Offload all models
         self.maybe_free_model_hooks()
+        reset_stateful_hooks(self.transformer, recurse=True)
 
         if not return_dict:
             return (video,)

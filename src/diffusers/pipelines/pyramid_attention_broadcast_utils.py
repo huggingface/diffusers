@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Tuple
 
@@ -88,21 +89,30 @@ class PyramidAttentionBroadcastState:
     r"""
     State for Pyramid Attention Broadcast.
 
+    Args:
+        skip_callback (`Callable[[nn.Module], bool]`):
+            A callback function that determines whether the attention computation should be skipped or not. The
+            callback function should return a boolean value, where `True` indicates that the attention computation
+            should be skipped, and `False` indicates that the attention computation should not be skipped. The callback
+            function will receive a torch.nn.Module containing a `_pyramid_attention_broadcast_state` attribute that
+            can should be used to retrieve and update the state of PAB for the given module.
+
     Attributes:
         iteration (`int`):
             The current iteration of the Pyramid Attention Broadcast. It is necessary to ensure that `reset_state` is
             called before starting a new inference forward pass for PAB to work correctly.
+        cache (`Any`):
+            The cached output from the previous forward pass. This is used to re-use the attention states when the
+            attention computation is skipped. It is either a tensor or a tuple of tensors, depending on the module.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, skip_callback: Callable[[nn.Module], bool]) -> None:
+        self.skip_callback = skip_callback
+
         self.iteration = 0
         self.cache = None
 
-    def update_state(self, output: Any) -> None:
-        self.iteration += 1
-        self.cache = output
-
-    def reset_state(self):
+    def reset(self):
         self.iteration = 0
         self.cache = None
 
@@ -186,33 +196,26 @@ def apply_pyramid_attention_broadcast_on_module(
             function will receive a torch.nn.Module containing a `_pyramid_attention_broadcast_state` attribute that
             can should be used to retrieve and update the state of PAB for the given module.
     """
-    module._pyramid_attention_broadcast_state = PyramidAttentionBroadcastState()
-    hook = PyramidAttentionBroadcastHook(skip_callback=skip_callback)
+    module._pyramid_attention_broadcast_state = PyramidAttentionBroadcastState(skip_callback=skip_callback)
+    hook = PyramidAttentionBroadcastHook()
     add_hook_to_module(module, hook, append=True)
 
 
 def _apply_pyramid_attention_broadcast_on_attention_class(
     pipeline: DiffusionPipeline, name: str, module: Attention, config: PyramidAttentionBroadcastConfig
-):
-    # Similar check as PEFT to determine if a string layer name matches a module name
-    # TODO(aryan): make this regex based
+) -> bool:
     is_spatial_self_attention = (
-        any(
-            f"{identifier}." in name or identifier == name for identifier in config.spatial_attention_block_identifiers
-        )
+        any(re.search(identifier, name) is not None for identifier in config.spatial_attention_block_identifiers)
         and config.spatial_attention_block_skip_range is not None
         and not module.is_cross_attention
     )
     is_temporal_self_attention = (
-        any(
-            f"{identifier}." in name or identifier == name
-            for identifier in config.temporal_attention_block_identifiers
-        )
+        any(re.search(identifier, name) is not None for identifier in config.temporal_attention_block_identifiers)
         and config.temporal_attention_block_skip_range is not None
         and not module.is_cross_attention
     )
     is_cross_attention = (
-        any(f"{identifier}." in name or identifier == name for identifier in config.cross_attention_block_identifiers)
+        any(re.search(identifier, name) is not None for identifier in config.cross_attention_block_identifiers)
         and config.cross_attention_block_skip_range is not None
         and module.is_cross_attention
     )
@@ -239,7 +242,7 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
             f"block identifiers in the configuration or use the specialized `apply_pyramid_attention_broadcast_on_module` "
             f"function to apply PAB to this layer."
         )
-        return
+        return False
 
     def skip_callback(module: nn.Module) -> bool:
         pab_state = module._pyramid_attention_broadcast_state
@@ -247,35 +250,39 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
             return False
 
         is_within_timestep_range = timestep_skip_range[0] < pipeline._current_timestep < timestep_skip_range[1]
+        if not is_within_timestep_range:
+            # We are still not in the phase of inference where skipping attention is possible without minimal quality
+            # loss, as described in the paper. So, the attention computation cannot be skipped
+            return False
 
-        if is_within_timestep_range:
-            should_compute_attention = pab_state.iteration > 0 and pab_state.iteration % block_skip_range == 0
-            return not should_compute_attention
-
-        # We are still not in the phase of inference where skipping attention is possible without minimal quality
-        # loss, as described in the paper. So, the attention computation cannot be skipped
-        return False
+        should_compute_attention = pab_state.iteration > 0 and pab_state.iteration % block_skip_range == 0
+        return not should_compute_attention
 
     logger.debug(f"Enabling Pyramid Attention Broadcast ({block_type}) in layer: {name}")
     apply_pyramid_attention_broadcast_on_module(module, skip_callback)
+    return True
 
 
 class PyramidAttentionBroadcastHook(ModelHook):
-    def __init__(self, skip_callback: Callable[[nn.Module], bool]) -> None:
-        super().__init__()
+    r"""A hook that applies Pyramid Attention Broadcast to a given module."""
 
-        self.skip_callback = skip_callback
+    _is_stateful = True
+
+    def __init__(self) -> None:
+        super().__init__()
 
     def new_forward(self, module: nn.Module, *args, **kwargs) -> Any:
         args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
+        state: PyramidAttentionBroadcastState = module._pyramid_attention_broadcast_state
 
-        if self.skip_callback(module):
+        if state.skip_callback(module):
             output = module._pyramid_attention_broadcast_state.cache
         else:
             output = module._old_forward(*args, **kwargs)
 
+        state.cache = output
+        state.iteration += 1
         return module._diffusers_hook.post_forward(module, output)
 
-    def post_forward(self, module: nn.Module, output: Any) -> Any:
-        module._pyramid_attention_broadcast_state.update_state(output)
-        return output
+    def reset_state(self, module: nn.Module) -> None:
+        module._pyramid_attention_broadcast_state.reset()
