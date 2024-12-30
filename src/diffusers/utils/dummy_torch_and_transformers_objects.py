@@ -1277,6 +1277,21 @@ class PixArtSigmaPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class PyramidAttentionBroadcastConfig(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class ReduxImageEncoder(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -2535,3 +2550,11 @@ class WuerstchenPriorPipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
+
+
+def apply_pyramid_attention_broadcast(*args, **kwargs):
+    requires_backends(apply_pyramid_attention_broadcast, ["torch", "transformers"])
+
+
+def apply_pyramid_attention_broadcast_on_module(*args, **kwargs):
+    requires_backends(apply_pyramid_attention_broadcast_on_module, ["torch", "transformers"])
