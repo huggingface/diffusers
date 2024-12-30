@@ -19,11 +19,12 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers, is_torch_npu_available
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
     AttnProcessor2_0,
+    AttnProcessorNPU,
     SanaLinearAttnProcessor2_0,
 )
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
@@ -119,6 +120,12 @@ class SanaTransformerBlock(nn.Module):
         # 2. Cross Attention
         if cross_attention_dim is not None:
             self.norm2 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
+
+            if is_torch_npu_available():
+                attn_processor = AttnProcessorNPU()
+            else:
+                attn_processor = AttnProcessor2_0()
+
             self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim,
@@ -127,7 +134,7 @@ class SanaTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=True,
                 out_bias=attention_out_bias,
-                processor=AttnProcessor2_0(),
+                processor=attn_processor,
             )
 
         # 3. Feed-forward

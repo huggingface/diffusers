@@ -3147,7 +3147,16 @@ class AttnProcessorNPU:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+            attn_mask = attention_mask[0]
+            seq_len = hidden_states.shape[1]
+            attention_mask = attn_mask.repeat_interleave(seq_len * batch_size, dim=0)
+            attention_mask = attention_mask.view(batch_size, 1, -1, attention_mask.shape[-1])
+
+            if attention_mask.dtype != torch.uint8:
+                if attention_mask.dtype == torch.bool:
+                    attention_mask = torch.logical_not(attention_mask.bool())
+                else:
+                    attention_mask = attention_mask.to(torch.uint8)
 
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)

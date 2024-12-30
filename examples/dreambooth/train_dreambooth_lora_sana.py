@@ -63,6 +63,7 @@ from diffusers.utils import (
     is_wandb_available,
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
@@ -73,6 +74,9 @@ if is_wandb_available():
 check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
+
+if is_torch_npu_available():
+    torch.npu.config.allow_internal_format = False
 
 
 def save_model_card(
@@ -920,8 +924,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -979,10 +982,10 @@ def main(args):
         )
 
     # VAE should always be kept in fp32 for SANA (?)
-    vae.to(dtype=torch.float32)
+    vae.to(accelerator.device, dtype=torch.float32)
     transformer.to(accelerator.device, dtype=weight_dtype)
     # because Gemma2 is particularly suited for bfloat16.
-    text_encoder.to(dtype=torch.bfloat16)
+    text_encoder.to(accelerator.device, dtype=torch.bfloat16)
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
     text_encoding_pipeline = SanaPipeline.from_pretrained(
