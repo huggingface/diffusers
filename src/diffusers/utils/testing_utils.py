@@ -1,5 +1,6 @@
 import functools
 import importlib
+import importlib.metadata
 import inspect
 import io
 import logging
@@ -27,8 +28,11 @@ from packaging import version
 
 from .import_utils import (
     BACKENDS_MAPPING,
+    is_accelerate_available,
+    is_bitsandbytes_available,
     is_compel_available,
     is_flax_available,
+    is_gguf_available,
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
@@ -36,6 +40,7 @@ from .import_utils import (
     is_timm_available,
     is_torch_available,
     is_torch_version,
+    is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
 )
@@ -54,6 +59,7 @@ _required_transformers_version = is_transformers_available() and version.parse(
 ) > version.parse("4.33")
 
 USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
+BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
     import torch
@@ -252,6 +258,18 @@ def require_torch_2(test_case):
     )
 
 
+def require_torch_version_greater_equal(torch_version):
+    """Decorator marking a test that requires torch with a specific version or greater."""
+
+    def decorator(test_case):
+        correct_torch_version = is_torch_available() and is_torch_version(">=", torch_version)
+        return unittest.skipUnless(
+            correct_torch_version, f"test requires torch with the version greater than or equal to {torch_version}"
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
@@ -293,6 +311,26 @@ def require_torch_accelerator_with_fp64(test_case):
     return unittest.skipUnless(_is_torch_fp64_available(torch_device), "test requires accelerator with fp64 support")(
         test_case
     )
+
+
+def require_big_gpu_with_torch_cuda(test_case):
+    """
+    Decorator marking a test that requires a bigger GPU (24GB) for execution. Some example pipelines: Flux, SD3, Cog,
+    etc.
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    if not torch.cuda.is_available():
+        return unittest.skip("test requires PyTorch CUDA")(test_case)
+
+    device_properties = torch.cuda.get_device_properties(0)
+    total_memory = device_properties.total_memory / (1024**3)
+    return unittest.skipUnless(
+        total_memory >= BIG_GPU_MEMORY, f"test requires a GPU with at least {BIG_GPU_MEMORY} GB memory"
+    )(test_case)
 
 
 def require_torch_accelerator_with_training(test_case):
@@ -337,6 +375,14 @@ def require_note_seq(test_case):
     return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
 
 
+def require_accelerator(test_case):
+    """
+    Decorator marking a test that requires a hardware accelerator backend. These tests are skipped when there are no
+    hardware accelerator available.
+    """
+    return unittest.skipUnless(torch_device != "cpu", "test requires a hardware accelerator")(test_case)
+
+
 def require_torchsde(test_case):
     """
     Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
@@ -359,6 +405,20 @@ def require_timm(test_case):
     return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
 
 
+def require_bitsandbytes(test_case):
+    """
+    Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
+    """
+    return unittest.skipUnless(is_bitsandbytes_available(), "test requires bitsandbytes")(test_case)
+
+
+def require_accelerate(test_case):
+    """
+    Decorator marking a test that requires accelerate. These tests are skipped when accelerate isn't installed.
+    """
+    return unittest.skipUnless(is_accelerate_available(), "test requires accelerate")(test_case)
+
+
 def require_peft_version_greater(peft_version):
     """
     Decorator marking a test that requires PEFT backend with a specific version, this would require some specific
@@ -376,13 +436,67 @@ def require_peft_version_greater(peft_version):
     return decorator
 
 
+def require_transformers_version_greater(transformers_version):
+    """
+    Decorator marking a test that requires transformers with a specific version, this would require some specific
+    versions of PEFT and transformers.
+    """
+
+    def decorator(test_case):
+        correct_transformers_version = is_transformers_available() and version.parse(
+            version.parse(importlib.metadata.version("transformers")).base_version
+        ) > version.parse(transformers_version)
+        return unittest.skipUnless(
+            correct_transformers_version,
+            f"test requires transformers with the version greater than {transformers_version}",
+        )(test_case)
+
+    return decorator
+
+
 def require_accelerate_version_greater(accelerate_version):
     def decorator(test_case):
-        correct_accelerate_version = is_peft_available() and version.parse(
+        correct_accelerate_version = is_accelerate_available() and version.parse(
             version.parse(importlib.metadata.version("accelerate")).base_version
         ) > version.parse(accelerate_version)
         return unittest.skipUnless(
             correct_accelerate_version, f"Test requires accelerate with the version greater than {accelerate_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_bitsandbytes_version_greater(bnb_version):
+    def decorator(test_case):
+        correct_bnb_version = is_bitsandbytes_available() and version.parse(
+            version.parse(importlib.metadata.version("bitsandbytes")).base_version
+        ) > version.parse(bnb_version)
+        return unittest.skipUnless(
+            correct_bnb_version, f"Test requires bitsandbytes with the version greater than {bnb_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_gguf_version_greater_or_equal(gguf_version):
+    def decorator(test_case):
+        correct_gguf_version = is_gguf_available() and version.parse(
+            version.parse(importlib.metadata.version("gguf")).base_version
+        ) >= version.parse(gguf_version)
+        return unittest.skipUnless(
+            correct_gguf_version, f"Test requires gguf with the version greater than {gguf_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_torchao_version_greater_or_equal(torchao_version):
+    def decorator(test_case):
+        correct_torchao_version = is_torchao_available() and version.parse(
+            version.parse(importlib.metadata.version("torchao")).base_version
+        ) >= version.parse(torchao_version)
+        return unittest.skipUnless(
+            correct_torchao_version, f"Test requires torchao with version greater than {torchao_version}."
         )(test_case)
 
     return decorator

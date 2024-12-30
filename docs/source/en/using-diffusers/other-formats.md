@@ -37,7 +37,7 @@ Make sure you have the [Safetensors](https://hf.co/docs/safetensors) library ins
 
 Safetensors stores weights in a safetensors file. Diffusers loads safetensors files by default if they're available and the Safetensors library is installed. There are two ways safetensors files can be organized:
 
-1. Diffusers-multifolder layout: there may be several separate safetensors files, one for each pipeline component (text encoder, UNet, VAE), organized in subfolders (check out the [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5/tree/main) repository as an example)
+1. Diffusers-multifolder layout: there may be several separate safetensors files, one for each pipeline component (text encoder, UNet, VAE), organized in subfolders (check out the [stable-diffusion-v1-5/stable-diffusion-v1-5](https://hf.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main) repository as an example)
 2. single-file layout: all the model weights may be saved in a single file (check out the [WarriorMama777/OrangeMixs](https://hf.co/WarriorMama777/OrangeMixs/tree/main/Models/AbyssOrangeMix) repository as an example)
 
 <hfoptions id="safetensors">
@@ -49,7 +49,7 @@ Use the [`~DiffusionPipeline.from_pretrained`] method to load a model with safet
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     use_safetensors=True
 )
 ```
@@ -74,7 +74,7 @@ pipeline = StableDiffusionPipeline.from_single_file(
 
 [LoRA](https://hf.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) is a lightweight adapter that is fast and easy to train, making them especially popular for generating images in a certain way or style. These adapters are commonly stored in a safetensors file, and are widely popular on model sharing platforms like [civitai](https://civitai.com/).
 
-LoRAs are loaded into a base model with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method.
+LoRAs are loaded into a base model with the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method.
 
 ```py
 from diffusers import StableDiffusionXLPipeline
@@ -118,7 +118,7 @@ Use the [`~loaders.FromSingleFileMixin.from_single_file`] method to directly loa
 from diffusers import StableDiffusionPipeline
 
 pipeline = StableDiffusionPipeline.from_single_file(
-    "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned.ckpt"
+    "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned.ckpt"
 )
 ```
 
@@ -314,7 +314,7 @@ Or you could use a ControlNet model in the pipeline.
 ```py
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 
-ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+ckpt_path = "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
 pipeline = StableDiffusionControlNetPipeline.from_single_file(ckpt_path, controlnet=controlnet)
 ```

@@ -10,7 +10,7 @@ on:
 
 jobs:
   find-and-checkout-latest-branch:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       latest_branch: ${{ steps.set_latest_branch.outputs.latest_branch }}
     steps:
@@ -36,7 +36,7 @@ jobs:
 
   release:
     needs: find-and-checkout-latest-branch
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repo
@@ -68,7 +68,7 @@ jobs:
       - name: Test installing diffusers and importing
         run: |
           pip install diffusers && pip uninstall diffusers -y
-          pip install -i https://testpypi.python.org/pypi diffusers
+          pip install -i https://test.pypi.org/simple/ diffusers
           python -c "from diffusers import __version__; print(__version__)"
           python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('fusing/unet-ldm-dummy-update'); pipe()"
           python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('hf-internal-testing/tiny-stable-diffusion-pipe', safety_checker=None); pipe('ah suh du')"

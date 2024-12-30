@@ -16,10 +16,10 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ....image_processor import VaeImageProcessor
-from ....loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ....loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....models.lora import adjust_lora_scale_text_encoder
 from ....schedulers import PNDMScheduler
@@ -37,7 +37,7 @@ AUGS_CONST = ["A photo of ", "An image of ", "A picture of "]
 
 
 class StableDiffusionModelEditingPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
 ):
     r"""
     Pipeline for text-to-image model editing.
@@ -47,8 +47,8 @@ class StableDiffusionModelEditingPipeline(
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -66,8 +66,8 @@ class StableDiffusionModelEditingPipeline(
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
             about a model's potential harms.
-        feature_extractor ([`~transformers.CLIPFeatureExtractor`]):
-            A `CLIPFeatureExtractor` to extract features from generated images; used as inputs to the `safety_checker`.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
         with_to_k ([`bool`]):
             Whether to edit the key projection matrices along with the value projection matrices.
         with_augs ([`list`]):
@@ -86,7 +86,7 @@ class StableDiffusionModelEditingPipeline(
         unet: UNet2DConditionModel,
         scheduler: SchedulerMixin,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
         with_to_k: bool = True,
         with_augs: list = AUGS_CONST,
@@ -232,7 +232,7 @@ class StableDiffusionModelEditingPipeline(
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -365,7 +365,7 @@ class StableDiffusionModelEditingPipeline(
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if self.text_encoder is not None:
-            if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 

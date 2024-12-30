@@ -134,14 +134,14 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
-    if weight == 1.0:
+    if weight is None or weight == 1.0:
         return
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            if weight is not None and weight != 0:
+            if weight != 0:
                 module.unscale_layer(weight)
-            elif weight is not None and weight == 0:
+            else:
                 for adapter_name in module.active_adapters:
                     # if weight == 0 unscale should re-set the scale to the original value.
                     module.set_scale(adapter_name, 1.0)
@@ -180,6 +180,8 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
     # layer names without the Diffusers specific
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})
     use_dora = any("lora_magnitude_vector" in k for k in peft_state_dict)
+    # for now we know that the "bias" keys are only associated with `lora_B`.
+    lora_bias = any("lora_B" in k and k.endswith(".bias") for k in peft_state_dict)
 
     lora_config_kwargs = {
         "r": r,
@@ -188,6 +190,7 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
         "alpha_pattern": alpha_pattern,
         "target_modules": target_modules,
         "use_dora": use_dora,
+        "lora_bias": lora_bias,
     }
     return lora_config_kwargs
 

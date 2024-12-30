@@ -35,7 +35,7 @@ pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu
 ```
 
 > [!TIP]
-> The results reported below are from a 80GB 400W A100 with its clock rate set to the maximum. 
+> The results reported below are from a 80GB 400W A100 with its clock rate set to the maximum.
 > If you're interested in the full benchmarking code, take a look at [huggingface/diffusion-fast](https://github.com/huggingface/diffusion-fast).
 
 
@@ -168,7 +168,7 @@ Using SDPA attention and compiling both the UNet and VAE cuts the latency from 3
 </div>
 
 > [!TIP]
-> From PyTorch 2.3.1, you can control the caching behavior of `torch.compile()`. This is particularly beneficial for compilation modes like `"max-autotune"` which performs a grid-search over several compilation flags to find the optimal configuration. Learn more in the [Compile Time Caching in torch.compile](https://pytorch.org/tutorials/recipes/torch_compile_caching_tutorial.html) tutorial. 
+> From PyTorch 2.3.1, you can control the caching behavior of `torch.compile()`. This is particularly beneficial for compilation modes like `"max-autotune"` which performs a grid-search over several compilation flags to find the optimal configuration. Learn more in the [Compile Time Caching in torch.compile](https://pytorch.org/tutorials/recipes/torch_compile_caching_tutorial.html) tutorial.
 
 ### Prevent graph breaks
 

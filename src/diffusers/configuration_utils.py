@@ -170,7 +170,7 @@ class ConfigMixin:
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
-            private = kwargs.pop("private", False)
+            private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
@@ -310,9 +310,6 @@ class ConfigMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download:
-                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
-                of Diffusers.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -343,7 +340,6 @@ class ConfigMixin:
         local_dir = kwargs.pop("local_dir", None)
         local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -386,7 +382,6 @@ class ConfigMixin:
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                     user_agent=user_agent,
@@ -515,6 +510,9 @@ class ConfigMixin:
         # remove private attributes
         config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
 
+        # remove quantization_config
+        config_dict = {k: v for k, v in config_dict.items() if k != "quantization_config"}
+
         # 3. Create keyword arguments that will be passed to __init__ from expected keyword arguments
         init_dict = {}
         for key in expected_keys:
@@ -591,10 +589,19 @@ class ConfigMixin:
                 value = value.as_posix()
             return value
 
+        if "quantization_config" in config_dict:
+            config_dict["quantization_config"] = (
+                config_dict.quantization_config.to_dict()
+                if not isinstance(config_dict.quantization_config, dict)
+                else config_dict.quantization_config
+            )
+
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
         # Don't save "_ignore_files" or "_use_default_values"
         config_dict.pop("_ignore_files", None)
         config_dict.pop("_use_default_values", None)
+        # pop the `_pre_quantization_dtype` as torch.dtypes are not serializable.
+        _ = config_dict.pop("_pre_quantization_dtype", None)
 
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 

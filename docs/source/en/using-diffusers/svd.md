@@ -21,6 +21,7 @@ This guide will show you how to use SVD to generate short videos from images.
 Before you begin, make sure you have the following libraries installed:
 
 ```py
+# Colab에서 필요한 라이브러리를 설치하기 위해 주석을 제외하세요
 !pip install -q -U diffusers transformers accelerate
 ```
 

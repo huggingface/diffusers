@@ -14,14 +14,13 @@
 from typing import Dict, Optional, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
-from ..attention_processor import Attention, AttentionProcessor, HunyuanAttnProcessor2_0
+from ..attention_processor import Attention, AttentionProcessor, FusedHunyuanAttnProcessor2_0, HunyuanAttnProcessor2_0
 from ..embeddings import (
     HunyuanCombinedTimestepTextSizeStyleEmbedding,
     PatchEmbed,
@@ -29,18 +28,10 @@ from ..embeddings import (
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous
+from ..normalization import AdaLayerNormContinuous, FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-class FP32LayerNorm(nn.LayerNorm):
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        origin_dtype = inputs.dtype
-        return F.layer_norm(
-            inputs.float(), self.normalized_shape, self.weight.float(), self.bias.float(), self.eps
-        ).to(origin_dtype)
 
 
 class AdaLayerNormShift(nn.Module):
@@ -326,7 +317,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections with FusedAttnProcessor2_0->FusedHunyuanAttnProcessor2_0
     def fuse_qkv_projections(self):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
@@ -349,6 +340,8 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         for module in self.modules():
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
+
+        self.set_attn_processor(FusedHunyuanAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):

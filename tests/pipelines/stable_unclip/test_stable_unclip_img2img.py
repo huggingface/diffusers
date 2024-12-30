@@ -182,7 +182,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.3872, 0.7224, 0.5601, 0.4741, 0.6872, 0.5814, 0.4636, 0.3867, 0.5078])
+        expected_slice = np.array([0.4397, 0.7080, 0.5590, 0.4255, 0.7181, 0.5938, 0.4051, 0.3720, 0.5116])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 

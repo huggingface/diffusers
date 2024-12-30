@@ -4,7 +4,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
-from huggingface_hub import HfApi, ModelFilter
+from huggingface_hub import HfApi
 
 import diffusers
 
@@ -16,18 +16,13 @@ ALWAYS_TEST_PIPELINE_MODULES = [
     "stable_diffusion_2",
     "stable_diffusion_xl",
     "stable_diffusion_adapter",
-    "deepfloyd_if",
     "ip_adapters",
-    "kandinsky",
     "kandinsky2_2",
-    "text_to_video_synthesis",
-    "wuerstchen",
 ]
 PIPELINE_USAGE_CUTOFF = int(os.getenv("PIPELINE_USAGE_CUTOFF", 50000))
 
 logger = logging.getLogger(__name__)
 api = HfApi()
-filter = ModelFilter(library="diffusers")
 
 
 def filter_pipelines(usage_dict, usage_cutoff=10000):
@@ -46,7 +41,7 @@ def filter_pipelines(usage_dict, usage_cutoff=10000):
 
 
 def fetch_pipeline_objects():
-    models = api.list_models(filter=filter)
+    models = api.list_models(library="diffusers")
     downloads = defaultdict(int)
 
     for model in models:

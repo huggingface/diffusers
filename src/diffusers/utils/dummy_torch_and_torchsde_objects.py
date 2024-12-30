@@ -2,6 +2,21 @@
 from ..utils import DummyObject, requires_backends
 
 
+class CosineDPMSolverMultistepScheduler(metaclass=DummyObject):
+    _backends = ["torch", "torchsde"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "torchsde"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "torchsde"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "torchsde"])
+
+
 class DPMSolverSDEScheduler(metaclass=DummyObject):
     _backends = ["torch", "torchsde"]
 

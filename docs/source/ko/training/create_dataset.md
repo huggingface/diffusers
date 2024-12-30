@@ -1,7 +1,7 @@
 # 학습을 위한 데이터셋 만들기
 
 [Hub](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads) 에는 모델 교육을 위한 많은 데이터셋이 있지만,
-관심이 있거나 사용하고 싶은 데이터셋을 찾을 수 없는 경우 🤗 [Datasets](hf.co/docs/datasets) 라이브러리를 사용하여 데이터셋을 만들 수 있습니다.
+관심이 있거나 사용하고 싶은 데이터셋을 찾을 수 없는 경우 🤗 [Datasets](https://huggingface.co/docs/datasets) 라이브러리를 사용하여 데이터셋을 만들 수 있습니다.
 데이터셋 구조는 모델을 학습하려는 작업에 따라 달라집니다.
 가장 기본적인 데이터셋 구조는 unconditional 이미지 생성과 같은 작업을 위한 이미지 디렉토리입니다.
 또 다른 데이터셋 구조는 이미지 디렉토리와 text-to-image 생성과 같은 작업에 해당하는 텍스트 캡션이 포함된 텍스트 파일일 수 있습니다.
@@ -86,7 +86,7 @@ dataset.push_to_hub("name_of_your_dataset", private=True)
 
 ```bash
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
-  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
+  --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5" \
   --dataset_name="name_of_your_dataset" \
   <other-arguments>
 ```

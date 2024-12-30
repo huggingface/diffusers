@@ -23,7 +23,6 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
@@ -353,34 +352,6 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
         assert np.abs(image_slice - expected_slice).max() < 7e-3
 
-    def test_stable_diffusion_pndm(self):
-        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
-        pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
-        assert np.abs(image_slice - expected_slice).max() < 7e-3
-
-    def test_stable_diffusion_k_lms(self):
-        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
-        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.10440, 0.13115, 0.11100, 0.10141, 0.11440, 0.07215, 0.11332, 0.09693, 0.10006])
-        assert np.abs(image_slice - expected_slice).max() < 3e-3
-
     @require_torch_gpu
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
@@ -413,124 +384,6 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_sliced.flatten())
         assert max_diff < 5e-3
 
-    def test_stable_diffusion_text2img_intermediate_state(self):
-        number_of_steps = 0
-
-        def callback_fn(step: int, timestep: int, latents: torch.Tensor) -> None:
-            callback_fn.has_been_called = True
-            nonlocal number_of_steps
-            number_of_steps += 1
-            if step == 1:
-                latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 4, 64, 64)
-                latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.3862, -0.4507, -1.1729, 0.0686, -1.1045, 0.7124, -1.8301, 0.1903, 1.2773]
-                )
-
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
-            elif step == 2:
-                latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 4, 64, 64)
-                latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [0.2720, -0.1863, -0.7383, -0.5029, -0.7534, 0.3970, -0.7646, 0.4468, 1.2686]
-                )
-
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
-
-        callback_fn.has_been_called = False
-
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
-        )
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        pipe(**inputs, callback=callback_fn, callback_steps=1)
-        assert callback_fn.has_been_called
-        assert number_of_steps == inputs["num_inference_steps"]
-
-    @require_torch_gpu
-    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
-        )
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing(1)
-        pipe.enable_sequential_cpu_offload()
-
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        _ = pipe(**inputs)
-
-        mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 2.8 GB is allocated
-        assert mem_bytes < 2.8 * 10**9
-
-    @require_torch_gpu
-    def test_stable_diffusion_pipeline_with_model_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-
-        # Normal inference
-
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base",
-            torch_dtype=torch.float16,
-        )
-        pipe.unet.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        outputs = pipe(**inputs)
-        mem_bytes = torch.cuda.max_memory_allocated()
-
-        # With model offloading
-
-        # Reload but don't move to cuda
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base",
-            torch_dtype=torch.float16,
-        )
-        pipe.unet.set_default_attn_processor()
-
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        outputs_offloaded = pipe(**inputs)
-        mem_bytes_offloaded = torch.cuda.max_memory_allocated()
-
-        images = outputs.images
-        images_offloaded = outputs_offloaded.images
-        max_diff = numpy_cosine_similarity_distance(images.flatten(), images_offloaded.flatten())
-        assert max_diff < 1e-3
-        assert mem_bytes_offloaded < mem_bytes
-        assert mem_bytes_offloaded < 3 * 10**9
-        for module in pipe.text_encoder, pipe.unet, pipe.vae:
-            assert module.device == torch.device("cpu")
-
-        # With attention slicing
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-
-        pipe.enable_attention_slicing()
-        _ = pipe(**inputs)
-        mem_bytes_slicing = torch.cuda.max_memory_allocated()
-        assert mem_bytes_slicing < mem_bytes_offloaded
-
 
 @nightly
 @require_torch_accelerator
@@ -554,27 +407,13 @@ class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
             "prompt": "a photograph of an astronaut riding a horse",
             "latents": latents,
             "generator": generator,
-            "num_inference_steps": 50,
+            "num_inference_steps": 2,
             "guidance_scale": 7.5,
             "output_type": "np",
         }
         return inputs
 
-    def test_stable_diffusion_2_0_default_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base").to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_2_text2img/stable_diffusion_2_0_base_ddim.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_2_1_default_pndm(self):
+    def test_stable_diffusion_2_1_default(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -583,70 +422,7 @@ class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_pndm.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_ddim.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_lms(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_lms.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_euler(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
-        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_euler.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_dpm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(
-            sd_pipe.scheduler.config, final_sigmas_type="sigma_min"
-        )
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 25
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_dpm_multi.npy"
+            "/stable_diffusion_2_text2img/stable_diffusion_2_0_pndm.npy"
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3

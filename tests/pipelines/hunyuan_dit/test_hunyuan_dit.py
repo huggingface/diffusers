@@ -36,7 +36,12 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import (
+    PipelineTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+    to_np,
+)
 
 
 enable_full_determinism()
@@ -261,6 +266,16 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         original_image_slice = image[0, -3:, -3:, -1]
 
         pipe.transformer.fuse_qkv_projections()
+        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
+        # to the pipeline level.
+        pipe.transformer.fuse_qkv_projections()
+        assert check_qkv_fusion_processors_exist(
+            pipe.transformer
+        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
+
         inputs = self.get_dummy_inputs(device)
         inputs["return_dict"] = False
         image_fused = pipe(**inputs)[0]
