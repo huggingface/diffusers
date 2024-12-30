@@ -84,6 +84,78 @@ def get_3d_sincos_pos_embed(
     temporal_size: int,
     spatial_interpolation_scale: float = 1.0,
     temporal_interpolation_scale: float = 1.0,
+    device: Optional[torch.device] = None,
+    output_type: str = "np",
+) -> torch.Tensor:
+    r"""
+    Creates 3D sinusoidal positional embeddings.
+
+    Args:
+        embed_dim (`int`):
+            The embedding dimension of inputs. It must be divisible by 16.
+        spatial_size (`int` or `Tuple[int, int]`):
+            The spatial dimension of positional embeddings. If an integer is provided, the same size is applied to both
+            spatial dimensions (height and width).
+        temporal_size (`int`):
+            The temporal dimension of postional embeddings (number of frames).
+        spatial_interpolation_scale (`float`, defaults to 1.0):
+            Scale factor for spatial grid interpolation.
+        temporal_interpolation_scale (`float`, defaults to 1.0):
+            Scale factor for temporal grid interpolation.
+
+    Returns:
+        `torch.Tensor`:
+            The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1],
+            embed_dim]`.
+    """
+    if output_type == "np":
+        return _get_3d_sincos_pos_embed_np(
+            embed_dim=embed_dim,
+            spatial_size=spatial_size,
+            temporal_size=temporal_size,
+            spatial_interpolation_scale=spatial_interpolation_scale,
+            temporal_interpolation_scale=temporal_interpolation_scale,
+        )
+    if embed_dim % 4 != 0:
+        raise ValueError("`embed_dim` must be divisible by 4")
+    if isinstance(spatial_size, int):
+        spatial_size = (spatial_size, spatial_size)
+
+    embed_dim_spatial = 3 * embed_dim // 4
+    embed_dim_temporal = embed_dim // 4
+
+    # 1. Spatial
+    grid_h = torch.arange(spatial_size[1], device=device, dtype=torch.float32) / spatial_interpolation_scale
+    grid_w = torch.arange(spatial_size[0], device=device, dtype=torch.float32) / spatial_interpolation_scale
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")  # here w goes first
+    grid = torch.stack(grid, dim=0)
+
+    grid = grid.reshape([2, 1, spatial_size[1], spatial_size[0]])
+    pos_embed_spatial = get_2d_sincos_pos_embed_from_grid(embed_dim_spatial, grid, output_type="pt")
+
+    # 2. Temporal
+    grid_t = torch.arange(temporal_size, device=device, dtype=torch.float32) / temporal_interpolation_scale
+    pos_embed_temporal = get_1d_sincos_pos_embed_from_grid(embed_dim_temporal, grid_t, output_type="pt")
+
+    # 3. Concat
+    pos_embed_spatial = pos_embed_spatial[None, :, :]
+    pos_embed_spatial = pos_embed_spatial.repeat_interleave(temporal_size, dim=0)  # [T, H*W, D // 4 * 3]
+
+    pos_embed_temporal = pos_embed_temporal[:, None, :]
+    pos_embed_temporal = pos_embed_temporal.repeat_interleave(
+        spatial_size[0] * spatial_size[1], dim=1
+    )  # [T, H*W, D // 4]
+
+    pos_embed = torch.concat([pos_embed_temporal, pos_embed_spatial], dim=-1)  # [T, H*W, D]
+    return pos_embed
+
+
+def _get_3d_sincos_pos_embed_np(
+    embed_dim: int,
+    spatial_size: Union[int, Tuple[int, int]],
+    temporal_size: int,
+    spatial_interpolation_scale: float = 1.0,
+    temporal_interpolation_scale: float = 1.0,
 ) -> np.ndarray:
     r"""
     Creates 3D sinusoidal positional embeddings.
@@ -106,6 +178,12 @@ def get_3d_sincos_pos_embed(
             The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1],
             embed_dim]`.
     """
+    deprecation_message = (
+        "`get_3d_sincos_pos_embed` uses `torch` and supports `device`."
+        " `from_numpy` is no longer required."
+        "  Pass `output_type='pt' to use the new version now."
+    )
+    deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
     if embed_dim % 4 != 0:
         raise ValueError("`embed_dim` must be divisible by 4")
     if isinstance(spatial_size, int):
@@ -139,6 +217,143 @@ def get_3d_sincos_pos_embed(
 
 
 def get_2d_sincos_pos_embed(
+    embed_dim,
+    grid_size,
+    cls_token=False,
+    extra_tokens=0,
+    interpolation_scale=1.0,
+    base_size=16,
+    device: Optional[torch.device] = None,
+    output_type: str = "np",
+):
+    """
+    Creates 2D sinusoidal positional embeddings.
+
+    Args:
+        embed_dim (`int`):
+            The embedding dimension.
+        grid_size (`int`):
+            The size of the grid height and width.
+        cls_token (`bool`, defaults to `False`):
+            Whether or not to add a classification token.
+        extra_tokens (`int`, defaults to `0`):
+            The number of extra tokens to add.
+        interpolation_scale (`float`, defaults to `1.0`):
+            The scale of the interpolation.
+
+    Returns:
+        pos_embed (`torch.Tensor`):
+            Shape is either `[grid_size * grid_size, embed_dim]` if not using cls_token, or `[1 + grid_size*grid_size,
+            embed_dim]` if using cls_token
+    """
+    if output_type == "np":
+        deprecation_message = (
+            "`get_2d_sincos_pos_embed` uses `torch` and supports `device`."
+            " `from_numpy` is no longer required."
+            "  Pass `output_type='pt' to use the new version now."
+        )
+        deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
+        return get_2d_sincos_pos_embed_np(
+            embed_dim=embed_dim,
+            grid_size=grid_size,
+            cls_token=cls_token,
+            extra_tokens=extra_tokens,
+            interpolation_scale=interpolation_scale,
+            base_size=base_size,
+        )
+    if isinstance(grid_size, int):
+        grid_size = (grid_size, grid_size)
+
+    grid_h = (
+        torch.arange(grid_size[0], device=device, dtype=torch.float32)
+        / (grid_size[0] / base_size)
+        / interpolation_scale
+    )
+    grid_w = (
+        torch.arange(grid_size[1], device=device, dtype=torch.float32)
+        / (grid_size[1] / base_size)
+        / interpolation_scale
+    )
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")  # here w goes first
+    grid = torch.stack(grid, dim=0)
+
+    grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
+    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid, output_type=output_type)
+    if cls_token and extra_tokens > 0:
+        pos_embed = torch.concat([torch.zeros([extra_tokens, embed_dim]), pos_embed], dim=0)
+    return pos_embed
+
+
+def get_2d_sincos_pos_embed_from_grid(embed_dim, grid, output_type="np"):
+    r"""
+    This function generates 2D sinusoidal positional embeddings from a grid.
+
+    Args:
+        embed_dim (`int`): The embedding dimension.
+        grid (`torch.Tensor`): Grid of positions with shape `(H * W,)`.
+
+    Returns:
+        `torch.Tensor`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
+    """
+    if output_type == "np":
+        deprecation_message = (
+            "`get_2d_sincos_pos_embed_from_grid` uses `torch` and supports `device`."
+            " `from_numpy` is no longer required."
+            "  Pass `output_type='pt' to use the new version now."
+        )
+        deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
+        return get_2d_sincos_pos_embed_from_grid_np(
+            embed_dim=embed_dim,
+            grid=grid,
+        )
+    if embed_dim % 2 != 0:
+        raise ValueError("embed_dim must be divisible by 2")
+
+    # use half of dimensions to encode grid_h
+    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0], output_type=output_type)  # (H*W, D/2)
+    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1], output_type=output_type)  # (H*W, D/2)
+
+    emb = torch.concat([emb_h, emb_w], dim=1)  # (H*W, D)
+    return emb
+
+
+def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
+    """
+    This function generates 1D positional embeddings from a grid.
+
+    Args:
+        embed_dim (`int`): The embedding dimension `D`
+        pos (`torch.Tensor`): 1D tensor of positions with shape `(M,)`
+
+    Returns:
+        `torch.Tensor`: Sinusoidal positional embeddings of shape `(M, D)`.
+    """
+    if output_type == "np":
+        deprecation_message = (
+            "`get_1d_sincos_pos_embed_from_grid` uses `torch` and supports `device`."
+            " `from_numpy` is no longer required."
+            "  Pass `output_type='pt' to use the new version now."
+        )
+        deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
+        return get_1d_sincos_pos_embed_from_grid_np(embed_dim=embed_dim, pos=pos)
+    if embed_dim % 2 != 0:
+        raise ValueError("embed_dim must be divisible by 2")
+
+    omega = torch.arange(embed_dim // 2, device=pos.device, dtype=torch.float64)
+    omega /= embed_dim / 2.0
+    omega = 1.0 / 10000**omega  # (D/2,)
+
+    pos = pos.reshape(-1)  # (M,)
+    out = torch.outer(pos, omega)  # (M, D/2), outer product
+
+    emb_sin = torch.sin(out)  # (M, D/2)
+    emb_cos = torch.cos(out)  # (M, D/2)
+
+    emb = torch.concat([emb_sin, emb_cos], dim=1)  # (M, D)
+    return emb
+
+
+def get_2d_sincos_pos_embed_np(
     embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
 ):
     """
@@ -170,13 +385,13 @@ def get_2d_sincos_pos_embed(
     grid = np.stack(grid, axis=0)
 
     grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
-    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
+    pos_embed = get_2d_sincos_pos_embed_from_grid_np(embed_dim, grid)
     if cls_token and extra_tokens > 0:
         pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
     return pos_embed
 
 
-def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
+def get_2d_sincos_pos_embed_from_grid_np(embed_dim, grid):
     r"""
     This function generates 2D sinusoidal positional embeddings from a grid.
 
@@ -191,14 +406,14 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
         raise ValueError("embed_dim must be divisible by 2")
 
     # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
+    emb_h = get_1d_sincos_pos_embed_from_grid_np(embed_dim // 2, grid[0])  # (H*W, D/2)
+    emb_w = get_1d_sincos_pos_embed_from_grid_np(embed_dim // 2, grid[1])  # (H*W, D/2)
 
     emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
     return emb
 
 
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
+def get_1d_sincos_pos_embed_from_grid_np(embed_dim, pos):
     """
     This function generates 1D positional embeddings from a grid.
 
@@ -288,10 +503,14 @@ class PatchEmbed(nn.Module):
             self.pos_embed = None
         elif pos_embed_type == "sincos":
             pos_embed = get_2d_sincos_pos_embed(
-                embed_dim, grid_size, base_size=self.base_size, interpolation_scale=self.interpolation_scale
+                embed_dim,
+                grid_size,
+                base_size=self.base_size,
+                interpolation_scale=self.interpolation_scale,
+                output_type="pt",
             )
             persistent = True if pos_embed_max_size else False
-            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=persistent)
+            self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=persistent)
         else:
             raise ValueError(f"Unsupported pos_embed_type: {pos_embed_type}")
 
@@ -323,7 +542,6 @@ class PatchEmbed(nn.Module):
             height, width = latent.shape[-2:]
         else:
             height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
-
         latent = self.proj(latent)
         if self.flatten:
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
@@ -341,8 +559,10 @@ class PatchEmbed(nn.Module):
                     grid_size=(height, width),
                     base_size=self.base_size,
                     interpolation_scale=self.interpolation_scale,
+                    device=latent.device,
+                    output_type="pt",
                 )
-                pos_embed = torch.from_numpy(pos_embed).float().unsqueeze(0).to(latent.device)
+                pos_embed = pos_embed.float().unsqueeze(0)
             else:
                 pos_embed = self.pos_embed
 
@@ -453,7 +673,9 @@ class CogVideoXPatchEmbed(nn.Module):
             pos_embedding = self._get_positional_embeddings(sample_height, sample_width, sample_frames)
             self.register_buffer("pos_embedding", pos_embedding, persistent=persistent)
 
-    def _get_positional_embeddings(self, sample_height: int, sample_width: int, sample_frames: int) -> torch.Tensor:
+    def _get_positional_embeddings(
+        self, sample_height: int, sample_width: int, sample_frames: int, device: Optional[torch.device] = None
+    ) -> torch.Tensor:
         post_patch_height = sample_height // self.patch_size
         post_patch_width = sample_width // self.patch_size
         post_time_compression_frames = (sample_frames - 1) // self.temporal_compression_ratio + 1
@@ -465,9 +687,11 @@ class CogVideoXPatchEmbed(nn.Module):
             post_time_compression_frames,
             self.spatial_interpolation_scale,
             self.temporal_interpolation_scale,
+            device=device,
+            output_type="pt",
         )
-        pos_embedding = torch.from_numpy(pos_embedding).flatten(0, 1)
-        joint_pos_embedding = torch.zeros(
+        pos_embedding = pos_embedding.flatten(0, 1)
+        joint_pos_embedding = pos_embedding.new_zeros(
             1, self.max_text_seq_length + num_patches, self.embed_dim, requires_grad=False
         )
         joint_pos_embedding.data[:, self.max_text_seq_length :].copy_(pos_embedding)
@@ -521,11 +745,13 @@ class CogVideoXPatchEmbed(nn.Module):
                 or self.sample_width != width
                 or self.sample_frames != pre_time_compression_frames
             ):
-                pos_embedding = self._get_positional_embeddings(height, width, pre_time_compression_frames)
-                pos_embedding = pos_embedding.to(embeds.device, dtype=embeds.dtype)
+                pos_embedding = self._get_positional_embeddings(
+                    height, width, pre_time_compression_frames, device=embeds.device
+                )
             else:
                 pos_embedding = self.pos_embedding
 
+            pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             embeds = embeds + pos_embedding
 
         return embeds
@@ -552,9 +778,11 @@ class CogView3PlusPatchEmbed(nn.Module):
         # Linear projection for text embeddings
         self.text_proj = nn.Linear(text_hidden_size, hidden_size)
 
-        pos_embed = get_2d_sincos_pos_embed(hidden_size, pos_embed_max_size, base_size=pos_embed_max_size)
+        pos_embed = get_2d_sincos_pos_embed(
+            hidden_size, pos_embed_max_size, base_size=pos_embed_max_size, output_type="pt"
+        )
         pos_embed = pos_embed.reshape(pos_embed_max_size, pos_embed_max_size, hidden_size)
-        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float(), persistent=False)
+        self.register_buffer("pos_embed", pos_embed.float(), persistent=False)
 
     def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, channel, height, width = hidden_states.shape
@@ -594,6 +822,7 @@ def get_3d_rotary_pos_embed(
     use_real: bool = True,
     grid_type: str = "linspace",
     max_size: Optional[Tuple[int, int]] = None,
+    device: Optional[torch.device] = None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     RoPE for video tokens with 3D structure.
@@ -621,16 +850,22 @@ def get_3d_rotary_pos_embed(
     if grid_type == "linspace":
         start, stop = crops_coords
         grid_size_h, grid_size_w = grid_size
-        grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
-        grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
-        grid_t = np.arange(temporal_size, dtype=np.float32)
-        grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+        grid_h = torch.linspace(
+            start[0], stop[0] * (grid_size_h - 1) / grid_size_h, grid_size_h, device=device, dtype=torch.float32
+        )
+        grid_w = torch.linspace(
+            start[1], stop[1] * (grid_size_w - 1) / grid_size_w, grid_size_w, device=device, dtype=torch.float32
+        )
+        grid_t = torch.arange(temporal_size, device=device, dtype=torch.float32)
+        grid_t = torch.linspace(
+            0, temporal_size * (temporal_size - 1) / temporal_size, temporal_size, device=device, dtype=torch.float32
+        )
     elif grid_type == "slice":
         max_h, max_w = max_size
         grid_size_h, grid_size_w = grid_size
-        grid_h = np.arange(max_h, dtype=np.float32)
-        grid_w = np.arange(max_w, dtype=np.float32)
-        grid_t = np.arange(temporal_size, dtype=np.float32)
+        grid_h = torch.arange(max_h, device=device, dtype=torch.float32)
+        grid_w = torch.arange(max_w, device=device, dtype=torch.float32)
+        grid_t = torch.arange(temporal_size, device=device, dtype=torch.float32)
     else:
         raise ValueError("Invalid value passed for `grid_type`.")
 
@@ -640,10 +875,10 @@ def get_3d_rotary_pos_embed(
     dim_w = embed_dim // 8 * 3
 
     # Temporal frequencies
-    freqs_t = get_1d_rotary_pos_embed(dim_t, grid_t, use_real=True)
+    freqs_t = get_1d_rotary_pos_embed(dim_t, grid_t, theta=theta, use_real=True)
     # Spatial frequencies for height and width
-    freqs_h = get_1d_rotary_pos_embed(dim_h, grid_h, use_real=True)
-    freqs_w = get_1d_rotary_pos_embed(dim_w, grid_w, use_real=True)
+    freqs_h = get_1d_rotary_pos_embed(dim_h, grid_h, theta=theta, use_real=True)
+    freqs_w = get_1d_rotary_pos_embed(dim_w, grid_w, theta=theta, use_real=True)
 
     # BroadCast and concatenate temporal and spaial frequencie (height and width) into a 3d tensor
     def combine_time_height_width(freqs_t, freqs_h, freqs_w):
@@ -686,14 +921,21 @@ def get_3d_rotary_pos_embed_allegro(
     temporal_size,
     interpolation_scale: Tuple[float, float, float] = (1.0, 1.0, 1.0),
     theta: int = 10000,
+    device: Optional[torch.device] = None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     # TODO(aryan): docs
     start, stop = crops_coords
     grid_size_h, grid_size_w = grid_size
     interpolation_scale_t, interpolation_scale_h, interpolation_scale_w = interpolation_scale
-    grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
-    grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
-    grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
+    grid_t = torch.linspace(
+        0, temporal_size * (temporal_size - 1) / temporal_size, temporal_size, device=device, dtype=torch.float32
+    )
+    grid_h = torch.linspace(
+        start[0], stop[0] * (grid_size_h - 1) / grid_size_h, grid_size_h, device=device, dtype=torch.float32
+    )
+    grid_w = torch.linspace(
+        start[1], stop[1] * (grid_size_w - 1) / grid_size_w, grid_size_w, device=device, dtype=torch.float32
+    )
 
     # Compute dimensions for each axis
     dim_t = embed_dim // 3
@@ -715,7 +957,57 @@ def get_3d_rotary_pos_embed_allegro(
     return freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w
 
 
-def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
+def get_2d_rotary_pos_embed(
+    embed_dim, crops_coords, grid_size, use_real=True, device: Optional[torch.device] = None, output_type: str = "np"
+):
+    """
+    RoPE for image tokens with 2d structure.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size
+    crops_coords (`Tuple[int]`)
+        The top-left and bottom-right coordinates of the crop.
+    grid_size (`Tuple[int]`):
+        The grid size of the positional embedding.
+    use_real (`bool`):
+        If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+    device: (`torch.device`, **optional**):
+        The device used to create tensors.
+
+    Returns:
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
+    """
+    if output_type == "np":
+        deprecation_message = (
+            "`get_2d_sincos_pos_embed` uses `torch` and supports `device`."
+            " `from_numpy` is no longer required."
+            "  Pass `output_type='pt' to use the new version now."
+        )
+        deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
+        return _get_2d_rotary_pos_embed_np(
+            embed_dim=embed_dim,
+            crops_coords=crops_coords,
+            grid_size=grid_size,
+            use_real=use_real,
+        )
+    start, stop = crops_coords
+    # scale end by (steps−1)/steps matches np.linspace(..., endpoint=False)
+    grid_h = torch.linspace(
+        start[0], stop[0] * (grid_size[0] - 1) / grid_size[0], grid_size[0], device=device, dtype=torch.float32
+    )
+    grid_w = torch.linspace(
+        start[1], stop[1] * (grid_size[1] - 1) / grid_size[1], grid_size[1], device=device, dtype=torch.float32
+    )
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")
+    grid = torch.stack(grid, dim=0)  # [2, W, H]
+
+    grid = grid.reshape([2, 1, *grid.shape[1:]])
+    pos_embed = get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=use_real)
+    return pos_embed
+
+
+def _get_2d_rotary_pos_embed_np(embed_dim, crops_coords, grid_size, use_real=True):
     """
     RoPE for image tokens with 2d structure.
 
@@ -1243,7 +1535,7 @@ class ImageProjection(nn.Module):
         batch_size = image_embeds.shape[0]
 
         # image
-        image_embeds = self.image_embeds(image_embeds)
+        image_embeds = self.image_embeds(image_embeds.to(self.image_embeds.weight.dtype))
         image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
         image_embeds = self.norm(image_embeds)
         return image_embeds
@@ -2102,6 +2394,187 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         if self.shortcut:
             out = id_embeds + self.shortcut_scale * out
         return out
+
+
+class IPAdapterTimeImageProjectionBlock(nn.Module):
+    """Block for IPAdapterTimeImageProjection.
+
+    Args:
+        hidden_dim (`int`, defaults to 1280):
+            The number of hidden channels.
+        dim_head (`int`, defaults to 64):
+            The number of head channels.
+        heads (`int`, defaults to 20):
+            Parallel attention heads.
+        ffn_ratio (`int`, defaults to 4):
+            The expansion ratio of feedforward network hidden layer channels.
+    """
+
+    def __init__(
+        self,
+        hidden_dim: int = 1280,
+        dim_head: int = 64,
+        heads: int = 20,
+        ffn_ratio: int = 4,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward
+
+        self.ln0 = nn.LayerNorm(hidden_dim)
+        self.ln1 = nn.LayerNorm(hidden_dim)
+        self.attn = Attention(
+            query_dim=hidden_dim,
+            cross_attention_dim=hidden_dim,
+            dim_head=dim_head,
+            heads=heads,
+            bias=False,
+            out_bias=False,
+        )
+        self.ff = FeedForward(hidden_dim, hidden_dim, activation_fn="gelu", mult=ffn_ratio, bias=False)
+
+        # AdaLayerNorm
+        self.adaln_silu = nn.SiLU()
+        self.adaln_proj = nn.Linear(hidden_dim, 4 * hidden_dim)
+        self.adaln_norm = nn.LayerNorm(hidden_dim)
+
+        # Set attention scale and fuse KV
+        self.attn.scale = 1 / math.sqrt(math.sqrt(dim_head))
+        self.attn.fuse_projections()
+        self.attn.to_k = None
+        self.attn.to_v = None
+
+    def forward(self, x: torch.Tensor, latents: torch.Tensor, timestep_emb: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x (`torch.Tensor`):
+                Image features.
+            latents (`torch.Tensor`):
+                Latent features.
+            timestep_emb (`torch.Tensor`):
+                Timestep embedding.
+
+        Returns:
+            `torch.Tensor`: Output latent features.
+        """
+
+        # Shift and scale for AdaLayerNorm
+        emb = self.adaln_proj(self.adaln_silu(timestep_emb))
+        shift_msa, scale_msa, shift_mlp, scale_mlp = emb.chunk(4, dim=1)
+
+        # Fused Attention
+        residual = latents
+        x = self.ln0(x)
+        latents = self.ln1(latents) * (1 + scale_msa[:, None]) + shift_msa[:, None]
+
+        batch_size = latents.shape[0]
+
+        query = self.attn.to_q(latents)
+        kv_input = torch.cat((x, latents), dim=-2)
+        key, value = self.attn.to_kv(kv_input).chunk(2, dim=-1)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // self.attn.heads
+
+        query = query.view(batch_size, -1, self.attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, self.attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, self.attn.heads, head_dim).transpose(1, 2)
+
+        weight = (query * self.attn.scale) @ (key * self.attn.scale).transpose(-2, -1)
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+        latents = weight @ value
+
+        latents = latents.transpose(1, 2).reshape(batch_size, -1, self.attn.heads * head_dim)
+        latents = self.attn.to_out[0](latents)
+        latents = self.attn.to_out[1](latents)
+        latents = latents + residual
+
+        ## FeedForward
+        residual = latents
+        latents = self.adaln_norm(latents) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        return self.ff(latents) + residual
+
+
+# Modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
+class IPAdapterTimeImageProjection(nn.Module):
+    """Resampler of SD3 IP-Adapter with timestep embedding.
+
+    Args:
+        embed_dim (`int`, defaults to 1152):
+            The feature dimension.
+        output_dim (`int`, defaults to 2432):
+            The number of output channels.
+        hidden_dim (`int`, defaults to 1280):
+            The number of hidden channels.
+        depth (`int`, defaults to 4):
+            The number of blocks.
+        dim_head (`int`, defaults to 64):
+            The number of head channels.
+        heads (`int`, defaults to 20):
+            Parallel attention heads.
+        num_queries (`int`, defaults to 64):
+            The number of queries.
+        ffn_ratio (`int`, defaults to 4):
+            The expansion ratio of feedforward network hidden layer channels.
+        timestep_in_dim (`int`, defaults to 320):
+            The number of input channels for timestep embedding.
+        timestep_flip_sin_to_cos (`bool`, defaults to True):
+            Flip the timestep embedding order to `cos, sin` (if True) or `sin, cos` (if False).
+        timestep_freq_shift (`int`, defaults to 0):
+            Controls the timestep delta between frequencies between dimensions.
+    """
+
+    def __init__(
+        self,
+        embed_dim: int = 1152,
+        output_dim: int = 2432,
+        hidden_dim: int = 1280,
+        depth: int = 4,
+        dim_head: int = 64,
+        heads: int = 20,
+        num_queries: int = 64,
+        ffn_ratio: int = 4,
+        timestep_in_dim: int = 320,
+        timestep_flip_sin_to_cos: bool = True,
+        timestep_freq_shift: int = 0,
+    ) -> None:
+        super().__init__()
+        self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dim) / hidden_dim**0.5)
+        self.proj_in = nn.Linear(embed_dim, hidden_dim)
+        self.proj_out = nn.Linear(hidden_dim, output_dim)
+        self.norm_out = nn.LayerNorm(output_dim)
+        self.layers = nn.ModuleList(
+            [IPAdapterTimeImageProjectionBlock(hidden_dim, dim_head, heads, ffn_ratio) for _ in range(depth)]
+        )
+        self.time_proj = Timesteps(timestep_in_dim, timestep_flip_sin_to_cos, timestep_freq_shift)
+        self.time_embedding = TimestepEmbedding(timestep_in_dim, hidden_dim, act_fn="silu")
+
+    def forward(self, x: torch.Tensor, timestep: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass.
+
+        Args:
+            x (`torch.Tensor`):
+                Image features.
+            timestep (`torch.Tensor`):
+                Timestep in denoising process.
+        Returns:
+            `Tuple`[`torch.Tensor`, `torch.Tensor`]: The pair (latents, timestep_emb).
+        """
+        timestep_emb = self.time_proj(timestep).to(dtype=x.dtype)
+        timestep_emb = self.time_embedding(timestep_emb)
+
+        latents = self.latents.repeat(x.size(0), 1, 1)
+
+        x = self.proj_in(x)
+        x = x + timestep_emb[:, None]
+
+        for block in self.layers:
+            latents = block(x, latents, timestep_emb)
+
+        latents = self.proj_out(latents)
+        latents = self.norm_out(latents)
+
+        return latents, timestep_emb
 
 
 class MultiIPAdapterImageProjection(nn.Module):

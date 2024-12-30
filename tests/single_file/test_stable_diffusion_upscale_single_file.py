@@ -49,14 +49,14 @@ class StableDiffusionUpscalePipelineSingleFileSlowTests(unittest.TestCase, SDSin
 
         prompt = "a cat sitting on a park bench"
         pipe = StableDiffusionUpscalePipeline.from_pretrained(self.repo_id)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         generator = torch.Generator("cpu").manual_seed(0)
         output = pipe(prompt=prompt, image=image, generator=generator, output_type="np", num_inference_steps=3)
         image_from_pretrained = output.images[0]
 
         pipe_from_single_file = StableDiffusionUpscalePipeline.from_single_file(self.ckpt_path)
-        pipe_from_single_file.enable_model_cpu_offload()
+        pipe_from_single_file.enable_model_cpu_offload(device=torch_device)
 
         generator = torch.Generator("cpu").manual_seed(0)
         output_from_single_file = pipe_from_single_file(

@@ -76,6 +76,9 @@ def initialize_dummy_state_dict(state_dict):
     return {k: torch.randn(v.shape, device=torch_device, dtype=v.dtype) for k, v in state_dict.items()}
 
 
+POSSIBLE_ATTENTION_KWARGS_NAMES = ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]
+
+
 @require_peft_backend
 class PeftLoraLoaderMixinTests:
     pipeline_class = None
@@ -86,12 +89,12 @@ class PeftLoraLoaderMixinTests:
 
     has_two_text_encoders = False
     has_three_text_encoders = False
-    text_encoder_cls, text_encoder_id = None, None
-    text_encoder_2_cls, text_encoder_2_id = None, None
-    text_encoder_3_cls, text_encoder_3_id = None, None
-    tokenizer_cls, tokenizer_id = None, None
-    tokenizer_2_cls, tokenizer_2_id = None, None
-    tokenizer_3_cls, tokenizer_3_id = None, None
+    text_encoder_cls, text_encoder_id, text_encoder_subfolder = None, None, ""
+    text_encoder_2_cls, text_encoder_2_id, text_encoder_2_subfolder = None, None, ""
+    text_encoder_3_cls, text_encoder_3_id, text_encoder_3_subfolder = None, None, ""
+    tokenizer_cls, tokenizer_id, tokenizer_subfolder = None, None, ""
+    tokenizer_2_cls, tokenizer_2_id, tokenizer_2_subfolder = None, None, ""
+    tokenizer_3_cls, tokenizer_3_id, tokenizer_3_subfolder = None, None, ""
 
     unet_kwargs = None
     transformer_cls = None
@@ -121,16 +124,26 @@ class PeftLoraLoaderMixinTests:
         torch.manual_seed(0)
         vae = self.vae_cls(**self.vae_kwargs)
 
-        text_encoder = self.text_encoder_cls.from_pretrained(self.text_encoder_id)
-        tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id)
+        text_encoder = self.text_encoder_cls.from_pretrained(
+            self.text_encoder_id, subfolder=self.text_encoder_subfolder
+        )
+        tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id, subfolder=self.tokenizer_subfolder)
 
         if self.text_encoder_2_cls is not None:
-            text_encoder_2 = self.text_encoder_2_cls.from_pretrained(self.text_encoder_2_id)
-            tokenizer_2 = self.tokenizer_2_cls.from_pretrained(self.tokenizer_2_id)
+            text_encoder_2 = self.text_encoder_2_cls.from_pretrained(
+                self.text_encoder_2_id, subfolder=self.text_encoder_2_subfolder
+            )
+            tokenizer_2 = self.tokenizer_2_cls.from_pretrained(
+                self.tokenizer_2_id, subfolder=self.tokenizer_2_subfolder
+            )
 
         if self.text_encoder_3_cls is not None:
-            text_encoder_3 = self.text_encoder_3_cls.from_pretrained(self.text_encoder_3_id)
-            tokenizer_3 = self.tokenizer_3_cls.from_pretrained(self.tokenizer_3_id)
+            text_encoder_3 = self.text_encoder_3_cls.from_pretrained(
+                self.text_encoder_3_id, subfolder=self.text_encoder_3_subfolder
+            )
+            tokenizer_3 = self.tokenizer_3_cls.from_pretrained(
+                self.tokenizer_3_id, subfolder=self.tokenizer_3_subfolder
+            )
 
         text_lora_config = LoraConfig(
             r=rank,
@@ -429,7 +442,7 @@ class PeftLoraLoaderMixinTests:
         call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
 
         # TODO(diffusers): Discuss a common naming convention across library for 1.0.0 release
-        for possible_attention_kwargs in ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]:
+        for possible_attention_kwargs in POSSIBLE_ATTENTION_KWARGS_NAMES:
             if possible_attention_kwargs in call_signature_keys:
                 attention_kwargs_name = possible_attention_kwargs
                 break
@@ -790,7 +803,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
-        for possible_attention_kwargs in ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]:
+        for possible_attention_kwargs in POSSIBLE_ATTENTION_KWARGS_NAMES:
             if possible_attention_kwargs in call_signature_keys:
                 attention_kwargs_name = possible_attention_kwargs
                 break
@@ -1515,7 +1528,7 @@ class PeftLoraLoaderMixinTests:
     @pytest.mark.xfail(
         condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
-        strict=True,
+        strict=False,
     )
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
@@ -1542,7 +1555,12 @@ class PeftLoraLoaderMixinTests:
                         "adapter-1"
                     ].weight += float("inf")
                 else:
-                    pipe.transformer.transformer_blocks[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
+                    named_modules = [name for name, _ in pipe.transformer.named_modules()]
+                    has_attn1 = any("attn1" in name for name in named_modules)
+                    if has_attn1:
+                        pipe.transformer.transformer_blocks[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
+                    else:
+                        pipe.transformer.transformer_blocks[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
 
             # with `safe_fusing=True` we should see an Error
             with self.assertRaises(ValueError):
@@ -1550,7 +1568,7 @@ class PeftLoraLoaderMixinTests:
 
             # without we should not see an error, but every image will be black
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-            out = pipe("test", num_inference_steps=2, output_type="np")[0]
+            out = pipe(**inputs)[0]
 
             self.assertTrue(np.isnan(out).all())
 
@@ -1885,3 +1903,198 @@ class PeftLoraLoaderMixinTests:
 
             _, _, inputs = self.get_dummy_inputs()
             _ = pipe(**inputs)[0]
+
+    def test_set_adapters_match_attention_kwargs(self):
+        """Test to check if outputs after `set_adapters()` and attention kwargs match."""
+        call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
+        for possible_attention_kwargs in POSSIBLE_ATTENTION_KWARGS_NAMES:
+            if possible_attention_kwargs in call_signature_keys:
+                attention_kwargs_name = possible_attention_kwargs
+                break
+        assert attention_kwargs_name is not None
+
+        for scheduler_cls in self.scheduler_classes:
+            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertTrue(output_no_lora.shape == self.output_shape)
+
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder.add_adapter(text_lora_config)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                )
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
+
+            lora_scale = 0.5
+            attention_kwargs = {attention_kwargs_name: {"scale": lora_scale}}
+            output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+            self.assertFalse(
+                np.allclose(output_no_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+                "Lora + scale should change the output",
+            )
+
+            pipe.set_adapters("default", lora_scale)
+            output_lora_scale_wo_kwargs = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertTrue(
+                not np.allclose(output_no_lora, output_lora_scale_wo_kwargs, atol=1e-3, rtol=1e-3),
+                "Lora + scale should change the output",
+            )
+            self.assertTrue(
+                np.allclose(output_lora_scale, output_lora_scale_wo_kwargs, atol=1e-3, rtol=1e-3),
+                "Lora + scale should match the output of `set_adapters()`.",
+            )
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+                lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+                self.pipeline_class.save_lora_weights(
+                    save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
+                )
+
+                self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+                pipe = self.pipeline_class(**components)
+                pipe = pipe.to(torch_device)
+                pipe.set_progress_bar_config(disable=None)
+                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+                for module_name, module in modules_to_save.items():
+                    self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
+
+                output_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+                self.assertTrue(
+                    not np.allclose(output_no_lora, output_lora_from_pretrained, atol=1e-3, rtol=1e-3),
+                    "Lora + scale should change the output",
+                )
+                self.assertTrue(
+                    np.allclose(output_lora_scale, output_lora_from_pretrained, atol=1e-3, rtol=1e-3),
+                    "Loading from saved checkpoints should give same results as attention_kwargs.",
+                )
+                self.assertTrue(
+                    np.allclose(output_lora_scale_wo_kwargs, output_lora_from_pretrained, atol=1e-3, rtol=1e-3),
+                    "Loading from saved checkpoints should give same results as set_adapters().",
+                )
+
+    @require_peft_version_greater("0.13.2")
+    def test_lora_B_bias(self):
+        # Currently, this test is only relevant for Flux Control LoRA as we are not
+        # aware of any other LoRA checkpoint that has its `lora_B` biases trained.
+        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # keep track of the bias values of the base layers to perform checks later.
+        bias_values = {}
+        denoiser = pipe.unet if self.unet_kwargs is not None else pipe.transformer
+        for name, module in denoiser.named_modules():
+            if any(k in name for k in ["to_q", "to_k", "to_v", "to_out.0"]):
+                if module.bias is not None:
+                    bias_values[name] = module.bias.data.clone()
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(logging.INFO)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        denoiser_lora_config.lora_bias = False
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_bias_false_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        pipe.delete_adapters("adapter-1")
+
+        denoiser_lora_config.lora_bias = True
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_bias_true_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertFalse(np.allclose(original_output, lora_bias_false_output, atol=1e-3, rtol=1e-3))
+        self.assertFalse(np.allclose(original_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
+        self.assertFalse(np.allclose(lora_bias_false_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
+
+    def test_correct_lora_configs_with_different_ranks(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+
+        lora_output_same_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        if self.unet_kwargs is not None:
+            pipe.unet.delete_adapters("adapter-1")
+        else:
+            pipe.transformer.delete_adapters("adapter-1")
+
+        denoiser = pipe.unet if self.unet_kwargs is not None else pipe.transformer
+        for name, _ in denoiser.named_modules():
+            if "to_k" in name and "attn" in name and "lora" not in name:
+                module_name_to_rank_update = name.replace(".base_layer.", ".")
+                break
+
+        # change the rank_pattern
+        updated_rank = denoiser_lora_config.r * 2
+        denoiser_lora_config.rank_pattern = {module_name_to_rank_update: updated_rank}
+
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+            updated_rank_pattern = pipe.unet.peft_config["adapter-1"].rank_pattern
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+            updated_rank_pattern = pipe.transformer.peft_config["adapter-1"].rank_pattern
+
+        self.assertTrue(updated_rank_pattern == {module_name_to_rank_update: updated_rank})
+
+        lora_output_diff_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(not np.allclose(original_output, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+        self.assertTrue(not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+
+        if self.unet_kwargs is not None:
+            pipe.unet.delete_adapters("adapter-1")
+        else:
+            pipe.transformer.delete_adapters("adapter-1")
+
+        # similarly change the alpha_pattern
+        updated_alpha = denoiser_lora_config.lora_alpha * 2
+        denoiser_lora_config.alpha_pattern = {module_name_to_rank_update: updated_alpha}
+        if self.unet_kwargs is not None:
+            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
+            self.assertTrue(
+                pipe.unet.peft_config["adapter-1"].alpha_pattern == {module_name_to_rank_update: updated_alpha}
+            )
+        else:
+            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+            self.assertTrue(
+                pipe.transformer.peft_config["adapter-1"].alpha_pattern == {module_name_to_rank_update: updated_alpha}
+            )
+
+        lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
+        self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))

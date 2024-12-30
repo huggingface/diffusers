@@ -17,6 +17,7 @@
 import importlib
 import inspect
 import os
+from array import array
 from collections import OrderedDict
 from pathlib import Path
 from typing import List, Optional, Union
@@ -25,8 +26,8 @@ import safetensors
 import torch
 from huggingface_hub.utils import EntryNotFoundError
 
-from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
+    GGUF_FILE_EXTENSION,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
     WEIGHTS_INDEX_NAME,
@@ -34,6 +35,8 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_gguf_available,
+    is_torch_available,
     is_torch_version,
     logging,
 )
@@ -140,6 +143,8 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
             return safetensors.torch.load_file(checkpoint_file, device="cpu")
+        elif file_extension == GGUF_FILE_EXTENSION:
+            return load_gguf_checkpoint(checkpoint_file)
         else:
             weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
             return torch.load(
@@ -182,7 +187,6 @@ def load_model_dict_into_meta(
         device = device or torch.device("cpu")
     dtype = dtype or torch.float32
     is_quantized = hf_quantizer is not None
-    is_quant_method_bnb = getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
 
     accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
     empty_state_dict = model.state_dict()
@@ -213,17 +217,18 @@ def load_model_dict_into_meta(
                     set_module_kwargs["dtype"] = dtype
 
         # bnb params are flattened.
+        # gguf quants have a different shape based on the type of quantization applied
         if empty_state_dict[param_name].shape != param.shape:
             if (
-                is_quant_method_bnb
+                is_quantized
                 and hf_quantizer.pre_quantized
                 and hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
             ):
-                hf_quantizer.check_quantized_param_shape(param_name, empty_state_dict[param_name].shape, param.shape)
-            elif not is_quant_method_bnb:
+                hf_quantizer.check_quantized_param_shape(param_name, empty_state_dict[param_name], param)
+            else:
                 model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
                 raise ValueError(
-                    f"Cannot load {model_name_or_path_str} because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
+                    f"Cannot load {model_name_or_path_str} because {param_name} expected shape {empty_state_dict[param_name].shape}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
                 )
 
         if is_quantized and (
@@ -398,3 +403,78 @@ def _fetch_index_file_legacy(
                 index_file = None
 
     return index_file
+
+
+def _gguf_parse_value(_value, data_type):
+    if not isinstance(data_type, list):
+        data_type = [data_type]
+    if len(data_type) == 1:
+        data_type = data_type[0]
+        array_data_type = None
+    else:
+        if data_type[0] != 9:
+            raise ValueError("Received multiple types, therefore expected the first type to indicate an array.")
+        data_type, array_data_type = data_type
+
+    if data_type in [0, 1, 2, 3, 4, 5, 10, 11]:
+        _value = int(_value[0])
+    elif data_type in [6, 12]:
+        _value = float(_value[0])
+    elif data_type in [7]:
+        _value = bool(_value[0])
+    elif data_type in [8]:
+        _value = array("B", list(_value)).tobytes().decode()
+    elif data_type in [9]:
+        _value = _gguf_parse_value(_value, array_data_type)
+    return _value
+
+
+def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
+    """
+    Load a GGUF file and return a dictionary of parsed parameters containing tensors, the parsed tokenizer and config
+    attributes.
+
+    Args:
+        gguf_checkpoint_path (`str`):
+            The path the to GGUF file to load
+        return_tensors (`bool`, defaults to `True`):
+            Whether to read the tensors from the file and return them. Not doing so is faster and only loads the
+            metadata in memory.
+    """
+
+    if is_gguf_available() and is_torch_available():
+        import gguf
+        from gguf import GGUFReader
+
+        from ..quantizers.gguf.utils import SUPPORTED_GGUF_QUANT_TYPES, GGUFParameter
+    else:
+        logger.error(
+            "Loading a GGUF checkpoint in PyTorch, requires both PyTorch and GGUF>=0.10.0 to be installed. Please see "
+            "https://pytorch.org/ and https://github.com/ggerganov/llama.cpp/tree/master/gguf-py for installation instructions."
+        )
+        raise ImportError("Please install torch and gguf>=0.10.0 to load a GGUF checkpoint in PyTorch.")
+
+    reader = GGUFReader(gguf_checkpoint_path)
+
+    parsed_parameters = {}
+    for tensor in reader.tensors:
+        name = tensor.name
+        quant_type = tensor.tensor_type
+
+        # if the tensor is a torch supported dtype do not use GGUFParameter
+        is_gguf_quant = quant_type not in [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16]
+        if is_gguf_quant and quant_type not in SUPPORTED_GGUF_QUANT_TYPES:
+            _supported_quants_str = "\n".join([str(type) for type in SUPPORTED_GGUF_QUANT_TYPES])
+            raise ValueError(
+                (
+                    f"{name} has a quantization type: {str(quant_type)} which is unsupported."
+                    "\n\nCurrently the following quantization types are supported: \n\n"
+                    f"{_supported_quants_str}"
+                    "\n\nTo request support for this quantization type please open an issue here: https://github.com/huggingface/diffusers"
+                )
+            )
+
+        weights = torch.from_numpy(tensor.data.copy())
+        parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
+
+    return parsed_parameters

@@ -75,6 +75,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         base_image_seq_len: Optional[int] = 256,
         max_image_seq_len: Optional[int] = 4096,
         invert_sigmas: bool = False,
+        shift_terminal: Optional[float] = None,
         use_karras_sigmas: Optional[bool] = False,
         use_exponential_sigmas: Optional[bool] = False,
         use_beta_sigmas: Optional[bool] = False,
@@ -98,9 +99,18 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
 
+        self._shift = shift
+
         self.sigmas = sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.sigma_min = self.sigmas[-1].item()
         self.sigma_max = self.sigmas[0].item()
+
+    @property
+    def shift(self):
+        """
+        The value used for shifting.
+        """
+        return self._shift
 
     @property
     def step_index(self):
@@ -126,6 +136,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
+
+    def set_shift(self, shift: float):
+        self._shift = shift
 
     def scale_noise(
         self,
@@ -181,6 +194,27 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def time_shift(self, mu: float, sigma: float, t: torch.Tensor):
         return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
 
+    def stretch_shift_to_terminal(self, t: torch.Tensor) -> torch.Tensor:
+        r"""
+        Stretches and shifts the timestep schedule to ensure it terminates at the configured `shift_terminal` config
+        value.
+
+        Reference:
+        https://github.com/Lightricks/LTX-Video/blob/a01a171f8fe3d99dce2728d60a73fecf4d4238ae/ltx_video/schedulers/rf.py#L51
+
+        Args:
+            t (`torch.Tensor`):
+                A tensor of timesteps to be stretched and shifted.
+
+        Returns:
+            `torch.Tensor`:
+                A tensor of adjusted timesteps such that the final value equals `self.config.shift_terminal`.
+        """
+        one_minus_z = 1 - t
+        scale_factor = one_minus_z[-1] / (1 - self.config.shift_terminal)
+        stretched_t = 1 - (one_minus_z / scale_factor)
+        return stretched_t
+
     def set_timesteps(
         self,
         num_inference_steps: int = None,
@@ -214,7 +248,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.config.use_dynamic_shifting:
             sigmas = self.time_shift(mu, 1.0, sigmas)
         else:
-            sigmas = self.config.shift * sigmas / (1 + (self.config.shift - 1) * sigmas)
+            sigmas = self.shift * sigmas / (1 + (self.shift - 1) * sigmas)
+
+        if self.config.shift_terminal:
+            sigmas = self.stretch_shift_to_terminal(sigmas)
 
         if self.config.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
