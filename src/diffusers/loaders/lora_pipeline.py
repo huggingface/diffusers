@@ -2465,10 +2465,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             if k in unexpected_modules:
                 continue
 
-            base_param_name = f"{k.replace(prefix, '')}.weight"
-            base_layer_name = f"{k.replace(prefix, '')}.base_layer.weight"
-            if is_peft_loaded and base_layer_name in transformer_state_dict:
-                base_param_name = base_layer_name
+            base_param_name = (
+                f"{k.replace(prefix, '')}.base_layer.weight"
+                if is_peft_loaded and f"{k.replace(prefix, '')}.base_layer.weight" in transformer_state_dict
+                else f"{k.replace(prefix, '')}.weight"
+            )
             base_weight_param = transformer_state_dict[base_param_name]
             lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
 
