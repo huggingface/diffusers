@@ -161,10 +161,11 @@ jobs:
 
   flax_tpu_tests:
     name: Flax TPU Tests
-    runs-on: docker-tpu
+    runs-on:
+      group: gcp-ct5lp-hightpu-8t
     container:
       image: diffusers/diffusers-flax-tpu
-      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --privileged
+      options: --shm-size "16gb" --ipc host --privileged ${{ vars.V5_LITEPOD_8_ENV}} -v /mnt/hf_cache:/mnt/hf_cache 
     defaults:
       run:
         shell: bash

@@ -752,7 +752,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         width: Optional[int] = None,
         strength: float = 0.6,
         padding_mask_crop: Optional[int] = None,
-        timesteps: List[int] = None,
+        sigmas: Optional[List[float]] = None,
         num_inference_steps: int = 28,
         guidance_scale: float = 7.0,
         control_guidance_start: Union[float, List[float]] = 0.0,
@@ -799,8 +799,10 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             num_inference_steps (`int`, *optional*, defaults to 28):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
             control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
@@ -1009,7 +1011,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
         # 6. Prepare timesteps
 
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = (int(global_height) // self.vae_scale_factor // 2) * (
             int(global_width) // self.vae_scale_factor // 2
         )
@@ -1024,8 +1026,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             self.scheduler,
             num_inference_steps,
             device,
-            timesteps,
-            sigmas,
+            sigmas=sigmas,
             mu=mu,
         )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
@@ -1094,7 +1095,11 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
                 # predict the noise residual
-                if self.controlnet.config.guidance_embeds:
+                if isinstance(self.controlnet, FluxMultiControlNetModel):
+                    use_guidance = self.controlnet.nets[0].config.guidance_embeds
+                else:
+                    use_guidance = self.controlnet.config.guidance_embeds
+                if use_guidance:
                     guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
                     guidance = guidance.expand(latents.shape[0])
                 else:
