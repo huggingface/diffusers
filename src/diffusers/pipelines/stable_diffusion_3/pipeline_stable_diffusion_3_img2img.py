@@ -240,12 +240,21 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, vae_latent_channels=self.vae.config.latent_channels
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
-        self.tokenizer_max_length = self.tokenizer.model_max_length
-        self.default_sample_size = self.transformer.config.sample_size
+        latent_channels = self.vae.config.latent_channels if hasattr(self, "vae") and self.vae is not None else 16
+        self.image_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, vae_latent_channels=latent_channels
+        )
+        self.tokenizer_max_length = (
+            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
+        )
+        self.default_sample_size = (
+            self.transformer.config.sample_size
+            if hasattr(self, "transformer") and self.transformer is not None
+            else 128
+        )
         self.patch_size = (
             self.transformer.config.patch_size if hasattr(self, "transformer") and self.transformer is not None else 2
         )
