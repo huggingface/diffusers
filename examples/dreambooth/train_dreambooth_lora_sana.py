@@ -982,10 +982,10 @@ def main(args):
         )
 
     # VAE should always be kept in fp32 for SANA (?)
-    vae.to(accelerator.device, dtype=torch.float32)
+    vae.to(dtype=torch.float32)
     transformer.to(accelerator.device, dtype=weight_dtype)
     # because Gemma2 is particularly suited for bfloat16.
-    text_encoder.to(accelerator.device, dtype=torch.bfloat16)
+    text_encoder.to(dtype=torch.bfloat16)
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
     text_encoding_pipeline = SanaPipeline.from_pretrained(
