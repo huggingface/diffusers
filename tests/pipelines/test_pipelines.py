@@ -983,6 +983,12 @@ class DownloadTests(unittest.TestCase):
             assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
             assert len(files) == 14
 
+    def test_download_dduf_with_custom_pipeline_raises_error(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.download(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", custom_pipeline="my_pipeline"
+            )
+
     def test_get_pipeline_class_from_flax(self):
         flax_config = {"_class_name": "FlaxStableDiffusionPipeline"}
         config = {"_class_name": "StableDiffusionPipeline"}
@@ -1822,6 +1828,14 @@ class PipelineFastTests(unittest.TestCase):
             ).images
 
         self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_dduf_raises_error_with_custom_pipeline(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", custom_pipeline="my_pipeline"
+            )
 
     def test_wrong_model(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")

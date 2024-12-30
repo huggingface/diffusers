@@ -728,6 +728,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        if dduf_file and custom_pipeline:
+            raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
+
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
@@ -1325,6 +1328,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         trust_remote_code = kwargs.pop("trust_remote_code", False)
         dduf_file: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
 
+        if dduf_file and custom_pipeline:
+            raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
+
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
@@ -1488,7 +1494,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
-        if not dduf_file and custom_pipeline is not None and not custom_pipeline.endswith(".py"):
+        if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
             user_agent["custom_pipeline"] = custom_pipeline
 
         # download all allow_patterns - ignore_patterns
