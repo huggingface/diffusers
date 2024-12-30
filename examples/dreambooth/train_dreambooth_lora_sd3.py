@@ -1294,8 +1294,12 @@ def main(args):
             for model in models:
                 if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
                     model = unwrap_model(model)
+                    if args.upcast_before_saving:
+                        model = model.to(torch.float32)
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))):  # or text_encoder_two
+                elif args.train_text_encoder and isinstance(
+                    unwrap_model(model), type(unwrap_model(text_encoder_one))
+                ):  # or text_encoder_two
                     # both text encoders are of the same class, so we check hidden size to distinguish between the two
                     model = unwrap_model(model)
                     hidden_size = model.config.hidden_size
