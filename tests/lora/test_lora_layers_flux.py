@@ -251,14 +251,14 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         pipe.set_adapters(["one", "two"])
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
-        images_lora_with_absent_keys = pipe(**inputs, generator=torch.manual_seed(0)).images
+        images_lora_with_extra_keys = pipe(**inputs, generator=torch.manual_seed(0)).images
 
         self.assertFalse(
-            np.allclose(images_lora, images_lora_with_absent_keys, atol=1e-3, rtol=1e-3),
+            np.allclose(images_lora, images_lora_with_extra_keys, atol=1e-3, rtol=1e-3),
             "Different LoRAs should lead to different results.",
         )
         self.assertFalse(
-            np.allclose(output_no_lora, images_lora_with_absent_keys, atol=1e-3, rtol=1e-3),
+            np.allclose(output_no_lora, images_lora_with_extra_keys, atol=1e-3, rtol=1e-3),
             "LoRA should lead to different results.",
         )
 
