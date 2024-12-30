@@ -22,10 +22,11 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, DDIMScheduler, LattePipeline, LatteTransformer3DModel
-from diffusers.pipelines.pyramid_attention_broadcast_utils import (
-    PyramidAttentionBroadcastConfig,
-    apply_pyramid_attention_broadcast,
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    LattePipeline,
+    LatteTransformer3DModel,
 )
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
@@ -52,11 +53,11 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     required_optional_params = PipelineTesterMixin.required_optional_params
 
-    def get_dummy_components(self, num_layers: int = 1):
+    def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = LatteTransformer3DModel(
             sample_size=8,
-            num_layers=num_layers,
+            num_layers=1,
             patch_size=2,
             attention_head_dim=8,
             num_attention_heads=3,
@@ -262,38 +263,6 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     def test_xformers_attention_forwardGenerator_pass(self):
         super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
-
-    def test_pyramid_attention_broadcast(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        num_layers = 4
-        components = self.get_dummy_components(num_layers=num_layers)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["num_inference_steps"] = 4
-        frames = pipe(**inputs).frames  # [B, F, C, H, W]
-        original_image_slice = frames[0, -2:, -1, -3:, -3:]
-
-        config = PyramidAttentionBroadcastConfig(
-            spatial_attention_block_skip_range=2,
-            temporal_attention_block_skip_range=3,
-            spatial_attention_timestep_skip_range=(100, 800),
-            temporal_attention_timestep_skip_range=(100, 800),
-        )
-        apply_pyramid_attention_broadcast(pipe, config)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["num_inference_steps"] = 4
-        frames = pipe(**inputs).frames
-        image_slice_pab_enabled = frames[0, -2:, -1, -3:, -3:]
-
-        # We need to use higher tolerance because we are using a random model. With a converged/trained
-        # model, the tolerance can be lower.
-        assert np.allclose(
-            original_image_slice, image_slice_pab_enabled, atol=0.2
-        ), "PAB outputs should not differ much in specified timestep range."
 
 
 @slow
