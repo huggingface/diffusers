@@ -33,8 +33,8 @@ from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
-    is_torch_xla_available,
     deprecate,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -838,7 +838,7 @@ class FluxPipeline(
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler,
+            scheduler=self.scheduler,
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
