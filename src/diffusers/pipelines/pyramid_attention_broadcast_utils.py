@@ -143,6 +143,7 @@ def apply_pyramid_attention_broadcast(
     Example:
 
     ```python
+    >>> import torch
     >>> from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
 
     >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
@@ -169,6 +170,10 @@ def apply_pyramid_attention_broadcast(
         )
         config.spatial_attention_block_skip_range = 2
 
+    # Note: For diffusers models, we know that it will be either a transformer or a unet, and we also follow
+    # the naming convention. The option to specify a denoiser is provided for flexibility when this function
+    # is used outside of the diffusers library, say for a ComfyUI custom model. In that case, the user can
+    # specify pipeline as None but provide the denoiser module.
     if denoiser is None:
         denoiser = pipeline.transformer if hasattr(pipeline, "transformer") else pipeline.unet
 
