@@ -18,7 +18,7 @@ from typing import Any, Callable, Optional, Tuple
 
 import torch.nn as nn
 
-from ..models.attention_processor import Attention
+from ..models.attention_processor import Attention, MochiAttention
 from ..models.hooks import ModelHook, add_hook_to_module
 from ..utils import logging
 from .pipeline_utils import DiffusionPipeline
@@ -27,7 +27,7 @@ from .pipeline_utils import DiffusionPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-_ATTENTION_CLASSES = (Attention,)
+_ATTENTION_CLASSES = (Attention, MochiAttention)
 
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks")
 _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
@@ -175,8 +175,10 @@ def apply_pyramid_attention_broadcast(
     for name, module in denoiser.named_modules():
         if not isinstance(module, _ATTENTION_CLASSES):
             continue
-        if isinstance(module, Attention):
+        if isinstance(module, (Attention)):
             _apply_pyramid_attention_broadcast_on_attention_class(pipeline, name, module, config)
+        if isinstance(module, MochiAttention):
+            _apply_pyramid_attention_broadcast_on_mochi_attention_class(pipeline, name, module, config)
 
 
 def apply_pyramid_attention_broadcast_on_module(
@@ -261,6 +263,13 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
     logger.debug(f"Enabling Pyramid Attention Broadcast ({block_type}) in layer: {name}")
     apply_pyramid_attention_broadcast_on_module(module, skip_callback)
     return True
+
+
+def _apply_pyramid_attention_broadcast_on_mochi_attention_class(
+    pipeline: DiffusionPipeline, name: str, module: MochiAttention, config: PyramidAttentionBroadcastConfig
+) -> bool:
+    # The same logic as Attention class works here, so just use that for now
+    return _apply_pyramid_attention_broadcast_on_attention_class(pipeline, name, module, config)
 
 
 class PyramidAttentionBroadcastHook(ModelHook):

@@ -930,6 +930,8 @@ class MochiAttention(nn.Module):
         self.out_dim = out_dim if out_dim is not None else query_dim
         self.out_context_dim = out_context_dim if out_context_dim else query_dim
         self.context_pre_only = context_pre_only
+        # TODO(aryan): Maybe try to improve the checks in PAB instead
+        self.is_cross_attention = False
 
         self.heads = out_dim // dim_head if out_dim is not None else heads
 
