@@ -26,6 +26,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AllegroTransformer3DModel, AutoencoderKLAllegro
 from ...models.embeddings import get_3d_rotary_pos_embed_allegro
+from ...models.hooks import reset_stateful_hooks
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -935,6 +936,7 @@ class AllegroPipeline(DiffusionPipeline):
 
         # Offload all models
         self.maybe_free_model_hooks()
+        reset_stateful_hooks(self.transformer, recurse=True)
 
         if not return_dict:
             return (video,)

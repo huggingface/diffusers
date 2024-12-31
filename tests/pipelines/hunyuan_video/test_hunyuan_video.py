@@ -54,7 +54,7 @@ class HunyuanVideoPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadca
     # there is no xformers processor for Flux
     test_xformers_attention = False
 
-    def get_dummy_components(self, num_layers: int = 1):
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = HunyuanVideoTransformer3DModel(
             in_channels=4,
@@ -62,7 +62,7 @@ class HunyuanVideoPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadca
             num_attention_heads=2,
             attention_head_dim=10,
             num_layers=num_layers,
-            num_single_layers=1,
+            num_single_layers=num_single_layers,
             num_refiner_layers=1,
             patch_size=1,
             patch_size_t=1,

@@ -2283,8 +2283,19 @@ class PyramidAttentionBroadcastTesterMixin:
 
     def test_pyramid_attention_broadcast_layers(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        num_layers = 2
-        components = self.get_dummy_components(num_layers=num_layers)
+
+        num_layers = 0
+        num_single_layers = 0
+        dummy_component_kwargs = {}
+        dummy_component_parameters = inspect.signature(self.get_dummy_components).parameters
+        if "num_layers" in dummy_component_parameters:
+            num_layers = 2
+            dummy_component_kwargs["num_layers"] = num_layers
+        if "num_single_layers" in dummy_component_parameters:
+            num_single_layers = 2
+            dummy_component_kwargs["num_single_layers"] = num_single_layers
+
+        components = self.get_dummy_components(**dummy_component_kwargs)
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
 
@@ -2292,11 +2303,11 @@ class PyramidAttentionBroadcastTesterMixin:
 
         expected_hooks = 0
         if self.pab_config.spatial_attention_block_skip_range is not None:
-            expected_hooks += num_layers
+            expected_hooks += num_layers + num_single_layers
         if self.pab_config.temporal_attention_block_skip_range is not None:
-            expected_hooks += num_layers
+            expected_hooks += num_layers + num_single_layers
         if self.pab_config.cross_attention_block_skip_range is not None:
-            expected_hooks += num_layers
+            expected_hooks += num_layers + num_single_layers
 
         denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
         count = 0
