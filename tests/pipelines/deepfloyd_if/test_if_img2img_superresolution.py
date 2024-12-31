@@ -17,11 +17,12 @@ import gc
 import random
 import unittest
 
+import pytest
 import torch
 
 from diffusers import IFImg2ImgSuperResolutionPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
-from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.import_utils import is_hf_hub_version, is_transformers_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
     load_numpy,
@@ -97,6 +98,11 @@ class IFImg2ImgSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipelineT
             expected_max_diff=1e-2,
         )
 
+    @pytest.mark.xfail(
+        condition=is_hf_hub_version("<=", "0.26.5") or is_transformers_version("<=", "4.47.1"),
+        reason="Test requires hf hub and transformers latests",
+        strict=True,
+    )
     def test_save_load_dduf(self):
         super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
 

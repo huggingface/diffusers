@@ -16,13 +16,14 @@
 import gc
 import unittest
 
+import pytest
 import torch
 
 from diffusers import (
     IFPipeline,
 )
 from diffusers.models.attention_processor import AttnAddedKVProcessor
-from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.import_utils import is_hf_hub_version, is_transformers_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     load_numpy,
     require_accelerator,
@@ -89,6 +90,11 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
+    @pytest.mark.xfail(
+        condition=is_hf_hub_version("<=", "0.26.5") or is_transformers_version("<=", "4.47.1"),
+        reason="Test requires hf hub and transformers latests",
+        strict=True,
+    )
     def test_save_load_dduf(self):
         super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
 
