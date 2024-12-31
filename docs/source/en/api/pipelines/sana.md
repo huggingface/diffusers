@@ -50,6 +50,46 @@ Make sure to pass the `variant` argument for downloaded checkpoints to use lower
 
 </Tip>
 
+## Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`SanaPipeline`] for inference with bitsandbytes.
+
+```py
+import torch
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, SanaTransformer2DModel, SanaPipeline
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, AutoModelForCausalLM
+
+quant_config = BitsAndBytesConfig(load_in_8bit=True)
+text_encoder_8bit = AutoModelForCausalLM.from_pretrained(
+    "Efficient-Large-Model/Sana_1600M_1024px_diffusers",
+    subfolder="text_encoder",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_8bit = SanaTransformer2DModel.from_pretrained(
+    "Efficient-Large-Model/Sana_1600M_1024px_diffusers",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+pipeline = SanaPipeline.from_pretrained(
+    "Efficient-Large-Model/Sana_1600M_1024px_diffusers",
+    text_encoder=text_encoder_8bit,
+    transformer=transformer_8bit,
+    torch_dtype=torch.float16,
+    device_map="balanced",
+)
+
+prompt = "a tiny astronaut hatching from an egg on the moon"
+image = pipeline(prompt).images[0]
+image.save("sana.png")
+```
+
 ## SanaPipeline
 
 [[autodoc]] SanaPipeline
