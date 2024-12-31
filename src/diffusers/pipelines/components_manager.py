@@ -243,7 +243,7 @@ class ComponentsManager:
         self.components.pop(name)
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)
-    
+
     def get(self, names: Union[str, List[str]]):
         if isinstance(names, str):
             if names not in self.components:
@@ -328,7 +328,9 @@ class ComponentsManager:
                 size_gb = size_bytes / (1024**3)
 
                 output += f"{name:<{col_widths['id']}} | {component.__class__.__name__:<{col_widths['class']}} | "
-                output += f"{str(device):<{col_widths['device']}} | {str(dtype):<{col_widths['dtype']}} | {size_gb:.2f}\n"
+                output += (
+                    f"{str(device):<{col_widths['device']}} | {str(dtype):<{col_widths['dtype']}} | {size_gb:.2f}\n"
+                )
             output += dash_line
 
         # Other components section
@@ -349,6 +351,7 @@ class ComponentsManager:
 
     def add_from_pretrained(self, pretrained_model_name_or_path, **kwargs):
         from ..pipelines.pipeline_utils import DiffusionPipeline
+
         pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, **kwargs)
         for name, component in pipe.components.items():
             if name not in self.components and component is not None:
