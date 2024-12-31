@@ -29,6 +29,7 @@ if is_accelerate_available():
     from accelerate.state import PartialState
     from accelerate.utils import send_to_device
     from accelerate.utils.memory import clear_device_cache
+    from accelerate.utils.modeling import convert_file_size_to_int
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -166,17 +167,17 @@ class AutoOffloadStrategy:
     the available memory on the device.
     """
 
-    def __init__(self, size_estimation_margin=0.1):
-        self.size_estimation_margin = size_estimation_margin
+    def __init__(self, memory_reserve_margin="3GB"):
+        self.memory_reserve_margin = convert_file_size_to_int(memory_reserve_margin)
 
     def __call__(self, hooks, model_id, model, execution_device):
         if len(hooks) == 0:
             return []
 
         current_module_size = get_memory_footprint(model)
-        current_module_size *= 1 + self.size_estimation_margin
 
         mem_on_device = torch.cuda.mem_get_info(execution_device.index)[0]
+        mem_on_device = mem_on_device - self.memory_reserve_margin
         if current_module_size < mem_on_device:
             return []
 
@@ -254,13 +255,13 @@ class ComponentsManager:
         else:
             raise ValueError(f"Invalid type for names: {type(names)}")
 
-    def enable_auto_cpu_offload(self, device, size_estimation_margin=0.1):
+    def enable_auto_cpu_offload(self, device, memory_reserve_margin="3GB"):
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "_hf_hook"):
                 remove_hook_from_module(component, recurse=True)
 
         self.disable_auto_cpu_offload()
-        offload_strategy = AutoOffloadStrategy(size_estimation_margin=size_estimation_margin)
+        offload_strategy = AutoOffloadStrategy(memory_reserve_margin=memory_reserve_margin)
         device = torch.device(device)
         if device.index is None:
             device = torch.device(f"{device.type}:{0}")
