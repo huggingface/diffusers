@@ -9,7 +9,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# Caching Methods
+# Caching methods
 
 ## Pyramid Attention Broadcast
 
@@ -19,7 +19,7 @@ Pyramid Attention Broadcast (PAB) is a method that speeds up inference in diffus
 
 Enable PAB with [`~PyramidAttentionBroadcastConfig`] on any pipeline. For some benchmarks, refer to [this](https://github.com/huggingface/diffusers/pull/9562) pull request.
 
-## PyramidAttentionBroadcastConfig
+### PyramidAttentionBroadcastConfig
 
 [[autodoc]] PyramidAttentionBroadcastConfig
 
