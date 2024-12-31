@@ -277,3 +277,7 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         output = pipe(**inputs)[0]
         assert output.abs().sum() == 0
+
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass

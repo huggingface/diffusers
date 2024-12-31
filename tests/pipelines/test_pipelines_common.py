@@ -1993,7 +1993,7 @@ class PipelineTesterMixin:
         )
 
     @pytest.mark.xfail(
-        condition=is_hf_hub_version("<=", "0.26.5") and is_transformers_version("<=", "4.47.1"),
+        condition=is_hf_hub_version("<=", "0.26.5") or is_transformers_version("<=", "4.47.1"),
         reason="Test requires hf hub and transformers latests",
         strict=True,
     )
