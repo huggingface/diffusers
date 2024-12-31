@@ -877,12 +877,6 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
 
-        latents_mean = latents_std = None
-        if hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None:
-            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
-        if hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None:
-            latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
-
         # Offload text encoder if `enable_model_cpu_offload` was enabled
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.text_encoder_2.to("cpu")
@@ -896,6 +890,11 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
             init_latents = image
 
         else:
+            latents_mean = latents_std = None
+            if hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None:
+                latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
+            if hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None:
+                latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
             # make sure the VAE is in float32 mode, as it overflows in float16
             if self.vae.config.force_upcast:
                 image = image.float()
