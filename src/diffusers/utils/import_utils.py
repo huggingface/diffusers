@@ -118,7 +118,7 @@ except importlib_metadata.PackageNotFoundError:
 _hf_hub_available = importlib.util.find_spec("huggingface_hub") is not None
 try:
     _hf_hub_version = importlib_metadata.version("huggingface_hub")
-    logger.debug(f"Successfully imported huggingface_hub version {_transformers_version}")
+    logger.debug(f"Successfully imported huggingface_hub version {_hf_hub_version}")
 except importlib_metadata.PackageNotFoundError:
     _hf_hub_available = False
 
