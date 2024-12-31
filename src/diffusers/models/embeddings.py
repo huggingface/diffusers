@@ -748,10 +748,10 @@ class CogVideoXPatchEmbed(nn.Module):
                 pos_embedding = self._get_positional_embeddings(
                     height, width, pre_time_compression_frames, device=embeds.device
                 )
-                pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             else:
                 pos_embedding = self.pos_embedding
 
+            pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             embeds = embeds + pos_embedding
 
         return embeds
@@ -1535,7 +1535,7 @@ class ImageProjection(nn.Module):
         batch_size = image_embeds.shape[0]
 
         # image
-        image_embeds = self.image_embeds(image_embeds)
+        image_embeds = self.image_embeds(image_embeds.to(self.image_embeds.weight.dtype))
         image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
         image_embeds = self.norm(image_embeds)
         return image_embeds
