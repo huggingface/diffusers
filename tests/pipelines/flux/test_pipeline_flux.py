@@ -34,13 +34,13 @@ class FluxPipelineFastTests(
     # there is no xformers processor for Flux
     test_xformers_attention = False
 
-    def get_dummy_components(self, num_layers: int = 1):
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
             patch_size=1,
             in_channels=4,
             num_layers=num_layers,
-            num_single_layers=1,
+            num_single_layers=num_single_layers,
             attention_head_dim=16,
             num_attention_heads=2,
             joint_attention_dim=32,
