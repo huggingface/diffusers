@@ -1819,7 +1819,7 @@ class PipelineFastTests(unittest.TestCase):
 
     @parameterized.expand([torch.float32, torch.float16])
     @pytest.mark.xfail(
-        condition=is_hf_hub_version("<", "0.26.5") and is_transformers_version("<", "4.47.1"),
+        condition=is_hf_hub_version("<", "0.26.5") or is_transformers_version("<", "4.47.1"),
         reason="Test requires hf hub and transformers latests",
         strict=True,
     )
@@ -1840,7 +1840,7 @@ class PipelineFastTests(unittest.TestCase):
         self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
 
     @pytest.mark.xfail(
-        condition=is_hf_hub_version("<", "0.26.5") and is_transformers_version("<", "4.47.1"),
+        condition=is_hf_hub_version("<", "0.26.5") or is_transformers_version("<", "4.47.1"),
         reason="Test requires hf hub and transformers latests",
         strict=True,
     )
