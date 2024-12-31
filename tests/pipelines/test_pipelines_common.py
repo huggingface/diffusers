@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Union
 
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 import torch.nn as nn
 from huggingface_hub import ModelCard, delete_repo
@@ -37,15 +38,13 @@ from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import logging
+from diffusers.utils import is_hf_hub_version, is_transformers_version, logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_accelerate_version_greater,
     require_accelerator,
-    require_hf_hub_version_greater,
     require_torch,
-    require_transformers_version_greater,
     skip_mps,
     torch_device,
 )
@@ -1993,8 +1992,11 @@ class PipelineTesterMixin:
             )
         )
 
-    @require_hf_hub_version_greater("0.26.5")
-    @require_transformers_version_greater("4.47.1")
+    @pytest.mark.xfail(
+        condition=is_hf_hub_version("<", "0.26.5") and is_transformers_version("<", "4.47.1"),
+        reason="Test requires hf hub and transformers latests",
+        strict=True,
+    )
     def test_save_load_dduf(self):
         from huggingface_hub import export_folder_as_dduf
 
@@ -2007,7 +2009,7 @@ class PipelineTesterMixin:
         inputs.pop("generator")
         inputs["generator"] = torch.manual_seed(0)
 
-        pipeline_out = pipe(**inputs)[0].cpu()
+        pipeline_out = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
@@ -2016,9 +2018,12 @@ class PipelineTesterMixin:
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
 
         inputs["generator"] = torch.manual_seed(0)
-        loaded_pipeline_out = loaded_pipe(**inputs)[0].cpu()
+        loaded_pipeline_out = loaded_pipe(**inputs)[0]
 
-        assert np.allclose(pipeline_out, loaded_pipeline_out)
+        if isinstance(pipeline_out, np.ndarray) and isinstance(loaded_pipeline_out, np.ndarray):
+            assert np.allclose(pipeline_out, loaded_pipeline_out)
+        elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
+            assert torch.allclose(pipeline_out, loaded_pipeline_out)
 
 
 @is_staging_test

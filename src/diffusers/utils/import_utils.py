@@ -115,6 +115,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _transformers_available = False
 
+_hf_hub_available = importlib.util.find_spec("huggingface_hub") is not None
+try:
+    _hf_hub_version = importlib_metadata.version("huggingface_hub")
+    logger.debug(f"Successfully imported huggingface_hub version {_transformers_version}")
+except importlib_metadata.PackageNotFoundError:
+    _hf_hub_available = False
+
 
 _inflect_available = importlib.util.find_spec("inflect") is not None
 try:
@@ -765,6 +772,21 @@ def is_transformers_version(operation: str, version: str):
     if not _transformers_available:
         return False
     return compare_versions(parse(_transformers_version), operation, version)
+
+
+def is_hf_hub_version(operation: str, version: str):
+    """
+    Compares the current Hugging Face Hub version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _hf_hub_available:
+        return False
+    return compare_versions(parse(_hf_hub_version), operation, version)
 
 
 def is_accelerate_version(operation: str, version: str):

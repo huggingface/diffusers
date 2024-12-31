@@ -361,21 +361,7 @@ class ConfigMixin:
             )
         # Custom path for now
         if dduf_entries:
-            if subfolder is not None:
-                raise ValueError(
-                    "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
-                    "Please check the DDUF structure"
-                )
-            # paths inside a DDUF file must always be "/"
-            config_file = (
-                cls.config_name
-                if pretrained_model_name_or_path == ""
-                else "/".join([pretrained_model_name_or_path, cls.config_name])
-            )
-            if config_file not in dduf_entries:
-                raise ValueError(
-                    f"We did not manage to find the file {config_file} in the dduf file. We only have the following files {dduf_entries.keys()}"
-                )
+            config_file = cls._get_config_file_from_dduf(pretrained_model_name_or_path, subfolder, dduf_entries)
         elif os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
         elif os.path.isdir(pretrained_model_name_or_path):
@@ -635,6 +621,27 @@ class ConfigMixin:
         """
         with open(json_file_path, "w", encoding="utf-8") as writer:
             writer.write(self.to_json_string())
+
+    @classmethod
+    def _get_config_file_from_dduf(
+        cls, pretrained_model_name_or_path: str, subfolder: str, dduf_entries: Dict[str, DDUFEntry]
+    ):
+        if subfolder is not None:
+            raise ValueError(
+                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
+                "Please check the DDUF structure"
+            )
+        # paths inside a DDUF file must always be "/"
+        config_file = (
+            cls.config_name
+            if pretrained_model_name_or_path == ""
+            else "/".join([pretrained_model_name_or_path, cls.config_name])
+        )
+        if config_file not in dduf_entries:
+            raise ValueError(
+                f"We did not manage to find the file {config_file} in the dduf file. We only have the following files {dduf_entries.keys()}"
+            )
+        return config_file
 
 
 def register_to_config(init):

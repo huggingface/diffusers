@@ -19,10 +19,12 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import requests
 import torch
-from huggingface_hub import DDUFEntry, ModelCard, model_info
-from huggingface_hub.utils import validate_hf_hub_args
+from huggingface_hub import DDUFEntry, ModelCard, model_info, snapshot_download
+from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
+from requests.exceptions import HTTPError
 
 from .. import __version__
 from ..utils import (
@@ -36,6 +38,7 @@ from ..utils import (
     is_accelerate_available,
     is_peft_available,
     is_transformers_available,
+    is_transformers_version,
     logging,
 )
 from ..utils.torch_utils import is_compiled_module
@@ -987,3 +990,70 @@ def _get_ignore_patterns(
             )
 
     return ignore_patterns
+
+
+def _download_dduf_file(
+    pretrained_model_name: str,
+    dduf_file: str,
+    pipeline_class_name: str,
+    cache_dir: str,
+    proxies: str,
+    local_files_only: bool,
+    token: str,
+    revision: str,
+):
+    model_info_call_error = None
+    if not local_files_only:
+        try:
+            info = model_info(pretrained_model_name, token=token, revision=revision)
+        except (HTTPError, OfflineModeIsEnabled, requests.ConnectionError) as e:
+            logger.warning(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
+            local_files_only = True
+            model_info_call_error = e  # save error to reraise it if model is not cached locally
+
+    if (
+        not local_files_only
+        and dduf_file is not None
+        and dduf_file not in (sibling.rfilename for sibling in info.siblings)
+    ):
+        raise ValueError(f"Requested {dduf_file} file is not available in {pretrained_model_name}.")
+
+    try:
+        user_agent = {"pipeline_class": pipeline_class_name, "dduf": True}
+        cached_folder = snapshot_download(
+            pretrained_model_name,
+            cache_dir=cache_dir,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            allow_patterns=[dduf_file],
+            user_agent=user_agent,
+        )
+        return cached_folder
+    except FileNotFoundError:
+        # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
+        # This can happen in two cases:
+        # 1. If the user passed `local_files_only=True`                    => we raise the error directly
+        # 2. If we forced `local_files_only=True` when `model_info` failed => we raise the initial error
+        if model_info_call_error is None:
+            # 1. user passed `local_files_only=True`
+            raise
+        else:
+            # 2. we forced `local_files_only=True` when `model_info` failed
+            raise EnvironmentError(
+                f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occurred"
+                " while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace"
+                " above."
+            ) from model_info_call_error
+
+
+def _maybe_raise_error_for_incorrect_transformers(config_dict):
+    has_transformers_component = False
+    for k in config_dict:
+        if isinstance(config_dict[k], list):
+            has_transformers_component = config_dict[k][0] == "transformers"
+            if has_transformers_component:
+                break
+    if has_transformers_component and not is_transformers_version(">", "4.47.1"):
+        raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")

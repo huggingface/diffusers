@@ -159,6 +159,10 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
     def test_callback_cfg(self):
         pass
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22Img2ImgCombinedPipeline
@@ -279,6 +283,10 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
         pass
 
     def test_callback_cfg(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
         pass
 
 
@@ -403,4 +411,8 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
         pass
 
     def test_callback_cfg(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
         pass
