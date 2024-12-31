@@ -69,7 +69,12 @@ class PipelineState:
         return self.intermediates.get(key, default)
 
     def get_output(self, key: str, default: Any = None) -> Any:
-        return self.outputs.get(key, default)
+        if key in self.outputs:
+            return self.outputs[key]
+        elif key in self.intermediates:
+            return self.intermediates[key]
+        else:
+            return default
 
     def to_dict(self) -> Dict[str, Any]:
         return {**self.__dict__, "inputs": self.inputs, "intermediates": self.intermediates, "outputs": self.outputs}
@@ -1132,7 +1137,7 @@ class ModularPipelineBuilder(ConfigMixin):
         # Remove the old blocks
         self.remove_blocks(indices_to_remove)
 
-    def run_blocks(self, state: PipelineState = None, **kwargs):
+    def run_blocks(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
         """
         Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
         """
@@ -1174,7 +1179,18 @@ class ModularPipelineBuilder(ConfigMixin):
                     raise
             self.maybe_free_model_hooks()
 
-        return state
+        if output is None:
+            return state
+
+        if isinstance(output, str):
+            return state.get_output(output)
+        elif isinstance(output, (list, tuple)):
+            outputs = {}
+            for output_name in output:
+                outputs[output_name] = state.get_output(output_name)
+            return outputs
+        else:
+            raise ValueError(f"Output '{output}' is not a valid output type")
 
     def run_pipeline(self, **kwargs):
         state = PipelineState()
