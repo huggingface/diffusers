@@ -26,7 +26,6 @@ import unittest.mock as mock
 
 import numpy as np
 import PIL.Image
-import pytest
 import requests_mock
 import safetensors.torch
 import torch
@@ -64,8 +63,6 @@ from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
-    is_hf_hub_version,
-    is_transformers_version,
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -78,9 +75,11 @@ from diffusers.utils.testing_utils import (
     nightly,
     require_compel,
     require_flax,
+    require_hf_hub_version_greater,
     require_onnxruntime,
     require_torch_2,
     require_torch_gpu,
+    require_transformers_version_greater,
     run_test_in_subprocess,
     slow,
     torch_device,
@@ -1818,11 +1817,8 @@ class PipelineFastTests(unittest.TestCase):
         assert sd._offload_gpu_id == 5
 
     @parameterized.expand([torch.float32, torch.float16])
-    @pytest.mark.xfail(
-        condition=is_hf_hub_version("<", "0.26.5") or is_transformers_version("<", "4.47.1"),
-        reason="Test requires hf hub and transformers latests",
-        strict=True,
-    )
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
     def test_load_dduf_from_hub(self, dtype):
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe = DiffusionPipeline.from_pretrained(
@@ -1839,11 +1835,8 @@ class PipelineFastTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
 
-    @pytest.mark.xfail(
-        condition=is_hf_hub_version("<", "0.26.5") or is_transformers_version("<", "4.47.1"),
-        reason="Test requires hf hub and transformers latests",
-        strict=True,
-    )
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
     def test_load_dduf_from_hub_local_files_only(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe = DiffusionPipeline.from_pretrained(

@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, Union
 
 import numpy as np
 import PIL.Image
-import pytest
 import torch
 import torch.nn as nn
 from huggingface_hub import ModelCard, delete_repo
@@ -38,13 +37,15 @@ from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import is_hf_hub_version, is_transformers_version, logging
+from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_accelerate_version_greater,
     require_accelerator,
+    require_hf_hub_version_greater,
     require_torch,
+    require_transformers_version_greater,
     skip_mps,
     torch_device,
 )
@@ -1992,11 +1993,8 @@ class PipelineTesterMixin:
             )
         )
 
-    @pytest.mark.xfail(
-        condition=is_hf_hub_version("<=", "0.26.5") or is_transformers_version("<=", "4.47.1"),
-        reason="Test requires hf hub and transformers latests",
-        strict=True,
-    )
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
     def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
         from huggingface_hub import export_folder_as_dduf
 
