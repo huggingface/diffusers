@@ -227,27 +227,37 @@ class AutoOffloadStrategy:
         return hooks_to_offload
 
 
-class ModelManager:
+class ComponentsManager:
     def __init__(self):
-        self.models = OrderedDict()
+        self.components = OrderedDict()
         self.model_hooks = None
         self._auto_offload_enabled = False
 
-    def add(self, model_id, model):
-        if model_id not in self.models:
-            self.models[model_id] = model
+    def add(self, name, component):
+        if name not in self.components:
+            self.components[name] = component
             if self._auto_offload_enabled:
                 self.enable_auto_cpu_offload(self._auto_offload_device)
 
-    def remove(self, model_id):
-        self.models.pop(model_id)
+    def remove(self, name):
+        self.components.pop(name)
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)
+    
+    def get(self, names: Union[str, List[str]]):
+        if isinstance(names, str):
+            if names not in self.components:
+                raise ValueError(f"Component '{names}' not found in ComponentsManager")
+            return self.components[names]
+        elif isinstance(names, list):
+            return {n: self.components[n] for n in names}
+        else:
+            raise ValueError(f"Invalid type for names: {type(names)}")
 
     def enable_auto_cpu_offload(self, device, size_estimation_margin=0.1):
-        for model_id, model in self.models.items():
-            if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
-                remove_hook_from_module(model, recurse=True)
+        for name, component in self.components.items():
+            if isinstance(component, torch.nn.Module) and hasattr(component, "_hf_hook"):
+                remove_hook_from_module(component, recurse=True)
 
         self.disable_auto_cpu_offload()
         offload_strategy = AutoOffloadStrategy(size_estimation_margin=size_estimation_margin)
@@ -255,9 +265,10 @@ class ModelManager:
         if device.index is None:
             device = torch.device(f"{device.type}:{0}")
         all_hooks = []
-        for model_id, model in self.models.items():
-            hook = custom_offload_with_hook(model_id, model, device, offload_strategy=offload_strategy)
-            all_hooks.append(hook)
+        for name, component in self.components.items():
+            if isinstance(component, torch.nn.Module):
+                hook = custom_offload_with_hook(name, component, device, offload_strategy=offload_strategy)
+                all_hooks.append(hook)
 
         for hook in all_hooks:
             other_hooks = [h for h in all_hooks if h is not hook]
@@ -284,33 +295,67 @@ class ModelManager:
 
     def __repr__(self):
         col_widths = {
-            "id": max(15, max(len(id) for id in self.models.keys())),
-            "class": max(25, max(len(model.__class__.__name__) for model in self.models.values())),
+            "id": max(15, max(len(id) for id in self.components.keys())),
+            "class": max(25, max(len(component.__class__.__name__) for component in self.components.values())),
             "device": 10,
             "dtype": 15,
             "size": 10,
         }
 
-        # Create the header
+        # Create the header lines
         sep_line = "=" * (sum(col_widths.values()) + len(col_widths) * 3 - 1) + "\n"
         dash_line = "-" * (sum(col_widths.values()) + len(col_widths) * 3 - 1) + "\n"
 
-        output = "ModelManager:\n" + sep_line
+        output = "Components:\n" + sep_line
 
-        # Column headers
-        output += f"{'Model ID':<{col_widths['id']}} | {'Class':<{col_widths['class']}} | "
-        output += f"{'Device':<{col_widths['device']}} | {'Dtype':<{col_widths['dtype']}} | Size (GB) \n"
-        output += dash_line
+        # Separate components into models and others
+        models = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
+        others = {k: v for k, v in self.components.items() if not isinstance(v, torch.nn.Module)}
 
-        # Model entries
-        for model_id, model in self.models.items():
-            device = model.device
-            dtype = model.dtype
-            size_bytes = get_memory_footprint(model)
-            size_gb = size_bytes / (1024**3)
+        # Models section
+        if models:
+            output += "Models:\n" + dash_line
+            # Column headers
+            output += f"{'Model ID':<{col_widths['id']}} | {'Class':<{col_widths['class']}} | "
+            output += f"{'Device':<{col_widths['device']}} | {'Dtype':<{col_widths['dtype']}} | Size (GB) \n"
+            output += dash_line
 
-            output += f"{model_id:<{col_widths['id']}} | {model.__class__.__name__:<{col_widths['class']}} | "
-            output += f"{str(device):<{col_widths['device']}} | {str(dtype):<{col_widths['dtype']}} | {size_gb:.2f}\n"
+            # Model entries
+            for name, component in models.items():
+                device = component.device
+                dtype = component.dtype
+                size_bytes = get_memory_footprint(component)
+                size_gb = size_bytes / (1024**3)
 
-        output += sep_line
+                output += f"{name:<{col_widths['id']}} | {component.__class__.__name__:<{col_widths['class']}} | "
+                output += f"{str(device):<{col_widths['device']}} | {str(dtype):<{col_widths['dtype']}} | {size_gb:.2f}\n"
+            output += dash_line
+
+        # Other components section
+        if others:
+            if models:  # Add extra newline if we had models section
+                output += "\n"
+            output += "Other Components:\n" + dash_line
+            # Column headers for other components
+            output += f"{'Component ID':<{col_widths['id']}} | {'Class':<{col_widths['class']}}\n"
+            output += dash_line
+
+            # Other component entries
+            for name, component in others.items():
+                output += f"{name:<{col_widths['id']}} | {component.__class__.__name__:<{col_widths['class']}}\n"
+            output += dash_line
+
         return output
+
+    def add_from_pretrained(self, pretrained_model_name_or_path, **kwargs):
+        from ..pipelines.pipeline_utils import DiffusionPipeline
+        pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        for name, component in pipe.components.items():
+            if name not in self.components and component is not None:
+                self.add(name, component)
+            elif name in self.components:
+                logger.warning(
+                    f"Component '{name}' already exists in ComponentsManager and will not be added. To add it, either:\n"
+                    f"1. remove the existing component with remove('{name}')\n"
+                    f"2. Use a different name: add('{name}_2', component)"
+                )
