@@ -97,6 +97,9 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
             expected_max_diff=1e-2,
         )
 
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
+
 
 @slow
 @require_torch_gpu

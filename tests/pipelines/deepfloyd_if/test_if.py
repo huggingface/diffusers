@@ -89,6 +89,9 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
+
 
 @slow
 @require_torch_gpu

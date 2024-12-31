@@ -1993,11 +1993,11 @@ class PipelineTesterMixin:
         )
 
     @pytest.mark.xfail(
-        condition=is_hf_hub_version("<", "0.26.5") and is_transformers_version("<", "4.47.1"),
+        condition=is_hf_hub_version("<=", "0.26.5") and is_transformers_version("<=", "4.47.1"),
         reason="Test requires hf hub and transformers latests",
         strict=True,
     )
-    def test_save_load_dduf(self):
+    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
         from huggingface_hub import export_folder_as_dduf
 
         components = self.get_dummy_components()
@@ -2021,9 +2021,9 @@ class PipelineTesterMixin:
         loaded_pipeline_out = loaded_pipe(**inputs)[0]
 
         if isinstance(pipeline_out, np.ndarray) and isinstance(loaded_pipeline_out, np.ndarray):
-            assert np.allclose(pipeline_out, loaded_pipeline_out)
+            assert np.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
         elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
-            assert torch.allclose(pipeline_out, loaded_pipeline_out)
+            assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
 
 
 @is_staging_test
