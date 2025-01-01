@@ -31,6 +31,7 @@ from ...utils import (
     USE_PEFT_BACKEND,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -45,6 +46,13 @@ from ..pixart_alpha.pipeline_pixart_alpha import (
 from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
 from .pipeline_output import SanaPipelineOutput
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -62,11 +70,11 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import SanaPipeline
 
         >>> pipe = SanaPipeline.from_pretrained(
-        ...     "Efficient-Large-Model/Sana_1600M_1024px_diffusers", torch_dtype=torch.float32
+        ...     "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers", torch_dtype=torch.float32
         ... )
         >>> pipe.to("cuda")
         >>> pipe.text_encoder.to(torch.bfloat16)
-        >>> pipe.transformer = pipe.transformer.to(torch.float16)
+        >>> pipe.transformer = pipe.transformer.to(torch.bfloat16)
 
         >>> image = pipe(prompt='a cyberpunk cat with a neon sign that says "Sana"')[0]
         >>> image[0].save("output.png")
@@ -863,6 +871,9 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if output_type == "latent":
             image = latents
