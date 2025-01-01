@@ -708,10 +708,7 @@ class ModularPipeline(ConfigMixin):
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
 
-    def __call__(self, *args, **kwargs):
-        raise NotImplementedError("__call__ is not implemented for ModularPipeline")
-
-    def run_blocks(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
+    def __call__(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
         """
         Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
         """
