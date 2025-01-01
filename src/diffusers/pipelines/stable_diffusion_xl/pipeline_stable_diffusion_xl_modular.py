@@ -123,6 +123,8 @@ def retrieve_latents(
 
 
 class StableDiffusionXLInputStep(PipelineBlock):
+    model_name = "stable-diffusion-xl"
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -154,6 +156,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
 class StableDiffusionXLTextEncoderStep(PipelineBlock):
     expected_components = ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
     expected_configs = ["force_zeros_for_empty_prompt"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -314,6 +317,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
 
 class StableDiffusionXLVAEEncoderStep(PipelineBlock):
     expected_components = ["vae"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -409,6 +413,7 @@ class StableDiffusionXLVAEEncoderStep(PipelineBlock):
 
 class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     expected_components = ["scheduler"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -488,6 +493,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
 
 class StableDiffusionXLSetTimestepsStep(PipelineBlock):
     expected_components = ["scheduler"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -540,6 +546,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
 
 class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     expected_components = ["vae", "scheduler"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -615,6 +622,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
 
 class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     expected_components = ["scheduler"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -696,6 +704,7 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
 
 class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     expected_configs = ["requires_aesthetics_score"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -799,6 +808,8 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
 
 
 class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
+    model_name = "stable-diffusion-xl"
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -893,6 +904,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
 
 class StableDiffusionXLDenoiseStep(PipelineBlock):
     expected_components = ["unet", "scheduler", "guider"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1029,6 +1041,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
 
 class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     expected_components = ["unet", "controlnet", "scheduler", "guider", "controlnet_guider"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1300,6 +1313,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
 
 class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
     expected_components = ["vae"]
+    model_name = "stable-diffusion-xl"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:

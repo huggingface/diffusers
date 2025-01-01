@@ -27,6 +27,7 @@ from ..utils import (
     is_accelerate_version,
     logging,
 )
+from .pipeline_loading_utils import _get_pipeline_class
 
 
 if is_accelerate_available():
@@ -35,9 +36,11 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-MODULAR_PIPELINE_MAPPING = {
-    "stable-diffusion-xl": "StableDiffusionXLModularPipeline",
-}
+MODULAR_PIPELINE_MAPPING = OrderedDict(
+    [
+        ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
+    ]
+)
 
 
 @dataclass
@@ -103,6 +106,7 @@ class PipelineBlock:
     # pipelie block should set the default value for all expected config/components, so maybe we do not need to explicitly set the list
     expected_components = []
     expected_configs = []
+    model_name = None
 
     @property
     def inputs(self) -> Tuple[Tuple[str, Any], ...]:
@@ -192,6 +196,10 @@ class MultiPipelineBlocks:
 
     block_classes = []
     block_prefixes = []
+
+    @property
+    def model_name(self):
+        return next(iter(self.blocks.values())).model_name
 
     @property
     def expected_components(self):
@@ -605,6 +613,13 @@ class ModularPipeline(ConfigMixin):
         # add default auxiliaries from pipeline_block (e.g. image_processor)
         for key, value in block.auxiliaries.items():
             setattr(self, key, value)
+
+    @classmethod
+    def from_block(cls, block):
+        modular_pipeline_class_name = MODULAR_PIPELINE_MAPPING[block.model_name]
+        modular_pipeline_class = _get_pipeline_class(cls, class_name=modular_pipeline_class_name)
+
+        return modular_pipeline_class(block)
 
     @property
     def device(self) -> torch.device:
