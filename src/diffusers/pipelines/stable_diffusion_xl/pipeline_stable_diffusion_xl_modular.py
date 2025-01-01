@@ -17,7 +17,6 @@ from typing import Any, List, Optional, Tuple, Union
 
 import PIL
 import torch
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...guider import CFGGuider
 from ...image_processor import VaeImageProcessor
@@ -135,9 +134,6 @@ class StableDiffusionXLInputStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["batch_size"]
 
-    def __init__(self):
-        super().__init__()
-
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         prompt = state.get_input("prompt")
@@ -158,7 +154,6 @@ class StableDiffusionXLInputStep(PipelineBlock):
 class StableDiffusionXLTextEncoderStep(PipelineBlock):
     expected_components = ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
     expected_configs = ["force_zeros_for_empty_prompt"]
-    _model_cpu_offload_seq = "text_encoder->text_encoder_2"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -186,21 +181,13 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             "negative_pooled_prompt_embeds",
         ]
 
-    def __init__(
-        self,
-        text_encoder: Optional[CLIPTextModel] = None,
-        text_encoder_2: Optional[CLIPTextModelWithProjection] = None,
-        tokenizer: Optional[CLIPTokenizer] = None,
-        tokenizer_2: Optional[CLIPTokenizer] = None,
-        force_zeros_for_empty_prompt: bool = True,
-    ):
-        super().__init__(
-            text_encoder=text_encoder,
-            text_encoder_2=text_encoder_2,
-            tokenizer=tokenizer,
-            tokenizer_2=tokenizer_2,
-            force_zeros_for_empty_prompt=force_zeros_for_empty_prompt,
-        )
+    def __init__(self):
+        super().__init__()
+        self.configs["force_zeros_for_empty_prompt"] = True
+        self.components["text_encoder"] = None
+        self.components["text_encoder_2"] = None
+        self.components["tokenizer"] = None
+        self.components["tokenizer_2"] = None
 
     @staticmethod
     def check_inputs(
@@ -327,7 +314,6 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
 
 class StableDiffusionXLVAEEncoderStep(PipelineBlock):
     expected_components = ["vae"]
-    expected_auxiliaries = ["image_processor"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -348,10 +334,10 @@ class StableDiffusionXLVAEEncoderStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["image_latents"]
 
-    def __init__(self, vae=None):
-        super().__init__(vae=vae)
-        self.image_processor = VaeImageProcessor()
-        self.auxiliaries["image_processor"] = self.image_processor
+    def __init__(self):
+        super().__init__()
+        self.components["vae"] = None
+        self.auxiliaries["image_processor"] = VaeImageProcessor()
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -445,8 +431,9 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["timesteps", "num_inference_steps", "latent_timestep"]
 
-    def __init__(self, scheduler=None):
-        super().__init__(scheduler=scheduler)
+    def __init__(self):
+        super().__init__()
+        self.components["scheduler"] = None
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -516,8 +503,9 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["timesteps", "num_inference_steps"]
 
-    def __init__(self, scheduler=None):
-        super().__init__(scheduler=scheduler)
+    def __init__(self):
+        super().__init__()
+        self.components["scheduler"] = None
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -552,7 +540,6 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
 
 class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     expected_components = ["vae", "scheduler"]
-    expected_auxiliaries = ["image_processor"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -576,10 +563,11 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
 
-    def __init__(self, vae=None, scheduler=None):
-        super().__init__(vae=vae, scheduler=scheduler)
-        self.image_processor = VaeImageProcessor()
-        self.auxiliaries["image_processor"] = self.image_processor
+    def __init__(self):
+        super().__init__()
+        self.auxiliaries["image_processor"] = VaeImageProcessor()
+        self.components["vae"] = None
+        self.components["scheduler"] = None
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -648,8 +636,9 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
 
-    def __init__(self, scheduler=None):
-        super().__init__(scheduler=scheduler)
+    def __init__(self):
+        super().__init__()
+        self.components["scheduler"] = None
 
     @staticmethod
     def check_inputs(pipeline, height, width):
@@ -732,8 +721,9 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
 
-    def __init__(self, requires_aesthetics_score=False):
-        super().__init__(requires_aesthetics_score=requires_aesthetics_score)
+    def __init__(self):
+        super().__init__()
+        self.configs["requires_aesthetics_score"] = False
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -830,9 +820,6 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
     @property
     def intermediates_outputs(self) -> List[str]:
         return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
-
-    def __init__(self):
-        super().__init__()
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -937,10 +924,11 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
 
-    def __init__(self, unet=None, scheduler=None, guider=None):
-        if guider is None:
-            guider = CFGGuider()
-        super().__init__(unet=unet, scheduler=scheduler, guider=guider)
+    def __init__(self):
+        super().__init__()
+        self.components["guider"] = CFGGuider()
+        self.components["scheduler"] = None
+        self.components["unet"] = None
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1041,8 +1029,6 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
 
 class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     expected_components = ["unet", "controlnet", "scheduler", "guider", "controlnet_guider"]
-    expected_auxiliaries = ["control_image_processor"]
-    _model_cpu_offload_seq = "unet"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1081,30 +1067,14 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
 
-    def __init__(
-        self,
-        unet=None,
-        controlnet=None,
-        scheduler=None,
-        guider=None,
-        controlnet_guider=None,
-        vae_scale_factor=8.0,
-    ):
-        if guider is None:
-            guider = CFGGuider()
-        if controlnet_guider is None:
-            controlnet_guider = CFGGuider()
-        super().__init__(
-            unet=unet,
-            controlnet=controlnet,
-            scheduler=scheduler,
-            guider=guider,
-            controlnet_guider=controlnet_guider,
-            vae_scale_factor=vae_scale_factor,
-        )
-        control_image_processor = VaeImageProcessor(
-            vae_scale_factor=vae_scale_factor, do_convert_rgb=True, do_normalize=False
-        )
+    def __init__(self):
+        super().__init__()
+        self.components["guider"] = CFGGuider()
+        self.components["controlnet_guider"] = CFGGuider()
+        self.components["scheduler"] = None
+        self.components["unet"] = None
+        self.components["controlnet"] = None
+        control_image_processor = VaeImageProcessor(do_convert_rgb=True, do_normalize=False)
         self.auxiliaries["control_image_processor"] = control_image_processor
 
     @torch.no_grad()
@@ -1330,7 +1300,6 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
 
 class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
     expected_components = ["vae"]
-    expected_auxiliaries = ["image_processor"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1347,9 +1316,10 @@ class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["images"]
 
-    def __init__(self, vae=None, vae_scale_factor=8):
-        super().__init__(vae=vae, vae_scale_factor=vae_scale_factor)
-        self.auxiliaries["image_processor"] = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+    def __init__(self):
+        super().__init__()
+        self.components["vae"] = None
+        self.auxiliaries["image_processor"] = VaeImageProcessor(vae_scale_factor=8)
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1468,9 +1438,6 @@ class StableDiffusionXLModularPipeline(
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,
 ):
-    def __init__(self):
-        super().__init__()
-
     @property
     def default_sample_size(self):
         default_sample_size = 128

@@ -356,7 +356,7 @@ class PAGGuider:
         self._guidance_rescale = guidance_rescale
         self._batch_size = batch_size
         if not hasattr(pipeline, "original_attn_proc") or pipeline.original_attn_proc is None:
-            self.original_attn_proc = pipeline.unet.attn_processors
+            pipeline.original_attn_proc = pipeline.unet.attn_processors
             self._set_pag_attn_processor(
                 model=pipeline.unet if hasattr(pipeline, "unet") else pipeline.transformer,
                 pag_applied_layers=self.pag_applied_layers,
@@ -366,11 +366,11 @@ class PAGGuider:
     def reset_guider(self, pipeline):
         if (
             self.do_perturbed_attention_guidance
-            and hasattr(self, "original_attn_proc")
-            and self.original_attn_proc is not None
+            and hasattr(pipeline, "original_attn_proc")
+            and pipeline.original_attn_proc is not None
         ):
-            pipeline.unet.set_attn_processor(self.original_attn_proc)
-            self.original_attn_proc = None
+            pipeline.unet.set_attn_processor(pipeline.original_attn_proc)
+            pipeline.original_attn_proc = None
 
     def maybe_update_guider(self, pipeline, timestep):
         pass

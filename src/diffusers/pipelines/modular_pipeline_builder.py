@@ -16,7 +16,7 @@ import traceback
 import warnings
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from tqdm.auto import tqdm
@@ -27,9 +27,6 @@ from ..utils import (
     is_accelerate_version,
     logging,
 )
-from ..utils.hub_utils import validate_hf_hub_args
-from .pipeline_loading_utils import _fetch_class_library_tuple
-from .pipeline_utils import DiffusionPipeline
 
 
 if is_accelerate_available():
@@ -102,10 +99,10 @@ class PipelineState:
 
 
 class PipelineBlock:
+    # YiYi Notes: do we need this?
+    # pipelie block should set the default value for all expected config/components, so maybe we do not need to explicitly set the list
     expected_components = []
-    expected_auxiliaries = []
     expected_configs = []
-    _model_cpu_offload_seq = None
 
     @property
     def inputs(self) -> Tuple[Tuple[str, Any], ...]:
@@ -120,109 +117,10 @@ class PipelineBlock:
     def intermediates_outputs(self) -> List[str]:
         return []
 
-    @property
-    def model_cpu_offload_seq(self):
-        """
-        adjust the model_cpu_offload_seq to reflect actual components loaded in the block
-        """
-
-        model_cpu_offload_seq = []
-        block_component_names = [k for k, v in self.components.items() if isinstance(v, torch.nn.Module)]
-        if len(block_component_names) == 0:
-            return None
-        if len(block_component_names) == 1:
-            return block_component_names[0]
-        else:
-            if self._model_cpu_offload_seq is None:
-                raise ValueError(
-                    f"Block {self.__class__.__name__} has multiple components but no model_cpu_offload_seq specified"
-                )
-            model_cpu_offload_seq = [m for m in self._model_cpu_offload_seq.split("->") if m in block_component_names]
-            remaining = [m for m in block_component_names if m not in model_cpu_offload_seq]
-            if remaining:
-                logger.warning(
-                    f"Block {self.__class__.__name__} has components {remaining} that are not in model_cpu_offload_seq {self._model_cpu_offload_seq}"
-                )
-            return "->".join(model_cpu_offload_seq)
-
-    def update_states(self, **kwargs):
-        """
-        Update components and configs after instance creation. Auxiliaries (e.g. image_processor) should be defined for
-        each pipeline block, does not need to be updated by users. Logs if existing non-None states are being
-        overwritten.
-
-        Args:
-            **kwargs: Keyword arguments containing components, or configs to add/update.
-            e.g. pipeline_block.update_states(unet=unet1, vae=None)
-        """
-        # Add expected components
-        for component_name in self.expected_components:
-            if component_name in kwargs:
-                if component_name in self.components and self.components[component_name] is not None:
-                    if id(self.components[component_name]) != id(kwargs[component_name]):
-                        logger.info(
-                            f"Overwriting existing component '{component_name}' "
-                            f"(type: {type(self.components[component_name]).__name__}) "
-                            f"with new value (type: {type(kwargs[component_name]).__name__})"
-                        )
-                self.components[component_name] = kwargs.pop(component_name)
-
-        # Add expected configs
-        for config_name in self.expected_configs:
-            if config_name in kwargs:
-                if config_name in self.configs and self.configs[config_name] is not None:
-                    if self.configs[config_name] != kwargs[config_name]:
-                        logger.info(
-                            f"Overwriting existing config '{config_name}' "
-                            f"(value: {self.configs[config_name]}) "
-                            f"with new value ({kwargs[config_name]})"
-                        )
-                self.configs[config_name] = kwargs.pop(config_name)
-
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.components: Dict[str, Any] = {}
         self.auxiliaries: Dict[str, Any] = {}
         self.configs: Dict[str, Any] = {}
-
-        self.update_states(**kwargs)
-
-    # YiYi notes, does pipeline block need "states"? it is not going to be used on its own
-    # TODO: address existing components -> overwrite or not? currently overwrite
-    def add_states_from_pipe(self, pipe: DiffusionPipeline, **kwargs):
-        """
-        add components/auxiliaries/configs from a diffusion pipeline object.
-
-        Args:
-            pipe: A `[DiffusionPipeline]` object.
-            **kwargs: Additional states to update, these take precedence over pipe values.
-
-        Returns:
-            PipelineBlock: An instance loaded with the pipeline's components and configurations.
-        """
-        states_to_update = {}
-
-        # Get components - prefer kwargs over pipe values
-        for component_name in self.expected_components:
-            if component_name in kwargs:
-                states_to_update[component_name] = kwargs.pop(component_name)
-            elif component_name in pipe.components:
-                states_to_update[component_name] = pipe.components[component_name]
-
-        # Get configs - prefer kwargs over pipe values
-        pipe_config = dict(pipe.config)
-        for config_name in self.expected_configs:
-            if config_name in kwargs:
-                states_to_update[config_name] = kwargs.pop(config_name)
-            elif config_name in pipe_config:
-                states_to_update[config_name] = pipe_config[config_name]
-
-        # Update all states at once
-        self.update_states(**states_to_update)
-
-    @validate_hf_hub_args
-    def add_states_from_pretrained(self, pretrained_model_or_path, **kwargs):
-        base_pipeline = DiffusionPipeline.from_pretrained(pretrained_model_or_path, **kwargs)
-        self.add_states_from_pipe(base_pipeline, **kwargs)
 
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         raise NotImplementedError("__call__ method must be implemented in subclasses")
@@ -236,14 +134,6 @@ class PipelineBlock:
         all_components = sorted(expected_components | loaded_components)
         components = ", ".join(
             f"{k}={type(self.components[k]).__name__}" if k in loaded_components else f"{k}" for k in all_components
-        )
-
-        # Auxiliaries section
-        expected_auxiliaries = set(getattr(self, "expected_auxiliaries", []))
-        loaded_auxiliaries = set(self.auxiliaries.keys())
-        all_auxiliaries = sorted(expected_auxiliaries | loaded_auxiliaries)
-        auxiliaries = ", ".join(
-            f"{k}={type(self.auxiliaries[k]).__name__}" if k in loaded_auxiliaries else f"{k}" for k in all_auxiliaries
         )
 
         # Configs section
@@ -263,7 +153,6 @@ class PipelineBlock:
         return (
             f"{class_name}(\n"
             f"  components: {components}\n"
-            f"  auxiliaries: {auxiliaries}\n"
             f"  configs: {configs}\n"
             f"  blocks: {blocks}\n"
             f"  inputs: {inputs}\n"
@@ -303,7 +192,6 @@ class MultiPipelineBlocks:
 
     block_classes = []
     block_prefixes = []
-    _model_cpu_offload_seq = None
 
     @property
     def expected_components(self):
@@ -315,15 +203,6 @@ class MultiPipelineBlocks:
         return expected_components
 
     @property
-    def expected_auxiliaries(self):
-        expected_auxiliaries = []
-        for block in self.blocks.values():
-            for auxiliary in block.expected_auxiliaries:
-                if auxiliary not in expected_auxiliaries:
-                    expected_auxiliaries.append(auxiliary)
-        return expected_auxiliaries
-
-    @property
     def expected_configs(self):
         expected_configs = []
         for block in self.blocks.values():
@@ -332,11 +211,11 @@ class MultiPipelineBlocks:
                     expected_configs.append(config)
         return expected_configs
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         blocks = OrderedDict()
         for block_prefix, block_cls in zip(self.block_prefixes, self.block_classes):
             block_name = f"{block_prefix}_step" if block_prefix != "" else "step"
-            blocks[block_name] = block_cls(**kwargs)
+            blocks[block_name] = block_cls()
         self.blocks = blocks
 
     # YiYi TODO: address the case where multiple blocks have the same component/auxiliary/config; give out warning etc
@@ -345,7 +224,12 @@ class MultiPipelineBlocks:
         # Combine components from all blocks
         components = {}
         for block_name, block in self.blocks.items():
-            components.update(block.components)
+            for key, value in block.components.items():
+                # Only update if:
+                # 1. Key doesn't exist yet in components, OR
+                # 2. New value is not None
+                if key not in components or value is not None:
+                    components[key] = value
         return components
 
     @property
@@ -383,95 +267,6 @@ class MultiPipelineBlocks:
     def __call__(self, pipeline, state):
         raise NotImplementedError("__call__ method must be implemented in subclasses")
 
-    def update_states(self, **kwargs):
-        """
-        Update states for each block with support for block-specific kwargs.
-
-        Args:
-            **kwargs: Can include both general kwargs (e.g., 'unet') and
-                     block-specific kwargs (e.g., 'img2img_step_unet')
-
-        Example:
-            pipeline.update_states(
-                img2img_step_unet=unet2, # Only for img2img_step step_unet=unet1, # Only for step vae=vae1 # For any
-                block that expects vae
-            )
-        """
-        for block_name, block in self.blocks.items():
-            # Prepare block-specific kwargs
-            if isinstance(block, PipelineBlock):
-                block_kwargs = {}
-
-                # Check for block-specific kwargs first (e.g., 'img2img_unet')
-                prefix = f"{block_name.replace('_step', '')}_"
-                for key, value in kwargs.items():
-                    if key.startswith(prefix):
-                        # Remove prefix and add to block kwargs
-                        block_kwargs[key[len(prefix) :]] = value
-
-                # For any expected component/auxiliary/config not found with prefix,
-                # fall back to general kwargs
-                for name in (
-                    block.expected_components
-                    +
-                    # block.expected_auxiliaries +
-                    block.expected_configs
-                ):
-                    if name not in block_kwargs:
-                        if name in kwargs:
-                            block_kwargs[name] = kwargs[name]
-            elif isinstance(block, MultiPipelineBlocks):
-                block_kwargs = kwargs
-            else:
-                raise ValueError(f"Unsupported block type: {type(block).__name__}")
-
-            # Update the block with its specific kwargs
-            block.update_states(**block_kwargs)
-
-    def add_states_from_pipe(self, pipe: DiffusionPipeline, **kwargs):
-        """
-        Load components from pipe with support for block-specific kwargs.
-
-        Args:
-            pipe: DiffusionPipeline object
-            **kwargs: Can include both general kwargs (e.g., 'unet') and
-                     block-specific kwargs (e.g., 'img2img_unet' for 'img2img_step')
-        """
-        for block_name, block in self.blocks.items():
-            # Handle different block types
-            if isinstance(block, PipelineBlock):
-                block_kwargs = {}
-
-                # Check for block-specific kwargs first (e.g., 'img2img_unet')
-                prefix = f"{block_name.replace('_step', '')}_"
-                for key, value in kwargs.items():
-                    if key.startswith(prefix):
-                        # Remove prefix and add to block kwargs
-                        block_kwargs[key[len(prefix) :]] = value
-
-                # For any expected component/auxiliary/config not found with prefix,
-                # fall back to general kwargs
-                for name in (
-                    block.expected_components
-                    +
-                    # block.expected_auxiliaries +
-                    block.expected_configs
-                ):
-                    if name not in block_kwargs:
-                        if name in kwargs:
-                            block_kwargs[name] = kwargs[name]
-            elif isinstance(block, MultiPipelineBlocks):
-                block_kwargs = kwargs
-            else:
-                raise ValueError(f"Unsupported block type: {type(block).__name__}")
-
-            # Load the block with its specific kwargs
-            block.add_states_from_pipe(pipe, **block_kwargs)
-
-    def add_states_from_pretrained(self, pretrained_model_or_path, **kwargs):
-        base_pipeline = DiffusionPipeline.from_pretrained(pretrained_model_or_path, **kwargs)
-        self.add_states_from_pipe(base_pipeline, **kwargs)
-
     def __repr__(self):
         class_name = self.__class__.__name__
 
@@ -485,12 +280,8 @@ class MultiPipelineBlocks:
         )
 
         # Auxiliaries section
-        expected_auxiliaries = set(getattr(self, "expected_auxiliaries", []))
-        loaded_auxiliaries = set(self.auxiliaries.keys())
-        all_auxiliaries = sorted(expected_auxiliaries | loaded_auxiliaries)
         auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
-            f"    - {k}={type(self.auxiliaries[k]).__name__}" if k in loaded_auxiliaries else f"    - {k}"
-            for k in all_auxiliaries
+            f"    - {k}={type(v).__name__}" for k, v in self.auxiliaries.items()
         )
 
         # Configs section
@@ -527,6 +318,8 @@ class MultiPipelineBlocks:
         )
 
 
+# YiYi TODO: remove the trigger input logic and keep it more flexible and less convenient:
+# user will need to explicitly write the dispatch logic in __call__ for each subclass of this
 class AutoPipelineBlocks(MultiPipelineBlocks):
     """
     A class that automatically selects which block to run based on trigger inputs.
@@ -541,8 +334,8 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
     block_prefixes = []
     block_trigger_inputs = []
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self):
+        super().__init__()
         self.__post_init__()
 
     def __post_init__(self):
@@ -610,12 +403,6 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
             logger.error(error_msg)
             raise
 
-    @property
-    def model_cpu_offload_seq(self):
-        default_block = self.trigger_to_block_map.get(None)
-
-        return default_block.model_cpu_offload_seq
-
     def __repr__(self):
         class_name = self.__class__.__name__
 
@@ -629,12 +416,8 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
         )
 
         # Auxiliaries section
-        expected_auxiliaries = set(getattr(self, "expected_auxiliaries", []))
-        loaded_auxiliaries = set(self.auxiliaries.keys())
-        all_auxiliaries = sorted(expected_auxiliaries | loaded_auxiliaries)
         auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
-            f"    - {k}={type(self.auxiliaries[k]).__name__}" if k in loaded_auxiliaries else f"    - {k}"
-            for k in all_auxiliaries
+            f"    - {k}={type(v).__name__}" for k, v in self.auxiliaries.items()
         )
 
         # Configs section
@@ -733,37 +516,6 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
                 raise
         return pipeline, state
 
-    @property
-    def model_cpu_offload_seq(self):
-        model_cpu_offload_seq = []
-
-        for block_name, block in self.blocks.items():
-            block_components = [k for k, v in block.components.items() if isinstance(v, torch.nn.Module)]
-            if len(block_components) == 0:
-                continue
-            if len(block_components) == 1:
-                if block_components[0] in model_cpu_offload_seq:
-                    model_cpu_offload_seq.remove(block_components[0])
-                model_cpu_offload_seq.append(block_components[0])
-            else:
-                if block.model_cpu_offload_seq is None:
-                    raise ValueError(
-                        f"Block {block_name}:{block.__class__.__name__} has multiple components {block_components} but no model_cpu_offload_seq specified"
-                    )
-                for model_str in block.model_cpu_offload_seq.split("->"):
-                    if model_str in block_components:
-                        # if it is already in the list,remove previous occurence and add to the end
-                        if model_str in model_cpu_offload_seq:
-                            model_cpu_offload_seq.remove(model_str)
-                        model_cpu_offload_seq.append(model_str)
-                        block_components.remove(model_str)
-                if len(block_components) > 0:
-                    logger.warning(
-                        f"Block {block_name}:{block.__class__.__name__} has components {block_components} that are not in model_cpu_offload_seq {block.model_cpu_offload_seq}"
-                    )
-
-        return "->".join(model_cpu_offload_seq)
-
     def __repr__(self):
         class_name = self.__class__.__name__
 
@@ -777,12 +529,8 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
         )
 
         # Auxiliaries section
-        expected_auxiliaries = set(getattr(self, "expected_auxiliaries", []))
-        loaded_auxiliaries = set(self.auxiliaries.keys())
-        all_auxiliaries = sorted(expected_auxiliaries | loaded_auxiliaries)
         auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
-            f"    - {k}={type(self.auxiliaries[k]).__name__}" if k in loaded_auxiliaries else f"    - {k}"
-            for k in all_auxiliaries
+            f"    - {k}={type(v).__name__}" for k, v in self.auxiliaries.items()
         )
 
         # Configs section
@@ -842,31 +590,21 @@ class ModularPipelineBuilder(ConfigMixin):
     """
 
     config_name = "model_index.json"
-    model_cpu_offload_seq = None
-    hf_device_map = None
     _exclude_from_cpu_offload = []
-    default_pipeline_blocks = []
 
-    def __init__(self):
-        super().__init__()
-        self.register_to_config()
-        self.pipeline_blocks = []
+    def __init__(self, block):
+        self.pipeline_block = block
 
-    # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.register_modules
-    def register_modules(self, **kwargs):
-        for name, module in kwargs.items():
-            # retrieve library
-            if module is None or isinstance(module, (tuple, list)) and module[0] is None:
-                register_dict = {name: (None, None)}
-            else:
-                library, class_name = _fetch_class_library_tuple(module)
-                register_dict = {name: (library, class_name)}
+        # add default components from pipeline_block (e.g. guider)
+        for key, value in block.components.items():
+            setattr(self, key, value)
 
-            # save model index config
-            self.register_to_config(**register_dict)
+        # add default configs from pipeline_block (e.g. force_zeros_for_empty_prompt)
+        self.register_to_config(**block.configs)
 
-            # set models
-            setattr(self, name, module)
+        # add default auxiliaries from pipeline_block (e.g. image_processor)
+        for key, value in block.auxiliaries.items():
+            setattr(self, key, value)
 
     @property
     def device(self) -> torch.device:
@@ -920,69 +658,20 @@ class ModularPipelineBuilder(ConfigMixin):
         return torch.float32
 
     @property
-    def components(self) -> Dict[str, Any]:
-        r"""
-        The `self.components` property returns all modules needed to initialize the pipeline, as defined by the
-        pipeline blocks.
+    def expected_components(self):
+        return self.pipeline_block.expected_components
 
-        Returns (`dict`):
-            A dictionary containing all the components defined in the pipeline blocks.
-        """
+    @property
+    def expected_configs(self):
+        return self.pipeline_block.expected_configs
 
-        expected_components = set()
-        for block in self.pipeline_blocks:
-            expected_components.update(block.components.keys())
-
+    @property
+    def components(self):
         components = {}
-        for name in expected_components:
+        for name in self.expected_components:
             if hasattr(self, name):
                 components[name] = getattr(self, name)
-
         return components
-
-    @property
-    def auxiliaries(self) -> Dict[str, Any]:
-        r"""
-        The `self.auxiliaries` property returns all auxiliaries needed to initialize the pipeline, as defined by the
-        pipeline blocks.
-
-        Returns (`dict`):
-            A dictionary containing all the auxiliaries defined in the pipeline blocks.
-        """
-        # First collect all expected auxiliary names from blocks
-        expected_auxiliaries = set()
-        for block in self.pipeline_blocks:
-            expected_auxiliaries.update(block.auxiliaries.keys())
-
-        # Then fetch the actual auxiliaries from the pipeline
-        auxiliaries = {}
-        for name in expected_auxiliaries:
-            if hasattr(self, name):
-                auxiliaries[name] = getattr(self, name)
-
-        return auxiliaries
-
-    @property
-    def configs(self) -> Dict[str, Any]:
-        r"""
-        The `self.configs` property returns all configs needed to initialize the pipeline, as defined by the pipeline
-        blocks.
-
-        Returns (`dict`):
-            A dictionary containing all the configs defined in the pipeline blocks.
-        """
-        # First collect all expected config names from blocks
-        expected_configs = set()
-        for block in self.pipeline_blocks:
-            expected_configs.update(block.configs.keys())
-
-        # Then fetch the actual configs from the pipeline's config
-        configs = {}
-        for name in expected_configs:
-            if name in self.config:
-                configs[name] = self.config[name]
-
-        return configs
 
     # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.progress_bar
     def progress_bar(self, iterable=None, total=None):
@@ -1007,136 +696,6 @@ class ModularPipelineBuilder(ConfigMixin):
     def __call__(self, *args, **kwargs):
         raise NotImplementedError("__call__ is not implemented for ModularPipelineBuilder")
 
-    # YiYi Notes: do we need to support multiple blocks?
-    def remove_blocks(self, indices: Union[int, List[int]]):
-        """
-        Remove one or more blocks from the pipeline by their indices and clean up associated components, configs, and
-        auxiliaries that are no longer needed by remaining blocks.
-
-        Args:
-            indices (Union[int, List[int]]): The index or list of indices of blocks to remove
-        """
-        # Convert single index to list
-        indices = [indices] if isinstance(indices, int) else indices
-
-        # Validate indices
-        for idx in indices:
-            if not 0 <= idx < len(self.pipeline_blocks):
-                raise ValueError(
-                    f"Invalid block index {idx}. Index must be between 0 and {len(self.pipeline_blocks) - 1}"
-                )
-
-        # Sort indices in descending order to avoid shifting issues when removing
-        indices = sorted(indices, reverse=True)
-
-        # Store blocks to be removed
-        blocks_to_remove = [self.pipeline_blocks[idx] for idx in indices]
-
-        # Remove blocks from pipeline
-        for idx in indices:
-            self.pipeline_blocks.pop(idx)
-
-        # Consolidate items to remove from all blocks
-        components_to_remove = {k: v for block in blocks_to_remove for k, v in block.components.items()}
-        auxiliaries_to_remove = {k: v for block in blocks_to_remove for k, v in block.auxiliaries.items()}
-        configs_to_remove = {k: v for block in blocks_to_remove for k, v in block.configs.items()}
-
-        # The properties will now reflect only the remaining blocks
-        remaining_components = self.components
-        remaining_auxiliaries = self.auxiliaries
-        remaining_configs = self.configs
-
-        # Clean up all items that are no longer needed
-        for component_name in components_to_remove:
-            if component_name not in remaining_components:
-                if component_name in self.config:
-                    del self.config[component_name]
-                if hasattr(self, component_name):
-                    delattr(self, component_name)
-
-        for auxiliary_name in auxiliaries_to_remove:
-            if auxiliary_name not in remaining_auxiliaries:
-                if hasattr(self, auxiliary_name):
-                    delattr(self, auxiliary_name)
-
-        for config_name in configs_to_remove:
-            if config_name not in remaining_configs:
-                if config_name in self.config:
-                    del self.config[config_name]
-
-    # YiYi Notes: I left all the functionalities to support adding multiple blocks
-    # but I wonder if it is still needed now we have `SequentialBlocks` and user can always combine them into one before adding to the builder
-    def add_blocks(self, pipeline_blocks, at: int = -1):
-        """Add blocks to the pipeline.
-
-        Args:
-            pipeline_blocks: A single PipelineBlock instance or a list of PipelineBlock instances.
-            at (int, optional): Index at which to insert the blocks. Defaults to -1 (append at end).
-        """
-        # Convert single block to list for uniform processing
-        if not isinstance(pipeline_blocks, (list, tuple)):
-            pipeline_blocks = [pipeline_blocks]
-
-        # Validate insert_at index
-        if at != -1 and not 0 <= at <= len(self.pipeline_blocks):
-            raise ValueError(f"Invalid at index {at}. Index must be between 0 and {len(self.pipeline_blocks)}")
-
-        # Consolidate all items from blocks
-        components_to_add = {}
-        configs_to_add = {}
-        auxiliaries_to_add = {}
-
-        # Add blocks in order
-        for i, block in enumerate(pipeline_blocks):
-            # Add block to pipeline at specified position
-            if at == -1:
-                self.pipeline_blocks.append(block)
-            else:
-                self.pipeline_blocks.insert(at + i, block)
-
-            # Collect components that don't already exist
-            for k, v in block.components.items():
-                if not hasattr(self, k) or (getattr(self, k, None) is None and v is not None):
-                    components_to_add[k] = v
-
-            # Collect configs and auxiliaries
-            configs_to_add.update(block.configs)
-            auxiliaries_to_add.update(block.auxiliaries)
-
-        # Process all items in batches
-        if components_to_add:
-            self.register_modules(**components_to_add)
-        if configs_to_add:
-            self.register_to_config(**configs_to_add)
-        for key, value in auxiliaries_to_add.items():
-            setattr(self, key, value)
-
-    def replace_blocks(self, pipeline_blocks, at: int):
-        """Replace one or more blocks in the pipeline at the specified index.
-
-        Args:
-            pipeline_blocks: A single PipelineBlock instance or a list of PipelineBlock instances
-                that will replace existing blocks.
-            at (int): Index at which to replace the blocks.
-        """
-        # Convert single block to list for uniform processing
-        if not isinstance(pipeline_blocks, (list, tuple)):
-            pipeline_blocks = [pipeline_blocks]
-
-        # Validate replace_at index
-        if not 0 <= at < len(self.pipeline_blocks):
-            raise ValueError(f"Invalid at index {at}. Index must be between 0 and {len(self.pipeline_blocks) - 1}")
-
-        # Add new blocks first
-        self.add_blocks(pipeline_blocks, at=at)
-
-        # Calculate indices to remove
-        # We need to remove the original blocks that are now shifted by the length of pipeline_blocks
-        indices_to_remove = list(range(at + len(pipeline_blocks), at + len(pipeline_blocks) * 2))
-
-        # Remove the old blocks
-        self.remove_blocks(indices_to_remove)
-
     def run_blocks(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
         """
         Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
@@ -1154,14 +713,14 @@ class ModularPipelineBuilder(ConfigMixin):
 
         for name, default in default_params.items():
             if name in input_params:
-                if name not in self.pipeline_blocks[0].intermediates_inputs:
+                if name not in self.pipeline_block.intermediates_inputs:
                     state.add_input(name, input_params.pop(name))
                 else:
                     state.add_input(name, input_params[name])
             elif name not in state.inputs:
                 state.add_input(name, default)
 
-        for name in self.pipeline_blocks[0].intermediates_inputs:
+        for name in self.pipeline_block.intermediates_inputs:
             if name in input_params:
                 state.add_intermediate(name, input_params.pop(name))
 
@@ -1170,14 +729,12 @@ class ModularPipelineBuilder(ConfigMixin):
             logger.warning(f"Unexpected input '{input_params.keys()}' provided. This input will be ignored.")
         # Run the pipeline
         with torch.no_grad():
-            for block in self.pipeline_blocks:
-                try:
-                    pipeline, state = block(self, state)
-                except Exception:
-                    error_msg = f"Error in block: ({block.__class__.__name__}):\n"
-                    logger.error(error_msg)
-                    raise
-            self.maybe_free_model_hooks()
+            try:
+                pipeline, state = self.pipeline_block(self, state)
+            except Exception:
+                error_msg = f"Error in block: ({self.pipeline_block.__class__.__name__}):\n"
+                logger.error(error_msg)
+                raise
 
         if output is None:
             return state
@@ -1192,83 +749,81 @@ class ModularPipelineBuilder(ConfigMixin):
         else:
             raise ValueError(f"Output '{output}' is not a valid output type")
 
-    def run_pipeline(self, **kwargs):
-        state = PipelineState()
+    def update_states(self, **kwargs):
+        """
+        Update components and configs after instance creation. Auxiliaries (e.g. image_processor) should be defined for
+        each pipeline block, does not need to be updated by users. Logs if existing non-None components are being
+        overwritten.
 
-        # Make a copy of the input kwargs
-        input_params = kwargs.copy()
+        Args:
+            kwargs (dict): Keyword arguments to update the states.
+        """
 
-        default_params = self.default_call_parameters
+        for component_name in self.expected_components:
+            if component_name in kwargs:
+                if hasattr(self, component_name) and getattr(self, component_name) is not None:
+                    current_component = getattr(self, component_name)
+                    new_component = kwargs[component_name]
 
-        # Add inputs to state, using defaults if not provided
-        for name, default in default_params.items():
-            if name in input_params:
-                state.add_input(name, input_params.pop(name))
-            else:
-                state.add_input(name, default)
+                    if not isinstance(new_component, current_component.__class__):
+                        logger.info(
+                            f"Overwriting existing component '{component_name}' "
+                            f"(type: {current_component.__class__.__name__}) "
+                            f"with type: {new_component.__class__.__name__})"
+                        )
+                    elif isinstance(current_component, torch.nn.Module):
+                        if id(current_component) != id(new_component):
+                            logger.info(
+                                f"Overwriting existing component '{component_name}' "
+                                f"(type: {type(current_component).__name__}) "
+                                f"with new value (type: {type(new_component).__name__})"
+                            )
 
-        # Warn about unexpected inputs
-        if len(input_params) > 0:
-            logger.warning(f"Unexpected input '{input_params.keys()}' provided. This input will be ignored.")
+                setattr(self, component_name, kwargs.pop(component_name))
 
-        # Run the pipeline
-        with torch.no_grad():
-            for block in self.pipeline_blocks:
-                try:
-                    pipeline, state = block(self, state)
-                except Exception as e:
-                    error_msg = (
-                        f"\nError in block: ({block.__class__.__name__}):\n"
-                        f"Error details: {str(e)}\n"
-                        f"Stack trace:\n{traceback.format_exc()}"
-                    )
-                    logger.error(error_msg)
-                    raise
-            self.maybe_free_model_hooks()
-
-        return state.get_output("images")
+        configs_to_add = {}
+        for config_name in self.expected_configs:
+            if config_name in kwargs:
+                configs_to_add[config_name] = kwargs.pop(config_name)
+        self.register_to_config(**configs_to_add)
 
     @property
     def default_call_parameters(self) -> Dict[str, Any]:
         params = {}
-        for block in self.pipeline_blocks:
-            for name, default in block.inputs:
-                if name not in params:
-                    params[name] = default
+        for name, default in self.pipeline_block.inputs:
+            params[name] = default
         return params
 
     def __repr__(self):
-        output = "CustomPipeline Configuration:\n"
+        output = "ModularPipeline:\n"
         output += "==============================\n\n"
 
-        # List the blocks used to build the pipeline
-        output += "Pipeline Blocks:\n"
-        output += "----------------\n"
-        for i, block in enumerate(self.pipeline_blocks):
-            if isinstance(block, MultiPipelineBlocks):
-                output += f"{i}. {block.__class__.__name__} - (CPU offload seq: {block.model_cpu_offload_seq})\n"
-                # Add sub-blocks information
-                for sub_block_name, sub_block in block.blocks.items():
-                    output += f"    • {sub_block_name} ({sub_block.__class__.__name__}) \n"
-            else:
-                output += f"{i}. {block.__class__.__name__} - (CPU offload seq: {block.model_cpu_offload_seq})\n"
-            output += "\n"
+        output += "Pipeline Block:\n"
+        output += "--------------\n"
+        block = self.pipeline_block
+        if isinstance(block, MultiPipelineBlocks):
+            output += f"{block.__class__.__name__}\n"
+            # Add sub-blocks information
+            for sub_block_name, sub_block in block.blocks.items():
+                output += f"  • {sub_block_name} ({sub_block.__class__.__name__}) \n"
+        else:
+            output += f"{block.__class__.__name__}\n"
+        output += "\n"
 
-            intermediates_str = ""
-            if hasattr(block, "intermediates_inputs"):
-                intermediates_str += f"{', '.join(block.intermediates_inputs)}"
+        intermediates_str = ""
+        if hasattr(block, "intermediates_inputs"):
+            intermediates_str += f"{', '.join(block.intermediates_inputs)}"
 
-            if hasattr(block, "intermediates_outputs"):
-                if intermediates_str:
-                    intermediates_str += " -> "
-                else:
-                    intermediates_str += "-> "
-                intermediates_str += f"{', '.join(block.intermediates_outputs)}"
-
+        if hasattr(block, "intermediates_outputs"):
             if intermediates_str:
-                output += f"   {intermediates_str}\n"
+                intermediates_str += " -> "
+            else:
+                intermediates_str += "-> "
+            intermediates_str += f"{', '.join(block.intermediates_outputs)}"
 
-            output += "\n"
+        if intermediates_str:
+            output += f"   {intermediates_str}\n"
+
         output += "\n"
 
         # List the components registered in the pipeline
@@ -1281,36 +836,23 @@ class ModularPipelineBuilder(ConfigMixin):
             output += "\n"
         output += "\n"
 
-        # List the auxiliaries registered in the pipeline
-        output += "Registered Auxiliaries:\n"
-        output += "----------------------\n"
-        for name, auxiliary in self.auxiliaries.items():
-            output += f"{name}: {type(auxiliary).__name__}\n"
-        output += "\n"
-
         # List the configs registered in the pipeline
         output += "Registered Configs:\n"
         output += "------------------\n"
-        for name, config in self.configs.items():
+        for name, config in self.config.items():
             output += f"{name}: {config!r}\n"
         output += "\n"
 
         # List the default call parameters
-        output += "Default Call Parameters:\n"
+        output += "Call Parameters:\n"
         output += "------------------------\n"
-        params = self.default_call_parameters
-        for name, default in params.items():
+        for name, default in self.default_call_parameters.items():
             output += f"{name}: {default!r}\n"
 
-        # Add a section for required call parameters:
-        # intermediate inputs for the first block
-        output += "\nRequired Call Parameters:\n"
+        output += "\nRequired intermediate inputs:\n"
         output += "--------------------------\n"
-        for name in self.pipeline_blocks[0].intermediates_inputs:
+        for name in self.pipeline_block.intermediates_inputs:
             output += f"{name}: \n"
-            params[name] = ""
-
-        output += "\nNote: These are the default values. Actual values may be different when running the pipeline."
         return output
 
     # YiYi TO-DO: try to unify the to method with the one in DiffusionPipeline
@@ -1457,120 +999,3 @@ class ModularPipelineBuilder(ConfigMixin):
                     " `torch_dtype=torch.float16` argument, or use another device for inference."
                 )
         return self
-
-    def remove_all_hooks(self):
-        for _, model in self.components.items():
-            if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
-                accelerate.hooks.remove_hook_from_module(model, recurse=True)
-        self._all_hooks = []
-
-    def find_model_sequence(self):
-        pass
-
-    # YiYi notes: assume there is only one pipeline block now (still debating if we want to support multiple pipeline blocks)
-    @property
-    def model_cpu_offload_seq(self):
-        return self.pipeline_blocks[0].model_cpu_offload_seq
-
-    def enable_model_cpu_offload(
-        self,
-        gpu_id: Optional[int] = None,
-        device: Union[torch.device, str] = "cuda",
-        model_cpu_offload_seq: Optional[str] = None,
-    ):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-
-        Arguments:
-            gpu_id (`int`, *optional*):
-                The ID of the accelerator that shall be used in inference. If not specified, it will default to 0.
-            device (`torch.Device` or `str`, *optional*, defaults to "cuda"):
-                The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
-                default to "cuda".
-        """
-        _exclude_from_cpu_offload = []  # YiYi Notes: this is not used (keep the variable for now)
-        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
-        if is_pipeline_device_mapped:
-            raise ValueError(
-                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_model_cpu_offload() isn't allowed. You can call `reset_device_map()` first and then call `enable_model_cpu_offload()`."
-            )
-
-        model_cpu_offload_seq = model_cpu_offload_seq or self.model_cpu_offload_seq
-        self._model_cpu_offload_seq_used = model_cpu_offload_seq
-        if model_cpu_offload_seq is None:
-            raise ValueError(
-                "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set or passed."
-            )
-
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        self.remove_all_hooks()
-
-        torch_device = torch.device(device)
-        device_index = torch_device.index
-
-        if gpu_id is not None and device_index is not None:
-            raise ValueError(
-                f"You have passed both `gpu_id`={gpu_id} and an index as part of the passed device `device`={device}"
-                f"Cannot pass both. Please make sure to either not define `gpu_id` or not pass the index as part of the device: `device`={torch_device.type}"
-            )
-
-        # _offload_gpu_id should be set to passed gpu_id (or id in passed `device`) or default to previously set id or default to 0
-        self._offload_gpu_id = gpu_id or torch_device.index or getattr(self, "_offload_gpu_id", 0)
-
-        device_type = torch_device.type
-        device = torch.device(f"{device_type}:{self._offload_gpu_id}")
-        self._offload_device = device
-
-        self.to("cpu", silence_dtype_warnings=True)
-        device_mod = getattr(torch, device.type, None)
-        if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-            device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
-
-        self._all_hooks = []
-        hook = None
-        for model_str in model_cpu_offload_seq.split("->"):
-            model = all_model_components.pop(model_str, None)
-            if not isinstance(model, torch.nn.Module):
-                continue
-
-            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
-            self._all_hooks.append(hook)
-
-        # CPU offload models that are not in the seq chain unless they are explicitly excluded
-        # these models will stay on CPU until maybe_free_model_hooks is called
-        # some models cannot be in the seq chain because they are iteratively called, such as controlnet
-        for name, model in all_model_components.items():
-            if not isinstance(model, torch.nn.Module):
-                continue
-
-            if name in _exclude_from_cpu_offload:
-                model.to(device)
-            else:
-                _, hook = cpu_offload_with_hook(model, device)
-                self._all_hooks.append(hook)
-
-    def maybe_free_model_hooks(self):
-        r"""
-        Function that offloads all components, removes all model hooks that were added when using
-        `enable_model_cpu_offload` and then applies them again. In case the model has not been offloaded this function
-        is a no-op. Make sure to add this function to the end of the `__call__` function of your pipeline so that it
-        functions correctly when applying enable_model_cpu_offload.
-        """
-        if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
-            # `enable_model_cpu_offload` has not be called, so silently do nothing
-            return
-
-        # make sure the model is in the same state as before calling it
-        self.enable_model_cpu_offload(
-            device=getattr(self, "_offload_device", "cuda"),
-            model_cpu_offload_seq=getattr(self, "_model_cpu_offload_seq_used", None),
-        )
