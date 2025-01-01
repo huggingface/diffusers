@@ -187,7 +187,7 @@ def combine_inputs(*input_lists: List[Tuple[str, Any]]) -> List[Tuple[str, Any]]
 class MultiPipelineBlocks:
     """
     A class that combines multiple pipeline block classes into one. When used, it has same API and properties as
-    PipelineBlock. And it can be used in ModularPipelineBuilder as a single pipeline block.
+    PipelineBlock. And it can be used in ModularPipeline as a single pipeline block.
     """
 
     block_classes = []
@@ -583,7 +583,7 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
         )
 
 
-class ModularPipelineBuilder(ConfigMixin):
+class ModularPipeline(ConfigMixin):
     """
     Base class for all Modular pipelines.
 
@@ -694,7 +694,7 @@ class ModularPipelineBuilder(ConfigMixin):
         self._progress_bar_config = kwargs
 
     def __call__(self, *args, **kwargs):
-        raise NotImplementedError("__call__ is not implemented for ModularPipelineBuilder")
+        raise NotImplementedError("__call__ is not implemented for ModularPipeline")
 
     def run_blocks(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
         """

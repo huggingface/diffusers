@@ -376,7 +376,7 @@ def _get_pipeline_class(
             revision=revision,
         )
 
-    if class_obj.__name__ != "DiffusionPipeline" and class_obj.__name__ != "ModularPipelineBuilder":
+    if class_obj.__name__ != "DiffusionPipeline" and class_obj.__name__ != "ModularPipeline":
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])

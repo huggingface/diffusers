@@ -32,9 +32,9 @@ from ...utils import (
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..controlnet.multicontrolnet import MultiControlNetModel
-from ..modular_pipeline_builder import (
+from ..modular_pipeline import (
     AutoPipelineBlocks,
-    ModularPipelineBuilder,
+    ModularPipeline,
     PipelineBlock,
     PipelineState,
     SequentialPipelineBlocks,
@@ -1433,7 +1433,7 @@ class StableDiffusionXLAllSteps(SequentialPipelineBlocks):
 
 
 class StableDiffusionXLModularPipeline(
-    ModularPipelineBuilder,
+    ModularPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,

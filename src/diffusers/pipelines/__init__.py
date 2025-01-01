@@ -46,7 +46,7 @@ else:
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
     ]
-    _import_structure["modular_pipeline_builder"] = ["ModularPipelineBuilder"]
+    _import_structure["modular_pipeline"] = ["ModularPipeline"]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["dance_diffusion"] = ["DanceDiffusionPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
@@ -452,7 +452,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .deprecated import KarrasVePipeline, LDMPipeline, PNDMPipeline, RePaintPipeline, ScoreSdeVePipeline
         from .dit import DiTPipeline
         from .latent_diffusion import LDMSuperResolutionPipeline
-        from .modular_pipeline_builder import ModularPipelineBuilder
+        from .modular_pipeline import ModularPipeline
         from .pipeline_utils import (
             AudioPipelineOutput,
             DiffusionPipeline,
