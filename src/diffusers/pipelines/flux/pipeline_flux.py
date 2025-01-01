@@ -28,8 +28,8 @@ from transformers import (
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
-from ...models.autoencoders import AutoencoderKL
-from ...models.transformers import FluxTransformer2DModel
+from ...models import AutoencoderKL, FluxTransformer2DModel
+from ...models.hooks import reset_stateful_hooks
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -760,6 +760,7 @@ class FluxPipeline(
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Define call parameters
@@ -881,6 +882,7 @@ class FluxPipeline(
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 if image_embeds is not None:
                     self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -939,9 +941,10 @@ class FluxPipeline(
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
+        self._current_timestep = None
+
         if output_type == "latent":
             image = latents
-
         else:
             latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
@@ -950,6 +953,7 @@ class FluxPipeline(
 
         # Offload all models
         self.maybe_free_model_hooks()
+        reset_stateful_hooks(self.transformer, recurse=True)
 
         if not return_dict:
             return (image,)

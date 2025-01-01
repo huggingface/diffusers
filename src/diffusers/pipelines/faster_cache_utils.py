@@ -32,10 +32,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 _ATTENTION_CLASSES = (Attention,)
 
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = (
-    "blocks",
-    "transformer_blocks",
+    "blocks.*attn1",
+    "transformer_blocks.*attn1",
+    "single_transformer_blocks.*attn1",
 )
-_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
+_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks.*attn1",)
 _UNCOND_COND_INPUT_KWARGS_IDENTIFIERS = (
     "hidden_states",
     "encoder_hidden_states",
@@ -43,6 +44,7 @@ _UNCOND_COND_INPUT_KWARGS_IDENTIFIERS = (
     "attention_mask",
     "encoder_attention_mask",
 )
+_GUIDANCE_DISTILLATION_KWARGS_IDENTIFIERS = ("guidance",)
 
 
 @dataclass
@@ -50,7 +52,85 @@ class FasterCacheConfig:
     r"""
     Configuration for [FasterCache](https://huggingface.co/papers/2410.19355).
 
-    Attributes:"""
+    Attributes:
+        spatial_attention_block_skip_range (`int`, defaults to `2`):
+            Calculate the attention states every `N` iterations. If this is set to `N`, the attention computation will
+            be skipped `N - 1` times (i.e., cached attention states will be re-used) before computing the new attention
+            states again.
+        temporal_attention_block_skip_range (`int`, *optional*, defaults to `None`):
+            Calculate the attention states every `N` iterations. If this is set to `N`, the attention computation will
+            be skipped `N - 1` times (i.e., cached attention states will be re-used) before computing the new attention
+            states again.
+        spatial_attention_timestep_skip_range (`Tuple[float, float]`, defaults to `(-1, 681)`):
+            The timestep range within which the spatial attention computation can be skipped without a significant loss
+            in quality. This is to be determined by the user based on the underlying model. The first value in the tuple
+            is the lower bound and the second value is the upper bound. Typically, diffusion timesteps for denoising are
+            in the reversed range of 0 to 1000 (i.e. denoising starts at timestep 1000 and ends at timestep 0). For the
+            default values, this would mean that the spatial attention computation skipping will be applicable only
+            after denoising timestep 681 is reached, and continue until the end of the denoising process.
+        temporal_attention_timestep_skip_range (`Tuple[float, float]`, *optional*, defaults to `None`):
+            The timestep range within which the temporal attention computation can be skipped without a significant loss
+            in quality. This is to be determined by the user based on the underlying model. The first value in the tuple
+            is the lower bound and the second value is the upper bound. Typically, diffusion timesteps for denoising are
+            in the reversed range of 0 to 1000 (i.e. denoising starts at timestep 1000 and ends at timestep 0).
+        low_frequency_weight_update_timestep_range (`Tuple[int, int]`, defaults to `(99, 901)`):
+            The timestep range within which the low frequency weight scaling update is applied. The first value in the tuple
+            is the lower bound and the second value is the upper bound of the timestep range. The callback function for
+            the update is called only within this range.
+        high_frequency_weight_update_timestep_range (`Tuple[int, int]`, defaults to `(-1, 301)`):
+            The timestep range within which the high frequency weight scaling update is applied. The first value in the tuple
+            is the lower bound and the second value is the upper bound of the timestep range. The callback function for
+            the update is called only within this range.
+        alpha_low_frequency (`float`, defaults to `1.1`):
+            The weight to scale the low frequency updates by. This is used to approximate the unconditional branch from
+            the conditional branch outputs.
+        alpha_high_frequency (`float`, defaults to `1.1`):
+            The weight to scale the high frequency updates by. This is used to approximate the unconditional branch from
+            the conditional branch outputs.
+        unconditional_batch_skip_range (`int`, defaults to `5`):
+            Process the unconditional branch every `N` iterations. If this is set to `N`, the unconditional branch
+            computation will be skipped `N - 1` times (i.e., cached unconditional branch states will be re-used) before
+            computing the new unconditional branch states again.
+        unconditional_batch_timestep_skip_range (`Tuple[float, float]`, defaults to `(-1, 641)`):
+            The timestep range within which the unconditional branch computation can be skipped without a significant loss
+            in quality. This is to be determined by the user based on the underlying model. The first value in the tuple
+            is the lower bound and the second value is the upper bound.
+        spatial_attention_block_identifiers (`Tuple[str, ...]`, defaults to `("blocks.*attn1", "transformer_blocks.*attn1", "single_transformer_blocks.*attn1")`):
+            The identifiers to match the spatial attention blocks in the model. If the name of the block contains any of
+            these identifiers, FasterCache will be applied to that block. This can either be the full layer names, partial
+            layer names, or regex patterns. Matching will always be done using a regex match.
+        temporal_attention_block_identifiers (`Tuple[str, ...]`, defaults to `("temporal_transformer_blocks.*attn1",)`):
+            The identifiers to match the temporal attention blocks in the model. If the name of the block contains any of
+            these identifiers, FasterCache will be applied to that block. This can either be the full layer names, partial
+            layer names, or regex patterns. Matching will always be done using a regex match.
+        attention_weight_callback (`Callable[[nn.Module], float]`, defaults to `None`):
+            The callback function to determine the weight to scale the attention outputs by. This function should take the
+            attention module as input and return a float value. This is used to approximate the unconditional branch from
+            the conditional branch outputs. If not provided, the default weight is 0.5 for all timesteps. Typically, as
+            described in the paper, this weight should gradually increase from 0 to 1 as the inference progresses. Users
+            are encouraged to experiment and provide custom weight schedules that take into account the number of inference
+            steps and underlying model behaviour as denoising progresses.
+        low_frequency_weight_callback (`Callable[[nn.Module], float]`, defaults to `None`):
+            The callback function to determine the weight to scale the low frequency updates by. If not provided, the default
+            weight is 1.1 for timesteps within the range specified (as described in the paper).
+        high_frequency_weight_callback (`Callable[[nn.Module], float]`, defaults to `None`):
+            The callback function to determine the weight to scale the high frequency updates by. If not provided, the default
+            weight is 1.1 for timesteps within the range specified (as described in the paper).
+        tensor_format (`str`, defaults to `"BCFHW"`):
+            The format of the input tensors. This should be one of `"BCFHW"`, `"BFCHW"`, or `"BCHW"`. The format is used to
+            split individual latent frames in order for low and high frequency components to be computed.
+        _unconditional_conditional_input_kwargs_identifiers (`List[str]`, defaults to `("hidden_states", "encoder_hidden_states", "timestep", "attention_mask", "encoder_attention_mask")`):
+            The identifiers to match the input kwargs that contain the batchwise-concatenated unconditional and conditional
+            inputs. If the name of the input kwargs contains any of these identifiers, FasterCache will split the inputs
+            into unconditional and conditional branches. This must be a list of exact input kwargs names that contain the
+            batchwise-concatenated unconditional and conditional inputs.
+        _guidance_distillation_kwargs_identifiers (`List[str]`, defaults to `("guidance",)`):
+            The identifiers to match the input kwargs that contain the guidance distillation inputs. If the name of the input
+            kwargs contains any of these identifiers, FasterCache will not split the inputs into unconditional and conditional
+            branches (unconditional branches are only computed sometimes based on certain checks). This allows usage of
+            FasterCache in models like Flux-Dev and HunyuanVideo which are guidance-distilled (only attention skipping
+            related parts are applied, and not unconditional branch approximation).
+    """
 
     # In the paper and codebase, they hardcode these values to 2. However, it can be made configurable
     # after some testing. We default to 2 if these parameters are not provided.
@@ -81,7 +161,9 @@ class FasterCacheConfig:
     high_frequency_weight_callback: Callable[[nn.Module], float] = None
 
     tensor_format: str = "BCFHW"
-    unconditional_conditional_input_kwargs_identifiers: List[str] = _UNCOND_COND_INPUT_KWARGS_IDENTIFIERS
+
+    _unconditional_conditional_input_kwargs_identifiers: List[str] = _UNCOND_COND_INPUT_KWARGS_IDENTIFIERS
+    _guidance_distillation_kwargs_identifiers: List[str] = _GUIDANCE_DISTILLATION_KWARGS_IDENTIFIERS
 
 
 class FasterCacheDenoiserState:
@@ -102,14 +184,16 @@ class FasterCacheDenoiserState:
         self.iteration = 0
         self.low_frequency_delta = None
         self.high_frequency_delta = None
+        self.is_guidance_distilled = None
 
     def reset(self):
         self.iteration = 0
         self.low_frequency_delta = None
         self.high_frequency_delta = None
+        self.is_guidance_distilled = None
 
 
-class FasterCacheState:
+class FasterCacheBlockState:
     r"""
     State for [FasterCache](https://huggingface.co/papers/2410.19355). Every underlying block that FasterCache is
     applied to will have an instance of this state.
@@ -129,11 +213,13 @@ class FasterCacheState:
         self.iteration = 0
         self.batch_size = None
         self.cache = None
+        self.is_guidance_distilled = None
 
     def reset(self):
         self.iteration = 0
         self.batch_size = None
         self.cache = None
+        self.is_guidance_distilled = None
 
 
 def apply_faster_cache(
@@ -158,7 +244,22 @@ def apply_faster_cache(
 
     Example:
     ```python
-    # TODO(aryan)
+    >>> import torch
+    >>> from diffusers import CogVideoXPipeline, FasterCacheConfig, apply_faster_cache
+
+    >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+    >>> pipe.to("cuda")
+
+    >>> config = FasterCacheConfig(
+    ...     spatial_attention_block_skip_range=2,
+    ...     spatial_attention_timestep_skip_range=(-1, 681),
+    ...     low_frequency_weight_update_timestep_range=(99, 641),
+    ...     high_frequency_weight_update_timestep_range=(-1, 301),
+    ...     spatial_attention_block_identifiers=["transformer_blocks"],
+    ...     attention_weight_callback=lambda _: 0.3,
+    ...     tensor_format="BFCHW",
+    ... )
+    >>> apply_faster_cache(pipe, config)
     ```
     """
 
@@ -229,7 +330,7 @@ def _apply_fastercache_on_denoiser(
         #   2. The current timestep is within the range specified by the user. This is the optimal timestep range
         #      where approximating the unconditional branch from the computation of the conditional branch is possible
         #      without a significant loss in quality.
-        #   3. The current iteration is not a multiple of the unconditional batch skip range. This is to ensure that
+        #   3. The current iteration is not a multiple of the unconditional batch skip range. This is done so that
         #      we compute the unconditional branch at least once every few iterations to ensure minimal quality loss.
 
         state: FasterCacheDenoiserState = module._fastercache_state
@@ -243,7 +344,7 @@ def _apply_fastercache_on_denoiser(
     denoiser._fastercache_state = FasterCacheDenoiserState(
         config.low_frequency_weight_callback, config.high_frequency_weight_callback, uncond_skip_callback
     )
-    hook = FasterCacheModelHook(config.unconditional_conditional_input_kwargs_identifiers, config.tensor_format)
+    hook = FasterCacheDenoiserHook(config._unconditional_conditional_input_kwargs_identifiers, config._guidance_distillation_kwargs_identifiers, config.tensor_format)
     add_hook_to_module(denoiser, hook, append=True)
 
 
@@ -285,7 +386,7 @@ def _apply_fastercache_on_attention_class(
         return
 
     def skip_callback(module: nn.Module) -> bool:
-        fastercache_state: FasterCacheState = module._fastercache_state
+        fastercache_state: FasterCacheBlockState = module._fastercache_state
         is_within_timestep_range = timestep_skip_range[0] < pipeline._current_timestep < timestep_skip_range[1]
 
         if not is_within_timestep_range:
@@ -299,15 +400,19 @@ def _apply_fastercache_on_attention_class(
         return not should_compute_attention
 
     logger.debug(f"Enabling FasterCache ({block_type}) for layer: {name}")
-    module._fastercache_state = FasterCacheState(skip_callback, config.attention_weight_callback)
+    module._fastercache_state = FasterCacheBlockState(skip_callback, config.attention_weight_callback)
     hook = FasterCacheBlockHook()
     add_hook_to_module(module, hook, append=True)
 
 
-class FasterCacheModelHook(ModelHook):
+class FasterCacheDenoiserHook(ModelHook):
     _is_stateful = True
 
-    def __init__(self, uncond_cond_input_kwargs_identifiers: List[str], tensor_format: str) -> None:
+    def __init__(self,
+            uncond_cond_input_kwargs_identifiers: List[str],
+            guidance_distillation_kwargs_identifiers: List[str],
+            tensor_format: str
+        ) -> None:
         super().__init__()
 
         # We can't easily detect what args are to be split in unconditional and conditional branches. We
@@ -315,9 +420,14 @@ class FasterCacheModelHook(ModelHook):
         # If a model is to be made compatible with FasterCache, the user must ensure that the inputs that
         # contain batchwise-concatenated unconditional and conditional inputs are passed as kwargs.
         self.uncond_cond_input_kwargs_identifiers = uncond_cond_input_kwargs_identifiers
+
+        # See documentation for `guidance_distillation_kwargs_identifiers` in FasterCacheConfig for more information
+        self.guidance_distillation_kwargs_identifiers = guidance_distillation_kwargs_identifiers
+
         self.tensor_format = tensor_format
 
-    def _get_cond_input(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    @staticmethod
+    def _get_cond_input(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Note: this method assumes that the input tensor is batchwise-concatenated with unconditional inputs
         # followed by conditional inputs.
         _, cond = input.chunk(2, dim=0)
@@ -330,7 +440,24 @@ class FasterCacheModelHook(ModelHook):
         # Split the unconditional and conditional inputs. We only want to infer the conditional branch if the
         # requirements for skipping the unconditional branch are met as described in the paper.
         should_skip_uncond = state.uncond_skip_callback(module)
-        if should_skip_uncond:
+
+        if state.is_guidance_distilled is None:
+            # The following check assumes that the guidance embedding are torch tensors for check to pass. This
+            # seems to be true for all models supported in diffusers
+            state.is_guidance_distilled = any(
+                identifier in kwargs and kwargs[identifier] is not None and torch.is_tensor(kwargs[identifier])
+                for identifier in self.guidance_distillation_kwargs_identifiers
+            )
+            # Make all children FasterCacheBlockHooks aware of whether the model is guidance distilled or not
+            # because we cannot determine this within the block hooks
+            for name, child_module in module.named_modules():
+                if hasattr(child_module, "_fastercache_state") and isinstance(child_module._fastercache_state, FasterCacheBlockState):
+                    # TODO(aryan): remove later
+                    logger.debug(f"Setting guidance distillation flag for layer: {name}")
+                    child_module._fastercache_state.is_guidance_distilled = state.is_guidance_distilled
+        assert state.is_guidance_distilled is not None
+
+        if should_skip_uncond and not state.is_guidance_distilled:
             kwargs = {
                 k: v if k not in self.uncond_cond_input_kwargs_identifiers else self._get_cond_input(v)
                 for k, v in kwargs.items()
@@ -339,6 +466,11 @@ class FasterCacheModelHook(ModelHook):
             logger.debug("Skipping unconditional branch computation")
 
         output = module._old_forward(*args, **kwargs)
+
+        if state.is_guidance_distilled:
+            state.iteration += 1
+            return output
+
         # TODO(aryan): handle Transformer2DModelOutput
         hidden_states = output[0] if isinstance(output, tuple) else output
         batch_size = hidden_states.size(0)
@@ -393,8 +525,9 @@ class FasterCacheModelHook(ModelHook):
         output = (hidden_states, *output[1:]) if isinstance(output, tuple) else hidden_states
         return output
 
-    def reset_state(self, module: nn.Module) -> None:
+    def reset_state(self, module: nn.Module) -> nn.Module:
         module._fastercache_state.reset()
+        return module
 
 
 class FasterCacheBlockHook(ModelHook):
@@ -418,7 +551,10 @@ class FasterCacheBlockHook(ModelHook):
 
     def new_forward(self, module: nn.Module, *args, **kwargs) -> Any:
         args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
-        state: FasterCacheState = module._fastercache_state
+        state: FasterCacheBlockState = module._fastercache_state
+
+        # The denoiser should have set this flag for all children FasterCacheBlockHooks to either True or False
+        assert state.is_guidance_distilled is not None
 
         batch_size = [
             *[arg.size(0) for arg in args if torch.is_tensor(arg)],
@@ -434,7 +570,7 @@ class FasterCacheBlockHook(ModelHook):
         # the cache (which only caches conditional branch outputs). So, if state.batch_size (which is the true
         # unconditional-conditional batch size) is same as the current batch size, we don't perform the layer
         # skip. Otherwise, we conditionally skip the layer based on what state.skip_callback returns.
-        should_skip_attention = state.skip_callback(module) and state.batch_size != batch_size
+        should_skip_attention = state.skip_callback(module) and (state.is_guidance_distilled or state.batch_size != batch_size)
 
         if should_skip_attention:
             # TODO(aryan): remove later
@@ -466,21 +602,16 @@ class FasterCacheBlockHook(ModelHook):
         # both cases.
         if torch.is_tensor(output):
             cache_output = output
-            if cache_output.size(0) == state.batch_size:
+            if not state.is_guidance_distilled and cache_output.size(0) == state.batch_size:
                 # The output here can be both unconditional-conditional branch outputs or just conditional branch outputs.
                 # This is determined at the higher-level denoiser module. We only want to cache the conditional branch outputs.
                 cache_output = cache_output.chunk(2, dim=0)[1]
-
-            # Just to be safe that the output is of the correct size for both unconditional-conditional branch inference
-            # and only-conditional branch inference.
-            assert 2 * cache_output.size(0) == state.batch_size
         else:
             # Cache all return values and perform the same operation as above
             cache_output = ()
             for out in output:
-                if out.size(0) == state.batch_size:
+                if not state.is_guidance_distilled and out.size(0) == state.batch_size:
                     out = out.chunk(2, dim=0)[1]
-                assert 2 * out.size(0) == state.batch_size
                 cache_output += (out,)
 
         if state.cache is None:
@@ -491,8 +622,9 @@ class FasterCacheBlockHook(ModelHook):
         state.iteration += 1
         return module._diffusers_hook.post_forward(module, output)
 
-    def reset_state(self, module: nn.Module) -> None:
+    def reset_state(self, module: nn.Module) -> nn.Module:
         module._fastercache_state.reset()
+        return module
 
 
 # Reference: https://github.com/Vchitect/FasterCache/blob/fab32c15014636dc854948319c0a9a8d92c7acb4/scripts/latte/fastercache_sample_latte.py#L127C1-L143C39

@@ -78,9 +78,10 @@ class ModelHook:
         """
         return module
 
-    def reset_state(self):
+    def reset_state(self, module: torch.nn.Module) -> torch.nn.Module:
         if self._is_stateful:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
+        return module
 
 
 class SequentialHook(ModelHook):
@@ -109,13 +110,13 @@ class SequentialHook(ModelHook):
             module = hook.detach_hook(module)
         return module
 
-    def reset_state(self):
+    def reset_state(self, module):
         for hook in self.hooks:
             if hook._is_stateful:
-                hook.reset_state()
+                hook.reset_state(module)
 
 
-def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False):
+def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False) -> torch.nn.Module:
     r"""
     Adds a hook to a given module. This will rewrite the `forward` method of the module to include the hook, to remove
     this behavior and restore the original `forward` method, use `remove_hook_from_module`.
@@ -134,6 +135,7 @@ def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = 
             The hook to attach.
         append (`bool`, *optional*, defaults to `False`):
             Whether the hook should be chained with an existing one (if module already contains a hook) or not.
+
     Returns:
         `torch.nn.Module`:
             The same module, with the hook attached (the module is modified in place, so the result can be discarded).
