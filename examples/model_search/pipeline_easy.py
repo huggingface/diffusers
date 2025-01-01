@@ -1132,7 +1132,7 @@ class AutoConfig:
         self.load_lora_weights(pretrained_model_name_or_path_or_dict, adapter_name=adapter_name, **kwargs)
 
 
-class EasyPipelineForText2Image(AutoPipelineForText2Image, AutoConfig):
+class EasyPipelineForText2Image(AutoPipelineForText2Image):
     r"""
     [`EasyPipelineForText2Image`] is a generic pipeline class that instantiates a text-to-image pipeline class. The
     specific underlying pipeline class is automatically selected from either the
