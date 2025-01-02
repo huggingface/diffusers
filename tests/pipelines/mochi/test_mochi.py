@@ -30,13 +30,13 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import FasterCacheTesterMixin, PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class MochiPipelineFastTests(PipelineTesterMixin, FasterCacheTesterMixin, unittest.TestCase):
     pipeline_class = MochiPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -54,13 +54,13 @@ class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     test_xformers_attention = False
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 2):
         torch.manual_seed(0)
         transformer = MochiTransformer3DModel(
             patch_size=2,
             num_attention_heads=2,
             attention_head_dim=8,
-            num_layers=2,
+            num_layers=num_layers,
             pooled_projection_dim=16,
             in_channels=12,
             out_channels=None,

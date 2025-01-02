@@ -16,6 +16,7 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..test_pipelines_common import (
+    FasterCacheTesterMixin,
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
@@ -23,7 +24,7 @@ from ..test_pipelines_common import (
 )
 
 
-class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
+class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin, FasterCacheTesterMixin):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
@@ -31,13 +32,13 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapte
     # there is no xformers processor for Flux
     test_xformers_attention = False
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
             patch_size=1,
             in_channels=4,
-            num_layers=1,
-            num_single_layers=1,
+            num_layers=num_layers,
+            num_single_layers=num_single_layers,
             attention_head_dim=16,
             num_attention_heads=2,
             joint_attention_dim=32,

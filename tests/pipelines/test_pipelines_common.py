@@ -23,10 +23,12 @@ from diffusers import (
     ConsistencyDecoderVAE,
     DDIMScheduler,
     DiffusionPipeline,
+    FasterCacheConfig,
     KolorsPipeline,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
+    apply_faster_cache,
 )
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
@@ -35,6 +37,7 @@ from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
+from diffusers.pipelines.faster_cache_utils import FasterCacheBlockHook, FasterCacheDenoiserHook
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
@@ -2269,6 +2272,167 @@ class SDXLOptionalComponentsTesterMixin:
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
+
+
+class FasterCacheTesterMixin:
+    fastercache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
+    )
+
+    def test_fastercache_basic_warning_or_errors_raised(self):
+        components = self.get_dummy_components()
+
+        logger = logging.get_logger("diffusers.pipelines.faster_cache_utils")
+        logger.setLevel(logging.INFO)
+
+        # Check if warning is raised when no FasterCacheConfig is provided
+        pipe = self.pipeline_class(**components)
+        with CaptureLogger(logger) as cap_logger:
+            apply_faster_cache(pipe)
+        self.assertTrue("No FasterCacheConfig provided" in cap_logger.out)
+
+        # Check if warning is raise when no attention_weight_callback is provided
+        pipe = self.pipeline_class(**components)
+        with CaptureLogger(logger) as cap_logger:
+            config = FasterCacheConfig(spatial_attention_block_skip_range=2, attention_weight_callback=None)
+            apply_faster_cache(pipe, config)
+        self.assertTrue("No `attention_weight_callback` provided when enabling FasterCache" in cap_logger.out)
+
+        # Check if error raised when unsupported tensor format used
+        pipe = self.pipeline_class(**components)
+        with self.assertRaises(ValueError):
+            config = FasterCacheConfig(spatial_attention_block_skip_range=2, tensor_format="BFHWC")
+            apply_faster_cache(pipe, config)
+
+    def test_fastercache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        num_layers = 2
+        components = self.get_dummy_components(num_layers=num_layers)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        original_image_slice = output.flatten()
+        original_image_slice = np.concatenate((original_image_slice[:8], original_image_slice[-8:]))
+
+        apply_faster_cache(pipe, self.fastercache_config)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        image_slice_fastercache_enabled = output.flatten()
+        image_slice_fastercache_enabled = np.concatenate(
+            (image_slice_fastercache_enabled[:8], image_slice_fastercache_enabled[-8:])
+        )
+
+        assert np.allclose(
+            original_image_slice, image_slice_fastercache_enabled, atol=expected_atol
+        ), "FasterCache outputs should not differ much in specified timestep range."
+
+    def test_fastercache_state(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        num_layers = 0
+        num_single_layers = 0
+        dummy_component_kwargs = {}
+        dummy_component_parameters = inspect.signature(self.get_dummy_components).parameters
+        if "num_layers" in dummy_component_parameters:
+            num_layers = 2
+            dummy_component_kwargs["num_layers"] = num_layers
+        if "num_single_layers" in dummy_component_parameters:
+            num_single_layers = 2
+            dummy_component_kwargs["num_single_layers"] = num_single_layers
+
+        components = self.get_dummy_components(**dummy_component_kwargs)
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        apply_faster_cache(pipe, self.fastercache_config)
+
+        expected_hooks = 0
+        if self.fastercache_config.spatial_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.fastercache_config.temporal_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+
+        # Check if fastercache denoiser hook is attached
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        self.assertTrue(
+            hasattr(denoiser, "_diffusers_hook") and isinstance(denoiser._diffusers_hook, FasterCacheDenoiserHook),
+            "Hook should be of type FasterCacheDenoiserHook.",
+        )
+
+        # Check if all blocks have fastercache block hook attached
+        count = 0
+        for name, module in denoiser.named_modules():
+            if hasattr(module, "_diffusers_hook"):
+                if name == "":
+                    # Skip the root denoiser module
+                    continue
+                count += 1
+                self.assertTrue(
+                    isinstance(module._diffusers_hook, FasterCacheBlockHook),
+                    "Hook should be of type FasterCacheBlockHook.",
+                )
+        self.assertEqual(count, expected_hooks, "Number of hooks should match expected number.")
+
+        # Perform inference to ensure that states are updated correctly
+        def fastercache_state_check_callback(pipe, i, t, kwargs):
+            for name, module in denoiser.named_modules():
+                if not hasattr(module, "_diffusers_hook"):
+                    continue
+
+                state = module._fastercache_state
+
+                if name == "":
+                    # Root denoiser module
+                    self.assertTrue(state.low_frequency_delta is not None, "Low frequency delta should be set.")
+                    self.assertTrue(state.high_frequency_delta is not None, "High frequency delta should be set.")
+                else:
+                    # Internal blocks
+                    self.assertTrue(state.cache is not None and len(state.cache) == 2, "Cache should be set.")
+
+                self.assertTrue(state.iteration == i + 1, "Hook iteration state should have updated during inference.")
+                self.assertTrue(
+                    state.is_guidance_distilled is not None,
+                    "`is_guidance_distilled` should be set to either True or False.",
+                )
+
+            return {}
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        inputs["callback_on_step_end"] = fastercache_state_check_callback
+        _ = pipe(**inputs)[0]
+
+        # After inference, reset_stateful_hooks is called within the pipeline, which should have reset the states
+        for name, module in denoiser.named_modules():
+            if not hasattr(module, "_diffusers_hook"):
+                continue
+
+            state = module._fastercache_state
+
+            if name == "":
+                # Root denoiser module
+                self.assertTrue(state.iteration == 0, "Iteration should be reset to 0.")
+                self.assertTrue(state.low_frequency_delta is None, "Low frequency delta should be reset to None.")
+                self.assertTrue(state.high_frequency_delta is None, "High frequency delta should be reset to None.")
+                self.assertTrue(
+                    state.is_guidance_distilled is None, "`is_guidance_distilled` should be reset to None."
+                )
+            else:
+                self.assertTrue(state.iteration == 0, "Iteration should be reset to 0.")
+                self.assertTrue(state.batch_size is None, "Batch size should be reset to None.")
+                self.assertTrue(state.cache is None, "Cache should be reset to None.")
+                self.assertTrue(
+                    state.is_guidance_distilled is None, "`is_guidance_distilled` should be reset to None."
+                )
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

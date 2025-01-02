@@ -33,11 +33,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 _ATTENTION_CLASSES = (Attention,)
 
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = (
-    "blocks.*attn1",
-    "transformer_blocks.*attn1",
-    "single_transformer_blocks.*attn1",
+    "blocks.*attn",
+    "transformer_blocks.*attn",
+    "single_transformer_blocks.*attn",
 )
-_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks.*attn1",)
+_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks.*attn",)
 _UNCOND_COND_INPUT_KWARGS_IDENTIFIERS = (
     "hidden_states",
     "encoder_hidden_states",
@@ -263,6 +263,7 @@ def apply_faster_cache(
     """
 
     if config is None:
+        logger.warning("No FasterCacheConfig provided. Using default configuration.")
         config = FasterCacheConfig()
 
     if config.attention_weight_callback is None:
@@ -271,7 +272,7 @@ def apply_faster_cache(
         # this depends from model-to-model. It is required by the user to provide a weight callback if they want to
         # use a different weight function. Defaulting to 0.5 works well in practice for most cases.
         logger.warning(
-            "FasterCache requires an `attention_weight_callback` to be set. Defaulting to using a weight of 0.5 for all timesteps."
+            "No `attention_weight_callback` provided when enabling FasterCache. Defaulting to using a weight of 0.5 for all timesteps."
         )
         config.attention_weight_callback = lambda _: 0.5
 
