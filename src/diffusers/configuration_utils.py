@@ -485,6 +485,12 @@ class ConfigMixin:
         # Skip keys that were not present in the original config, so default __init__ values were used
         used_defaults = config_dict.get("_use_default_values", [])
         config_dict = {k: v for k, v in config_dict.items() if k not in used_defaults and k != "_use_default_values"}
+        if (
+            "scheduler" in config_dict
+            and isinstance(config_dict["scheduler"], list)
+            and config_dict["scheduler"][1].startswith("FlowMatch")
+        ):
+            config_dict["scheduler"][1] = config_dict["scheduler"][1].replace("FlowMatch", "")
 
         # 0. Copy origin config dict
         original_dict = dict(config_dict.items())
@@ -522,6 +528,8 @@ class ConfigMixin:
 
         # remove attributes from orig class that cannot be expected
         orig_cls_name = config_dict.pop("_class_name", cls.__name__)
+        if orig_cls_name.startswith("FlowMatch"):
+            orig_cls_name = orig_cls_name.replace("FlowMatch", "")
         if (
             isinstance(orig_cls_name, str)
             and orig_cls_name != cls.__name__
