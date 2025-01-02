@@ -250,7 +250,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         inner_dim = num_attention_heads * attention_head_dim
 
         # 1. Patch Embedding
-        interpolation_scale = interpolation_scale if interpolation_scale is not None else max(sample_size // 64, 1)
         self.patch_embed = PatchEmbed(
             height=sample_size,
             width=sample_size,
@@ -258,6 +257,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             in_channels=in_channels,
             embed_dim=inner_dim,
             interpolation_scale=interpolation_scale,
+            pos_embed_type="sincos" if interpolation_scale is not None else None,
         )
 
         # 2. Additional condition embeddings
