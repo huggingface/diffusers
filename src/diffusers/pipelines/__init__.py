@@ -58,6 +58,7 @@ else:
         "StableDiffusionMixin",
         "ImagePipelineOutput",
     ]
+    _import_structure["faster_cache_utils"] = ["FasterCacheConfig", "apply_faster_cache"]
     _import_structure["deprecated"].extend(
         [
             "PNDMPipeline",
@@ -449,6 +450,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .ddpm import DDPMPipeline
         from .deprecated import KarrasVePipeline, LDMPipeline, PNDMPipeline, RePaintPipeline, ScoreSdeVePipeline
         from .dit import DiTPipeline
+        from .faster_cache_utils import FasterCacheConfig, apply_faster_cache
         from .latent_diffusion import LDMSuperResolutionPipeline
         from .pipeline_utils import (
             AudioPipelineOutput,

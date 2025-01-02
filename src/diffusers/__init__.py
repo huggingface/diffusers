@@ -276,6 +276,7 @@ else:
             "CogVideoXVideoToVideoPipeline",
             "CogView3PlusPipeline",
             "CycleDiffusionPipeline",
+            "FasterCacheConfig",
             "FluxControlImg2ImgPipeline",
             "FluxControlInpaintPipeline",
             "FluxControlNetImg2ImgPipeline",
@@ -422,6 +423,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "apply_faster_cache",
         ]
     )
 
@@ -765,6 +767,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXVideoToVideoPipeline,
             CogView3PlusPipeline,
             CycleDiffusionPipeline,
+            FasterCacheConfig,
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
             FluxControlNetImg2ImgPipeline,
@@ -909,6 +912,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            apply_faster_cache,
         )
 
     try:
