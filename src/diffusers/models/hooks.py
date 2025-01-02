@@ -29,6 +29,7 @@ class ModelHook:
     def init_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when a model is initialized.
+
         Args:
             module (`torch.nn.Module`):
                 The module attached to this hook.
@@ -38,6 +39,7 @@ class ModelHook:
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
         r"""
         Hook that is executed just before the forward method of the model.
+
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass will be executed just after this event.
@@ -54,6 +56,7 @@ class ModelHook:
     def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
         r"""
         Hook that is executed just after the forward method of the model.
+
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass been executed just before this event.
@@ -67,15 +70,17 @@ class ModelHook:
     def detach_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when the hook is detached from a module.
+
         Args:
             module (`torch.nn.Module`):
                 The module detached from this hook.
         """
         return module
 
-    def reset_state(self, module: torch.nn.Module):
+    def reset_state(self, module: torch.nn.Module) -> torch.nn.Module:
         if self._is_stateful:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
+        return module
 
 
 class SequentialHook(ModelHook):
@@ -108,16 +113,21 @@ class SequentialHook(ModelHook):
         for hook in self.hooks:
             if hook._is_stateful:
                 hook.reset_state(module)
+        return module
 
 
 def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False) -> torch.nn.Module:
     r"""
     Adds a hook to a given module. This will rewrite the `forward` method of the module to include the hook, to remove
     this behavior and restore the original `forward` method, use `remove_hook_from_module`.
+
     <Tip warning={true}>
+
     If the module already contains a hook, this will replace it with the new hook passed by default. To chain two hooks
     together, pass `append=True`, so it chains the current and new hook into an instance of the `SequentialHook` class.
+
     </Tip>
+
     Args:
         module (`torch.nn.Module`):
             The module to attach a hook to.
@@ -168,6 +178,7 @@ def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = 
 def remove_hook_from_module(module: torch.nn.Module, recurse: bool = False) -> torch.nn.Module:
     """
     Removes any hook attached to a module via `add_hook_to_module`.
+
     Args:
         module (`torch.nn.Module`):
             The module to attach a hook to.
@@ -201,6 +212,7 @@ def remove_hook_from_module(module: torch.nn.Module, recurse: bool = False) -> t
 def reset_stateful_hooks(module: torch.nn.Module, recurse: bool = False):
     """
     Resets the state of all stateful hooks attached to a module.
+
     Args:
         module (`torch.nn.Module`):
             The module to reset the stateful hooks from.
