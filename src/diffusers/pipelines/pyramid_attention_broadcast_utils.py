@@ -117,6 +117,31 @@ class PyramidAttentionBroadcastState:
         self.cache = None
 
 
+class PyramidAttentionBroadcastHook(ModelHook):
+    r"""A hook that applies Pyramid Attention Broadcast to a given module."""
+
+    _is_stateful = True
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def new_forward(self, module: nn.Module, *args, **kwargs) -> Any:
+        args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
+        state: PyramidAttentionBroadcastState = module._pyramid_attention_broadcast_state
+
+        if state.skip_callback(module):
+            output = module._pyramid_attention_broadcast_state.cache
+        else:
+            output = module._old_forward(*args, **kwargs)
+
+        state.cache = output
+        state.iteration += 1
+        return module._diffusers_hook.post_forward(module, output)
+
+    def reset_state(self, module: nn.Module) -> None:
+        module._pyramid_attention_broadcast_state.reset()
+
+
 def apply_pyramid_attention_broadcast(
     pipeline: DiffusionPipeline,
     config: Optional[PyramidAttentionBroadcastConfig] = None,
@@ -275,28 +300,3 @@ def _apply_pyramid_attention_broadcast_on_mochi_attention_class(
 ) -> bool:
     # The same logic as Attention class works here, so just use that for now
     return _apply_pyramid_attention_broadcast_on_attention_class(pipeline, name, module, config)
-
-
-class PyramidAttentionBroadcastHook(ModelHook):
-    r"""A hook that applies Pyramid Attention Broadcast to a given module."""
-
-    _is_stateful = True
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def new_forward(self, module: nn.Module, *args, **kwargs) -> Any:
-        args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
-        state: PyramidAttentionBroadcastState = module._pyramid_attention_broadcast_state
-
-        if state.skip_callback(module):
-            output = module._pyramid_attention_broadcast_state.cache
-        else:
-            output = module._old_forward(*args, **kwargs)
-
-        state.cache = output
-        state.iteration += 1
-        return module._diffusers_hook.post_forward(module, output)
-
-    def reset_state(self, module: nn.Module) -> None:
-        module._pyramid_attention_broadcast_state.reset()
