@@ -529,10 +529,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         }
 
         missing_modules = (
-            set(expected_modules)
-            - set(pipeline._optional_components)
-            - set(text_2_image_cls._optional_components)
-            - set(text_2_image_kwargs.keys())
+            set(expected_modules) - set(text_2_image_cls._optional_components) - set(text_2_image_kwargs.keys())
         )
 
         if len(missing_modules) > 0:
@@ -844,10 +841,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         }
 
         missing_modules = (
-            set(expected_modules)
-            - set(pipeline._optional_components)
-            - set(image_2_image_cls._optional_components)
-            - set(image_2_image_kwargs.keys())
+            set(expected_modules) - set(image_2_image_cls._optional_components) - set(image_2_image_kwargs.keys())
         )
 
         if len(missing_modules) > 0:
@@ -1152,10 +1146,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         }
 
         missing_modules = (
-            set(expected_modules)
-            - set(pipeline._optional_components)
-            - set(inpainting_cls._optional_components)
-            - set(inpainting_kwargs.keys())
+            set(expected_modules) - set(inpainting_cls._optional_components) - set(inpainting_kwargs.keys())
         )
 
         if len(missing_modules) > 0:
