@@ -71,6 +71,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             Experimental feature for using a UNet without upsampling.
     """
 
+    _always_upcast_modules = ["norm.*"]
+
     @register_to_config
     def __init__(
         self,

@@ -45,6 +45,8 @@ class LayerwiseUpcastingHook(ModelHook):
     in the output, but can significantly reduce the memory footprint.
     """
 
+    _is_stateful = False
+
     def __init__(self, storage_dtype: torch.dtype, compute_dtype: torch.dtype) -> None:
         self.storage_dtype = storage_dtype
         self.compute_dtype = compute_dtype
@@ -56,8 +58,8 @@ class LayerwiseUpcastingHook(ModelHook):
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
         module.to(dtype=self.compute_dtype)
         # How do we account for LongTensor, BoolTensor, etc.?
-        # args = tuple(align_maybe_tensor_dtype(arg, self.compute_dtype) for arg in args)
-        # kwargs = {k: align_maybe_tensor_dtype(v, self.compute_dtype) for k, v in kwargs.items()}
+        # args = tuple(_align_maybe_tensor_dtype(arg, self.compute_dtype) for arg in args)
+        # kwargs = {k: _align_maybe_tensor_dtype(v, self.compute_dtype) for k, v in kwargs.items()}
         return args, kwargs
 
     def post_forward(self, module: torch.nn.Module, output):
@@ -105,7 +107,7 @@ _SUPPORTED_PYTORCH_LAYERS = [
     torch.nn.Linear,
 ]
 
-_DEFAULT_PYTORCH_LAYER_SKIP_MODULES_PATTERN = ["pos_embed", "patch_embed", "norm"]
+_DEFAULT_SKIP_MODULES_PATTERN = ["pos_embed", "patch_embed", "norm"]
 # fmt: on
 
 
@@ -114,9 +116,27 @@ def apply_layerwise_upcasting(
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
     granularity: LayerwiseUpcastingGranularity = LayerwiseUpcastingGranularity.PYTORCH_LAYER,
-    skip_modules_pattern: List[str] = [],
+    skip_modules_pattern: List[str] = _DEFAULT_SKIP_MODULES_PATTERN,
     skip_modules_classes: List[Type[torch.nn.Module]] = [],
 ) -> torch.nn.Module:
+    r"""
+    Applies layerwise upcasting to a given module. The module expected here is a Diffusers ModelMixin but it can be any
+    nn.Module using diffusers layers or pytorch primitives.
+
+    Args:
+        module (`torch.nn.Module`):
+            The module to attach the hook to.
+        storage_dtype (`torch.dtype`):
+            The dtype to cast the module to before the forward pass.
+        compute_dtype (`torch.dtype`):
+            The dtype to cast the module to during the forward pass.
+        granularity (`LayerwiseUpcastingGranularity`, *optional*, defaults to `LayerwiseUpcastingGranularity.PYTORCH_LAYER`):
+            The granularity of the layerwise upcasting process.
+        skip_modules_pattern (`List[str]`, defaults to `["pos_embed", "patch_embed", "norm"]`):
+            A list of patterns to match the names of the modules to skip during the layerwise upcasting process.
+        skip_modules_classes (`List[Type[torch.nn.Module]]`, defaults to `[]`):
+            A list of module classes to skip during the layerwise upcasting process.
+    """
     if granularity == LayerwiseUpcastingGranularity.DIFFUSERS_LAYER:
         return _apply_layerwise_upcasting_diffusers_layer(
             module, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes
@@ -153,7 +173,7 @@ def _apply_layerwise_upcasting_diffusers_layer(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: List[str] = _DEFAULT_PYTORCH_LAYER_SKIP_MODULES_PATTERN,
+    skip_modules_pattern: List[str] = _DEFAULT_SKIP_MODULES_PATTERN,
     skip_modules_classes: List[Type[torch.nn.Module]] = [],
 ) -> torch.nn.Module:
     for name, submodule in module.named_modules():
@@ -173,7 +193,7 @@ def _apply_layerwise_upcasting_pytorch_layer(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: List[str] = _DEFAULT_PYTORCH_LAYER_SKIP_MODULES_PATTERN,
+    skip_modules_pattern: List[str] = _DEFAULT_SKIP_MODULES_PATTERN,
     skip_modules_classes: List[Type[torch.nn.Module]] = [],
 ) -> torch.nn.Module:
     for name, submodule in module.named_modules():
@@ -189,7 +209,7 @@ def _apply_layerwise_upcasting_pytorch_layer(
     return module
 
 
-def align_maybe_tensor_dtype(input: Any, dtype: torch.dtype) -> Any:
+def _align_maybe_tensor_dtype(input: Any, dtype: torch.dtype) -> Any:
     r"""
     Aligns the dtype of a tensor or a list of tensors to a given dtype.
 
@@ -199,6 +219,7 @@ def align_maybe_tensor_dtype(input: Any, dtype: torch.dtype) -> Any:
             types, it will be returned as is.
         dtype (`torch.dtype`):
             The dtype to align the tensor(s) to.
+
     Returns:
         `Any`:
             The tensor or list of tensors aligned to the given dtype.
@@ -206,7 +227,7 @@ def align_maybe_tensor_dtype(input: Any, dtype: torch.dtype) -> Any:
     if isinstance(input, torch.Tensor):
         return input.to(dtype=dtype)
     if isinstance(input, (list, tuple)):
-        return [align_maybe_tensor_dtype(t, dtype) for t in input]
+        return [_align_maybe_tensor_dtype(t, dtype) for t in input]
     if isinstance(input, dict):
-        return {k: align_maybe_tensor_dtype(v, dtype) for k, v in input.items()}
+        return {k: _align_maybe_tensor_dtype(v, dtype) for k, v in input.items()}
     return input

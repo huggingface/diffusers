@@ -275,6 +275,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _no_split_modules = ["AuraFlowJointTransformerBlock", "AuraFlowSingleTransformerBlock", "AuraFlowPatchEmbed"]
+    _always_upcast_modules = ["pos_embed", "norm.*"]
     _supports_gradient_checkpointing = True
 
     @register_to_config

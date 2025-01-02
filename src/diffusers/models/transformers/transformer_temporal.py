@@ -67,6 +67,8 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             The maximum length of the sequence over which to apply positional embeddings.
     """
 
+    _always_upcast_modules = ["norm.*"]
+
     @register_to_config
     def __init__(
         self,

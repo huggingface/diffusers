@@ -65,6 +65,8 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
             The number of frames in the video-like data.
     """
 
+    _always_upcast_modules = ["pos_embed", "norm.*"]
+
     @register_to_config
     def __init__(
         self,
