@@ -652,7 +652,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # 5. Prepare timestep
-        if self.scheduler.schedule.__class__.__name__ != "FlowMatchLinearQuadratic":
+        if self.scheduler._schedule.base_schedule.__class__.__name__ != "FlowMatchLinearQuadratic":
             self.scheduler._schedule.set_base_schedule("FlowMatchLinearQuadratic")
 
         timesteps, num_inference_steps = retrieve_timesteps(

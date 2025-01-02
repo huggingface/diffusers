@@ -820,7 +820,7 @@ class FluxPipeline(
         )
 
         # 5. Prepare timesteps
-        if self.scheduler.schedule.__class__.__name__ != "FlowMatchFlux":
+        if self.scheduler._schedule.base_schedule.__class__.__name__ != "FlowMatchFlux":
             self.scheduler._schedule.set_base_schedule("FlowMatchFlux")
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
