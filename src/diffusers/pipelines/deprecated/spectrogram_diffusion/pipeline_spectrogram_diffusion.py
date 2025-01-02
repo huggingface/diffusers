@@ -231,7 +231,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 output = self.decode(
                     encodings_and_masks=encodings_and_masks,
                     input_tokens=x,
-                    noise_time=t / self.scheduler.config.num_train_timesteps,  # rescale to [0, 1)
+                    noise_time=t / self.scheduler._schedule.num_train_timesteps,  # rescale to [0, 1)
                 )
 
                 # Compute previous output: x_t -> x_t-1

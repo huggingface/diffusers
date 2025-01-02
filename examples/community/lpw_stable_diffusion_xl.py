@@ -1050,8 +1050,8 @@ class SDXLLongPromptWeightingPipeline(
         if denoising_start is not None:
             discrete_timestep_cutoff = int(
                 round(
-                    self.scheduler.config.num_train_timesteps
-                    - (denoising_start * self.scheduler.config.num_train_timesteps)
+                    self.scheduler._schedule.num_train_timesteps
+                    - (denoising_start * self.scheduler._schedule.num_train_timesteps)
                 )
             )
 
@@ -1819,8 +1819,8 @@ class SDXLLongPromptWeightingPipeline(
         elif self.denoising_end is not None and denoising_value_valid(self.denoising_end):
             discrete_timestep_cutoff = int(
                 round(
-                    self.scheduler.config.num_train_timesteps
-                    - (self.denoising_end * self.scheduler.config.num_train_timesteps)
+                    self.scheduler._schedule.num_train_timesteps
+                    - (self.denoising_end * self.scheduler._schedule.num_train_timesteps)
                 )
             )
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))

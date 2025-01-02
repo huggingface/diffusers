@@ -245,6 +245,35 @@ class ConfigMixin:
             deprecate("config-passed-as-path", "1.0.0", deprecation_message, standard_warn=False)
             config, kwargs = cls.load_config(pretrained_model_name_or_path=config, return_unused_kwargs=True, **kwargs)
 
+        # Handle old scheduler configs
+        if "Scheduler" in cls.__name__ and "schedule_config" not in config:
+            _class_name = config.pop("_class_name", None)
+            _diffusers_version = config.pop("_diffusers_version", None)
+            use_karras_sigmas = config.pop("use_karras_sigmas", None)
+            use_exponential_sigmas = config.pop("use_exponential_sigmas", None)
+            use_beta_sigmas = config.pop("use_beta_sigmas", None)
+            prediction_type = config.pop("prediction_type", None)
+            if use_karras_sigmas:
+                sigma_schedule_config = {"class_name": "KarrasSigmas"}
+            elif use_exponential_sigmas:
+                sigma_schedule_config = {"class_name": "ExponentialSigmas"}
+            elif use_beta_sigmas:
+                sigma_schedule_config = {"class_name": "BetaSigmas"}
+            else:
+                sigma_schedule_config = {}
+            if "beta_schedule" in config:
+                config.update({"class_name": "BetaSchedule"})
+            elif "shift" in config:
+                config.update({"class_name": "FlowMatchSchedule"})
+            if prediction_type:
+                config.update({"prediction_type": prediction_type})
+            config = {
+                "_class_name": _class_name,
+                "_diffusers_version": _diffusers_version,
+                "schedule_config": config,
+                "sigma_schedule_config": sigma_schedule_config,
+            }
+
         init_dict, unused_kwargs, hidden_dict = cls.extract_init_dict(config, **kwargs)
 
         # Allow dtype to be specified on initialization
@@ -457,6 +486,12 @@ class ConfigMixin:
         # Skip keys that were not present in the original config, so default __init__ values were used
         used_defaults = config_dict.get("_use_default_values", [])
         config_dict = {k: v for k, v in config_dict.items() if k not in used_defaults and k != "_use_default_values"}
+        if (
+            "scheduler" in config_dict
+            and isinstance(config_dict["scheduler"], list)
+            and config_dict["scheduler"][1].startswith("FlowMatch")
+        ):
+            config_dict["scheduler"][1] = config_dict["scheduler"][1].replace("FlowMatch", "")
 
         # 0. Copy origin config dict
         original_dict = dict(config_dict.items())
@@ -494,6 +529,8 @@ class ConfigMixin:
 
         # remove attributes from orig class that cannot be expected
         orig_cls_name = config_dict.pop("_class_name", cls.__name__)
+        if orig_cls_name.startswith("FlowMatch"):
+            orig_cls_name = orig_cls_name.replace("FlowMatch", "")
         if (
             isinstance(orig_cls_name, str)
             and orig_cls_name != cls.__name__

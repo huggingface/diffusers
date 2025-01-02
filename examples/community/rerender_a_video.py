@@ -1079,7 +1079,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                             # get x_t from x_0
                             latents = self.scheduler.add_noise(pred_x0, noise_pred, t).to(latents_dtype)
 
-                        prev_t = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+                        prev_t = t - self.scheduler._schedule.num_train_timesteps // self.scheduler.num_inference_steps
                         if i == len(timesteps) - 1:
                             alpha_t_prev = 1.0
                         else:

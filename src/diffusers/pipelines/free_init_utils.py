@@ -159,7 +159,7 @@ class FreeInitMixin:
                 temporal_stop_frequency=self._free_init_temporal_stop_frequency,
             )
 
-            current_diffuse_timestep = self.scheduler.config.num_train_timesteps - 1
+            current_diffuse_timestep = self.scheduler._schedule.num_train_timesteps - 1
             diffuse_timesteps = torch.full((latent_shape[0],), current_diffuse_timestep).long()
 
             z_t = self.scheduler.add_noise(

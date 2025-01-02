@@ -1047,8 +1047,8 @@ class StableDiffusionXLControlNetInpaintPipeline(
             # that is, strength is determined by the denoising_start instead.
             discrete_timestep_cutoff = int(
                 round(
-                    self.scheduler.config.num_train_timesteps
-                    - (denoising_start * self.scheduler.config.num_train_timesteps)
+                    self.scheduler._schedule.num_train_timesteps
+                    - (denoising_start * self.scheduler._schedule.num_train_timesteps)
                 )
             )
 
@@ -1702,8 +1702,8 @@ class StableDiffusionXLControlNetInpaintPipeline(
         elif denoising_end is not None and denoising_value_valid(denoising_end):
             discrete_timestep_cutoff = int(
                 round(
-                    self.scheduler.config.num_train_timesteps
-                    - (denoising_end * self.scheduler.config.num_train_timesteps)
+                    self.scheduler._schedule.num_train_timesteps
+                    - (denoising_end * self.scheduler._schedule.num_train_timesteps)
                 )
             )
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))

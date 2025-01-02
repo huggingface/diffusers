@@ -812,7 +812,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
 
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
-                current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
+                current_timestep = 1 - current_timestep / self.scheduler._schedule.num_train_timesteps
 
                 # prepare image_rotary_emb for positional encoding
                 # dynamic scaling_factor for different resolution.

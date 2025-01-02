@@ -1148,7 +1148,7 @@ class AdaptiveMaskInpaintPipeline(
                 # run segmentation
                 if use_adaptive_mask:
                     if enforce_full_mask_ratio > 0.0:
-                        use_default_mask = t < self.scheduler.config.num_train_timesteps * enforce_full_mask_ratio
+                        use_default_mask = t < self.scheduler._schedule.num_train_timesteps * enforce_full_mask_ratio
                     elif enforce_full_mask_ratio == 0.0:
                         use_default_mask = False
                     else:

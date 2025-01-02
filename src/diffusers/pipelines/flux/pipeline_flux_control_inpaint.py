@@ -646,7 +646,7 @@ class FluxControlInpaintPipeline(
             image_latents = torch.cat([image_latents], dim=0)
 
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self.scheduler.scale_noise(image_latents, timestep, noise)
+        latents = self.scheduler.add_noise(image_latents, noise, timestep)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
         return latents, noise, image_latents, latent_image_ids
 
@@ -985,10 +985,10 @@ class FluxControlInpaintPipeline(
         image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler._schedule.base_image_seq_len,
+            self.scheduler._schedule.max_image_seq_len,
+            self.scheduler._schedule.base_shift,
+            self.scheduler._schedule.max_shift,
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -1091,8 +1091,8 @@ class FluxControlInpaintPipeline(
                 init_mask = mask
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
-                    init_latents_proper = self.scheduler.scale_noise(
-                        image_latents, torch.tensor([noise_timestep]), noise
+                    init_latents_proper = self.scheduler.add_noise(
+                        image_latents, noise, torch.tensor([noise_timestep])
                     )
                 else:
                     init_latents_proper = image_latents

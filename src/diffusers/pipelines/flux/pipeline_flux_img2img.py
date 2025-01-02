@@ -562,7 +562,9 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
             image_latents = torch.cat([image_latents], dim=0)
 
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self.scheduler.scale_noise(image_latents, timestep, noise)
+        # NOTE: `scale_noise` changed to `add_noise`
+        # the signature is `noise`, `timestep` instead of `timestep`, `noise`
+        latents = self.scheduler.add_noise(image_latents, noise, timestep)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
         return latents, latent_image_ids
 
@@ -746,10 +748,10 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
         image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler._schedule.base_image_seq_len,
+            self.scheduler._schedule.max_image_seq_len,
+            self.scheduler._schedule.base_shift,
+            self.scheduler._schedule.max_shift,
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,

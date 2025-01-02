@@ -87,7 +87,7 @@ class NullTextPipeline(StableDiffusionPipeline):
         return image
 
     def prev_step(self, model_output, timestep, sample):
-        prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+        prev_timestep = timestep - self.scheduler._schedule.num_train_timesteps // self.scheduler.num_inference_steps
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
         alpha_prod_t_prev = (
             self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
@@ -100,7 +100,7 @@ class NullTextPipeline(StableDiffusionPipeline):
 
     def next_step(self, model_output, timestep, sample):
         timestep, next_timestep = (
-            min(timestep - self.scheduler.config.num_train_timesteps // self.num_inference_steps, 999),
+            min(timestep - self.scheduler._schedule.num_train_timesteps // self.num_inference_steps, 999),
             timestep,
         )
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep] if timestep >= 0 else self.scheduler.final_alpha_cumprod

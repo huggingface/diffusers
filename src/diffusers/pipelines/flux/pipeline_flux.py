@@ -820,14 +820,15 @@ class FluxPipeline(
         )
 
         # 5. Prepare timesteps
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        if self.scheduler._schedule.base_schedule.__class__.__name__ != "FlowMatchFlux":
+            self.scheduler._schedule.set_base_schedule("FlowMatchFlux")
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler._schedule.base_image_seq_len,
+            self.scheduler._schedule.max_image_seq_len,
+            self.scheduler._schedule.base_shift,
+            self.scheduler._schedule.max_shift,
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,

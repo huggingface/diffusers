@@ -717,7 +717,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             # if strength is 1. then initialise the latents to noise, else initial to image + noise
-            latents = noise if is_strength_max else self.scheduler.scale_noise(image_latents, timestep, noise)
+            latents = noise if is_strength_max else self.scheduler.add_noise(image_latents, noise, timestep)
         else:
             noise = latents.to(device)
             latents = noise
@@ -1049,16 +1049,16 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
 
         # 3. Prepare timesteps
         scheduler_kwargs = {}
-        if self.scheduler.config.get("use_dynamic_shifting", None) and mu is None:
+        if self.scheduler._schedule.use_dynamic_shifting and mu is None:
             image_seq_len = (int(height) // self.vae_scale_factor // self.transformer.config.patch_size) * (
                 int(width) // self.vae_scale_factor // self.transformer.config.patch_size
             )
             mu = calculate_shift(
                 image_seq_len,
-                self.scheduler.config.base_image_seq_len,
-                self.scheduler.config.max_image_seq_len,
-                self.scheduler.config.base_shift,
-                self.scheduler.config.max_shift,
+                self.scheduler._schedule.base_image_seq_len,
+                self.scheduler._schedule.max_image_seq_len,
+                self.scheduler._schedule.base_shift,
+                self.scheduler._schedule.max_shift,
             )
             scheduler_kwargs["mu"] = mu
         elif mu is not None:
@@ -1203,8 +1203,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
 
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]
-                        init_latents_proper = self.scheduler.scale_noise(
-                            init_latents_proper, torch.tensor([noise_timestep]), noise
+                        init_latents_proper = self.scheduler.add_noise(
+                            init_latents_proper, noise, torch.tensor([noise_timestep])
                         )
 
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
