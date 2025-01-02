@@ -85,6 +85,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin, SamplingMixin):
         schedule_config,
         sigma_schedule_config,
         prediction_type: str = "epsilon",
+        clip_sample: Optional[bool] = False,
+        clip_sample_range: float = 1.0,
     ):
         self.set_schedule(schedule_config)
         self.set_sigma_schedule(sigma_schedule_config)
@@ -264,9 +266,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin, SamplingMixin):
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
 
-        if self._schedule.clip_sample:
+        if self.config.clip_sample:
             pred_original_sample = pred_original_sample.clamp(
-                -self._schedule.clip_sample_range, self._schedule.clip_sample_range
+                -self.config.clip_sample_range, self.config.clip_sample_range
             )
 
         if self.state_in_first_order:

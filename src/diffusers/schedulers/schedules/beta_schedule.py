@@ -104,8 +104,6 @@ class BetaSchedule:
         timestep_spacing: str = "linspace",
         timestep_type: str = "discrete",  # can be "discrete" or "continuous"
         steps_offset: int = 0,
-        clip_sample: Optional[bool] = False,
-        clip_sample_range: float = 1.0,
         sigma_min: Optional[float] = None,
         sigma_max: Optional[float] = None,
         final_sigmas_type: str = "zero",  # can be "zero" or "sigma_min"
@@ -145,8 +143,6 @@ class BetaSchedule:
         self.timestep_spacing = timestep_spacing
         self.timestep_type = timestep_type
         self.steps_offset = steps_offset
-        self.clip_sample = clip_sample
-        self.clip_sample_range = clip_sample_range
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.final_sigmas_type = final_sigmas_type
