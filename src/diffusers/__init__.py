@@ -107,6 +107,7 @@ else:
             "I2VGenXLUNet",
             "Kandinsky3UNet",
             "LatteTransformer3DModel",
+            "LayerwiseUpcastingGranularity",
             "LTXVideoTransformer3DModel",
             "LuminaNextDiT2DModel",
             "MochiTransformer3DModel",
@@ -135,6 +136,8 @@ else:
             "UNetSpatioTemporalConditionModel",
             "UVit2DModel",
             "VQModel",
+            "apply_layerwise_upcasting",
+            "apply_layerwise_upcasting_hook",
         ]
     )
     _import_structure["optimization"] = [
@@ -617,6 +620,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             I2VGenXLUNet,
             Kandinsky3UNet,
             LatteTransformer3DModel,
+            LayerwiseUpcastingGranularity,
             LTXVideoTransformer3DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
@@ -644,6 +648,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
             VQModel,
+            apply_layerwise_upcasting,
+            apply_layerwise_upcasting_hook,
         )
         from .optimization import (
             get_constant_schedule,

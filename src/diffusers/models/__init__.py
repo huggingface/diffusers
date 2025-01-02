@@ -123,6 +123,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetControlNetXSModel,
         )
         from .embeddings import ImageProjection
+        from .layerwise_upcasting_utils import (
+            LayerwiseUpcastingGranularity,
+            apply_layerwise_upcasting,
+            apply_layerwise_upcasting_hook,
+        )
         from .modeling_utils import ModelMixin
         from .transformers import (
             AllegroTransformer3DModel,
