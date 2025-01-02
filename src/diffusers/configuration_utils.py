@@ -247,12 +247,12 @@ class ConfigMixin:
 
         # Handle old scheduler configs
         if "Scheduler" in cls.__name__ and "schedule_config" not in config:
-            prediction_type = config.pop("prediction_type", None)
             _class_name = config.pop("_class_name", None)
             _diffusers_version = config.pop("_diffusers_version", None)
             use_karras_sigmas = config.pop("use_karras_sigmas", None)
             use_exponential_sigmas = config.pop("use_exponential_sigmas", None)
             use_beta_sigmas = config.pop("use_beta_sigmas", None)
+            prediction_type = config.pop("prediction_type", None)
             if use_karras_sigmas:
                 sigma_schedule_config = {"class_name": "KarrasSigmas"}
             elif use_exponential_sigmas:
@@ -265,10 +265,11 @@ class ConfigMixin:
                 config.update({"class_name": "BetaSchedule"})
             elif "shift" in config:
                 config.update({"class_name": "FlowMatchSchedule"})
+            if prediction_type:
+                config.update({"prediction_type": prediction_type})
             config = {
                 "_class_name": _class_name,
                 "_diffusers_version": _diffusers_version,
-                "prediction_type": prediction_type,
                 "schedule_config": config,
                 "sigma_schedule_config": sigma_schedule_config,
             }
