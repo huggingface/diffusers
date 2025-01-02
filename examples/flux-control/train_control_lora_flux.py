@@ -927,7 +927,7 @@ def main(args):
                 transformer_ = FluxTransformer2DModel.from_pretrained(
                     args.pretrained_model_name_or_path, subfolder="transformer"
                 ).to(accelerator.device, weight_dtype)
-                
+
                 # Handle input dimension doubling before adding adapter
                 with torch.no_grad():
                     initial_input_channels = transformer_.config.in_channels
@@ -944,7 +944,7 @@ def main(args):
                         new_linear.bias.copy_(transformer_.x_embedder.bias)
                     transformer_.x_embedder = new_linear
                     transformer_.register_to_config(in_channels=initial_input_channels * 2)
-                
+
                 transformer_.add_adapter(transformer_lora_config)
 
             lora_state_dict = FluxControlPipeline.lora_state_dict(input_dir)
