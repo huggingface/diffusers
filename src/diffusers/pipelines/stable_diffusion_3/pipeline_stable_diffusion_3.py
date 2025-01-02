@@ -1007,17 +1007,17 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
         # 5. Prepare timesteps
         scheduler_kwargs = {}
-        if self.scheduler.config.get("use_dynamic_shifting", None) and mu is None:
+        if self.scheduler._schedule.use_dynamic_shifting and mu is None:
             _, _, height, width = latents.shape
             image_seq_len = (height // self.transformer.config.patch_size) * (
                 width // self.transformer.config.patch_size
             )
             mu = calculate_shift(
                 image_seq_len,
-                self.scheduler.config.base_image_seq_len,
-                self.scheduler.config.max_image_seq_len,
-                self.scheduler.config.base_shift,
-                self.scheduler.config.max_shift,
+                self.scheduler._schedule.base_image_seq_len,
+                self.scheduler._schedule.max_image_seq_len,
+                self.scheduler._schedule.base_shift,
+                self.scheduler._schedule.max_shift,
             )
             scheduler_kwargs["mu"] = mu
         elif mu is not None:

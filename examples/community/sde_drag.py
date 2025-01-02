@@ -295,7 +295,7 @@ class SdeDragPipeline(DiffusionPipeline):
 
             # Sample a random timestep for each image
             timesteps = torch.randint(
-                0, self.scheduler.config.num_train_timesteps, (bsz,), device=model_input.device, generator=generator
+                0, self.scheduler._schedule.num_train_timesteps, (bsz,), device=model_input.device, generator=generator
             )
             timesteps = timesteps.long()
 

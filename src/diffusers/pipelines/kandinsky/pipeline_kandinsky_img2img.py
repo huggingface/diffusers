@@ -420,7 +420,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         timesteps_tensor, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
         # the formular to calculate timestep for add_noise is taken from the original kandinsky repo
-        latent_timestep = int(self.scheduler.config.num_train_timesteps * strength) - 2
+        latent_timestep = int(self.scheduler._schedule.num_train_timesteps * strength) - 2
 
         latent_timestep = torch.tensor([latent_timestep] * batch_size, dtype=timesteps_tensor.dtype, device=device)
 

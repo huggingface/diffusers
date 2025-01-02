@@ -1331,7 +1331,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
         # max_timestep = timesteps[0]
-        max_timestep = self.scheduler.config.num_train_timesteps
+        max_timestep = self.scheduler._schedule.num_train_timesteps
 
         # 6. Prepare latent variables
         if mode == "joint":
