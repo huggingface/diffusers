@@ -136,8 +136,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             sampling, and `solver_order=3` for unconditional sampling.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
-            `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            `sample` (directly predicts the noisy sample), `v_prediction` (see section 2.4 of [Imagen
+            Video](https://imagen.research.google/video/paper.pdf) paper), or `flow_prediction`.
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -174,6 +174,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             Whether to use the uniform-logSNR for step sizes proposed by Lu's DPM-Solver in the noise schedule during
             the sampling process. If `True`, the sigmas and time steps are determined according to a sequence of
             `lambda(t)`.
+        use_flow_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use flow sigmas for step sizes in the noise schedule during the sampling process.
+        flow_shift (`float`, *optional*, defaults to 1.0):
         final_sigmas_type (`str`, defaults to `"zero"`):
             The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
             sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
