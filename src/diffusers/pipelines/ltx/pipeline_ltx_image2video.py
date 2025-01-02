@@ -571,6 +571,8 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        decode_timestep: Union[float, List[float]] = 0.0,
+        decode_noise_scale: Optional[Union[float, List[float]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -625,6 +627,10 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
             negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
+            decode_timestep (`float`, defaults to `0.0`):
+                The timestep at which generated video is decoded.
+            decode_noise_scale (`float`, defaults to `None`):
+                The interpolation factor between random noise and denoised latents at the decode timestep.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -849,7 +855,25 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
             latents = latents.to(prompt_embeds.dtype)
-            video = self.vae.decode(latents, return_dict=False)[0]
+
+            if not self.vae.config.timestep_conditioning:
+                timestep = None
+            else:
+                noise = torch.randn(latents.shape, generator=generator, device=device, dtype=latents.dtype)
+                if not isinstance(decode_timestep, list):
+                    decode_timestep = [decode_timestep] * batch_size
+                if decode_noise_scale is None:
+                    decode_noise_scale = decode_timestep
+                elif not isinstance(decode_noise_scale, list):
+                    decode_noise_scale = [decode_noise_scale] * batch_size
+
+                timestep = torch.tensor(decode_timestep, device=device, dtype=latents.dtype)
+                decode_noise_scale = torch.tensor(decode_noise_scale, device=device, dtype=latents.dtype)[
+                    :, None, None, None, None
+                ]
+                latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+            video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         # Offload all models

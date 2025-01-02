@@ -242,6 +242,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         patch_size: int = 1,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
+        interpolation_scale: Optional[int] = None,
     ) -> None:
         super().__init__()
 
@@ -255,8 +256,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=inner_dim,
-            interpolation_scale=None,
-            pos_embed_type=None,
+            interpolation_scale=interpolation_scale,
+            pos_embed_type="sincos" if interpolation_scale is not None else None,
         )
 
         # 2. Additional condition embeddings

@@ -48,7 +48,7 @@
   - local: using-diffusers/inpaint
     title: Inpainting
   - local: using-diffusers/text-img2vid
-    title: Text or image-to-video
+    title: Video generation
   - local: using-diffusers/depth2img
     title: Depth-to-image
   title: Generative tasks
@@ -429,7 +429,7 @@
     - local: api/pipelines/ledits_pp
       title: LEDITS++
     - local: api/pipelines/ltx_video
-      title: LTX
+      title: LTXVideo
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
