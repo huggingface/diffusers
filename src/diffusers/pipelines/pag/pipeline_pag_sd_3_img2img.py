@@ -702,7 +702,7 @@ class StableDiffusion3PAGImg2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
-        init_latents = self.scheduler.scale_noise(init_latents, timestep, noise)
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents.to(device=device, dtype=dtype)
 
         return latents

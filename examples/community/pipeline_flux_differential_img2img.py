@@ -582,7 +582,7 @@ class FluxDifferentialImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = self.scheduler.scale_noise(image_latents, timestep, noise)
+            latents = self.scheduler.add_noise(image_latents, noise, timestep)
         else:
             noise = latents.to(device)
             latents = noise
@@ -976,8 +976,8 @@ class FluxDifferentialImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
-                    image_latent = self.scheduler.scale_noise(
-                        original_image_latents, torch.tensor([noise_timestep]), noise
+                    image_latent = self.scheduler.add_noise(
+                        original_image_latents, noise, torch.tensor([noise_timestep])
                     )
 
                     # start diff diff

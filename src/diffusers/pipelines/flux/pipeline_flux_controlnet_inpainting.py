@@ -605,7 +605,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = self.scheduler.scale_noise(image_latents, timestep, noise)
+            latents = self.scheduler.add_noise(image_latents, noise, timestep)
         else:
             noise = latents.to(device)
             latents = noise
@@ -1159,8 +1159,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
-                    init_latents_proper = self.scheduler.scale_noise(
-                        init_latents_proper, torch.tensor([noise_timestep]), noise
+                    init_latents_proper = self.scheduler.add_noise(
+                        init_latents_proper, noise, torch.tensor([noise_timestep])
                     )
 
                 latents = (1 - init_mask) * init_latents_proper + init_mask * latents
