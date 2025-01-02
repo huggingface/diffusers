@@ -247,6 +247,7 @@ class SchedulerMixin(PushToHubMixin):
         else:
             self._sigma_schedule = sigma_schedule
 
+
 class SamplingMixin:
     _step_index = None
     _begin_index = None
@@ -374,7 +375,6 @@ class SamplingMixin:
 
         velocity = sqrt_alpha_prod * noise - sqrt_one_minus_alpha_prod * sample
         return velocity
-
 
     def __len__(self):
         return self.config.num_train_timesteps

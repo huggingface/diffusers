@@ -20,7 +20,7 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from ..utils.torch_utils import randn_tensor
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SamplingMixin
+from .scheduling_utils import KarrasDiffusionSchedulers, SamplingMixin, SchedulerMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

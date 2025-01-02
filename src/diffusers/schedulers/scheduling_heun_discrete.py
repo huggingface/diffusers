@@ -20,7 +20,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SamplingMixin
+from .scheduling_utils import KarrasDiffusionSchedulers, SamplingMixin, SchedulerMixin
 
 
 @dataclass
