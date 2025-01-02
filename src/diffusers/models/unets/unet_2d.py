@@ -291,7 +291,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=self.dtype)
+        # TODO(aryan): Need to have this reviewed
+        t_emb = t_emb.to(dtype=sample.dtype)
         emb = self.time_embedding(t_emb)
 
         if self.class_embedding is not None:
@@ -301,7 +302,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             if self.config.class_embed_type == "timestep":
                 class_labels = self.time_proj(class_labels)
 
-            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
+            class_emb = self.class_embedding(class_labels).to(dtype=sample.dtype)
             emb = emb + class_emb
         elif self.class_embedding is None and class_labels is not None:
             raise ValueError("class_embedding needs to be initialized in order to use class conditioning")
