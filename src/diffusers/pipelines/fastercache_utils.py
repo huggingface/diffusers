@@ -526,7 +526,7 @@ class FasterCacheDenoiserHook(ModelHook):
 
         state.iteration += 1
         output = (hidden_states, *output[1:]) if isinstance(output, tuple) else hidden_states
-        return output
+        return module._diffusers_hook.post_forward(module, output)
 
     def reset_state(self, module: nn.Module) -> nn.Module:
         module._fastercache_state.reset()

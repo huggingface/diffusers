@@ -114,6 +114,7 @@ class SequentialHook(ModelHook):
         for hook in self.hooks:
             if hook._is_stateful:
                 hook.reset_state(module)
+        return module
 
 
 def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False) -> torch.nn.Module:
