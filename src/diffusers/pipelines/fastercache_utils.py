@@ -225,186 +225,6 @@ class FasterCacheBlockState:
         self.is_guidance_distilled = None
 
 
-def apply_fastercache(
-    pipeline: DiffusionPipeline,
-    config: Optional[FasterCacheConfig] = None,
-) -> None:
-    r"""
-    Applies [FasterCache](https://huggingface.co/papers/2410.19355) to a given pipeline.
-
-    Args:
-        pipeline (`DiffusionPipeline`):
-            The diffusion pipeline to apply FasterCache to.
-        config (`Optional[FasterCacheConfig]`, `optional`, defaults to `None`):
-            The configuration to use for FasterCache.
-
-    Example:
-    ```python
-    >>> import torch
-    >>> from diffusers import CogVideoXPipeline, FasterCacheConfig, apply_fastercache
-
-    >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
-    >>> pipe.to("cuda")
-
-    >>> config = FasterCacheConfig(
-    ...     spatial_attention_block_skip_range=2,
-    ...     spatial_attention_timestep_skip_range=(-1, 681),
-    ...     low_frequency_weight_update_timestep_range=(99, 641),
-    ...     high_frequency_weight_update_timestep_range=(-1, 301),
-    ...     spatial_attention_block_identifiers=["transformer_blocks"],
-    ...     attention_weight_callback=lambda _: 0.3,
-    ...     tensor_format="BFCHW",
-    ... )
-    >>> apply_fastercache(pipe, config)
-    ```
-    """
-
-    if config is None:
-        logger.warning("No FasterCacheConfig provided. Using default configuration.")
-        config = FasterCacheConfig()
-
-    if config.attention_weight_callback is None:
-        # If the user has not provided a weight callback, we default to 0.5 for all timesteps.
-        # In the paper, they recommend using a gradually increasing weight from 0 to 1 as the inference progresses, but
-        # this depends from model-to-model. It is required by the user to provide a weight callback if they want to
-        # use a different weight function. Defaulting to 0.5 works well in practice for most cases.
-        logger.warning(
-            "No `attention_weight_callback` provided when enabling FasterCache. Defaulting to using a weight of 0.5 for all timesteps."
-        )
-        config.attention_weight_callback = lambda _: 0.5
-
-    if config.low_frequency_weight_callback is None:
-        logger.debug(
-            "Low frequency weight callback not provided when enabling FasterCache. Defaulting to behaviour described in the paper."
-        )
-
-        def low_frequency_weight_callback(module: nn.Module) -> float:
-            is_within_range = (
-                config.low_frequency_weight_update_timestep_range[0]
-                < pipeline._current_timestep
-                < config.low_frequency_weight_update_timestep_range[1]
-            )
-            return config.alpha_low_frequency if is_within_range else 1.0
-
-        config.low_frequency_weight_callback = low_frequency_weight_callback
-
-    if config.high_frequency_weight_callback is None:
-        logger.debug(
-            "High frequency weight callback not provided when enabling FasterCache. Defaulting to behaviour described in the paper."
-        )
-
-        def high_frequency_weight_callback(module: nn.Module) -> float:
-            is_within_range = (
-                config.high_frequency_weight_update_timestep_range[0]
-                < pipeline._current_timestep
-                < config.high_frequency_weight_update_timestep_range[1]
-            )
-            return config.alpha_high_frequency if is_within_range else 1.0
-
-        config.high_frequency_weight_callback = high_frequency_weight_callback
-
-    supported_tensor_formats = ["BCFHW", "BFCHW", "BCHW"]  # TODO(aryan): Support BSC for LTX Video
-    if config.tensor_format not in supported_tensor_formats:
-        raise ValueError(f"`tensor_format` must be one of {supported_tensor_formats}, but got {config.tensor_format}.")
-
-    denoiser = pipeline.transformer if hasattr(pipeline, "transformer") else pipeline.unet
-    _apply_fastercache_on_denoiser(pipeline, denoiser, config)
-
-    for name, module in denoiser.named_modules():
-        if not isinstance(module, _ATTENTION_CLASSES):
-            continue
-        if isinstance(module, Attention):
-            _apply_fastercache_on_attention_class(pipeline, name, module, config)
-
-
-def _apply_fastercache_on_denoiser(
-    pipeline: DiffusionPipeline, denoiser: nn.Module, config: FasterCacheConfig
-) -> None:
-    def uncond_skip_callback(module: nn.Module) -> bool:
-        # We skip the unconditional branch only if the following conditions are met:
-        #   1. We have completed at least one iteration of the denoiser
-        #   2. The current timestep is within the range specified by the user. This is the optimal timestep range
-        #      where approximating the unconditional branch from the computation of the conditional branch is possible
-        #      without a significant loss in quality.
-        #   3. The current iteration is not a multiple of the unconditional batch skip range. This is done so that
-        #      we compute the unconditional branch at least once every few iterations to ensure minimal quality loss.
-
-        state: FasterCacheDenoiserState = module._fastercache_state
-        is_within_range = (
-            config.unconditional_batch_timestep_skip_range[0]
-            < pipeline._current_timestep
-            < config.unconditional_batch_timestep_skip_range[1]
-        )
-        return state.iteration > 0 and is_within_range and state.iteration % config.unconditional_batch_skip_range != 0
-
-    denoiser._fastercache_state = FasterCacheDenoiserState(
-        config.low_frequency_weight_callback, config.high_frequency_weight_callback, uncond_skip_callback
-    )
-    hook = FasterCacheDenoiserHook(
-        config._unconditional_conditional_input_kwargs_identifiers,
-        config._guidance_distillation_kwargs_identifiers,
-        config.tensor_format,
-    )
-    add_hook_to_module(denoiser, hook, append=True)
-
-
-def _apply_fastercache_on_attention_class(
-    pipeline: DiffusionPipeline, name: str, module: Attention, config: FasterCacheConfig
-) -> None:
-    is_spatial_self_attention = (
-        any(re.search(identifier, name) is not None for identifier in config.spatial_attention_block_identifiers)
-        and config.spatial_attention_block_skip_range is not None
-        and not module.is_cross_attention
-    )
-    is_temporal_self_attention = (
-        any(
-            f"{identifier}." in name or identifier == name
-            for identifier in config.temporal_attention_block_identifiers
-        )
-        and config.temporal_attention_block_skip_range is not None
-        and not module.is_cross_attention
-    )
-
-    block_skip_range, timestep_skip_range, block_type = None, None, None
-    if is_spatial_self_attention:
-        block_skip_range = config.spatial_attention_block_skip_range
-        timestep_skip_range = config.spatial_attention_timestep_skip_range
-        block_type = "spatial"
-    elif is_temporal_self_attention:
-        block_skip_range = config.temporal_attention_block_skip_range
-        timestep_skip_range = config.temporal_attention_timestep_skip_range
-        block_type = "temporal"
-
-    if block_skip_range is None or timestep_skip_range is None:
-        logger.debug(
-            f'Unable to apply FasterCache to the selected layer: "{name}" because it does '
-            f"not match any of the required criteria for spatial or temporal attention layers. Note, "
-            f"however, that this layer may still be valid for applying PAB. Please specify the correct "
-            f"block identifiers in the configuration or use the specialized `apply_fastercache_on_module` "
-            f"function to apply FasterCache to this layer."
-        )
-        return
-
-    def skip_callback(module: nn.Module) -> bool:
-        fastercache_state: FasterCacheBlockState = module._fastercache_state
-        is_within_timestep_range = timestep_skip_range[0] < pipeline._current_timestep < timestep_skip_range[1]
-
-        if not is_within_timestep_range:
-            # We are still not in the phase of inference where skipping attention is possible without minimal quality
-            # loss, as described in the paper. So, the attention computation cannot be skipped
-            return False
-
-        should_compute_attention = (
-            fastercache_state.iteration > 0 and fastercache_state.iteration % block_skip_range == 0
-        )
-        return not should_compute_attention
-
-    logger.debug(f"Enabling FasterCache ({block_type}) for layer: {name}")
-    module._fastercache_state = FasterCacheBlockState(skip_callback, config.attention_weight_callback)
-    hook = FasterCacheBlockHook()
-    add_hook_to_module(module, hook, append=True)
-
-
 class FasterCacheDenoiserHook(ModelHook):
     _is_stateful = True
 
@@ -630,6 +450,186 @@ class FasterCacheBlockHook(ModelHook):
     def reset_state(self, module: nn.Module) -> nn.Module:
         module._fastercache_state.reset()
         return module
+
+
+def apply_fastercache(
+    pipeline: DiffusionPipeline,
+    config: Optional[FasterCacheConfig] = None,
+) -> None:
+    r"""
+    Applies [FasterCache](https://huggingface.co/papers/2410.19355) to a given pipeline.
+
+    Args:
+        pipeline (`DiffusionPipeline`):
+            The diffusion pipeline to apply FasterCache to.
+        config (`Optional[FasterCacheConfig]`, `optional`, defaults to `None`):
+            The configuration to use for FasterCache.
+
+    Example:
+    ```python
+    >>> import torch
+    >>> from diffusers import CogVideoXPipeline, FasterCacheConfig, apply_fastercache
+
+    >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+    >>> pipe.to("cuda")
+
+    >>> config = FasterCacheConfig(
+    ...     spatial_attention_block_skip_range=2,
+    ...     spatial_attention_timestep_skip_range=(-1, 681),
+    ...     low_frequency_weight_update_timestep_range=(99, 641),
+    ...     high_frequency_weight_update_timestep_range=(-1, 301),
+    ...     spatial_attention_block_identifiers=["transformer_blocks"],
+    ...     attention_weight_callback=lambda _: 0.3,
+    ...     tensor_format="BFCHW",
+    ... )
+    >>> apply_fastercache(pipe, config)
+    ```
+    """
+
+    if config is None:
+        logger.warning("No FasterCacheConfig provided. Using default configuration.")
+        config = FasterCacheConfig()
+
+    if config.attention_weight_callback is None:
+        # If the user has not provided a weight callback, we default to 0.5 for all timesteps.
+        # In the paper, they recommend using a gradually increasing weight from 0 to 1 as the inference progresses, but
+        # this depends from model-to-model. It is required by the user to provide a weight callback if they want to
+        # use a different weight function. Defaulting to 0.5 works well in practice for most cases.
+        logger.warning(
+            "No `attention_weight_callback` provided when enabling FasterCache. Defaulting to using a weight of 0.5 for all timesteps."
+        )
+        config.attention_weight_callback = lambda _: 0.5
+
+    if config.low_frequency_weight_callback is None:
+        logger.debug(
+            "Low frequency weight callback not provided when enabling FasterCache. Defaulting to behaviour described in the paper."
+        )
+
+        def low_frequency_weight_callback(module: nn.Module) -> float:
+            is_within_range = (
+                config.low_frequency_weight_update_timestep_range[0]
+                < pipeline._current_timestep
+                < config.low_frequency_weight_update_timestep_range[1]
+            )
+            return config.alpha_low_frequency if is_within_range else 1.0
+
+        config.low_frequency_weight_callback = low_frequency_weight_callback
+
+    if config.high_frequency_weight_callback is None:
+        logger.debug(
+            "High frequency weight callback not provided when enabling FasterCache. Defaulting to behaviour described in the paper."
+        )
+
+        def high_frequency_weight_callback(module: nn.Module) -> float:
+            is_within_range = (
+                config.high_frequency_weight_update_timestep_range[0]
+                < pipeline._current_timestep
+                < config.high_frequency_weight_update_timestep_range[1]
+            )
+            return config.alpha_high_frequency if is_within_range else 1.0
+
+        config.high_frequency_weight_callback = high_frequency_weight_callback
+
+    supported_tensor_formats = ["BCFHW", "BFCHW", "BCHW"]  # TODO(aryan): Support BSC for LTX Video
+    if config.tensor_format not in supported_tensor_formats:
+        raise ValueError(f"`tensor_format` must be one of {supported_tensor_formats}, but got {config.tensor_format}.")
+
+    denoiser = pipeline.transformer if hasattr(pipeline, "transformer") else pipeline.unet
+    _apply_fastercache_on_denoiser(pipeline, denoiser, config)
+
+    for name, module in denoiser.named_modules():
+        if not isinstance(module, _ATTENTION_CLASSES):
+            continue
+        if isinstance(module, Attention):
+            _apply_fastercache_on_attention_class(pipeline, name, module, config)
+
+
+def _apply_fastercache_on_denoiser(
+    pipeline: DiffusionPipeline, denoiser: nn.Module, config: FasterCacheConfig
+) -> None:
+    def uncond_skip_callback(module: nn.Module) -> bool:
+        # We skip the unconditional branch only if the following conditions are met:
+        #   1. We have completed at least one iteration of the denoiser
+        #   2. The current timestep is within the range specified by the user. This is the optimal timestep range
+        #      where approximating the unconditional branch from the computation of the conditional branch is possible
+        #      without a significant loss in quality.
+        #   3. The current iteration is not a multiple of the unconditional batch skip range. This is done so that
+        #      we compute the unconditional branch at least once every few iterations to ensure minimal quality loss.
+
+        state: FasterCacheDenoiserState = module._fastercache_state
+        is_within_range = (
+            config.unconditional_batch_timestep_skip_range[0]
+            < pipeline._current_timestep
+            < config.unconditional_batch_timestep_skip_range[1]
+        )
+        return state.iteration > 0 and is_within_range and state.iteration % config.unconditional_batch_skip_range != 0
+
+    denoiser._fastercache_state = FasterCacheDenoiserState(
+        config.low_frequency_weight_callback, config.high_frequency_weight_callback, uncond_skip_callback
+    )
+    hook = FasterCacheDenoiserHook(
+        config._unconditional_conditional_input_kwargs_identifiers,
+        config._guidance_distillation_kwargs_identifiers,
+        config.tensor_format,
+    )
+    add_hook_to_module(denoiser, hook, append=True)
+
+
+def _apply_fastercache_on_attention_class(
+    pipeline: DiffusionPipeline, name: str, module: Attention, config: FasterCacheConfig
+) -> None:
+    is_spatial_self_attention = (
+        any(re.search(identifier, name) is not None for identifier in config.spatial_attention_block_identifiers)
+        and config.spatial_attention_block_skip_range is not None
+        and not module.is_cross_attention
+    )
+    is_temporal_self_attention = (
+        any(
+            f"{identifier}." in name or identifier == name
+            for identifier in config.temporal_attention_block_identifiers
+        )
+        and config.temporal_attention_block_skip_range is not None
+        and not module.is_cross_attention
+    )
+
+    block_skip_range, timestep_skip_range, block_type = None, None, None
+    if is_spatial_self_attention:
+        block_skip_range = config.spatial_attention_block_skip_range
+        timestep_skip_range = config.spatial_attention_timestep_skip_range
+        block_type = "spatial"
+    elif is_temporal_self_attention:
+        block_skip_range = config.temporal_attention_block_skip_range
+        timestep_skip_range = config.temporal_attention_timestep_skip_range
+        block_type = "temporal"
+
+    if block_skip_range is None or timestep_skip_range is None:
+        logger.debug(
+            f'Unable to apply FasterCache to the selected layer: "{name}" because it does '
+            f"not match any of the required criteria for spatial or temporal attention layers. Note, "
+            f"however, that this layer may still be valid for applying PAB. Please specify the correct "
+            f"block identifiers in the configuration or use the specialized `apply_fastercache_on_module` "
+            f"function to apply FasterCache to this layer."
+        )
+        return
+
+    def skip_callback(module: nn.Module) -> bool:
+        fastercache_state: FasterCacheBlockState = module._fastercache_state
+        is_within_timestep_range = timestep_skip_range[0] < pipeline._current_timestep < timestep_skip_range[1]
+
+        if not is_within_timestep_range:
+            # We are still not in the phase of inference where skipping attention is possible without minimal quality
+            # loss, as described in the paper. So, the attention computation cannot be skipped
+            return False
+
+        should_compute_attention = (
+            fastercache_state.iteration > 0 and fastercache_state.iteration % block_skip_range == 0
+        )
+        return not should_compute_attention
+
+    logger.debug(f"Enabling FasterCache ({block_type}) for layer: {name}")
+    module._fastercache_state = FasterCacheBlockState(skip_callback, config.attention_weight_callback)
+    hook = FasterCacheBlockHook()
+    add_hook_to_module(module, hook, append=True)
 
 
 # Reference: https://github.com/Vchitect/FasterCache/blob/fab32c15014636dc854948319c0a9a8d92c7acb4/scripts/latte/fastercache_sample_latte.py#L127C1-L143C39
