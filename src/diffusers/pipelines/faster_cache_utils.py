@@ -141,20 +141,20 @@ class FasterCacheConfig:
     temporal_attention_block_skip_range: Optional[int] = None
 
     # TODO(aryan): write heuristics for what the best way to obtain these values are
-    spatial_attention_timestep_skip_range: Tuple[float, float] = (-1, 681)
-    temporal_attention_timestep_skip_range: Tuple[float, float] = (-1, 681)
+    spatial_attention_timestep_skip_range: Tuple[int, int] = (-1, 681)
+    temporal_attention_timestep_skip_range: Tuple[int, int] = (-1, 681)
 
     # Indicator functions for low/high frequency as mentioned in Equation 11 of the paper
     low_frequency_weight_update_timestep_range: Tuple[int, int] = (99, 901)
     high_frequency_weight_update_timestep_range: Tuple[int, int] = (-1, 301)
 
     # ⍺1 and ⍺2 as mentioned in Equation 11 of the paper
-    alpha_low_frequency = 1.1
-    alpha_high_frequency = 1.1
+    alpha_low_frequency: float = 1.1
+    alpha_high_frequency: float = 1.1
 
     # n as described in CFG-Cache explanation in the paper - dependant on the model
     unconditional_batch_skip_range: int = 5
-    unconditional_batch_timestep_skip_range: Tuple[float, float] = (-1, 641)
+    unconditional_batch_timestep_skip_range: Tuple[int, int] = (-1, 641)
 
     spatial_attention_block_identifiers: Tuple[str, ...] = _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS
     temporal_attention_block_identifiers: Tuple[str, ...] = _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS
@@ -184,10 +184,10 @@ class FasterCacheDenoiserState:
         self.high_frequency_weight_callback = high_frequency_weight_callback
         self.uncond_skip_callback = uncond_skip_callback
 
-        self.iteration = 0
-        self.low_frequency_delta = None
-        self.high_frequency_delta = None
-        self.is_guidance_distilled = None
+        self.iteration: int = 0
+        self.low_frequency_delta: torch.Tensor = None
+        self.high_frequency_delta: torch.Tensor = None
+        self.is_guidance_distilled: bool = None
 
     def reset(self):
         self.iteration = 0
@@ -213,10 +213,10 @@ class FasterCacheBlockState:
         self.skip_callback = skip_callback
         self.weight_callback = weight_callback
 
-        self.iteration = 0
-        self.batch_size = None
-        self.cache = None
-        self.is_guidance_distilled = None
+        self.iteration: int = 0
+        self.batch_size: int = None
+        self.cache: Tuple[torch.Tensor, torch.Tensor] = None
+        self.is_guidance_distilled: bool = None
 
     def reset(self):
         self.iteration = 0
@@ -231,9 +231,6 @@ def apply_faster_cache(
 ) -> None:
     r"""
     Applies [FasterCache](https://huggingface.co/papers/2410.19355) to a given pipeline.
-
-    Note: FasterCache should only be applied when using classifer-free guidance. It will not work as expected even if
-    the inference runs successfully.
 
     Args:
         pipeline (`DiffusionPipeline`):
