@@ -225,7 +225,7 @@ class FasterCacheBlockState:
         self.is_guidance_distilled = None
 
 
-def apply_faster_cache(
+def apply_fastercache(
     pipeline: DiffusionPipeline,
     config: Optional[FasterCacheConfig] = None,
 ) -> None:
@@ -241,7 +241,7 @@ def apply_faster_cache(
     Example:
     ```python
     >>> import torch
-    >>> from diffusers import CogVideoXPipeline, FasterCacheConfig, apply_faster_cache
+    >>> from diffusers import CogVideoXPipeline, FasterCacheConfig, apply_fastercache
 
     >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
     >>> pipe.to("cuda")
@@ -255,7 +255,7 @@ def apply_faster_cache(
     ...     attention_weight_callback=lambda _: 0.3,
     ...     tensor_format="BFCHW",
     ... )
-    >>> apply_faster_cache(pipe, config)
+    >>> apply_fastercache(pipe, config)
     ```
     """
 

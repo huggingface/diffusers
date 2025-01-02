@@ -423,7 +423,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
-            "apply_faster_cache",
+            "apply_fastercache",
         ]
     )
 
@@ -912,7 +912,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-            apply_faster_cache,
+            apply_fastercache,
         )
 
     try:

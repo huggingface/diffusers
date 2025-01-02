@@ -2552,5 +2552,5 @@ class WuerstchenPriorPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-def apply_faster_cache(*args, **kwargs):
-    requires_backends(apply_faster_cache, ["torch", "transformers"])
+def apply_fastercache(*args, **kwargs):
+    requires_backends(apply_fastercache, ["torch", "transformers"])

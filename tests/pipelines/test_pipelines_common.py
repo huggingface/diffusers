@@ -28,7 +28,7 @@ from diffusers import (
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
-    apply_faster_cache,
+    apply_fastercache,
 )
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
@@ -37,7 +37,7 @@ from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
-from diffusers.pipelines.faster_cache_utils import FasterCacheBlockHook, FasterCacheDenoiserHook
+from diffusers.pipelines.fastercache_utils import FasterCacheBlockHook, FasterCacheDenoiserHook
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
@@ -2291,21 +2291,21 @@ class FasterCacheTesterMixin:
         # Check if warning is raised when no FasterCacheConfig is provided
         pipe = self.pipeline_class(**components)
         with CaptureLogger(logger) as cap_logger:
-            apply_faster_cache(pipe)
+            apply_fastercache(pipe)
         self.assertTrue("No FasterCacheConfig provided" in cap_logger.out)
 
         # Check if warning is raise when no attention_weight_callback is provided
         pipe = self.pipeline_class(**components)
         with CaptureLogger(logger) as cap_logger:
             config = FasterCacheConfig(spatial_attention_block_skip_range=2, attention_weight_callback=None)
-            apply_faster_cache(pipe, config)
+            apply_fastercache(pipe, config)
         self.assertTrue("No `attention_weight_callback` provided when enabling FasterCache" in cap_logger.out)
 
         # Check if error raised when unsupported tensor format used
         pipe = self.pipeline_class(**components)
         with self.assertRaises(ValueError):
             config = FasterCacheConfig(spatial_attention_block_skip_range=2, tensor_format="BFHWC")
-            apply_faster_cache(pipe, config)
+            apply_fastercache(pipe, config)
 
     def test_fastercache_inference(self, expected_atol: float = 0.1):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -2321,7 +2321,7 @@ class FasterCacheTesterMixin:
         original_image_slice = output.flatten()
         original_image_slice = np.concatenate((original_image_slice[:8], original_image_slice[-8:]))
 
-        apply_faster_cache(pipe, self.fastercache_config)
+        apply_fastercache(pipe, self.fastercache_config)
 
         inputs = self.get_dummy_inputs(device)
         inputs["num_inference_steps"] = 4
@@ -2353,7 +2353,7 @@ class FasterCacheTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
 
-        apply_faster_cache(pipe, self.fastercache_config)
+        apply_fastercache(pipe, self.fastercache_config)
 
         expected_hooks = 0
         if self.fastercache_config.spatial_attention_block_skip_range is not None:
