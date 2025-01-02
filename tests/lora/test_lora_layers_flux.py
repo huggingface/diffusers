@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import gc
 import os
 import sys
@@ -161,6 +162,105 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "Loading from saved checkpoints should give same results.",
         )
         self.assertFalse(np.allclose(images_lora_with_alpha, images_lora, atol=1e-3, rtol=1e-3))
+
+    def test_lora_expansion_works_for_absent_keys(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == self.output_shape)
+
+        # Modify the config to have a layer which won't be present in the second LoRA we will load.
+        modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
+        modified_denoiser_lora_config.target_modules.add("x_embedder")
+
+        pipe.transformer.add_adapter(modified_denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertFalse(
+            np.allclose(images_lora, output_no_lora, atol=1e-3, rtol=1e-3),
+            "LoRA should lead to different results.",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
+            self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"), adapter_name="one")
+
+            # Modify the state dict to exclude "x_embedder" related LoRA params.
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+            lora_state_dict_without_xembedder = {k: v for k, v in lora_state_dict.items() if "x_embedder" not in k}
+
+        pipe.load_lora_weights(lora_state_dict_without_xembedder, adapter_name="two")
+        pipe.set_adapters(["one", "two"])
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        images_lora_with_absent_keys = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        self.assertFalse(
+            np.allclose(images_lora, images_lora_with_absent_keys, atol=1e-3, rtol=1e-3),
+            "Different LoRAs should lead to different results.",
+        )
+        self.assertFalse(
+            np.allclose(output_no_lora, images_lora_with_absent_keys, atol=1e-3, rtol=1e-3),
+            "LoRA should lead to different results.",
+        )
+
+    def test_lora_expansion_works_for_extra_keys(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == self.output_shape)
+
+        # Modify the config to have a layer which won't be present in the first LoRA we will load.
+        modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
+        modified_denoiser_lora_config.target_modules.add("x_embedder")
+
+        pipe.transformer.add_adapter(modified_denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertFalse(
+            np.allclose(images_lora, output_no_lora, atol=1e-3, rtol=1e-3),
+            "LoRA should lead to different results.",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
+            self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            pipe.unload_lora_weights()
+            # Modify the state dict to exclude "x_embedder" related LoRA params.
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+            lora_state_dict_without_xembedder = {k: v for k, v in lora_state_dict.items() if "x_embedder" not in k}
+            pipe.load_lora_weights(lora_state_dict_without_xembedder, adapter_name="one")
+
+            # Load state dict with `x_embedder`.
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"), adapter_name="two")
+
+        pipe.set_adapters(["one", "two"])
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        images_lora_with_extra_keys = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        self.assertFalse(
+            np.allclose(images_lora, images_lora_with_extra_keys, atol=1e-3, rtol=1e-3),
+            "Different LoRAs should lead to different results.",
+        )
+        self.assertFalse(
+            np.allclose(output_no_lora, images_lora_with_extra_keys, atol=1e-3, rtol=1e-3),
+            "LoRA should lead to different results.",
+        )
 
     @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
