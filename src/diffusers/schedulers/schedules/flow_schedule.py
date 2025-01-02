@@ -124,7 +124,7 @@ class FlowMatchSchedule:
 
     def set_base_schedule(self, base_schedule: Union[str]):
         if base_schedule is None:
-            raise ValueError("Must set base schedule.")
+            base_schedule = self.base_schedules["FlowMatchSD3"]
         if isinstance(base_schedule, str):
             if base_schedule not in self.base_schedules:
                 raise ValueError(f"Expected one of {self.base_schedules.keys()}")
