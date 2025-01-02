@@ -20,7 +20,7 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from ..utils.torch_utils import randn_tensor
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SamplingMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -45,7 +45,7 @@ class EulerAncestralDiscreteSchedulerOutput(BaseOutput):
     pred_original_sample: Optional[torch.Tensor] = None
 
 
-class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
+class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin, SamplingMixin):
     """
     Ancestral sampling with Euler method steps.
 
@@ -92,46 +92,17 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.set_schedule(schedule_config)
         self.set_sigma_schedule(sigma_schedule_config)
 
-        # setable values
-        self.num_inference_steps = None
-
-        self.is_scale_input_called = False
-        self._step_index = None
-        self._begin_index = None
-
     @property
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.init_noise_sigma
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
+        max_sigma = max(self.sigmas) if isinstance(self.sigmas, list) else self.sigmas.max()
         if self.config.timestep_spacing in ["linspace", "trailing"]:
-            return self.sigmas.max()
+            return max_sigma
 
-        return (self.sigmas.max() ** 2 + 1) ** 0.5
+        return (max_sigma**2 + 1) ** 0.5
 
-    @property
-    def step_index(self):
-        """
-        The index counter for current timestep. It will increase 1 after each scheduler step.
-        """
-        return self._step_index
-
-    @property
-    def begin_index(self):
-        """
-        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
-        """
-        return self._begin_index
-
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
-    def set_begin_index(self, begin_index: int = 0):
-        """
-        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
-
-        Args:
-            begin_index (`int`):
-                The begin index for the scheduler.
-        """
-        self._begin_index = begin_index
-
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.scale_model_input
     def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -147,18 +118,19 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `torch.Tensor`:
                 A scaled input sample.
         """
-
         if self.step_index is None:
             self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
+
         self.is_scale_input_called = True
         return sample
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.set_timesteps
     def set_timesteps(
         self,
-        num_inference_steps: int,
+        num_inference_steps: int = None,
         device: Union[str, torch.device] = None,
         timesteps: Optional[List[int]] = None,
         sigmas: Optional[List[float]] = None,
@@ -201,11 +173,11 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Cannot set `timesteps` with `BetaSigmas`.")
         if (
             timesteps is not None
-            and self._schedule.config.get("timestep_type", None) == "continuous"
+            and self._schedule.timestep_type == "continuous"
             and self.config.prediction_type == "v_prediction"
         ):
             raise ValueError(
-                "Cannot set `timesteps` with `config.timestep_type = 'continuous'` and `config.prediction_type = 'v_prediction'`."
+                "Cannot set `timesteps` with `schedule.timestep_type = 'continuous'` and `config.prediction_type = 'v_prediction'`."
             )
 
         if num_inference_steps is None:
@@ -222,34 +194,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             shift=shift,
         )
 
-        self.timesteps = timesteps.to(device=device)
         self._step_index = None
         self._begin_index = None
+        self.timesteps = timesteps.to(device=device)
         self.sigmas = sigmas.to("cpu")  # to avoid too much CPU/GPU communication
-
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
-        if schedule_timesteps is None:
-            schedule_timesteps = self.timesteps
-
-        indices = (schedule_timesteps == timestep).nonzero()
-
-        # The sigma index that is taken for the **very** first `step`
-        # is always the second index (or the last index if there is only 1)
-        # This way we can ensure we don't accidentally skip a sigma in
-        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        pos = 1 if len(indices) > 1 else 0
-
-        return indices[pos].item()
-
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
-        if self.begin_index is None:
-            if isinstance(timestep, torch.Tensor):
-                timestep = timestep.to(self.timesteps.device)
-            self._step_index = self.index_for_timestep(timestep)
-        else:
-            self._step_index = self._begin_index
 
     def step(
         self,
@@ -352,43 +300,3 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return EulerAncestralDiscreteSchedulerOutput(
             prev_sample=prev_sample, pred_original_sample=pred_original_sample
         )
-
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
-    def add_noise(
-        self,
-        original_samples: torch.Tensor,
-        noise: torch.Tensor,
-        timesteps: torch.Tensor,
-    ) -> torch.Tensor:
-        # Make sure sigmas and timesteps have the same device and dtype as original_samples
-        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
-        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
-            # mps does not support float64
-            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
-            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
-        else:
-            schedule_timesteps = self.timesteps.to(original_samples.device)
-            timesteps = timesteps.to(original_samples.device)
-
-        # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
-        if self.begin_index is None:
-            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
-        elif self.step_index is not None:
-            # add_noise is called after first denoising step (for inpainting)
-            step_indices = [self.step_index] * timesteps.shape[0]
-        else:
-            # add noise is called before first denoising step to create initial latent(img2img)
-            step_indices = [self.begin_index] * timesteps.shape[0]
-
-        sigma = sigmas[step_indices].flatten()
-        while len(sigma.shape) < len(original_samples.shape):
-            sigma = sigma.unsqueeze(-1)
-
-        if self._schedule.__class__.__name__ == "FlowMatchSchedule":
-            noisy_samples = (1.0 - sigma) * original_samples + noise * sigma
-        else:
-            noisy_samples = original_samples + noise * sigma
-        return noisy_samples
-
-    def __len__(self):
-        return self.config.num_train_timesteps
