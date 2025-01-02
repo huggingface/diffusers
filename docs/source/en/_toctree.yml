@@ -48,7 +48,7 @@
   - local: using-diffusers/inpaint
     title: Inpainting
   - local: using-diffusers/text-img2vid
-    title: Text or image-to-video
+    title: Video generation
   - local: using-diffusers/depth2img
     title: Depth-to-image
   title: Generative tasks
