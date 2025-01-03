@@ -986,6 +986,8 @@ class PipelineTesterMixin:
 
     test_xformers_attention = True
 
+    prompt_embed_kwargs = ("prompt_embeds", "negative_prompt_embeds")  # most common return-type across the pipelines.
+
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
         generator = torch.Generator(device).manual_seed(seed)
@@ -1975,6 +1977,81 @@ class PipelineTesterMixin:
                 _ = self.pipeline_class.from_pretrained(tmpdir, variant=variant)
 
             assert f"You are trying to load the model files of the `variant={variant}`" in str(error.exception)
+
+    def test_encode_prompt_works_in_isolation(self):
+        if not hasattr(self.pipeline_class, "encode_prompt"):
+            return
+
+        components = self.get_dummy_components()
+
+        # We initialize the pipeline with only text encoders and tokenizers,
+        # mimicking a real-world scenario.
+        components_with_text_encoders = {}
+        for k in components:
+            if "text" in k or "tokenizer" in k:
+                components_with_text_encoders[k] = components[k]
+            else:
+                components_with_text_encoders[k] = None
+        pipe = self.pipeline_class(**components_with_text_encoders)
+        pipe = pipe.to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        encode_prompt_signature = inspect.signature(pipe.encode_prompt)
+        encode_prompt_parameters = list(encode_prompt_signature.parameters.values())
+
+        # Required parameters in encode_prompt = those with no default
+        required_params = []
+        for param in encode_prompt_parameters:
+            if param.name == "self":
+                continue
+            if param.default is inspect.Parameter.empty:
+                required_params.append(param.name)
+
+        encode_prompt_param_names = [p.name for p in encode_prompt_parameters if p.name != "self"]
+        input_keys = list(inputs.keys())
+        encode_prompt_inputs = {k: inputs.pop(k) for k in input_keys if k in encode_prompt_param_names}
+
+        pipe_call_signature = inspect.signature(pipe.__call__)
+        pipe_call_parameters = pipe_call_signature.parameters
+
+        # For each required param in encode_prompt, check if it's missing
+        # in encode_prompt_inputs. If so, see if __call__ has a default
+        # for that param and use it if available.
+        for required_param_name in required_params:
+            if required_param_name not in encode_prompt_inputs:
+                pipe_call_param = pipe_call_parameters.get(required_param_name, None)
+                if pipe_call_param is not None and pipe_call_param.default is not inspect.Parameter.empty:
+                    # Use the default from pipe.__call__
+                    encode_prompt_inputs[required_param_name] = pipe_call_param.default
+                else:
+                    raise ValueError(
+                        f"Required parameter '{required_param_name}' in "
+                        f"encode_prompt has no default in either encode_prompt or __call__."
+                    )
+
+        with torch.no_grad():
+            encoded_prompt_outputs = pipe.encode_prompt(**encode_prompt_inputs)
+
+        prompt_embeds_kwargs = dict(zip(self.prompt_embed_kwargs, encoded_prompt_outputs))
+        adapted_prompt_embeds_kwargs = {
+            k: prompt_embeds_kwargs.pop(k) for k in list(prompt_embeds_kwargs.keys()) if k in pipe_call_parameters
+        }
+
+        # now initialize a pipeline without text encoders
+        components_with_text_encoders = {}
+        for k in components:
+            if "text" in k or "tokenizer" in k:
+                components_with_text_encoders[k] = None
+            else:
+                components_with_text_encoders[k] = components[k]
+        pipe_without_text_encoders = self.pipeline_class(**components_with_text_encoders).to(torch_device)
+        pipe_out = pipe_without_text_encoders(**inputs, **adapted_prompt_embeds_kwargs)[0]
+
+        full_pipe = self.pipeline_class(**components).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        pipe_out_2 = full_pipe(**inputs)[0]
+
+        self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=1e-4, rtol=1e-4))
 
     def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
