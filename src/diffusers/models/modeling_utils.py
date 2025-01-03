@@ -782,7 +782,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # this becomes applicable when the variant is not None.
         if variant is not None and (index_file is None or not os.path.exists(index_file)):
             index_file = _fetch_index_file_legacy(**index_file_kwargs)
-        if index_file is not None and index_file.is_file():
+        if index_file is not None and (dduf_entries or index_file.is_file()):
             is_sharded = True
 
         if is_sharded and from_flax:
@@ -812,7 +812,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
             # in the case it is sharded, we have already the index
-            if is_sharded and not dduf_entries:
+            if is_sharded:
                 sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
                     pretrained_model_name_or_path,
                     index_file,
@@ -823,9 +823,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     user_agent=user_agent,
                     revision=revision,
                     subfolder=subfolder or "",
+                    dduf_entries=dduf_entries,
                 )
-                if hf_quantizer is not None and is_bnb_quantization_method:
-                    model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
+                if (hf_quantizer is not None and is_bnb_quantization_method) or dduf_entries:
+                    model_file = _merge_sharded_checkpoints(
+                        sharded_ckpt_cached_folder, sharded_metadata, dduf_entries=dduf_entries
+                    )
                     logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
                     is_sharded = False
 

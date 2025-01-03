@@ -315,7 +315,8 @@ def _fetch_index_file(
                 commit_hash=commit_hash,
                 dduf_entries=dduf_entries,
             )
-            index_file = Path(index_file)
+            if not dduf_entries:
+                index_file = Path(index_file)
         except (EntryNotFoundError, EnvironmentError):
             index_file = None
 
@@ -324,7 +325,9 @@ def _fetch_index_file(
 
 # Adapted from
 # https://github.com/bghira/SimpleTuner/blob/cea2457ab063f6dedb9e697830ae68a96be90641/helpers/training/save_hooks.py#L64
-def _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata):
+def _merge_sharded_checkpoints(
+    sharded_ckpt_cached_folder, sharded_metadata, dduf_entries: Optional[Dict[str, DDUFEntry]] = None
+):
     weight_map = sharded_metadata.get("weight_map", None)
     if weight_map is None:
         raise KeyError("'weight_map' key not found in the shard index file.")
@@ -337,14 +340,19 @@ def _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata):
     # Load tensors from each unique file
     for file_name in files_to_load:
         part_file_path = os.path.join(sharded_ckpt_cached_folder, file_name)
-        if not os.path.exists(part_file_path):
+        if not os.path.exists(part_file_path) and (dduf_entries and part_file_path not in dduf_entries):
             raise FileNotFoundError(f"Part file {file_name} not found.")
 
         if is_safetensors:
-            with safetensors.safe_open(part_file_path, framework="pt", device="cpu") as f:
-                for tensor_key in f.keys():
-                    if tensor_key in weight_map:
-                        merged_state_dict[tensor_key] = f.get_tensor(tensor_key)
+            if dduf_entries:
+                with dduf_entries[part_file_path].as_mmap() as mm:
+                    tensors = safetensors.torch.load(mm)
+                    merged_state_dict.update(tensors)
+            else:
+                with safetensors.safe_open(part_file_path, framework="pt", device="cpu") as f:
+                    for tensor_key in f.keys():
+                        if tensor_key in weight_map:
+                            merged_state_dict[tensor_key] = f.get_tensor(tensor_key)
         else:
             merged_state_dict.update(torch.load(part_file_path, weights_only=True, map_location="cpu"))
 

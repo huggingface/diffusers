@@ -437,6 +437,7 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     """
     For a given model:
@@ -448,11 +449,14 @@ def _get_checkpoint_shard_files(
     For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
     index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
     """
-    if not os.path.isfile(index_filename):
+    if not os.path.isfile(index_filename) and (dduf_entries and index_filename not in dduf_entries):
         raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 
-    with open(index_filename, "r") as f:
-        index = json.loads(f.read())
+    if dduf_entries:
+        index = json.loads(dduf_entries[index_filename].read_text())
+    else:
+        with open(index_filename, "r") as f:
+            index = json.loads(f.read())
 
     original_shard_filenames = sorted(set(index["weight_map"].values()))
     sharded_metadata = index["metadata"]
@@ -465,6 +469,8 @@ def _get_checkpoint_shard_files(
         _check_if_shards_exist_locally(
             pretrained_model_name_or_path, subfolder=subfolder, original_shard_filenames=original_shard_filenames
         )
+        return shards_path, sharded_metadata
+    elif dduf_entries:
         return shards_path, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
