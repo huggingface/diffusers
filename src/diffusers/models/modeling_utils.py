@@ -99,21 +99,39 @@ def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
 
 
 def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
-    try:
-        return next(parameter.parameters()).dtype
-    except StopIteration:
-        try:
-            return next(parameter.buffers()).dtype
-        except StopIteration:
-            # For torch.nn.DataParallel compatibility in PyTorch 1.5
+    """
+    Returns the first found floating dtype in parameters if there is one, otherwise returns the last dtype it found.
+    """
+    last_dtype = None
+    for param in parameter.parameters():
+        last_dtype = param.dtype
+        if param.is_floating_point():
+            return param.dtype
 
-            def find_tensor_attributes(module: torch.nn.Module) -> List[Tuple[str, Tensor]]:
-                tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
-                return tuples
+    for buffer in parameter.buffers():
+        last_dtype = buffer.dtype
+        if buffer.is_floating_point():
+            return buffer.dtype
 
-            gen = parameter._named_members(get_members_fn=find_tensor_attributes)
-            first_tuple = next(gen)
-            return first_tuple[1].dtype
+    if last_dtype is not None:
+        # if no floating dtype was found return whatever the first dtype is
+        return last_dtype
+
+    # For nn.DataParallel compatibility in PyTorch > 1.5
+    def find_tensor_attributes(module: nn.Module) -> List[Tuple[str, Tensor]]:
+        tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
+        return tuples
+
+    gen = parameter._named_members(get_members_fn=find_tensor_attributes)
+    last_tuple = None
+    for tuple in gen:
+        last_tuple = tuple
+        if tuple[1].is_floating_point():
+            return tuple[1].dtype
+
+    if last_tuple is not None:
+        # fallback to the last dtype
+        return last_tuple[1].dtype
 
 
 class ModelMixin(torch.nn.Module, PushToHubMixin):
@@ -700,10 +718,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer = None
 
         if hf_quantizer is not None:
-            is_bnb_quantization_method = hf_quantizer.quantization_config.quant_method.value == "bitsandbytes"
-            if is_bnb_quantization_method and device_map is not None:
+            if device_map is not None:
                 raise NotImplementedError(
-                    "Currently, `device_map` is automatically inferred for quantized bitsandbytes models. Support for providing `device_map` as an input will be added in the future."
+                    "Currently, providing `device_map` is not supported for quantized models. Providing `device_map` as an input will be added in the future."
                 )
 
             hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
@@ -802,7 +819,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     revision=revision,
                     subfolder=subfolder or "",
                 )
-                if hf_quantizer is not None and is_bnb_quantization_method:
+                # TODO: https://github.com/huggingface/diffusers/issues/10013
+                if hf_quantizer is not None:
                     model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
                     logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
                     is_sharded = False

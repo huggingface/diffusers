@@ -57,7 +57,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -830,7 +830,7 @@ def main(args):
         flux_transformer.x_embedder = new_linear
 
     assert torch.all(flux_transformer.x_embedder.weight[:, initial_input_channels:].data == 0)
-    flux_transformer.register_to_config(in_channels=initial_input_channels * 2)
+    flux_transformer.register_to_config(in_channels=initial_input_channels * 2, out_channels=initial_input_channels)
 
     if args.train_norm_layers:
         for name, param in flux_transformer.named_parameters():
@@ -923,11 +923,28 @@ def main(args):
                         transformer_ = model
                     else:
                         raise ValueError(f"unexpected save model: {model.__class__}")
-
             else:
                 transformer_ = FluxTransformer2DModel.from_pretrained(
                     args.pretrained_model_name_or_path, subfolder="transformer"
                 ).to(accelerator.device, weight_dtype)
+
+                # Handle input dimension doubling before adding adapter
+                with torch.no_grad():
+                    initial_input_channels = transformer_.config.in_channels
+                    new_linear = torch.nn.Linear(
+                        transformer_.x_embedder.in_features * 2,
+                        transformer_.x_embedder.out_features,
+                        bias=transformer_.x_embedder.bias is not None,
+                        dtype=transformer_.dtype,
+                        device=transformer_.device,
+                    )
+                    new_linear.weight.zero_()
+                    new_linear.weight[:, :initial_input_channels].copy_(transformer_.x_embedder.weight)
+                    if transformer_.x_embedder.bias is not None:
+                        new_linear.bias.copy_(transformer_.x_embedder.bias)
+                    transformer_.x_embedder = new_linear
+                    transformer_.register_to_config(in_channels=initial_input_channels * 2)
+
                 transformer_.add_adapter(transformer_lora_config)
 
             lora_state_dict = FluxControlPipeline.lora_state_dict(input_dir)
@@ -1318,6 +1335,11 @@ def main(args):
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
         )
+
+        del flux_transformer
+        del text_encoding_pipeline
+        del vae
+        free_memory()
 
         # Run a final round of validation.
         image_logs = None
