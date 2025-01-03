@@ -1,12 +1,17 @@
 name: Fast mps tests on main
 
 on:
-  push:
+  pull_request:
     branches:
       - main
     paths:
       - "src/diffusers/**.py"
+      - "benchmarks/**.py"
+      - "examples/**.py"
+      - "scripts/**.py"
       - "tests/**.py"
+      - ".github/**.yml"
+      - "utils/**.py"
 
 env:
   DIFFUSERS_IS_CI: yes
