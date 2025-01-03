@@ -36,6 +36,7 @@ from diffusers import (
 from diffusers.models.unets import I2VGenXLUNet
 from diffusers.utils import is_xformers_available, load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
@@ -232,19 +233,13 @@ class I2VGenXLPipelineSlowTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        if torch_device == "cuda":
-            torch.cuda.empty_cache()
-        elif torch_device == "xpu":
-            torch.xpu.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        if torch_device == "cuda":
-            torch.cuda.empty_cache()
-        elif torch_device == "xpu":
-            torch.xpu.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_i2vgen_xl(self):
         pipe = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")

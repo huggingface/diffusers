@@ -24,6 +24,7 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLCogVideoX, CogVideoXImageToVideoPipeline, CogVideoXTransformer3DModel, DDIMScheduler
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
@@ -351,18 +352,12 @@ class CogVideoXImageToVideoPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        if torch_device == "cuda":
-            torch.cuda.empty_cache()
-        elif torch_device == "xpu":
-            torch.xpu.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        if torch_device == "cuda":
-            torch.cuda.empty_cache()
-        elif torch_device == "xpu":
-            torch.xpu.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_cogvideox(self):
         generator = torch.Generator("cpu").manual_seed(0)
