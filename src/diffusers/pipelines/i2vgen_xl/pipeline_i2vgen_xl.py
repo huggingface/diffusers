@@ -133,7 +133,9 @@ class I2VGenXLPipeline(
             unet=unet,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
         # `do_resize=False` as we do custom resizing.
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
 

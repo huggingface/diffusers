@@ -722,7 +722,9 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline):
         self.engine = {}  # loaded in build_engines()
 
         self.vae.forward = self.vae.decode
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 

@@ -161,7 +161,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             default_processing_resolution=default_processing_resolution,
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
 
         self.use_full_z_range = use_full_z_range
         self.default_denoising_steps = default_denoising_steps

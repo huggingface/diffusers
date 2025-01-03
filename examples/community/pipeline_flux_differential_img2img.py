@@ -225,9 +225,10 @@ class FluxDifferentialImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             2 ** (len(self.vae.config.block_out_channels)) if hasattr(self, "vae") and self.vae is not None else 16
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        latent_channels = self.vae.config.latent_channels if hasattr(self, "vae") and self.vae is not None else 16
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor,
-            vae_latent_channels=self.vae.config.latent_channels,
+            vae_latent_channels=latent_channels,
             do_normalize=False,
             do_binarize=False,
             do_convert_grayscale=True,

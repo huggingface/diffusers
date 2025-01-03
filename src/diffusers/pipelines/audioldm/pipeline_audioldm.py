@@ -94,7 +94,9 @@ class AudioLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
             scheduler=scheduler,
             vocoder=vocoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
 
     def _encode_prompt(
         self,
