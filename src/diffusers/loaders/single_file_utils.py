@@ -2683,7 +2683,6 @@ def convert_hunyuan_video_transformer_to_diffusers(checkpoint, **kwargs):
     return checkpoint
 
 
-# Copied from diffusers.examples.model_search.pipeline_easy.get_keyword_types
 def get_keyword_types(keyword):
     r"""
     Determine the type and loading method for a given keyword.
