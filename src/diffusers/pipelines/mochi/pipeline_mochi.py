@@ -21,8 +21,8 @@ from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import Mochi1LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKL
-from ...models.transformers import MochiTransformer3DModel
+from ...models import AutoencoderKLHunyuanVideo, MochiTransformer3DModel
+from ...models.hooks import reset_stateful_hooks
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     is_torch_xla_available,
@@ -184,7 +184,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKL,
+        vae: AutoencoderKLHunyuanVideo,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
         transformer: MochiTransformer3DModel,
@@ -604,6 +604,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Define call parameters
@@ -673,6 +674,9 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                 if self.interrupt:
                     continue
 
+                # Note: Mochi uses reversed timesteps. To ensure compatibility with methods like FasterCache, we need
+                # to make sure we're using the correct non-reversed timestep values.
+                self._current_timestep = 1000 - t
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
@@ -718,6 +722,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
+        self._current_timestep = None
+
         if output_type == "latent":
             video = latents
         else:
@@ -741,6 +747,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
         # Offload all models
         self.maybe_free_model_hooks()
+        reset_stateful_hooks(self.transformer, recurse=True)
 
         if not return_dict:
             return (video,)
