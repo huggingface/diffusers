@@ -24,7 +24,7 @@ from diffusers import AutoencoderKL, CogVideoXDDIMScheduler, CogView3PlusPipelin
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -232,7 +232,7 @@ class CogView3PlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class CogView3PlusPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
@@ -250,7 +250,7 @@ class CogView3PlusPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = CogView3PlusPipeline.from_pretrained("THUDM/CogView3Plus-3b", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         images = pipe(

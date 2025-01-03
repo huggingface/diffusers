@@ -30,7 +30,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -299,7 +299,7 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class HunyuanDiTPipelineIntegrationTests(unittest.TestCase):
     prompt = "一个宇航员在骑马"
 
@@ -319,7 +319,7 @@ class HunyuanDiTPipelineIntegrationTests(unittest.TestCase):
         pipe = HunyuanDiTPipeline.from_pretrained(
             "XCLiu/HunyuanDiT-0523", revision="refs/pr/2", torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         image = pipe(

@@ -23,10 +23,11 @@ from diffusers import IFImg2ImgSuperResolutionPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     floats_tensor,
     load_numpy,
     require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -99,13 +100,13 @@ class IFImg2ImgSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipelineT
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class IFImg2ImgSuperResolutionPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
@@ -120,11 +121,16 @@ class IFImg2ImgSuperResolutionPipelineSlowTests(unittest.TestCase):
             torch_dtype=torch.float16,
         )
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
+        if torch_device == "cuda":
+            torch.cuda.reset_max_memory_allocated()
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+        elif torch_device == "xpu":
+            torch.xpu.reset_max_memory_allocated()
+            torch.xpu.empty_cache()
+            torch.xpu.reset_peak_memory_stats()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 
@@ -144,7 +150,11 @@ class IFImg2ImgSuperResolutionPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (256, 256, 3)
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        if torch_device == "cuda":
+            mem_bytes = torch.cuda.max_memory_allocated()
+        elif torch_device == "xpu":
+            mem_bytes = torch.xpu.max_memory_allocated()
+
         assert mem_bytes < 12 * 10**9
 
         expected_image = load_numpy(

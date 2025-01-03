@@ -26,7 +26,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_numpy,
     require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -102,7 +102,7 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class IFImg2ImgPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
@@ -123,11 +123,16 @@ class IFImg2ImgPipelineSlowTests(unittest.TestCase):
             torch_dtype=torch.float16,
         )
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
+        if torch_device == "cuda":
+            torch.cuda.reset_max_memory_allocated()
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+        elif torch_device == "xpu":
+            torch.xpu.reset_max_memory_allocated()
+            torch.xpu.empty_cache()
+            torch.xpu.reset_peak_memory_stats()
 
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
         generator = torch.Generator(device="cpu").manual_seed(0)
