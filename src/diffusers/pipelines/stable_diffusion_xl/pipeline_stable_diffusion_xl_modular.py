@@ -544,80 +544,88 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         return pipeline, state
 
 
-class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
-    expected_components = ["vae", "scheduler"]
-    model_name = "stable-diffusion-xl"
+# class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
+#     expected_components = ["vae", "scheduler"]
+#     model_name = "stable-diffusion-xl"
 
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            ("height", None),
-            ("width", None),
-            ("generator", None),
-            ("latents", None),
-            ("num_images_per_prompt", 1),
-            ("device", None),
-            ("dtype", None),
-            ("image", None),
-            ("denoising_start", None),
-        ]
+#     @property
+#     def inputs(self) -> List[Tuple[str, Any]]:
+#         return [
+#             ("height", None),
+#             ("width", None),
+#             ("generator", None),
+#             ("latents", None),
+#             ("num_images_per_prompt", 1),
+#             ("device", None),
+#             ("dtype", None),
+#             ("image", None),
+#             ("denoising_start", None),
+#         ]
 
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "latent_timestep", "prompt_embeds"]
+#     @property
+#     def intermediates_inputs(self) -> List[str]:
+#         return ["batch_size", "latent_timestep", "prompt_embeds"]
 
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["latents"]
+#     @property
+#     def intermediates_outputs(self) -> List[str]:
+#         return ["latents"]
 
-    def __init__(self):
-        super().__init__()
-        self.auxiliaries["image_processor"] = VaeImageProcessor()
-        self.components["vae"] = None
-        self.components["scheduler"] = None
+#     def __init__(self):
+#         super().__init__()
+#         self.auxiliaries["image_processor"] = VaeImageProcessor()
+#         self.components["vae"] = None
+#         self.components["scheduler"] = None
 
-    @torch.no_grad()
-    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
-        latents = state.get_input("latents")
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
-        generator = state.get_input("generator")
-        device = state.get_input("device")
-        dtype = state.get_input("dtype")
+#     @torch.no_grad()
+#     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
+#         latents = state.get_input("latents")
+#         num_images_per_prompt = state.get_input("num_images_per_prompt")
+#         generator = state.get_input("generator")
+#         device = state.get_input("device")
+#         dtype = state.get_input("dtype")
 
-        # image to image only
-        image = state.get_input("image")
-        denoising_start = state.get_input("denoising_start")
+#         # image to image only
+#         image = state.get_input("image")
+#         denoising_start = state.get_input("denoising_start")
 
-        batch_size = state.get_intermediate("batch_size")
-        prompt_embeds = state.get_intermediate("prompt_embeds")
-        # image to image only
-        latent_timestep = state.get_intermediate("latent_timestep")
+#         # inpaint only
+#         strength = state.get_input("strength")
+#         padding_mask_crop = state.get_input("padding_mask_crop")
+#         mask_image = state.get_input("mask_image")
+#         masked_image_latents = state.get_input("masked_image_latents")
 
-        if dtype is None and prompt_embeds is not None:
-            dtype = prompt_embeds.dtype
-        elif dtype is None:
-            dtype = pipeline.vae.dtype
 
-        if device is None:
-            device = pipeline._execution_device
 
-        image = pipeline.image_processor.preprocess(image)
-        add_noise = True if denoising_start is None else False
-        if latents is None:
-            latents = pipeline.prepare_latents_img2img(
-                image,
-                latent_timestep,
-                batch_size,
-                num_images_per_prompt,
-                dtype,
-                device,
-                generator,
-                add_noise,
-            )
+#         batch_size = state.get_intermediate("batch_size")
+#         prompt_embeds = state.get_intermediate("prompt_embeds")
+#         # image to image only
+#         latent_timestep = state.get_intermediate("latent_timestep")
 
-        state.add_intermediate("latents", latents)
+#         if dtype is None and prompt_embeds is not None:
+#             dtype = prompt_embeds.dtype
+#         elif dtype is None:
+#             dtype = pipeline.vae.dtype
 
-        return pipeline, state
+#         if device is None:
+#             device = pipeline._execution_device
+
+#         image = pipeline.image_processor.preprocess(image)
+#         add_noise = True if denoising_start is None else False
+#         if latents is None:
+#             latents = pipeline.prepare_latents_img2img(
+#                 image,
+#                 latent_timestep,
+#                 batch_size,
+#                 num_images_per_prompt,
+#                 dtype,
+#                 device,
+#                 generator,
+#                 add_noise,
+#             )
+
+#         state.add_intermediate("latents", latents)
+
+#         return pipeline, state
 
 
 class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
