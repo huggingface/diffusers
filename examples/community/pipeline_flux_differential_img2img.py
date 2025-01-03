@@ -29,6 +29,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -84,11 +85,24 @@ EXAMPLE_DOC_STRING = """
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
-    base_seq_len: int = 256,
-    max_seq_len: int = 4096,
-    base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    base_seq_len: Optional[int] = 256,
+    max_seq_len: Optional[int] = 4096,
+    base_shift: Optional[float] = 0.5,
+    max_shift: Optional[float] = 1.16,
+    scheduler: Optional[FlowMatchEulerDiscreteScheduler] = None,
 ):
+    if base_seq_len or max_seq_len or base_shift or max_shift or scheduler is None:
+        deprecation_message = "Pass `scheduler` to `calculate_shift`."
+        deprecate(
+            "calculate_shift scheduler",
+            "1.0.0",
+            deprecation_message,
+            standard_warn=False,
+        )
+    base_seq_len = base_seq_len or scheduler.config.get("base_image_seq_len", 256)
+    max_seq_len = max_seq_len or scheduler.config.get("max_image_seq_len", 4096)
+    base_shift = base_shift or scheduler.config.get("base_shift", 0.5)
+    max_shift = max_shift or scheduler.config.get("max_shift", 1.16)
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
     mu = image_seq_len * m + b
@@ -876,10 +890,7 @@ class FluxDifferentialImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         image_seq_len = (int(height) // self.vae_scale_factor) * (int(width) // self.vae_scale_factor)
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            scheduler=self.scheduler,
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
