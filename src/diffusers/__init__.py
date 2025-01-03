@@ -336,6 +336,7 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
+            "PyramidAttentionBroadcastConfig",
             "ReduxImageEncoder",
             "SanaPAGPipeline",
             "SanaPipeline",
@@ -422,6 +423,8 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "apply_pyramid_attention_broadcast",
+            "apply_pyramid_attention_broadcast_on_module",
         ]
     )
 
@@ -825,6 +828,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
+            PyramidAttentionBroadcastConfig,
             ReduxImageEncoder,
             SanaPAGPipeline,
             SanaPipeline,
@@ -909,6 +913,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            apply_pyramid_attention_broadcast,
+            apply_pyramid_attention_broadcast_on_module,
         )
 
     try:
