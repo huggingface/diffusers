@@ -544,6 +544,82 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         return pipeline, state
 
 
+class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
+    expected_components = ["vae", "scheduler"]
+    model_name = "stable-diffusion-xl"
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("height", None),
+            ("width", None),
+            ("generator", None),
+            ("latents", None),
+            ("num_images_per_prompt", 1),
+            ("device", None),
+            ("dtype", None),
+            ("image", None),
+            ("denoising_start", None),
+        ]
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["batch_size", "latent_timestep", "prompt_embeds"]
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["latents"]
+
+    def __init__(self):
+        super().__init__()
+        self.auxiliaries["image_processor"] = VaeImageProcessor()
+        self.components["vae"] = None
+        self.components["scheduler"] = None
+
+    @torch.no_grad()
+    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
+        latents = state.get_input("latents")
+        num_images_per_prompt = state.get_input("num_images_per_prompt")
+        generator = state.get_input("generator")
+        device = state.get_input("device")
+        dtype = state.get_input("dtype")
+
+        # image to image only
+        image = state.get_input("image")
+        denoising_start = state.get_input("denoising_start")
+
+        batch_size = state.get_intermediate("batch_size")
+        prompt_embeds = state.get_intermediate("prompt_embeds")
+        # image to image only
+        latent_timestep = state.get_intermediate("latent_timestep")
+
+        if dtype is None and prompt_embeds is not None:
+            dtype = prompt_embeds.dtype
+        elif dtype is None:
+            dtype = pipeline.vae.dtype
+
+        if device is None:
+            device = pipeline._execution_device
+
+        image = pipeline.image_processor.preprocess(image)
+        add_noise = True if denoising_start is None else False
+        if latents is None:
+            latents = pipeline.prepare_latents_img2img(
+                image,
+                latent_timestep,
+                batch_size,
+                num_images_per_prompt,
+                dtype,
+                device,
+                generator,
+                add_noise,
+            )
+
+        state.add_intermediate("latents", latents)
+
+        return pipeline, state
+
+
 class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     expected_components = ["vae", "scheduler"]
     model_name = "stable-diffusion-xl"
@@ -2026,6 +2102,100 @@ class StableDiffusionXLModularPipeline(
 
         return latents
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline.prepare_latents
+    def prepare_latents_inpaint(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+        image=None,
+        timestep=None,
+        is_strength_max=True,
+        add_noise=True,
+        return_noise=False,
+        return_image_latents=False,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        if (image is None or timestep is None) and not is_strength_max:
+            raise ValueError(
+                "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
+                "However, either the image or the noise timestep has not been provided."
+            )
+
+        if image.shape[1] == 4:
+            image_latents = image.to(device=device, dtype=dtype)
+            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
+        elif return_image_latents or (latents is None and not is_strength_max):
+            image = image.to(device=device, dtype=dtype)
+            image_latents = self._encode_vae_image(image=image, generator=generator)
+            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
+
+        if latents is None and add_noise:
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            # if strength is 1. then initialise the latents to noise, else initial to image + noise
+            latents = noise if is_strength_max else self.scheduler.add_noise(image_latents, noise, timestep)
+            # if pure noise then scale the initial latents by the  Scheduler's init sigma
+            latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
+        elif add_noise:
+            noise = latents.to(device)
+            latents = noise * self.scheduler.init_noise_sigma
+        else:
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = image_latents.to(device)
+
+        outputs = (latents,)
+
+        if return_noise:
+            outputs += (noise,)
+
+        if return_image_latents:
+            outputs += (image_latents,)
+
+        return outputs
+
+    
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.StableDiffusionXLInpaintPipeline._encode_vae_image
+    def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
+        dtype = image.dtype
+        if self.vae.config.force_upcast:
+            image = image.float()
+            self.vae.to(dtype=torch.float32)
+
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+
+        if self.vae.config.force_upcast:
+            self.vae.to(dtype)
+
+        image_latents = image_latents.to(dtype)
+        image_latents = self.vae.config.scaling_factor * image_latents
+
+        return image_latents 
+    
+    
+    
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
