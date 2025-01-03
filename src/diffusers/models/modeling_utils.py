@@ -825,7 +825,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     dduf_entries=dduf_entries,
                 )
                 # TODO: https://github.com/huggingface/diffusers/issues/10013
-                if hf_quantizer is not None:
+                if hf_quantizer is not None or dduf_entries:
                     model_file = _merge_sharded_checkpoints(
                         sharded_ckpt_cached_folder, sharded_metadata, dduf_entries=dduf_entries
                     )

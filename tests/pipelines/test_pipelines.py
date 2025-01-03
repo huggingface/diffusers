@@ -1875,6 +1875,18 @@ class PipelineFastTests(unittest.TestCase):
         assert "is of type" in str(error_context.exception)
         assert "but should be" in str(error_context.exception)
 
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_dduf_load_sharded_checkpoint_diffusion_model(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe = DiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-flux-dev-pipe-sharded-checkpoint-DDUF",
+                dduf_file="tiny-flux-dev-pipe-sharded-checkpoint.dduf",
+                cache_dir=tmpdir,
+            ).to(torch_device)
+
+            pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
 
 @slow
 @require_torch_gpu
