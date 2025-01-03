@@ -1074,17 +1074,17 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_pose_and_canny(self):
         controlnet_canny = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
@@ -1095,7 +1095,7 @@ class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
             safety_checker=None,
             controlnet=[controlnet_pose, controlnet_canny],
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
