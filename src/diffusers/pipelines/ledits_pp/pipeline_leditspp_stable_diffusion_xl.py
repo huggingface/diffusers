@@ -391,7 +391,11 @@ class LEditsPPPipelineStableDiffusionXL(
                 "The scheduler has been changed to DPMSolverMultistepScheduler."
             )
 
-        self.default_sample_size = self.unet.config.sample_size
+        self.default_sample_size = (
+            self.unet.config.sample_size
+            if hasattr(self, "unet") and self.unet is not None and hasattr(self.unet.config, "sample_size")
+            else 128
+        )
 
         add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
 

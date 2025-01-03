@@ -252,12 +252,15 @@ class StableDiffusionPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        self._is_unet_config_sample_size_int = isinstance(unet.config.sample_size, int)
+        is_unet_version_less_0_9_0 = is_unet_version_less_0_9_0 = (
+            unet is not None
+            and hasattr(unet.config, "_diffusers_version")
+            and version.parse(version.parse(unet.config._diffusers_version).base_version) < version.parse("0.9.0.dev0")
+        )
+        self._is_unet_config_sample_size_int = unet is not None and isinstance(unet.config.sample_size, int)
         is_unet_sample_size_less_64 = (
-            hasattr(unet.config, "sample_size")
+            unet is not None
+            and hasattr(unet.config, "sample_size")
             and self._is_unet_config_sample_size_int
             and unet.config.sample_size < 64
         )
