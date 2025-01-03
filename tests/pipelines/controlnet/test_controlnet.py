@@ -42,7 +42,6 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     require_torch_2,
     require_torch_accelerator,
-    require_torch_gpu,
     run_test_in_subprocess,
     slow,
     torch_device,
