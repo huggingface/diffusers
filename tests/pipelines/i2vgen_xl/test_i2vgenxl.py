@@ -39,7 +39,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -226,23 +226,29 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class I2VGenXLPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch_device == "cuda":
+            torch.cuda.empty_cache()
+        elif torch_device == "xpu":
+            torch.xpu.empty_cache()
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch_device == "cuda":
+            torch.cuda.empty_cache()
+        elif torch_device == "xpu":
+            torch.xpu.empty_cache()
 
     def test_i2vgen_xl(self):
         pipe = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"

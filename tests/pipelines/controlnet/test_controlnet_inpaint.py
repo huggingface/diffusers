@@ -40,7 +40,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_numpy,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -443,7 +443,7 @@ class MultiControlNetInpaintPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
@@ -461,7 +461,7 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
             "botp/stable-diffusion-v1-5-inpainting", safety_checker=None, controlnet=controlnet
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -507,7 +507,7 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
             "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(33)

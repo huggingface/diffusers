@@ -231,7 +231,7 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
             controlnet=controlnet,
             torch_dtype=torch.bfloat16,
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)

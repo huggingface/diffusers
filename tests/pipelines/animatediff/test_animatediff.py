@@ -22,7 +22,7 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -547,19 +547,25 @@ class AnimateDiffPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class AnimateDiffPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch_device == "cuda":
+            torch.cuda.empty_cache()
+        elif torch_device == "xpu":
+            torch.xpu.empty_cache()
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch_device == "cuda":
+            torch.cuda.empty_cache()
+        elif torch_device == "xpu":
+            torch.xpu.empty_cache()
 
     def test_animatediff(self):
         adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
@@ -573,7 +579,7 @@ class AnimateDiffPipelineSlowTests(unittest.TestCase):
             clip_sample=False,
         )
         pipe.enable_vae_slicing()
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "night, b&w photo of old house, post apocalypse, forest, storm weather, wind, rocks, 8k uhd, dslr, soft lighting, high quality, film grain"

@@ -77,7 +77,7 @@ from diffusers.utils.testing_utils import (
     require_flax,
     require_onnxruntime,
     require_torch_2,
-    require_torch_gpu,
+    require_torch_accelerator,
     run_test_in_subprocess,
     slow,
     torch_device,
@@ -1136,7 +1136,7 @@ class CustomPipelineTests(unittest.TestCase):
         assert conf_1 == conf_2
 
     @slow
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_download_from_git(self):
         # Because adaptive_avg_pool2d_backward_cuda
         # does not have a deterministic implementation.
@@ -1350,7 +1350,7 @@ class PipelineFastTests(unittest.TestCase):
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 64, 64, 3)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_pipe_false_offload_warn(self):
         unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -1814,19 +1814,25 @@ class PipelineFastTests(unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch_device == "cuda":
+            torch.cuda.empty_cache()
+        elif torch_device == "xpu":
+            torch.xpu.empty_cache()
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch_device == "cuda":
+            torch.cuda.empty_cache()
+        elif torch_device == "xpu":
+            torch.xpu.empty_cache()
 
     def test_smart_download(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
@@ -2045,13 +2051,16 @@ class PipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch_device == "cuda":
+            torch.cuda.empty_cache()
+        elif torch_device == "xpu":
+            torch.xpu.empty_cache()
 
     def tearDown(self):
         # clean up the VRAM after each test

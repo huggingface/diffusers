@@ -31,7 +31,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_image,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...models.autoencoders.vae import (
@@ -192,7 +198,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     # Copied from test_controlnet_sdxl.py
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
@@ -202,12 +208,12 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -369,12 +375,15 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch_device == "cuda":
+            torch.cuda.empty_cache()
+        elif torch_device == "xpu":
+            torch.xpu.empty_cache()
 
     def test_canny(self):
         controlnet = ControlNetXSAdapter.from_pretrained(
@@ -383,7 +392,7 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -407,7 +416,7 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
