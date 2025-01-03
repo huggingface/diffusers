@@ -1981,10 +1981,19 @@ class PipelineTesterMixin:
     def test_encode_prompt_works_in_isolation(self):
         if not hasattr(self.pipeline_class, "encode_prompt"):
             return
+
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+
+        # We initialize the pipeline with only text encoders and tokenizers,
+        # mimicking a real-world scenario.
+        components_with_text_encoders = {}
+        for k in components:
+            if "text" in k or "tokenizer" in k:
+                components_with_text_encoders[k] = components[k]
+            else:
+                components_with_text_encoders[k] = None
+        pipe = self.pipeline_class(**components_with_text_encoders)
         pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
         encode_prompt_signature = inspect.signature(pipe.encode_prompt)
@@ -2027,10 +2036,20 @@ class PipelineTesterMixin:
         adapted_prompt_embeds_kwargs = {
             k: prompt_embeds_kwargs.pop(k) for k in list(prompt_embeds_kwargs.keys()) if k in pipe_call_parameters
         }
-        pipe_out = pipe(**inputs, **adapted_prompt_embeds_kwargs)[0]
 
+        # now initialize a pipeline without text encoders
+        components_with_text_encoders = {}
+        for k in components:
+            if "text" in k or "tokenizer" in k:
+                components_with_text_encoders[k] = None
+            else:
+                components_with_text_encoders[k] = components[k]
+        pipe_without_text_encoders = self.pipeline_class(**components_with_text_encoders).to(torch_device)
+        pipe_out = pipe_without_text_encoders(**inputs, **adapted_prompt_embeds_kwargs)[0]
+
+        full_pipe = self.pipeline_class(**components).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
-        pipe_out_2 = pipe(**inputs)[0]
+        pipe_out_2 = full_pipe(**inputs)[0]
 
         self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=1e-4, rtol=1e-4))
 
