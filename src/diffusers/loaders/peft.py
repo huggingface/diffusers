@@ -253,10 +253,7 @@ class PeftAdapterMixin:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
-            keys = list(state_dict.keys())
-            model_keys = [k for k in keys if k.startswith(f"{prefix}.")]
-            if len(model_keys) > 0:
-                state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
+            state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}):
@@ -368,6 +365,11 @@ class PeftAdapterMixin:
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
+
+        if prefix is not None and not state_dict:
+            logger.info(
+                f"No LoRA keys associated to {self.__class__.__name__} found with the {prefix=}. Open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new"
+            )
 
     def save_lora_adapter(
         self,
