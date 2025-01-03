@@ -442,7 +442,7 @@ class AdaptiveMaskInpaintPipeline(
             unet._internal_dict = FrozenDict(new_config)
 
         # Check shapes, assume num_channels_latents == 4, num_channels_mask == 1, num_channels_masked == 4
-        if unet.config.in_channels != 9:
+        if unet is not None and unet.config.in_channels != 9:
             logger.info(f"You have loaded a UNet with {unet.config.in_channels} input channels which.")
 
         self.register_modules(

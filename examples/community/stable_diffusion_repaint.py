@@ -261,7 +261,7 @@ class StableDiffusionRepaintPipeline(
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
         # Check shapes, assume num_channels_latents == 4, num_channels_mask == 1, num_channels_masked == 4
-        if unet.config.in_channels != 4:
+        if unet is not None and unet.config.in_channels != 4:
             logger.warning(
                 f"You have loaded a UNet with {unet.config.in_channels} input channels, whereas by default,"
                 f" {self.__class__} assumes that `pipeline.unet` has 4 input channels: 4 for `num_channels_latents`,"
