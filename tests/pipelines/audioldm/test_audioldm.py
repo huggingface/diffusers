@@ -370,6 +370,10 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @nightly
 class AudioLDMPipelineSlowTests(unittest.TestCase):

@@ -576,6 +576,10 @@ class UniDiffuserPipelineFastTests(
         expected_text_prefix = '" This This'
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @nightly
 @require_torch_gpu

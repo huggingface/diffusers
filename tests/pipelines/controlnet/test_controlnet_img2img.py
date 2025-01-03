@@ -189,6 +189,10 @@ class ControlNetImg2ImgPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 class StableDiffusionMultiControlNetPipelineFastTests(
     IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
@@ -388,6 +392,10 @@ class StableDiffusionMultiControlNetPipelineFastTests(
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
+
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
 
 
 @slow

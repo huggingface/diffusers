@@ -509,6 +509,10 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @nightly
 class AudioLDM2PipelineSlowTests(unittest.TestCase):

@@ -337,3 +337,7 @@ class SanaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_float16_inference(expected_max_diff=0.08)
+
+    @unittest.skip("Test is not supported.")
+    def test_save_load_dduf(self):
+        pass

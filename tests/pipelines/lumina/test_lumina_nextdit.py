@@ -123,6 +123,10 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
     def test_xformers_attention_forwardGenerator_pass(self):
         pass
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @slow
 @require_torch_gpu

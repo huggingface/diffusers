@@ -74,6 +74,7 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
+    _download_dduf_file,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
@@ -81,6 +82,7 @@ from .pipeline_loading_utils import (
     _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
+    _maybe_raise_error_for_incorrect_transformers,
     _maybe_raise_warning_for_inpainting,
     _resolve_custom_pipeline_and_cls,
     _unwrap_model,
@@ -728,6 +730,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        if dduf_file:
+            if custom_pipeline:
+                raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
+            if load_connected_pipeline:
+                raise NotImplementedError("Connected pipelines are not supported with DDUF at the moment.")
+
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
@@ -782,14 +790,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         config_dict = cls.load_config(cached_folder, dduf_entries=dduf_entries)
 
         if dduf_file:
-            has_transformers_component = False
-            for k in config_dict:
-                if isinstance(config_dict[k], list):
-                    has_transformers_component = config_dict[k][0] == "transformers"
-                    if has_transformers_component:
-                        break
-            if has_transformers_component and not is_transformers_version(">", "4.47.1"):
-                raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")
+            _maybe_raise_error_for_incorrect_transformers(config_dict)
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -1325,6 +1326,22 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         trust_remote_code = kwargs.pop("trust_remote_code", False)
         dduf_file: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
 
+        if dduf_file:
+            if custom_pipeline:
+                raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
+            if load_connected_pipeline:
+                raise NotImplementedError("Connected pipelines are not supported with DDUF at the moment.")
+            return _download_dduf_file(
+                pretrained_model_name=pretrained_model_name,
+                dduf_file=dduf_file,
+                pipeline_class_name=cls.__name__,
+                cache_dir=cache_dir,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+            )
+
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True
@@ -1342,14 +1359,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 local_files_only = True
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
-        if (
-            not local_files_only
-            and dduf_file is not None
-            and dduf_file not in (sibling.rfilename for sibling in info.siblings)
-        ):
-            raise ValueError(f"Requested {dduf_file} file is not available in {pretrained_model_name}.")
-
-        if not local_files_only and not dduf_file:
+        if not local_files_only:
             filenames = {sibling.rfilename for sibling in info.siblings}
             if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
                 warn_msg = (
@@ -1488,14 +1498,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
-        if not dduf_file and custom_pipeline is not None and not custom_pipeline.endswith(".py"):
+        if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
             user_agent["custom_pipeline"] = custom_pipeline
 
         # download all allow_patterns - ignore_patterns
-        # also allow downloading the dduf_file
-        if dduf_file is not None:
-            allow_patterns = [dduf_file]
-            ignore_patterns = []
         try:
             cached_folder = snapshot_download(
                 pretrained_model_name,
@@ -1508,10 +1514,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
-
-            # retrieve pipeline class from local file
-            if dduf_file:
-                return cached_folder
 
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
             cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name

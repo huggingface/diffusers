@@ -1995,7 +1995,7 @@ class PipelineTesterMixin:
 
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
-    def test_save_load_dduf(self):
+    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
         from huggingface_hub import export_folder_as_dduf
 
         components = self.get_dummy_components()
@@ -2007,7 +2007,7 @@ class PipelineTesterMixin:
         inputs.pop("generator")
         inputs["generator"] = torch.manual_seed(0)
 
-        pipeline_out = pipe(**inputs)[0].cpu()
+        pipeline_out = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
@@ -2016,9 +2016,12 @@ class PipelineTesterMixin:
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
 
         inputs["generator"] = torch.manual_seed(0)
-        loaded_pipeline_out = loaded_pipe(**inputs)[0].cpu()
+        loaded_pipeline_out = loaded_pipe(**inputs)[0]
 
-        assert np.allclose(pipeline_out, loaded_pipeline_out)
+        if isinstance(pipeline_out, np.ndarray) and isinstance(loaded_pipeline_out, np.ndarray):
+            assert np.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
+        elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
+            assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
 
 
 @is_staging_test

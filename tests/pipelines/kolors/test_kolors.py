@@ -141,3 +141,7 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=5e-4)
+
+    @unittest.skip("Test unsupported because of custom code.")
+    def test_save_load_dduf(self):
+        pass
