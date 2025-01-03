@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import copy
+import gc
 import inspect
 import json
 import os
@@ -56,6 +57,7 @@ from diffusers.utils.testing_utils import (
     CaptureLogger,
     get_python_version,
     is_torch_compile,
+    numpy_cosine_similarity_distance,
     require_torch_2,
     require_torch_accelerator_with_training,
     require_torch_gpu,
@@ -1330,6 +1332,82 @@ class ModelTesterMixin:
                 shard_files = [file for file in os.listdir(tmp_dir) if file.endswith(extension)]
                 # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
                 assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
+
+    def test_layerwise_upcasting_inference(self):
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+        base_slice = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+
+        # fp16-fp32
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+        model.enable_layerwise_upcasting(storage_dtype=torch.float16, compute_dtype=torch.float32)
+        layerwise_upcast_slice_fp16 = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+
+        # The precision test is not very important for fast tests. In most cases, the outputs will not be the same.
+        # We just want to make sure that the layerwise upcasting is working as expected.
+        self.assertTrue(numpy_cosine_similarity_distance(base_slice, layerwise_upcast_slice_fp16) < 1.0)
+
+        # fp8_e4m3-fp32
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+        model.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
+        layerwise_upcast_slice_fp8_e4m3 = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+
+        self.assertTrue(numpy_cosine_similarity_distance(base_slice, layerwise_upcast_slice_fp8_e4m3) < 1.0)
+
+        # fp8_e5m2-fp32
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+        model.enable_layerwise_upcasting(storage_dtype=torch.float8_e5m2, compute_dtype=torch.float32)
+        layerwise_upcast_slice_fp8_e5m2 = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+
+        self.assertTrue(numpy_cosine_similarity_distance(base_slice, layerwise_upcast_slice_fp8_e5m2) < 1.0)
+
+    @require_torch_gpu
+    def test_layerwise_upcasting_memory(self):
+        # fp32
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.synchronize()
+
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+        model(**inputs_dict)
+        base_memory_footprint = model.get_memory_footprint()
+        base_max_memory = torch.cuda.max_memory_allocated()
+
+        model.to("cpu")
+        del model
+
+        # fp8_e4m3-fp32
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.synchronize()
+
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+        model.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
+        model(**inputs_dict)
+        fp8_e4m3_memory_footprint = model.get_memory_footprint()
+        fp8_e4m3_max_memory = torch.cuda.max_memory_allocated()
+
+        self.assertTrue(fp8_e4m3_memory_footprint < base_memory_footprint)
+        self.assertTrue(fp8_e4m3_max_memory < base_max_memory)
 
 
 @is_staging_test

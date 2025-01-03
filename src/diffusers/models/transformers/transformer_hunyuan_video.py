@@ -542,6 +542,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     """
 
     _supports_gradient_checkpointing = True
+    _always_upcast_modules = ["x_embedder", "context_embedder", "norm.*"]
 
     @register_to_config
     def __init__(

@@ -56,6 +56,7 @@ from ..utils.hub_utils import (
     load_or_create_model_card,
     populate_model_card,
 )
+from .layerwise_upcasting_utils import LayerwiseUpcastingGranularity, apply_layerwise_upcasting
 from .model_loading_utils import (
     _determine_device_map,
     _fetch_index_file,
@@ -150,6 +151,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _keys_to_ignore_on_load_unexpected = None
     _no_split_modules = None
     _keep_in_fp32_modules = None
+    _always_upcast_modules = None
 
     def __init__(self):
         super().__init__()
@@ -313,6 +315,67 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
         """
         self.set_use_memory_efficient_attention_xformers(False)
+
+    def enable_layerwise_upcasting(
+        self,
+        storage_dtype: torch.dtype = torch.float8_e4m3fn,
+        compute_dtype: Optional[torch.dtype] = None,
+        granularity: LayerwiseUpcastingGranularity = LayerwiseUpcastingGranularity.PYTORCH_LAYER,
+    ) -> None:
+        r"""
+        Activates layerwise upcasting for the current model.
+
+        Layerwise upcasting is a technique that casts the model weights to a lower precision dtype for storage but
+        upcasts them on-the-fly to a higher precision dtype for computation. This process can significantly reduce the
+        memory footprint from model weights, but may lead to some quality degradation in the outputs. Most degradations
+        are negligible, mostly stemming from weight casting in normalization and modulation layers.
+
+        By default, most models in diffusers set the `_always_upcast_modules` attribute to ignore patch embedding,
+        positional embedding and normalization layers. This is because these layers are most likely precision-critical
+        for quality. If you wish to change this behavior, you can set the `_always_upcast_modules` attribute to `None`,
+        or call [`~apply_layerwise_upcasting`] with custom arguments.
+
+        Example:
+            Using [`~models.ModelMixin.enable_layerwise_upcasting`]:
+
+            ```python
+            >>> from diffusers import CogVideoXTransformer3DModel, apply_layerwise_upcasting
+
+            >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
+            ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
+            ... )
+
+            >>> # Enable layerwise upcasting via the model, which ignores certain modules by default
+            >>> transformer.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+
+            >>> # Or, enable layerwise upcasting with custom arguments via the `apply_layerwise_upcasting` function
+            >>> apply_layerwise_upcasting(
+            ...     transformer, torch.float8_e4m3fn, torch.bfloat16, skip_modules_pattern=["patch_embed", "norm.*"]
+            ... )
+            ```
+
+        Args:
+            storage_dtype (`torch.dtype`):
+                The dtype to which the model should be cast for storage.
+            compute_dtype (`torch.dtype`):
+                The dtype to which the model weights should be cast during the forward pass.
+            granularity (`LayerwiseUpcastingGranularity`, defaults to "pytorch_layer"):
+                The granularity of the layerwise upcasting process. Read the documentation of
+                [`~LayerwiseUpcastingGranularity`] for more information.
+        """
+
+        skip_modules_pattern = []
+        if self._keep_in_fp32_modules is not None:
+            skip_modules_pattern.extend(self._keep_in_fp32_modules)
+        if self._always_upcast_modules is not None:
+            skip_modules_pattern.extend(self._always_upcast_modules)
+        skip_modules_pattern = list(set(skip_modules_pattern))
+
+        if compute_dtype is None:
+            logger.info("`compute_dtype` not provided when enabling layerwise upcasting. Using `storage_dtype`.")
+            compute_dtype = self.dtype
+
+        apply_layerwise_upcasting(self, storage_dtype, compute_dtype, granularity, skip_modules_pattern)
 
     def save_pretrained(
         self,
