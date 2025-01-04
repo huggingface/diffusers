@@ -51,6 +51,11 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
+    _import_structure["layerwise_upcasting_utils"] = [
+        "LayerwiseUpcastingGranularity",
+        "apply_layerwise_upcasting",
+        "apply_layerwise_upcasting_hook",
+    ]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]

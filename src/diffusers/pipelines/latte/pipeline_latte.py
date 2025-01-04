@@ -836,7 +836,7 @@ class LattePipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        if not output_type == "latents":
+        if not output_type == "latent":
             video = self.decode_latents(latents, video_length, decode_chunk_size=14)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:

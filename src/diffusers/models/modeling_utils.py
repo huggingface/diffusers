@@ -321,6 +321,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         storage_dtype: torch.dtype = torch.float8_e4m3fn,
         compute_dtype: Optional[torch.dtype] = None,
         granularity: LayerwiseUpcastingGranularity = LayerwiseUpcastingGranularity.PYTORCH_LAYER,
+        skip_modules_pattern: Optional[List[str]] = None,
     ) -> None:
         r"""
         Activates layerwise upcasting for the current model.
@@ -364,7 +365,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 [`~LayerwiseUpcastingGranularity`] for more information.
         """
 
-        skip_modules_pattern = []
+        if skip_modules_pattern is None:
+            skip_modules_pattern = []
         if self._keep_in_fp32_modules is not None:
             skip_modules_pattern.extend(self._keep_in_fp32_modules)
         if self._always_upcast_modules is not None:
