@@ -6,9 +6,11 @@ import torch
 
 from diffusers import EulerDiscreteScheduler, StableDiffusionInstructPix2PixPipeline, StableDiffusionPipeline
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
+from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
+    nightly,
     require_torch_accelerator,
     slow,
     torch_device,
@@ -120,6 +122,7 @@ class StableDiffusion21PipelineSingleFileSlowTests(unittest.TestCase, SDSingleFi
         super().test_single_file_format_inference_is_same_as_pretrained(expected_max_diff=1e-3)
 
 
+@nightly
 @slow
 @require_torch_accelerator
 class StableDiffusionInstructPix2PixPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
@@ -142,12 +145,16 @@ class StableDiffusionInstructPix2PixPipelineSingleFileSlowTests(unittest.TestCas
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
+        image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_pix2pix/example.jpg"
+        )
         inputs = {
-            "prompt": "a fantasy landscape, concept art, high resolution",
+            "prompt": "turn him into a cyborg",
+            "image": image,
             "generator": generator,
-            "num_inference_steps": 2,
-            "strength": 0.75,
+            "num_inference_steps": 3,
             "guidance_scale": 7.5,
+            "image_guidance_scale": 1.0,
             "output_type": "np",
         }
         return inputs
