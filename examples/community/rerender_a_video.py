@@ -30,9 +30,16 @@ from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import BaseOutput, deprecate, logging
+from diffusers.utils import BaseOutput, deprecate, is_torch_xla_available, logging
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -1099,6 +1106,9 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                             progress_bar.update()
                             if callback is not None and i % callback_steps == 0:
                                 callback(i, t, latents)
+
+                        if XLA_AVAILABLE:
+                            xm.mark_step()
 
                     return latents
 
