@@ -515,6 +515,10 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
     PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase

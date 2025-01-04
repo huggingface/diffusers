@@ -815,3 +815,7 @@ class StableDiffusionXLInpaintPipelineFastTests(
         # compare the intermediate latent to the output of the interrupted process
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
+
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass

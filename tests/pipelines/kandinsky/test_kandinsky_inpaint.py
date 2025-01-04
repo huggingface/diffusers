@@ -293,6 +293,10 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @nightly
 @require_torch_gpu

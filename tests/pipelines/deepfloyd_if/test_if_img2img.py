@@ -26,7 +26,9 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_numpy,
     require_accelerator,
+    require_hf_hub_version_greater,
     require_torch_gpu,
+    require_transformers_version_greater,
     skip_mps,
     slow,
     torch_device,
@@ -99,6 +101,11 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
         self._test_inference_batch_single_identical(
             expected_max_diff=1e-2,
         )
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
 
 
 @slow

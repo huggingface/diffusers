@@ -282,6 +282,10 @@ class ControlNetPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 class StableDiffusionMultiControlNetPipelineFastTests(
     IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
@@ -514,6 +518,10 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         assert image.shape == (4, 64, 64, 3)
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
@@ -696,6 +704,10 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
+
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
 
 
 @slow

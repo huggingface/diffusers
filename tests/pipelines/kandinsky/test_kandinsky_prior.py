@@ -236,3 +236,7 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             test_max_difference=test_max_difference,
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
+
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass

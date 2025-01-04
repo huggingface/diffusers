@@ -270,6 +270,10 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
 
+    @unittest.skip("Test is not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @slow
 @require_torch_gpu

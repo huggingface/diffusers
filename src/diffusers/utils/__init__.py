@@ -70,6 +70,7 @@ from .import_utils import (
     is_gguf_available,
     is_gguf_version,
     is_google_colab,
+    is_hf_hub_version,
     is_inflect_available,
     is_invisible_watermark_available,
     is_k_diffusion_available,

@@ -511,6 +511,10 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         output = pipe(**inputs).frames
         self.assertEqual(len(output.shape), 5)
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @slow
 @require_torch_gpu

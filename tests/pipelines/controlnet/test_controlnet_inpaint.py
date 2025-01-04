@@ -441,6 +441,10 @@ class MultiControlNetInpaintPipelineFastTests(
             except NotImplementedError:
                 pass
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @slow
 @require_torch_gpu

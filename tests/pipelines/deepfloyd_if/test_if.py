@@ -26,7 +26,9 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     load_numpy,
     require_accelerator,
+    require_hf_hub_version_greater,
     require_torch_gpu,
+    require_transformers_version_greater,
     skip_mps,
     slow,
     torch_device,
@@ -88,6 +90,11 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
     )
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
 
 
 @slow

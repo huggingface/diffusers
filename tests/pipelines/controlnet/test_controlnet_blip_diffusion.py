@@ -220,3 +220,7 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass

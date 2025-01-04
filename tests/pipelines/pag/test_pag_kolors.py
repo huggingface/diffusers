@@ -250,3 +250,7 @@ class KolorsPAGPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    @unittest.skip("Test is not supported.")
+    def test_save_load_dduf(self):
+        pass

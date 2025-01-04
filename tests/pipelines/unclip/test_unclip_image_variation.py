@@ -492,6 +492,10 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=1.0)
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 @nightly
 @require_torch_gpu

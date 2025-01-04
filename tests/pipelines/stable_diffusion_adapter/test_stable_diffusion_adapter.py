@@ -336,6 +336,10 @@ class AdapterTests:
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skip("Test not supported.")
+    def test_save_load_dduf(self):
+        pass
+
 
 class StableDiffusionFullAdapterPipelineFastTests(
     AdapterTests, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase

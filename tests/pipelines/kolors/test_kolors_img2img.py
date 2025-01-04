@@ -150,3 +150,7 @@ class KolorsPipelineImg2ImgFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=7e-2)
+
+    @unittest.skip("Test unsupported because of custom code.")
+    def test_save_load_dduf(self):
+        pass
