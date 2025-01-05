@@ -1,0 +1,43 @@
+from IPython import get_ipython
+from IPython.display import display
+# %%
+import torch
+from torchvision import utils
+from google.colab import drive
+from PIL import Image
+import os
+
+# Installer les packages nécessaires (si ce n'est déjà fait)
+!pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+!pip install ninja
+
+# Monter Google Drive
+drive.mount('/content/drive')
+
+# Vérification de la disponibilité du GPU et sélection du device
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+    print("GPU disponible. Utilisation de CUDA.")
+else:
+    device = torch.device('cpu')
+    print("GPU non disponible. Utilisation du CPU.")
+    print("Attention: Le traitement sera plus lent sur CPU.")
+
+# Charger le modèle StyleGAN2-ADA pré-entraîné
+try:
+    model = torch.hub.load('NVlabs/stylegan2-ada-pytorch', 'stylegan2-ada-config-f')
+    model.to(device)  # Déplacer le modèle vers le device APRÈS le chargement
+except Exception as e:
+    print(f"Erreur lors du chargement du modèle: {e}")
+    print("Veuillez vous assurer que les packages nécessaires sont installés et que la connexion internet est stable.")
+    raise e  # Propager l'exception pour un meilleur débogage
+
+# Chemin vers ton dossier "archive" sur Google Drive
+chemin_archives = '/content/drive/MyDrive/archive'  # Remplace 'archive' par le nom réel de ton dossier si besoin
+
+# Charger les images depuis le dossier "archive"
+images_archives = []
+for nom_fichier in os.listdir(chemin_archives):
+    if nom_fichier.endswith(('.jpg', '.jpeg', '.png')):  # Filtrer les fichiers image
+        chemin_image = os.path.join(chemin_archives, nom_fichier)
+        image = Image.open(chemin_image).convert('RGB
