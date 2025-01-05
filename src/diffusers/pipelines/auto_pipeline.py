@@ -528,7 +528,9 @@ class AutoPipelineForText2Image(ConfigMixin):
             if k not in text_2_image_kwargs
         }
 
-        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(text_2_image_kwargs.keys())
+        missing_modules = (
+            set(expected_modules) - set(text_2_image_cls._optional_components) - set(text_2_image_kwargs.keys())
+        )
 
         if len(missing_modules) > 0:
             raise ValueError(
@@ -838,7 +840,9 @@ class AutoPipelineForImage2Image(ConfigMixin):
             if k not in image_2_image_kwargs
         }
 
-        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(image_2_image_kwargs.keys())
+        missing_modules = (
+            set(expected_modules) - set(image_2_image_cls._optional_components) - set(image_2_image_kwargs.keys())
+        )
 
         if len(missing_modules) > 0:
             raise ValueError(
@@ -1141,7 +1145,9 @@ class AutoPipelineForInpainting(ConfigMixin):
             if k not in inpainting_kwargs
         }
 
-        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(inpainting_kwargs.keys())
+        missing_modules = (
+            set(expected_modules) - set(inpainting_cls._optional_components) - set(inpainting_kwargs.keys())
+        )
 
         if len(missing_modules) > 0:
             raise ValueError(
