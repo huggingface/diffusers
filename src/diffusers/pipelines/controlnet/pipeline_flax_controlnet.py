@@ -75,7 +75,7 @@ EXAMPLE_DOC_STRING = """
         ...     "lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.float32
         ... )
         >>> pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, revision="flax", dtype=jnp.float32
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, revision="flax", dtype=jnp.float32
         ... )
         >>> params["controlnet"] = controlnet_params
 
@@ -132,7 +132,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
             [`FlaxDPMSolverMultistepScheduler`].
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for more details
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
