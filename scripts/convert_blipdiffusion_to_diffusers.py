@@ -305,7 +305,6 @@ def save_blip_diffusion_model(model, args):
 
     text_encoder = ContextCLIPTextModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="text_encoder")
     vae = AutoencoderKL.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="vae")
-
     unet = UNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
     vae.eval()
     text_encoder.eval()
