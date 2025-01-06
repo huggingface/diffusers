@@ -870,7 +870,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
-            ip_adapter_image (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image (`PipelineImageInput`, *optional*):
+                Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`torch.Tensor`, *optional*):
                 Pre-generated image embeddings for IP-Adapter. Should be a tensor of shape `(batch_size, num_images,
                 emb_dim)`. It should contain the negative image embedding if `do_classifier_free_guidance` is set to
