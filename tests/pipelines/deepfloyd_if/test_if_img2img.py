@@ -24,6 +24,7 @@ from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
+    flush_memory,
     load_numpy,
     require_accelerator,
     require_torch_accelerator,
@@ -125,14 +126,7 @@ class IFImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload(device=torch_device)
 
-        if torch_device == "cuda":
-            torch.cuda.reset_max_memory_allocated()
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
-        elif torch_device == "xpu":
-            torch.xpu.reset_max_memory_allocated()
-            torch.xpu.empty_cache()
-            torch.xpu.reset_peak_memory_stats()
+        flush_memory(torch_device, reset_mem_stats=True)
 
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
         generator = torch.Generator(device="cpu").manual_seed(0)

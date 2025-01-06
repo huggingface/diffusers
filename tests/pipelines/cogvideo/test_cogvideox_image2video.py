@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import inspect
 import unittest
 
@@ -24,8 +23,8 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLCogVideoX, CogVideoXImageToVideoPipeline, CogVideoXTransformer3DModel, DDIMScheduler
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
+    flush_memory,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
     slow,
@@ -351,13 +350,11 @@ class CogVideoXImageToVideoPipelineIntegrationTests(unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def tearDown(self):
         super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def test_cogvideox(self):
         generator = torch.Generator("cpu").manual_seed(0)

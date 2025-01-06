@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import random
 import unittest
 
@@ -23,8 +22,8 @@ from diffusers import IFImg2ImgSuperResolutionPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     floats_tensor,
+    flush_memory,
     load_numpy,
     require_accelerator,
     require_torch_accelerator,
@@ -105,14 +104,12 @@ class IFImg2ImgSuperResolutionPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+        flush_memory(torch_device, gc_collect=True)
 
     def test_if_img2img_superresolution(self):
         pipe = IFImg2ImgSuperResolutionPipeline.from_pretrained(
@@ -123,14 +120,7 @@ class IFImg2ImgSuperResolutionPipelineSlowTests(unittest.TestCase):
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload(device=torch_device)
 
-        if torch_device == "cuda":
-            torch.cuda.reset_max_memory_allocated()
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
-        elif torch_device == "xpu":
-            torch.xpu.reset_max_memory_allocated()
-            torch.xpu.empty_cache()
-            torch.xpu.reset_peak_memory_stats()
+        flush_memory(torch_device, reset_mem_stats=True)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 

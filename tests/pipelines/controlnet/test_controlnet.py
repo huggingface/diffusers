@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import tempfile
 import traceback
 import unittest
@@ -34,8 +33,8 @@ from diffusers import (
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
+    flush_memory,
     get_python_version,
     is_torch_compile,
     load_image,
@@ -704,13 +703,11 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 class ControlNetPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def tearDown(self):
         super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def test_canny(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
@@ -929,14 +926,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 8e-2
 
     def test_sequential_cpu_offloading(self):
-        if torch_device == "cuda":
-            torch.cuda.empty_cache()
-            torch.cuda.reset_max_memory_allocated()
-            torch.cuda.reset_peak_memory_stats()
-        elif torch_device == "xpu":
-            torch.xpu.empty_cache()
-            torch.xpu.reset_max_memory_allocated()
-            torch.xpu.reset_peak_memory_stats()
+        flush_memory(torch_device, gc_collect=True, reset_mem_stats=True)
 
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-seg")
 
@@ -1077,13 +1067,11 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def tearDown(self):
         super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def test_pose_and_canny(self):
         controlnet_canny = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")

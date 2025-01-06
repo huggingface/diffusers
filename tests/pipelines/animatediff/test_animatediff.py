@@ -1,4 +1,3 @@
-import gc
 import unittest
 
 import numpy as np
@@ -20,7 +19,7 @@ from diffusers import (
 from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
+    flush_memory,
     numpy_cosine_similarity_distance,
     require_accelerator,
     require_torch_accelerator,
@@ -553,14 +552,12 @@ class AnimateDiffPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def test_animatediff(self):
         adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")

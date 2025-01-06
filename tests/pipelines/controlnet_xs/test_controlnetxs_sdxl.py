@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import unittest
 
 import numpy as np
@@ -32,8 +31,8 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
+    flush_memory,
     load_image,
     require_torch_accelerator,
     slow,
@@ -380,8 +379,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
+        flush_memory(torch_device, gc_collect=True)
 
     def test_canny(self):
         controlnet = ControlNetXSAdapter.from_pretrained(
