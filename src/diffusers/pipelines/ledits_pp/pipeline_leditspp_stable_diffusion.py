@@ -40,9 +40,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = LEditsPPPipelineStableDiffusion.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5",
-        ...     variant="fp16",
-        ...     torch_dtype=torch.float16
+        ...     "runwayml/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
         ... )
         >>> pipe.enable_vae_tiling()
         >>> pipe = pipe.to("cuda")
