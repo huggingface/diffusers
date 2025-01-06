@@ -697,7 +697,12 @@ def prepare_train_dataset(dataset, accelerator):
         conditioning_images = [image_transforms(image) for image in conditioning_images]
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
-        examples["captions"] = list(examples[args.caption_column])
+
+        is_caption_list = isinstance(examples[args.caption_column][0], list)
+        if is_caption_list:
+            examples["captions"] = [max(example, key=len) for example in examples[args.caption_column]]
+        else:
+            examples["captions"] = list(examples[args.caption_column])
 
         return examples
 
