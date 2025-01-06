@@ -1,4 +1,5 @@
 import functools
+import gc
 import importlib
 import importlib.metadata
 import inspect
@@ -86,7 +87,12 @@ if is_torch_available():
             ) from e
         logger.info(f"torch_device overrode to {torch_device}")
     else:
-        torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            torch_device = "cuda"
+        elif torch.xpu.is_available():
+            torch_device = "xpu"
+        else:
+            torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
             version.parse(torch.__version__).base_version
         ) >= version.parse("1.12")
@@ -1055,12 +1061,34 @@ def _is_torch_fp64_available(device):
 # Guard these lookups for when Torch is not used - alternative accelerator support is for PyTorch
 if is_torch_available():
     # Behaviour flags
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "cpu": True, "mps": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
 
     # Function definitions
-    BACKEND_EMPTY_CACHE = {"cuda": torch.cuda.empty_cache, "cpu": None, "mps": None, "default": None}
-    BACKEND_DEVICE_COUNT = {"cuda": torch.cuda.device_count, "cpu": lambda: 0, "mps": lambda: 0, "default": 0}
-    BACKEND_MANUAL_SEED = {"cuda": torch.cuda.manual_seed, "cpu": torch.manual_seed, "default": torch.manual_seed}
+    BACKEND_EMPTY_CACHE = {
+        "cuda": torch.cuda.empty_cache,
+        "xpu": torch.xpu.empty_cache,
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
+    BACKEND_DEVICE_COUNT = {
+        "cuda": torch.cuda.device_count,
+        "xpu": torch.xpu.device_count,
+        "cpu": lambda: 0,
+        "mps": lambda: 0,
+        "default": 0,
+    }
+    BACKEND_MANUAL_SEED = {
+        "cuda": torch.cuda.manual_seed,
+        "xpu": torch.xpu.manual_seed,
+        "cpu": torch.manual_seed,
+        "default": torch.manual_seed,
+    }
+    BACKEND_RESET_PEAK_MEMORY_STATS = {
+        "cuda": torch.cuda.reset_peak_memory_stats(),
+        "xpu": torch.xpu.reset_peak_memory_stats(),
+        "default": None,
+    }
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
@@ -1089,6 +1117,10 @@ def backend_empty_cache(device: str):
 
 def backend_device_count(device: str):
     return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
+
+
+def backend_reset_peak_memory(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
 
 
 # These are callables which return boolean behaviour flags and can be used to specify some
@@ -1147,3 +1179,13 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_EMPTY_CACHE, "EMPTY_CACHE_FN")
         update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
         update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
+        update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEM_STATS")
+
+
+@require_torch
+def flush_memory(device: str, gc_collect=False, reset_mem_stats=False):
+    if gc_collect:
+        gc.collect()
+    if reset_mem_stats:
+        backend_reset_peak_memory(device)
+    backend_empty_cache(device)
