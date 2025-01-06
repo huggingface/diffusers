@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import random
 import unittest
 
@@ -24,9 +23,10 @@ from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
+    flush_memory,
     load_numpy,
     require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -99,30 +99,26 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class IFInpaintingPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
+        flush_memory(torch_device, gc_collect=True)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+        flush_memory(torch_device, gc_collect=True)
 
     def test_if_inpainting(self):
         pipe = IFInpaintingPipeline.from_pretrained(
             "DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16
         )
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        flush_memory(torch_device, reset_mem_stats=True)
 
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
         mask_image = floats_tensor((1, 3, 64, 64), rng=random.Random(1)).to(torch_device)

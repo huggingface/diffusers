@@ -1085,8 +1085,8 @@ if is_torch_available():
         "default": torch.manual_seed,
     }
     BACKEND_RESET_PEAK_MEMORY_STATS = {
-        "cuda": torch.cuda.reset_peak_memory_stats(),
-        "xpu": torch.xpu.reset_peak_memory_stats(),
+        "cuda": torch.cuda.reset_peak_memory_stats,
+        "xpu": torch.xpu.reset_peak_memory_stats,
         "default": None,
     }
 
