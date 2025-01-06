@@ -71,6 +71,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         invert_sigmas (`bool`, defaults to False):
             Whether to invert the sigmas.
         shift_terminal (`float`, defaults to None):
+            The end value of the shifted timestep schedule.
         use_karras_sigmas (`bool`, defaults to False):
             Whether to use Karras sigmas for step sizes in the noise schedule during sampling.
         use_exponential_sigmas (`bool`, defaults to False):

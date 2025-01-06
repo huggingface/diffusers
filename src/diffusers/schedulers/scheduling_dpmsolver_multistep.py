@@ -177,6 +177,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         use_flow_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use flow sigmas for step sizes in the noise schedule during the sampling process.
         flow_shift (`float`, *optional*, defaults to 1.0):
+            The shift value for the timestep schedule for flow matching.
         final_sigmas_type (`str`, defaults to `"zero"`):
             The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
             sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
