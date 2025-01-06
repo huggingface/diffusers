@@ -474,9 +474,6 @@ def parse_args(input_args=None):
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument(
-        "--enable_npu_flash_attention", action="store_true", help="Whether or not to use npu flash attention."
-    )
-    parser.add_argument(
         "--set_grads_to_none",
         action="store_true",
         help=(
@@ -969,13 +966,6 @@ def main(args):
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
-
-    if args.enable_npu_flash_attention:
-        if is_torch_npu_available():
-            logger.info("npu flash attention enabled.")
-            flux_transformer.enable_npu_flash_attention()
-        else:
-            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu devices.")
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():

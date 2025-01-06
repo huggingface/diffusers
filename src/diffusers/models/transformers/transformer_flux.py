@@ -29,6 +29,7 @@ from ...models.attention_processor import (
     FluxAttnProcessor2_0,
     FluxAttnProcessor2_0_NPU,
     FusedFluxAttnProcessor2_0,
+    FusedFluxAttnProcessor2_0_NPU,
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
@@ -140,7 +141,10 @@ class FluxTransformerBlock(nn.Module):
         self.norm1_context = AdaLayerNormZero(dim)
 
         if hasattr(F, "scaled_dot_product_attention"):
-            processor = FluxAttnProcessor2_0()
+            if is_torch_npu_available():
+                processor = FluxAttnProcessor2_0_NPU()
+            else:
+                processor = FluxAttnProcessor2_0()
         else:
             raise ValueError(
                 "The current PyTorch version does not support the `scaled_dot_product_attention` function."
@@ -405,7 +409,10 @@ class FluxTransformer2DModel(
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
-        self.set_attn_processor(FusedFluxAttnProcessor2_0())
+        if is_torch_npu_available():
+            self.set_attn_processor(FusedFluxAttnProcessor2_0_NPU())
+        else:
+            self.set_attn_processor(FusedFluxAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
