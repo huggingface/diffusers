@@ -1885,7 +1885,16 @@ class PipelineFastTests(unittest.TestCase):
                 cache_dir=tmpdir,
             ).to(torch_device)
 
-            pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
+            pipe.save_pretrained(tmpdir)
+            loaded_pipe = DiffusionPipeline.from_pretrained(tmpdir).to(torch_device)
+
+            out_2 = loaded_pipe(
+                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
+            ).images
+
+        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
 
 
 @slow
