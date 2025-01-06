@@ -166,25 +166,34 @@ class PipelineBlock:
         )
 
 
-def combine_inputs(*input_lists: List[Tuple[str, Any]]) -> List[Tuple[str, Any]]:
+def combine_inputs(*named_input_lists: List[Tuple[str, List[Tuple[str, Any]]]]) -> List[Tuple[str, Any]]:
     """
-    Combines multiple lists of (name, default_value) tuples. For duplicate inputs, updates only if current value is
-    None and new value is not None. Warns if multiple non-None default values exist for the same input.
+    Combines multiple lists of (name, default_value) tuples from different blocks. For duplicate inputs, updates only if 
+    current value is None and new value is not None. Warns if multiple non-None default values exist for the same input.
+
+    Args:
+        named_input_lists: List of tuples containing (block_name, input_list) pairs
     """
     combined_dict = {}
-    for inputs in input_lists:
+    # Track which block provided which value
+    value_sources = {}
+    
+    for block_name, inputs in named_input_lists:
         for name, value in inputs:
             if name in combined_dict:
                 current_value = combined_dict[name]
                 if current_value is not None and value is not None and current_value != value:
                     warnings.warn(
                         f"Multiple different default values found for input '{name}': "
-                        f"{current_value} and {value}. Using {current_value}."
+                        f"{current_value} (from block '{value_sources[name]}') and "
+                        f"{value} (from block '{block_name}'). Using {current_value}."
                     )
                 if current_value is None and value is not None:
                     combined_dict[name] = value
+                    value_sources[name] = block_name
             else:
                 combined_dict[name] = value
+                value_sources[name] = block_name
     return list(combined_dict.items())
 
 
@@ -268,62 +277,10 @@ class MultiPipelineBlocks:
     def intermediates_outputs(self) -> List[str]:
         raise NotImplementedError("intermediates_outputs property must be implemented in subclasses")
 
-    @property
-    def model_cpu_offload_seq(self):
-        raise NotImplementedError("model_cpu_offload_seq property must be implemented in subclasses")
-
     def __call__(self, pipeline, state):
         raise NotImplementedError("__call__ method must be implemented in subclasses")
 
-    def __repr__(self):
-        class_name = self.__class__.__name__
 
-        # Components section
-        expected_components = set(getattr(self, "expected_components", []))
-        loaded_components = set(self.components.keys())
-        all_components = sorted(expected_components | loaded_components)
-        components_str = "  Components:\n" + "\n".join(
-            f"    - {k}={type(self.components[k]).__name__}" if k in loaded_components else f"    - {k}"
-            for k in all_components
-        )
-
-        # Auxiliaries section
-        auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
-            f"    - {k}={type(v).__name__}" for k, v in self.auxiliaries.items()
-        )
-
-        # Configs section
-        expected_configs = set(getattr(self, "expected_configs", []))
-        loaded_configs = set(self.configs.keys())
-        all_configs = sorted(expected_configs | loaded_configs)
-        configs_str = "  Configs:\n" + "\n".join(
-            f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" for k in all_configs
-        )
-
-        # Blocks section
-        blocks_str = "  Blocks:\n" + "\n".join(
-            f"    - {name}={block.__class__.__name__}" for name, block in self.blocks.items()
-        )
-
-        # Other information
-        inputs_str = "  Inputs:\n" + "\n".join(f"    - {name}={default}" for name, default in self.inputs)
-
-        intermediates_str = (
-            "  Intermediates:\n"
-            f"    - inputs: {', '.join(self.intermediates_inputs)}\n"
-            f"    - outputs: {', '.join(self.intermediates_outputs)}"
-        )
-
-        return (
-            f"{class_name}(\n"
-            f"{components_str}\n"
-            f"{auxiliaries_str}\n"
-            f"{configs_str}\n"
-            f"{blocks_str}\n"
-            f"{inputs_str}\n"
-            f"{intermediates_str}\n"
-            f")"
-        )
 
 
 # YiYi TODO: remove the trigger input logic and keep it more flexible and less convenient:
@@ -364,7 +321,8 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-        return combine_inputs(*(block.inputs for block in self.blocks.values()))
+        named_inputs = [(name, block.inputs) for name, block in self.blocks.items()]
+        return combine_inputs(*named_inputs)
 
     @property
     def intermediates_inputs(self) -> List[str]:
@@ -489,7 +447,8 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-        return combine_inputs(*(block.inputs for block in self.blocks.values()))
+        named_inputs = [(name, block.inputs) for name, block in self.blocks.items()]
+        return combine_inputs(*named_inputs)
 
     @property
     def intermediates_inputs(self) -> List[str]:
@@ -822,21 +781,19 @@ class ModularPipeline(ConfigMixin):
             output += f"{block.__class__.__name__}\n"
         output += "\n"
 
-        intermediates_str = ""
-        if hasattr(block, "intermediates_inputs"):
-            intermediates_str += f"{', '.join(block.intermediates_inputs)}"
-
         if hasattr(block, "intermediates_outputs"):
-            if intermediates_str:
-                intermediates_str += " -> "
-            else:
-                intermediates_str += "-> "
-            intermediates_str += f"{', '.join(block.intermediates_outputs)}"
-
-        if intermediates_str:
+            intermediates_str = f"-> {', '.join(block.intermediates_outputs)}"
             output += f"   {intermediates_str}\n"
+            output += "\n"
 
-        output += "\n"
+        # Add final intermediate outputs for SequentialPipelineBlocks
+        if isinstance(block, SequentialPipelineBlocks):
+            last_block = list(block.blocks.values())[-1]
+            if hasattr(last_block, "intermediates_outputs"):
+                final_outputs = last_block.intermediates_outputs
+                final_intermediates_str = f"   (final intermediate outputs: {', '.join(final_outputs)})"
+                output += f"   {final_intermediates_str}\n"
+                output += "\n"
 
         # List the components registered in the pipeline
         output += "Registered Components:\n"
@@ -861,7 +818,7 @@ class ModularPipeline(ConfigMixin):
         for name, default in self.default_call_parameters.items():
             output += f"{name}: {default!r}\n"
 
-        output += "\nRequired intermediate inputs:\n"
+        output += "\nIntermediate inputs:\n"
         output += "--------------------------\n"
         for name in self.pipeline_block.intermediates_inputs:
             output += f"{name}: \n"
