@@ -4243,10 +4243,9 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.Mochi1LoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer", "text_encoder"],
+        components: List[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -4287,8 +4286,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.Mochi1LoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).

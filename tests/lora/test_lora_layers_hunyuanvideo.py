@@ -248,6 +248,7 @@ class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
         out = out.flatten()
         out_slice = np.concatenate((out[:8], out[-8:]))
         from diffusers.utils.testing_utils import print_tensor_test
+
         print_tensor_test(out_slice)
         # fmt: off
         expected_slice = np.array([0.1013, 0.1924, 0.0078, 0.1021, 0.1929, 0.0078, 0.1023, 0.1919, 0.7402, 0.104, 0.4482, 0.7354, 0.0925, 0.4382, 0.7275, 0.0815])
