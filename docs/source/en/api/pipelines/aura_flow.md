@@ -62,7 +62,7 @@ image = pipeline(prompt).images[0]
 image.save("auraflow.png")
 ```
 
-Loading [GGUF checkpoints](https://huggingface.co/city96/AuraFlow-v0.3-gguf) are also supported:
+Loading [GGUF checkpoints](https://huggingface.co/docs/diffusers/quantization/gguf) are also supported:
 
 ```py
 import torch
@@ -76,7 +76,6 @@ transformer = AuraFlowTransformer2DModel.from_single_file(
     "https://huggingface.co/city96/AuraFlow-v0.3-gguf/blob/main/aura_flow_0.3-Q2_K.gguf",
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
     torch_dtype=torch.bfloat16,
-    config="fal/AuraFlow-v0.3",
 )
 
 pipeline = AuraFlowPipeline.from_pretrained(
