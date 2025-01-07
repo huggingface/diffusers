@@ -2694,7 +2694,7 @@ def convert_hunyuan_video_transformer_to_diffusers(checkpoint, **kwargs):
     return checkpoint
 
 
-def convert_auraflow_transformer_checkpoint_to_diffusers(checkpoint, config=None, **kwargs):
+def convert_auraflow_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     state_dict_keys = list(checkpoint.keys())
 
