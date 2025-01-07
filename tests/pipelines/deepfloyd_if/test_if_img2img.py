@@ -23,8 +23,10 @@ from diffusers import IFImg2ImgPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     floats_tensor,
-    flush_memory,
     load_numpy,
     require_accelerator,
     require_torch_accelerator,
@@ -109,13 +111,13 @@ class IFImg2ImgPipelineSlowTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_if_img2img(self):
         pipe = IFImg2ImgPipeline.from_pretrained(
@@ -126,7 +128,9 @@ class IFImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload(device=torch_device)
 
-        flush_memory(torch_device, reset_mem_stats=True)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_empty_cache(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
         generator = torch.Generator(device="cpu").manual_seed(0)

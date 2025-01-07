@@ -1,5 +1,4 @@
 import functools
-import gc
 import importlib
 import importlib.metadata
 import inspect

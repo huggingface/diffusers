@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import copy
+import gc
 import unittest
 
 import numpy as np
@@ -34,8 +35,8 @@ from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
-    flush_memory,
     load_image,
     require_torch_accelerator,
     slow,
@@ -893,11 +894,13 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_canny(self):
         controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")

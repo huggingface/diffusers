@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
 import unittest
 
@@ -22,8 +23,11 @@ from diffusers import IFSuperResolutionPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     floats_tensor,
-    flush_memory,
     load_numpy,
     require_accelerator,
     require_torch_accelerator,
@@ -99,12 +103,14 @@ class IFSuperResolutionPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_if_superresolution(self):
         pipe = IFSuperResolutionPipeline.from_pretrained(
@@ -114,7 +120,9 @@ class IFSuperResolutionPipelineSlowTests(unittest.TestCase):
         pipe.enable_model_cpu_offload(device=torch_device)
 
         # Super resolution test
-        flush_memory(torch_device, reset_mem_stats=True)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_empty_cache(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -130,10 +138,7 @@ class IFSuperResolutionPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (256, 256, 3)
 
-        if torch_device == "cuda":
-            mem_bytes = torch.cuda.max_memory_allocated()
-        elif torch_device == "xpu":
-            mem_bytes = torch.xpu.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         assert mem_bytes < 12 * 10**9
 
         expected_image = load_numpy(

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import torch
@@ -23,7 +24,9 @@ from diffusers import (
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    flush_memory,
+    backend_empty_cache,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     load_numpy,
     require_accelerator,
     require_torch_accelerator,
@@ -96,19 +99,23 @@ class IFPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_if_text_to_image(self):
         pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload(device=torch_device)
 
-        flush_memory(torch_device, reset_mem_stats=True)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_empty_cache(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe(

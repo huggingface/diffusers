@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import numpy as np
@@ -28,8 +29,8 @@ from diffusers import (
 from diffusers.models import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
-    flush_memory,
     require_torch_accelerator,
     slow,
     torch_device,
@@ -184,11 +185,13 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_canny(self):
         controlnet = HunyuanDiT2DControlNetModel.from_pretrained(

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import tempfile
 import traceback
 import unittest
@@ -33,8 +34,8 @@ from diffusers import (
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
-    flush_memory,
     get_python_version,
     is_torch_compile,
     load_image,
@@ -703,11 +704,13 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 class ControlNetPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_canny(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
@@ -1066,11 +1069,13 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_pose_and_canny(self):
         controlnet_canny = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")

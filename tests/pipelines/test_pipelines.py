@@ -66,9 +66,9 @@ from diffusers.utils import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
-    flush_memory,
     get_python_version,
     get_tests_dir,
     is_torch_compile,
@@ -1820,12 +1820,14 @@ class PipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_smart_download(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
@@ -2017,7 +2019,7 @@ class PipelineSlowTests(unittest.TestCase):
 
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
         pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.enable_attention_slicing()
 
         compel = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)
@@ -2049,12 +2051,14 @@ class PipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
-        flush_memory(torch_device, gc_collect=True)
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_ddpm_ddim_equality_batched(self):
         seed = 0
