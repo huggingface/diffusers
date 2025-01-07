@@ -55,7 +55,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():
@@ -919,7 +919,7 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        new_fingerprint_for_vae = Hasher.hash(vae_path)
+        new_fingerprint_for_vae = Hasher.hash((vae_path, args))
         train_dataset_with_embeddings = train_dataset.map(
             compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint
         )

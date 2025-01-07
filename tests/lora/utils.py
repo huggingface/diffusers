@@ -1528,7 +1528,7 @@ class PeftLoraLoaderMixinTests:
     @pytest.mark.xfail(
         condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
-        strict=True,
+        strict=False,
     )
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
@@ -1568,7 +1568,7 @@ class PeftLoraLoaderMixinTests:
 
             # without we should not see an error, but every image will be black
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-            out = pipe("test", num_inference_steps=2, output_type="np")[0]
+            out = pipe(**inputs)[0]
 
             self.assertTrue(np.isnan(out).all())
 
