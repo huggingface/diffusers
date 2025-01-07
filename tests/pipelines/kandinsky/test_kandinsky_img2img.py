@@ -226,6 +226,8 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummies = Dummies()
         return dummies.get_dummy_components()
@@ -294,10 +296,6 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @slow

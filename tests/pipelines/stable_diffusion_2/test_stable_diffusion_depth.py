@@ -76,6 +76,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"depth_mask"})
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -366,10 +368,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=7e-3)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @slow

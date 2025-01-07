@@ -31,6 +31,8 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = LuminaNextDiT2DModel(
@@ -121,10 +123,6 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
 
     @unittest.skip("xformers attention processor does not exist for Lumina")
     def test_xformers_attention_forwardGenerator_pass(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
         pass
 
 

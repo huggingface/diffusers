@@ -220,6 +220,8 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummies = Dummies()
         return dummies.get_dummy_components()
@@ -292,10 +294,6 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @nightly

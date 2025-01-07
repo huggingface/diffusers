@@ -257,6 +257,8 @@ class MultiControlNetInpaintPipelineFastTests(
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -440,10 +442,6 @@ class MultiControlNetInpaintPipelineFastTests(
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @slow

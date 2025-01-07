@@ -53,6 +53,8 @@ class SanaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     test_xformers_attention = False
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = SanaTransformer2DModel(
@@ -337,7 +339,3 @@ class SanaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_float16_inference(expected_max_diff=0.08)
-
-    @unittest.skip("Test is not supported.")
-    def test_save_load_dduf(self):
-        pass

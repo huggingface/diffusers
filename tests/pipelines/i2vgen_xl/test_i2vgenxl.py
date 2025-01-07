@@ -59,6 +59,8 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
     # No `output_type`.
     required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
@@ -223,10 +225,6 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
         expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @slow

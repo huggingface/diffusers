@@ -59,6 +59,8 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -240,7 +242,3 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
             test_max_difference=test_max_difference,
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass

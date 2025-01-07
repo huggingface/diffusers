@@ -50,6 +50,8 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     @property
     def text_embedder_hidden_size(self):
         return 16
@@ -244,10 +246,6 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @unittest.skip("Key error is raised with accelerate")
     def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
         pass
 
 

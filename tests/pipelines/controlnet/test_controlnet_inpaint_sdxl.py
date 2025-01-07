@@ -78,6 +78,8 @@ class ControlNetPipelineSDXLFastTests(
         }
     )
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -352,7 +354,3 @@ class ControlNetPipelineSDXLFastTests(
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass

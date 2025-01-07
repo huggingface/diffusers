@@ -82,6 +82,8 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
         {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
 
+    supports_dduf = False
+
     #  based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img_pipeline.get_dummy_components
     def get_dummy_components(
         self, skip_first_text_encoder=False, time_cond_proj_dim=None, requires_aesthetics_score=False
@@ -264,10 +266,6 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
-
-    @unittest.skip("Test is not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @slow

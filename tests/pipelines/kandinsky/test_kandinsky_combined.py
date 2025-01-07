@@ -52,6 +52,8 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
     ]
     test_xformers_attention = True
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummy = Dummies()
         prior_dummy = PriorDummies()
@@ -139,10 +141,6 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
 
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
-
 
 class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyImg2ImgCombinedPipeline
@@ -163,6 +161,8 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
         "return_dict",
     ]
     test_xformers_attention = False
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = Img2ImgDummies()
@@ -252,10 +252,6 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=5e-4)
 
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
-
 
 class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyInpaintCombinedPipeline
@@ -276,6 +272,8 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
         "return_dict",
     ]
     test_xformers_attention = False
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = InpaintDummies()
@@ -371,7 +369,3 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
 
     def test_save_load_local(self):
         super().test_save_load_local(expected_max_difference=5e-3)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass

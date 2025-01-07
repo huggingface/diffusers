@@ -184,6 +184,8 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummy = Dummies()
         return dummy.get_dummy_components()
@@ -236,7 +238,3 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             test_max_difference=test_max_difference,
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass

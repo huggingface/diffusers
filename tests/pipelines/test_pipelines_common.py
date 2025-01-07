@@ -988,6 +988,8 @@ class PipelineTesterMixin:
 
     test_xformers_attention = True
 
+    supports_dduf = True
+
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
         generator = torch.Generator(device).manual_seed(seed)
@@ -1996,6 +1998,9 @@ class PipelineTesterMixin:
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
     def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
+        if not self.supports_dduf:
+            return
+
         from huggingface_hub import export_folder_as_dduf
 
         components = self.get_dummy_components()

@@ -361,7 +361,3 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass

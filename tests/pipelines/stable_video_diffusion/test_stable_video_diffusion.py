@@ -58,6 +58,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         ]
     )
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNetSpatioTemporalConditionModel(
@@ -510,10 +512,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         inputs["max_guidance_scale"] = 1.0
         output = pipe(**inputs).frames
         self.assertEqual(len(output.shape), 5)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @slow

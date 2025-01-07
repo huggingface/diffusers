@@ -66,6 +66,7 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         "super_res_num_inference_steps",
     ]
     test_xformers_attention = False
+    supports_dduf = False
 
     @property
     def text_embedder_hidden_size(self):
@@ -491,10 +492,6 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     @unittest.skip("UnCLIP produces very large difference in fp16 vs fp32. Test is not useful.")
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=1.0)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @nightly

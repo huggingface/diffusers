@@ -70,6 +70,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = AudioLDM2UNet2DConditionModel(
@@ -507,10 +509,6 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
     def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
         pass
 
 

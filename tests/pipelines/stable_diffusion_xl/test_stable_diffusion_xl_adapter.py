@@ -422,6 +422,8 @@ class StableDiffusionXLAdapterPipelineFastTests(
 class StableDiffusionXLMultiAdapterPipelineFastTests(
     StableDiffusionXLAdapterPipelineFastTests, PipelineTesterMixin, unittest.TestCase
 ):
+    supports_dduf = False
+
     def get_dummy_components(self, time_cond_proj_dim=None):
         return super().get_dummy_components("multi_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
@@ -671,7 +673,3 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         print(",".join(debug))
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass

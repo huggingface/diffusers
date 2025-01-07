@@ -86,6 +86,8 @@ class UniDiffuserPipelineFastTests(
     # vae_latents, not latents, is the argument that corresponds to VAE latent inputs
     image_latents_params = frozenset(["vae_latents"])
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         unet = UniDiffuserModel.from_pretrained(
             "hf-internal-testing/unidiffuser-diffusers-test",
@@ -575,10 +577,6 @@ class UniDiffuserPipelineFastTests(
 
         expected_text_prefix = '" This This'
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @nightly

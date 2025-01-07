@@ -204,6 +204,8 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummy = Dummies()
         return dummy.get_dummy_components()
@@ -270,10 +272,6 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @slow

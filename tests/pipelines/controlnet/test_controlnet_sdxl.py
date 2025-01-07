@@ -478,10 +478,6 @@ class StableDiffusionXLControlNetPipelineFastTests(
             ]:
                 assert_run_mixture(steps, split, scheduler_cls_timesteps[0], scheduler_cls_timesteps[1])
 
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
-
 
 class StableDiffusionXLMultiControlNetPipelineFastTests(
     PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
@@ -490,6 +486,8 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -687,10 +685,6 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
     def test_save_load_optional_components(self):
         return self._test_save_load_optional_components()
 
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
-
 
 class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
     PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
@@ -699,6 +693,8 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -894,10 +890,6 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
         image_slice_with_neg_cond = image[0, -3:, -3:, -1]
 
         self.assertTrue(np.abs(image_slice_without_neg_cond - image_slice_with_neg_cond).max() > 1e-2)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 @slow

@@ -77,6 +77,8 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
         {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
 
+    supports_dduf = False
+
     def get_dummy_components(self, skip_first_text_encoder=False, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -514,10 +516,6 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
         # compare the intermediate latent to the output of the interrupted process
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
-
-    @unittest.skip("Test not supported.")
-    def test_save_load_dduf(self):
-        pass
 
 
 class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(

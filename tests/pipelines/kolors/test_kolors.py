@@ -47,6 +47,8 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"add_text_embeds", "add_time_ids"})
 
+    supports_dduf = False
+
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -141,7 +143,3 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=5e-4)
-
-    @unittest.skip("Test unsupported because of custom code.")
-    def test_save_load_dduf(self):
-        pass
