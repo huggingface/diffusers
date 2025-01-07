@@ -1360,6 +1360,10 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
             "pooled_prompt_embeds",
             "negative_pooled_prompt_embeds",
             "timestep_cond",
+            "mask",
+            "masked_image_latents",
+            "noise",
+            "image_latents",
         ]
 
     @property
@@ -1405,6 +1409,29 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         negative_add_time_ids = state.get_intermediate("negative_add_time_ids")
 
         timestep_cond = state.get_intermediate("timestep_cond")
+
+        # inpainting
+        mask = state.get_intermediate("mask")
+        masked_image_latents = state.get_intermediate("masked_image_latents")
+        noise = state.get_intermediate("noise")
+        image_latents = state.get_intermediate("image_latents")
+        num_channels_unet = pipeline.unet.config.in_channels
+        if num_channels_unet == 9:
+            # default case for runwayml/stable-diffusion-inpainting
+            if mask is None or masked_image_latents is None:
+                raise ValueError("mask and masked_image_latents must be provided for inpainting-specific Unet")
+            num_channels_latents = latents.shape[1]
+            num_channels_mask = mask.shape[1]
+            num_channels_masked_image = masked_image_latents.shape[1]
+            if num_channels_latents + num_channels_mask + num_channels_masked_image != num_channels_unet:
+                raise ValueError(
+                    f"Incorrect configuration settings! The config of `pipeline.unet`: {pipeline.unet.config} expects"
+                    f" {pipeline.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    " `pipeline.unet` or your `mask_image` or `image` input."
+                )
+
 
         device = pipeline._execution_device
 
@@ -1501,6 +1528,9 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
         )
+        if num_channels_unet == 9:
+            mask = pipeline.guider.prepare_input(mask, mask)
+            masked_image_latents = pipeline.guider.prepare_input(masked_image_latents, masked_image_latents)
 
         added_cond_kwargs = {
             "text_embeds": pooled_prompt_embeds,
@@ -1566,8 +1596,12 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                     mid_block_res_sample, torch.zeros_like(mid_block_res_sample)
                 )
 
+                latent_model_input = pipeline.scheduler.scale_model_input(latent_model_input, t)
+                if num_channels_unet == 9:
+                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+
                 noise_pred = pipeline.unet(
-                    pipeline.scheduler.scale_model_input(latent_model_input, t),
+                    latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
                     timestep_cond=timestep_cond,
@@ -1586,6 +1620,18 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
+
+                
+                if num_channels_unet == 4 and mask is not None and image_latents is not None:
+                    init_mask = pipeline.guider._maybe_split_prepared_input(mask)[0]
+                    init_latents_proper = image_latents
+                    if i < len(timesteps) - 1:
+                        noise_timestep = timesteps[i + 1]
+                        init_latents_proper = pipeline.scheduler.add_noise(
+                            init_latents_proper, noise, torch.tensor([noise_timestep])
+                        )
+
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % pipeline.scheduler.order == 0):
                     progress_bar.update()
@@ -1678,31 +1724,44 @@ class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
 
 
 class StableDiffusionXLAutoSetTimestepsStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLSetTimestepsStep, StableDiffusionXLImg2ImgSetTimestepsStep]
-    block_prefixes = ["", "img2img"]
-    block_trigger_inputs = [None, "image"]
+    block_classes = [StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLSetTimestepsStep]
+    block_names = ["img2img", "text2img"]
+    block_trigger_inputs = ["image", None]
 
 
 class StableDiffusionXLAutoPrepareLatentsStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareLatentsStep]
-    block_prefixes = ["", "img2img"]
-    block_trigger_inputs = [None, "image"]
+    block_classes = [StableDiffusionXLInpaintPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareLatentsStep, StableDiffusionXLPrepareLatentsStep]
+    block_names = ["inpaint","img2img", "text2img"]
+    block_trigger_inputs = ["mask_image", "image", None]
 
 
 class StableDiffusionXLAutoPrepareAdditionalConditioningStep(AutoPipelineBlocks):
     block_classes = [
-        StableDiffusionXLPrepareAdditionalConditioningStep,
         StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
+        StableDiffusionXLPrepareAdditionalConditioningStep,
     ]
-    block_prefixes = ["", "img2img"]
-    block_trigger_inputs = [None, "image"]
+    block_names = ["img2img", "text2img"]
+    block_trigger_inputs = ["image", None]
 
 
 class StableDiffusionXLAutoDenoiseStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLDenoiseStep, StableDiffusionXLControlNetDenoiseStep]
-    block_prefixes = ["", "controlnet"]
-    block_trigger_inputs = [None, "control_image"]
+    block_classes = [StableDiffusionXLControlNetDenoiseStep, StableDiffusionXLDenoiseStep]
+    block_names = ["controlnet", "unet"]
+    block_trigger_inputs = ["control_image", None]
 
+
+class StableDiffusionXLDecodeStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLOutputStep]
+    block_names = ["decode", "output"]
+
+class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLInpaintOverlayMaskStep, StableDiffusionXLOutputStep]
+    block_names = ["decode", "mask_overlay", "output"]
+
+class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
+    block_classes = [StableDiffusionXLInpaintDecodeStep, StableDiffusionXLDecodeStep]
+    block_names = ["inpaint", "non-inpaint"]
+    block_trigger_inputs = ["padding_mask_crop", None]
 
 class StableDiffusionXLAllSteps(SequentialPipelineBlocks):
     block_classes = [
@@ -1712,18 +1771,16 @@ class StableDiffusionXLAllSteps(SequentialPipelineBlocks):
         StableDiffusionXLAutoPrepareLatentsStep,
         StableDiffusionXLAutoPrepareAdditionalConditioningStep,
         StableDiffusionXLAutoDenoiseStep,
-        StableDiffusionXLDecodeLatentsStep,
-        StableDiffusionXLOutputStep
+        StableDiffusionXLAutoDecodeStep
     ]
-    block_prefixes = [
+    block_names = [
         "input",
         "text_encoder",
         "set_timesteps",
         "prepare_latents",
         "prepare_add_cond",
         "denoise",
-        "decode_latents",
-        "output"
+        "decode"
     ]
 
 

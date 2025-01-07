@@ -197,14 +197,38 @@ def combine_inputs(*named_input_lists: List[Tuple[str, List[Tuple[str, Any]]]]) 
     return list(combined_dict.items())
 
 
-class MultiPipelineBlocks:
+class AutoPipelineBlocks:
     """
-    A class that combines multiple pipeline block classes into one. When used, it has same API and properties as
-    PipelineBlock. And it can be used in ModularPipeline as a single pipeline block.
+    A class that automatically selects a block to run based on the inputs.
+
+    Attributes:
+        block_classes: List of block classes to be used
+        block_names: List of prefixes for each block
+        block_trigger_inputs: List of input names that trigger specific blocks, with None for default
     """
 
     block_classes = []
-    block_prefixes = []
+    block_names = []
+    block_trigger_inputs = []
+
+    def __init__(self):
+        blocks = OrderedDict()
+        for block_name, block_cls in zip(self.block_names, self.block_classes):
+            blocks[block_name] = block_cls()
+        self.blocks = blocks
+        if not (len(self.block_classes) == len(self.block_names) == len(self.block_trigger_inputs)):
+            raise ValueError(f"In {self.__class__.__name__}, the number of block_classes, block_names, and block_trigger_inputs must be the same.")
+        default_blocks = [t for t in self.block_trigger_inputs if t is None]
+        if len(default_blocks) > 1 or (
+                len(default_blocks) == 1 and self.block_trigger_inputs[-1] is not None
+            ):
+            raise ValueError(
+                f"In {self.__class__.__name__}, exactly one None must be specified as the last element "
+                "in block_trigger_inputs."
+            )
+
+        # Map trigger inputs to block objects
+        self.trigger_to_block_map = dict(zip(self.block_trigger_inputs, self.blocks.values()))
 
     @property
     def model_name(self):
@@ -227,13 +251,6 @@ class MultiPipelineBlocks:
                 if config not in expected_configs:
                     expected_configs.append(config)
         return expected_configs
-
-    def __init__(self):
-        blocks = OrderedDict()
-        for block_prefix, block_cls in zip(self.block_prefixes, self.block_classes):
-            block_name = f"{block_prefix}_step" if block_prefix != "" else "step"
-            blocks[block_name] = block_cls()
-        self.blocks = blocks
 
     # YiYi TODO: address the case where multiple blocks have the same component/auxiliary/config; give out warning etc
     @property
@@ -267,60 +284,6 @@ class MultiPipelineBlocks:
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-        raise NotImplementedError("inputs property must be implemented in subclasses")
-
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        raise NotImplementedError("intermediates_inputs property must be implemented in subclasses")
-
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        raise NotImplementedError("intermediates_outputs property must be implemented in subclasses")
-
-    def __call__(self, pipeline, state):
-        raise NotImplementedError("__call__ method must be implemented in subclasses")
-
-
-
-
-# YiYi TODO: remove the trigger input logic and keep it more flexible and less convenient:
-# user will need to explicitly write the dispatch logic in __call__ for each subclass of this
-class AutoPipelineBlocks(MultiPipelineBlocks):
-    """
-    A class that automatically selects which block to run based on trigger inputs.
-
-    Attributes:
-        block_classes: List of block classes to be used
-        block_prefixes: List of prefixes for each block
-        block_trigger_inputs: List of input names that trigger specific blocks, with None for default
-    """
-
-    block_classes = []
-    block_prefixes = []
-    block_trigger_inputs = []
-
-    def __init__(self):
-        super().__init__()
-        self.__post_init__()
-
-    def __post_init__(self):
-        """
-        Create mapping of trigger inputs directly to block objects. Validates that there is at most one default block
-        (None trigger).
-        """
-        # Check for at most one default block
-        default_blocks = [t for t in self.block_trigger_inputs if t is None]
-        if len(default_blocks) > 1:
-            raise ValueError(
-                f"Multiple default blocks specified in {self.__class__.__name__}. "
-                "Must include at most one None in block_trigger_inputs."
-            )
-
-        # Map trigger inputs to block objects
-        self.trigger_to_block_map = dict(zip(self.block_trigger_inputs, self.blocks.values()))
-
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
         named_inputs = [(name, block.inputs) for name, block in self.blocks.items()]
         return combine_inputs(*named_inputs)
 
@@ -335,30 +298,15 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         # Find default block first (if any)
-        default_block = self.trigger_to_block_map.get(None)
 
-        # Check which trigger inputs are present
-        active_triggers = [
-            input_name
-            for input_name in self.block_trigger_inputs
-            if input_name is not None and state.get_input(input_name) is not None
-        ]
-
-        # If multiple triggers are active, raise error
-        if len(active_triggers) > 1:
-            trigger_names = [f"'{t}'" for t in active_triggers]
-            raise ValueError(
-                f"Multiple trigger inputs found ({', '.join(trigger_names)}). "
-                f"Only one trigger input can be provided for {self.__class__.__name__}."
-            )
-
-        # Get the block to run (use default if no triggers active)
-        block = self.trigger_to_block_map.get(active_triggers[0]) if active_triggers else default_block
-        if block is None:
-            logger.warning(f"No valid block found in {self.__class__.__name__}, skipping.")
-            return pipeline, state
+        block = self.trigger_to_block_map.get(None)
+        for input_name in self.block_trigger_inputs:
+            if input_name is not None and state.get_input(input_name) is not None:
+                block = self.trigger_to_block_map[input_name]
+                break
 
         try:
+            logger.info(f"Running block: {block.__class__.__name__}, trigger: {input_name}")
             return block(pipeline, state)
         except Exception as e:
             error_msg = (
@@ -440,10 +388,70 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
         )
 
 
-class SequentialPipelineBlocks(MultiPipelineBlocks):
+class SequentialPipelineBlocks:
     """
     A class that combines multiple pipeline block classes into one. When called, it will call each block in sequence.
     """
+    block_classes = []
+    block_names = []
+
+    @property
+    def model_name(self):
+        return next(iter(self.blocks.values())).model_name
+
+    @property
+    def expected_components(self):
+        expected_components = []
+        for block in self.blocks.values():
+            for component in block.expected_components:
+                if component not in expected_components:
+                    expected_components.append(component)
+        return expected_components
+
+    @property
+    def expected_configs(self):
+        expected_configs = []
+        for block in self.blocks.values():
+            for config in block.expected_configs:
+                if config not in expected_configs:
+                    expected_configs.append(config)
+        return expected_configs
+
+    def __init__(self):
+        blocks = OrderedDict()
+        for block_name, block_cls in zip(self.block_names, self.block_classes):
+            blocks[block_name] = block_cls()
+        self.blocks = blocks
+
+    # YiYi TODO: address the case where multiple blocks have the same component/auxiliary/config; give out warning etc
+    @property
+    def components(self):
+        # Combine components from all blocks
+        components = {}
+        for block_name, block in self.blocks.items():
+            for key, value in block.components.items():
+                # Only update if:
+                # 1. Key doesn't exist yet in components, OR
+                # 2. New value is not None
+                if key not in components or value is not None:
+                    components[key] = value
+        return components
+
+    @property
+    def auxiliaries(self):
+        # Combine auxiliaries from all blocks
+        auxiliaries = {}
+        for block_name, block in self.blocks.items():
+            auxiliaries.update(block.auxiliaries)
+        return auxiliaries
+
+    @property
+    def configs(self):
+        # Combine configs from all blocks
+        configs = {}
+        for block_name, block in self.blocks.items():
+            configs.update(block.configs)
+        return configs
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -467,7 +475,11 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
     @property
     def intermediates_outputs(self) -> List[str]:
         return list(set().union(*(block.intermediates_outputs for block in self.blocks.values())))
-
+    
+    @property
+    def final_intermediates_outputs(self) -> List[str]:
+        return next(reversed(self.blocks.values())).intermediates_outputs
+    
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         for block_name, block in self.blocks.items():
@@ -536,7 +548,8 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
         intermediates_str = (
             "\n    Intermediates:\n"
             f"      - inputs: {', '.join(self.intermediates_inputs)}\n"
-            f"      - outputs: {', '.join(self.intermediates_outputs)}"
+            f"      - outputs: {', '.join(self.intermediates_outputs)}\n"
+            f"      - final outputs: {', '.join(self.final_intermediates_outputs)}"
         )
 
         return (
@@ -772,7 +785,7 @@ class ModularPipeline(ConfigMixin):
         output += "Pipeline Block:\n"
         output += "--------------\n"
         block = self.pipeline_block
-        if isinstance(block, MultiPipelineBlocks):
+        if hasattr(block, "blocks"):
             output += f"{block.__class__.__name__}\n"
             # Add sub-blocks information
             for sub_block_name, sub_block in block.blocks.items():
@@ -787,13 +800,10 @@ class ModularPipeline(ConfigMixin):
             output += "\n"
 
         # Add final intermediate outputs for SequentialPipelineBlocks
-        if isinstance(block, SequentialPipelineBlocks):
-            last_block = list(block.blocks.values())[-1]
-            if hasattr(last_block, "intermediates_outputs"):
-                final_outputs = last_block.intermediates_outputs
-                final_intermediates_str = f"   (final intermediate outputs: {', '.join(final_outputs)})"
-                output += f"   {final_intermediates_str}\n"
-                output += "\n"
+        if hasattr(block, "final_intermediate_output"):
+            final_intermediates_str = f"   (final intermediate outputs: {', '.join(block.final_intermediate_output)})"
+            output += f"   {final_intermediates_str}\n"
+            output += "\n"
 
         # List the components registered in the pipeline
         output += "Registered Components:\n"
