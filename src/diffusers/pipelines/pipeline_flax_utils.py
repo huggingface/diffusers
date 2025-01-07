@@ -244,8 +244,8 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
             pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
-                    - A string, the *repo id* (for example `stable-diffusion-v1-5/stable-diffusion-v1-5`) of a pretrained pipeline
-                      hosted on the Hub.
+                    - A string, the *repo id* (for example `stable-diffusion-v1-5/stable-diffusion-v1-5`) of a
+                      pretrained pipeline hosted on the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       using [`~FlaxDiffusionPipeline.save_pretrained`].
             dtype (`str` or `jnp.dtype`, *optional*):
