@@ -1132,6 +1132,14 @@ def backend_reset_peak_memory(device: str):
     return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
 
 
+def backend_reset_max_memory_allocated(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
+
+
+def backend_max_memory_allocated(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
+
+
 # These are callables which return boolean behaviour flags and can be used to specify some
 # device agnostic alternative where the feature is unsupported.
 def backend_supports_training(device: str):
