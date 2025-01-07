@@ -36,6 +36,7 @@ from ..utils import (
 from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, LoraBaseMixin, _fetch_state_dict  # noqa
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
+    _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
@@ -2277,14 +2278,74 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         super().unfuse_lora(components=components)
 
-    # We override this here account for `_transformer_norm_layers`.
-    def unload_lora_weights(self):
+    # We override this here account for `_transformer_norm_layers` and `_overwritten_params`.
+    def unload_lora_weights(self, reset_to_overwritten_params=False):
+        """
+        Unloads the LoRA parameters.
+
+        Args:
+            reset_to_overwritten_params (`bool`, defaults to `False`): Whether to reset the LoRA-loaded modules
+                to their original params. Refer to the [Flux
+                documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux) to learn more.
+
+        Examples:
+
+        ```python
+        >>> # Assuming `pipeline` is already loaded with the LoRA parameters.
+        >>> pipeline.unload_lora_weights()
+        >>> ...
+        ```
+        """
         super().unload_lora_weights()
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
         if hasattr(transformer, "_transformer_norm_layers") and transformer._transformer_norm_layers:
             transformer.load_state_dict(transformer._transformer_norm_layers, strict=False)
             transformer._transformer_norm_layers = None
+
+        if reset_to_overwritten_params and getattr(transformer, "_overwritten_params", None) is not None:
+            overwritten_params = transformer._overwritten_params
+            module_names = set()
+
+            for param_name in overwritten_params:
+                if param_name.endswith(".weight"):
+                    module_names.add(param_name.replace(".weight", ""))
+
+            for name, module in transformer.named_modules():
+                if isinstance(module, torch.nn.Linear) and name in module_names:
+                    module_weight = module.weight.data
+                    module_bias = module.bias.data if module.bias is not None else None
+                    bias = module_bias is not None
+
+                    parent_module_name, _, current_module_name = name.rpartition(".")
+                    parent_module = transformer.get_submodule(parent_module_name)
+
+                    current_param_weight = overwritten_params[f"{name}.weight"]
+                    in_features, out_features = current_param_weight.shape[1], current_param_weight.shape[0]
+                    with torch.device("meta"):
+                        original_module = torch.nn.Linear(
+                            in_features,
+                            out_features,
+                            bias=bias,
+                            dtype=module_weight.dtype,
+                        )
+
+                    tmp_state_dict = {"weight": current_param_weight}
+                    if module_bias is not None:
+                        tmp_state_dict.update({"bias": overwritten_params[f"{name}.bias"]})
+                    original_module.load_state_dict(tmp_state_dict, assign=True, strict=True)
+                    setattr(parent_module, current_module_name, original_module)
+
+                    del tmp_state_dict
+
+                    if current_module_name in _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX:
+                        attribute_name = _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX[current_module_name]
+                        new_value = int(current_param_weight.shape[1])
+                        old_value = getattr(transformer.config, attribute_name)
+                        setattr(transformer.config, attribute_name, new_value)
+                        logger.info(
+                            f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}."
+                        )
 
     @classmethod
     def _maybe_expand_transformer_param_shape_or_error_(
@@ -2312,6 +2373,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         # Expand transformer parameter shapes if they don't match lora
         has_param_with_shape_update = False
+        overwritten_params = {}
+
         is_peft_loaded = getattr(transformer, "peft_config", None) is not None
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
@@ -2386,6 +2449,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                             f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}."
                         )
 
+                    # For `unload_lora_weights()`.
+                    # TODO: this could lead to more memory overhead if the number of overwritten params
+                    # are large. Should be revisited later and tackled through a `discard_original_layers` arg.
+                    overwritten_params[f"{current_module_name}.weight"] = module_weight
+                    if module_bias is not None:
+                        overwritten_params[f"{current_module_name}.bias"] = module_bias
+
+        if len(overwritten_params) > 0:
+            transformer._overwritten_params = overwritten_params
+
         return has_param_with_shape_update
 
     @classmethod
@@ -2410,7 +2483,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 continue
 
             base_param_name = (
-                f"{k.replace(prefix, '')}.base_layer.weight" if is_peft_loaded else f"{k.replace(prefix, '')}.weight"
+                f"{k.replace(prefix, '')}.base_layer.weight"
+                if is_peft_loaded and f"{k.replace(prefix, '')}.base_layer.weight" in transformer_state_dict
+                else f"{k.replace(prefix, '')}.weight"
             )
             base_weight_param = transformer_state_dict[base_param_name]
             lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
@@ -3933,7 +4008,6 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -3944,7 +4018,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
         <Tip warning={true}>
 
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
+        We support loading original format HunyuanVideo LoRA checkpoints.
 
         This function is experimental and might change in the future.
 
@@ -4026,6 +4100,10 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_original_hunyuan_video = any("img_attn_qkv" in k for k in state_dict)
+        if is_original_hunyuan_video:
+            state_dict = _convert_hunyuan_video_lora_to_diffusers(state_dict)
 
         return state_dict
 
@@ -4165,10 +4243,9 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
-        components: List[str] = ["transformer", "text_encoder"],
+        components: List[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -4209,8 +4286,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.unfuse_lora with unet->transformer
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
