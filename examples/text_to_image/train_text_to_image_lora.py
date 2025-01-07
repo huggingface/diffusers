@@ -418,6 +418,11 @@ def parse_args():
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument(
+        "--disable_safety_checker",
+        action="store_true",
+        help=("Disable the safety checker in the pipeline. Use this flag to allow full image output without filtering."),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -923,6 +928,11 @@ def main():
                     variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
+
+                # Disable the safety checker if the flag is present
+                if args.disable_safety_checker:
+                    pipeline.safety_checker = None
+                
                 images = log_validation(pipeline, args, accelerator, epoch)
 
                 del pipeline
@@ -953,6 +963,10 @@ def main():
 
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
+
+            # Disable the safety checker if the flag is present
+            if args.disable_safety_checker:
+                pipeline.safety_checker = None
 
             # run inference
             images = log_validation(pipeline, args, accelerator, epoch, is_final_validation=True)
