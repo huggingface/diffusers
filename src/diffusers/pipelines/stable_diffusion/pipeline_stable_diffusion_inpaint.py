@@ -146,8 +146,8 @@ class StableDiffusionInpaintPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
@@ -171,7 +171,7 @@ class StableDiffusionInpaintPipeline(
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if scheduler is not None and getattr(scheduler.config, "steps_offset", 1) != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -185,7 +185,7 @@ class StableDiffusionInpaintPipeline(
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "skip_prk_steps") and scheduler.config.skip_prk_steps is False:
+        if scheduler is not None and getattr(scheduler.config, "skip_prk_steps", True) is False:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration"
                 " `skip_prk_steps`. `skip_prk_steps` should be set to True in the configuration file. Please make"
@@ -228,8 +228,8 @@ class StableDiffusionInpaintPipeline(
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
                 " 64 which seems highly unlikely .If you're checkpoint is a fine-tuned version of any of the"
                 " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- stable-diffusion-v1-5/stable-diffusion-v1-5"
+                " \n- stable-diffusion-v1-5/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
                 " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
                 " in the config might lead to incorrect results in future versions. If you have downloaded this"
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
@@ -1018,7 +1018,7 @@ class StableDiffusionInpaintPipeline(
         >>> mask_image = download_image(mask_url).resize((512, 512))
 
         >>> pipe = StableDiffusionInpaintPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -1204,7 +1204,7 @@ class StableDiffusionInpaintPipeline(
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
-            # default case for runwayml/stable-diffusion-inpainting
+            # default case for stable-diffusion-v1-5/stable-diffusion-inpainting
             num_channels_mask = mask.shape[1]
             num_channels_masked_image = masked_image_latents.shape[1]
             if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
