@@ -1085,7 +1085,7 @@ if is_torch_available():
     }
     BACKEND_RESET_PEAK_MEMORY_STATS = {
         "cuda": torch.cuda.reset_peak_memory_stats,
-        "xpu": torch.xpu.reset_peak_memory_stats,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "default": None,
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
@@ -1094,7 +1094,7 @@ if is_torch_available():
     }
     BACKEND_MAX_MEMORY_ALLOCATED = {
         "cuda": torch.cuda.max_memory_allocated,
-        "xpu": torch.xpu.max_memory_allocated,
+        "xpu": getattr(torch.xpu, "max_memory_allocated", None),
         "default": 0,
     }
 
