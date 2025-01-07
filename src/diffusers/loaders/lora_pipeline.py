@@ -4243,10 +4243,10 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    # Copied from diffusers.loaders.lora_pipeline.Mochi1LoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: List[str] = ["transformer", "text_encoder"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -4273,23 +4273,21 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         Example:
 
         ```py
-        >>> import torch
-        >>> from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+        from diffusers import DiffusionPipeline
+        import torch
 
-        >>> model_id = "hunyuanvideo-community/HunyuanVideo"
-        >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
-        ... )
-        >>> pipe = HunyuanVideoPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.float16)
-        >>> pipe.load_lora_weights("a-r-r-o-w/HunyuanVideo-tuxemons", adapter_name="tuxemons")
-        >>> pipe.set_adapter("tuxemons", 1.2)
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.fuse_lora(lora_scale=0.7)
         ```
         """
         super().fuse_lora(
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    # Copied from diffusers.loaders.lora_pipeline.Mochi1LoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
         Reverses the effect of
