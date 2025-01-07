@@ -1179,7 +1179,9 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_EMPTY_CACHE, "EMPTY_CACHE_FN")
         update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
         update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
-        update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEM_STATS")
+        update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEMORY_STATS_FN")
+        update_mapping_from_spec(BACKEND_RESET_MAX_MEMORY_ALLOCATED, "RESET_MAX_MEMORY_ALLOCATED_FN")
+        update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
 
 
 @require_torch
