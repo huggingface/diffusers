@@ -419,7 +419,7 @@ class RFInversionFluxPipeline(
             )
         image = image.to(dtype)
 
-        x0 = self.vae.encode(image.to(self.device)).latent_dist.sample()
+        x0 = self.vae.encode(image.to(self._execution_device)).latent_dist.sample()
         x0 = (x0 - self.vae.config.shift_factor) * self.vae.config.scaling_factor
         x0 = x0.to(dtype)
         return x0, resized
