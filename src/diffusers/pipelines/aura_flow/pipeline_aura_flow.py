@@ -633,7 +633,3 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
     @property
     def attention_kwargs(self):
         return self._attention_kwargs
-
-    @property
-    def lora_scale(self):
-        return self._lora_scale
