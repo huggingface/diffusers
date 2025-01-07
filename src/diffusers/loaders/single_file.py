@@ -329,7 +329,7 @@ class FromSingleFileMixin:
 
         >>> # Enable float16 and move to GPU
         >>> pipeline = StableDiffusionPipeline.from_single_file(
-        ...     "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
+        ...     "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
         ...     torch_dtype=torch.float16,
         ... )
         >>> pipeline.to("cuda")
