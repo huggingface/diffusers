@@ -1201,10 +1201,3 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
 
 
-@require_torch
-def flush_memory(device: str, gc_collect=False, reset_mem_stats=False):
-    if gc_collect:
-        gc.collect()
-    if reset_mem_stats:
-        backend_reset_peak_memory(device)
-    backend_empty_cache(device)
