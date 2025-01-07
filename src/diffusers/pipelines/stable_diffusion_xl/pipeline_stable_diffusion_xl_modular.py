@@ -17,6 +17,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 import PIL
 import torch
+from collections import OrderedDict
 
 from ...guider import CFGGuider
 from ...image_processor import VaeImageProcessor
@@ -121,64 +122,6 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
-
-class StableDiffusionXLOutputStep(PipelineBlock):
-    model_name = "stable-diffusion-xl"
-
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [("return_dict", True)] 
-
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["images"]
-    
-    @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        images = state.get_intermediate("images")
-        return_dict = state.get_input("return_dict")
-
-        if not return_dict:
-            output = (images,)
-        else:
-            output = StableDiffusionXLPipelineOutput(images=images)
-        state.add_output("images", output)
-        return pipeline, state
-
-
-class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
-    model_name = "stable-diffusion-xl"
-
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            ("image", None),
-            ("mask_image", None),
-            ("padding_mask_crop", None),
-        ]
-    
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["crops_coords", "images"]
-
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["images"]
-
-    @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        original_image = state.get_input("image")
-        padding_mask_crop = state.get_input("padding_mask_crop")
-        mask_image = state.get_input("mask_image")
-        images = state.get_intermediate("images")
-        crops_coords = state.get_intermediate("crops_coords")
-
-        if padding_mask_crop is not None and crops_coords is not None:
-            images = [pipeline.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in images]
-
-        state.add_intermediate("images", images)
-
-        return pipeline, state
 
 
 class StableDiffusionXLInputStep(PipelineBlock):
@@ -376,7 +319,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         return pipeline, state
 
 
-class StableDiffusionXLVAEEncoderStep(PipelineBlock):
+class StableDiffusionXLVaeEncoderStep(PipelineBlock):
     expected_components = ["vae"]
     model_name = "stable-diffusion-xl"
 
@@ -589,7 +532,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         return pipeline, state
 
 
-class StableDiffusionXLInpaintVaeEncodeStep(PipelineBlock):
+class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
     expected_components = ["vae"]
     model_name = "stable-diffusion-xl"
 
@@ -694,7 +637,6 @@ class StableDiffusionXLInpaintVaeEncodeStep(PipelineBlock):
         return pipeline, state
 
 
-# inpaint-specific
 class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
     expected_components = ["scheduler"]
     model_name = "stable-diffusion-xl"
@@ -804,18 +746,15 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("height", None),
-            ("width", None),
             ("generator", None),
             ("latents", None),
             ("num_images_per_prompt", 1),
-            ("image", None),
             ("denoising_start", None),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "dtype", "latent_timestep"]
+        return ["batch_size", "dtype", "latent_timestep", "image_latents"]
 
     @property
     def intermediates_outputs(self) -> List[str]:
@@ -823,8 +762,6 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
 
     def __init__(self):
         super().__init__()
-        self.auxiliaries["image_processor"] = VaeImageProcessor()
-        self.components["vae"] = None
         self.components["scheduler"] = None
 
     @torch.no_grad()
@@ -834,24 +771,22 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
         generator = state.get_input("generator")
 
         # image to image only
-        image = state.get_input("image")
         denoising_start = state.get_input("denoising_start")
 
         batch_size = state.get_intermediate("batch_size")
         dtype = state.get_intermediate("dtype")
         # image to image only
         latent_timestep = state.get_intermediate("latent_timestep")
+        image_latents = state.get_intermediate("image_latents")
 
         if dtype is None:
             dtype = pipeline.vae.dtype
 
         device = pipeline._execution_device
-
-        image = pipeline.image_processor.preprocess(image)
         add_noise = True if denoising_start is None else False
         if latents is None:
             latents = pipeline.prepare_latents_img2img(
-                image,
+                image_latents,
                 latent_timestep,
                 batch_size,
                 num_images_per_prompt,
@@ -1723,6 +1658,81 @@ class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
         return pipeline, state
 
 
+class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
+    model_name = "stable-diffusion-xl"
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("image", None),
+            ("mask_image", None),
+            ("padding_mask_crop", None),
+        ]
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["crops_coords", "images"]
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["images"]
+
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        original_image = state.get_input("image")
+        padding_mask_crop = state.get_input("padding_mask_crop")
+        mask_image = state.get_input("mask_image")
+        images = state.get_intermediate("images")
+        crops_coords = state.get_intermediate("crops_coords")
+
+        if padding_mask_crop is not None and crops_coords is not None:
+            images = [pipeline.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in images]
+
+        state.add_intermediate("images", images)
+
+        return pipeline, state
+
+
+class StableDiffusionXLOutputStep(PipelineBlock):
+    model_name = "stable-diffusion-xl"
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [("return_dict", True)] 
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["images"]
+    
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        images = state.get_intermediate("images")
+        return_dict = state.get_input("return_dict")
+
+        if not return_dict:
+            output = (images,)
+        else:
+            output = StableDiffusionXLPipelineOutput(images=images)
+        state.add_output("images", output)
+        return pipeline, state
+
+
+class StableDiffusionXLDecodeStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLOutputStep]
+    block_names = ["decode", "output"]
+
+
+class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLInpaintOverlayMaskStep, StableDiffusionXLOutputStep]
+    block_names = ["decode", "mask_overlay", "output"]
+
+
+class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks):
+    block_classes = [StableDiffusionXLInpaintVaeEncoderStep, StableDiffusionXLVaeEncoderStep]
+    block_names = ["inpaint", "img2img"]
+    block_trigger_inputs = ["mask_image", "image"]
+
+
 class StableDiffusionXLAutoSetTimestepsStep(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLSetTimestepsStep]
     block_names = ["img2img", "text2img"]
@@ -1750,38 +1760,67 @@ class StableDiffusionXLAutoDenoiseStep(AutoPipelineBlocks):
     block_trigger_inputs = ["control_image", None]
 
 
-class StableDiffusionXLDecodeStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLOutputStep]
-    block_names = ["decode", "output"]
-
-class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLInpaintOverlayMaskStep, StableDiffusionXLOutputStep]
-    block_names = ["decode", "mask_overlay", "output"]
-
 class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLInpaintDecodeStep, StableDiffusionXLDecodeStep]
     block_names = ["inpaint", "non-inpaint"]
     block_trigger_inputs = ["padding_mask_crop", None]
 
-class StableDiffusionXLAllSteps(SequentialPipelineBlocks):
-    block_classes = [
-        StableDiffusionXLInputStep,
-        StableDiffusionXLTextEncoderStep,
-        StableDiffusionXLAutoSetTimestepsStep,
-        StableDiffusionXLAutoPrepareLatentsStep,
-        StableDiffusionXLAutoPrepareAdditionalConditioningStep,
-        StableDiffusionXLAutoDenoiseStep,
-        StableDiffusionXLAutoDecodeStep
-    ]
-    block_names = [
-        "input",
-        "text_encoder",
-        "set_timesteps",
-        "prepare_latents",
-        "prepare_add_cond",
-        "denoise",
-        "decode"
-    ]
+
+TEXT2IMAGE_BLOCKS = OrderedDict([
+    ("input", StableDiffusionXLInputStep),
+    ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("set_timesteps", StableDiffusionXLAutoSetTimestepsStep),
+    ("prepare_latents", StableDiffusionXLAutoPrepareLatentsStep),
+    ("prepare_add_cond", StableDiffusionXLAutoPrepareAdditionalConditioningStep),
+    ("denoise", StableDiffusionXLAutoDenoiseStep),
+    ("decode", StableDiffusionXLDecodeStep)
+])
+
+IMAGE2IMAGE_BLOCKS = OrderedDict([
+    ("input", StableDiffusionXLInputStep),
+    ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("image_encoder", StableDiffusionXLVaeEncoderStep),
+    ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
+    ("prepare_latents", StableDiffusionXLImg2ImgPrepareLatentsStep),
+    ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
+    ("denoise", StableDiffusionXLDenoiseStep),
+    ("decode", StableDiffusionXLDecodeStep)
+])
+
+INPAINT_BLOCKS = OrderedDict([
+    ("input", StableDiffusionXLInputStep),
+    ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("image_encoder", StableDiffusionXLInpaintVaeEncoderStep),
+    ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
+    ("prepare_latents", StableDiffusionXLInpaintPrepareLatentsStep),
+    ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
+    ("denoise", StableDiffusionXLDenoiseStep),
+    ("decode", StableDiffusionXLInpaintDecodeStep)
+])
+
+CONTROLNET_BLOCKS = OrderedDict([
+    ("denoise", StableDiffusionXLControlNetDenoiseStep),
+])
+
+AUTO_BLOCKS = OrderedDict([
+    ("input", StableDiffusionXLInputStep),
+    ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("image_encoder", StableDiffusionXLAutoVaeEncoderStep),
+    ("set_timesteps", StableDiffusionXLAutoSetTimestepsStep),
+    ("prepare_latents", StableDiffusionXLAutoPrepareLatentsStep),
+    ("prepare_add_cond", StableDiffusionXLAutoPrepareAdditionalConditioningStep),
+    ("denoise", StableDiffusionXLAutoDenoiseStep),
+    ("decode", StableDiffusionXLAutoDecodeStep)
+])
+
+
+SDXL_SUPPORTED_BLOCKS = {
+    "text2img": TEXT2IMAGE_BLOCKS,
+    "img2img": IMAGE2IMAGE_BLOCKS,
+    "inpaint": INPAINT_BLOCKS,
+    "controlnet": CONTROLNET_BLOCKS,
+    "auto": AUTO_BLOCKS
+}
 
 
 class StableDiffusionXLModularPipeline(

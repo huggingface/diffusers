@@ -305,6 +305,10 @@ class AutoPipelineBlocks:
                 block = self.trigger_to_block_map[input_name]
                 break
 
+        if block is None:
+            logger.warning(f"skipping auto block: {self.__class__.__name__}")
+            return pipeline, state
+
         try:
             logger.info(f"Running block: {block.__class__.__name__}, trigger: {input_name}")
             return block(pipeline, state)
