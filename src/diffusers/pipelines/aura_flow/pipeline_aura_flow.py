@@ -428,7 +428,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         max_sequence_length: int = 256,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Function invoked when calling the pipeline for generation.
@@ -484,7 +484,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
                 of a plain tuple.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
-            joint_attention_kwargs (`dict`, *optional*):
+            attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -510,7 +510,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
             negative_prompt_attention_mask,
         )
 
-        self._joint_attention_kwargs = joint_attention_kwargs
+        self._attention_kwargs = attention_kwargs
 
         # 2. Determine batch size.
         if prompt is not None and isinstance(prompt, str):
@@ -522,7 +522,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
 
         device = self._execution_device
         lora_scale = (
-            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
+            self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
         )
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -588,7 +588,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     return_dict=False,
-                    attention_kwargs=self.joint_attention_kwargs,
+                    attention_kwargs=self.attention_kwargs,
                 )[0]
 
                 # perform guidance
@@ -631,5 +631,5 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         return ImagePipelineOutput(images=image)
 
     @property
-    def joint_attention_kwargs(self):
-        return self._joint_attention_kwargs
+    def attention_kwargs(self):
+        return self._attention_kwargs
