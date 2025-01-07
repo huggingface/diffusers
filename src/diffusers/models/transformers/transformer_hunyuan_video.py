@@ -727,6 +727,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         for i in range(batch_size):
             attention_mask[i, : effective_sequence_length[i], : effective_sequence_length[i]] = True
+        attention_mask = attention_mask.unsqueeze(1)  # [B, 1, N, N], for broadcasting across attention heads
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
