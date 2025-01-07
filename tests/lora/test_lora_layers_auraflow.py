@@ -41,8 +41,9 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 @require_peft_backend
 class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = AuraFlowPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler
+    scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
+    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     uses_flow_matching = True
     transformer_kwargs = {
         "sample_size": 64,
@@ -54,15 +55,9 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "num_attention_heads": 2,
         "joint_attention_dim": 32,
         "caption_projection_dim": 32,
-        "out_channels": 4,
         "pos_embed_max_size": 64,
     }
     transformer_cls = AuraFlowTransformer2DModel
-    tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
-    text_encoder_cls, text_encoder_id = UMT5EncoderModel, "hf-internal-testing/tiny-random-umt5"
-
-    text_encoder_target_modules = ["q", "k", "v", "o"]
-
     vae_kwargs = {
         "sample_size": 32,
         "in_channels": 3,
@@ -73,13 +68,16 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "norm_num_groups": 1,
         "use_quant_conv": False,
         "use_post_quant_conv": False,
-        "shift_factor": None,
-        "scaling_factor": 0.13025,
+        "shift_factor": 0.0609,
+        "scaling_factor": 1.5035,
     }
+    tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
+    text_encoder_cls, text_encoder_id = UMT5EncoderModel, "hf-internal-testing/tiny-random-umt5"
+    text_encoder_target_modules = ["q", "k", "v", "o"]
 
     @property
     def output_shape(self):
-        return (1, 64, 64, 3)
+        return (1, 8, 8, 3)
 
     def get_dummy_inputs(self, with_generator=True):
         batch_size = 1
