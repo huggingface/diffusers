@@ -17,6 +17,7 @@ import sys
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, LlamaModel, LlamaTokenizerFast
 
@@ -30,10 +31,10 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     nightly,
     numpy_cosine_similarity_distance,
+    require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_torch_gpu,
     skip_mps,
-    slow,
 )
 
 
@@ -190,12 +191,11 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pass
 
 
-@slow
 @nightly
 @require_torch_gpu
 @require_peft_backend
-# @unittest.skip("We cannot run inference on this model with the current CI hardware")
-# TODO (DN6, sayakpaul): move these tests to a beefier GPU
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on DGX.
 
