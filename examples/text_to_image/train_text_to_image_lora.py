@@ -932,7 +932,7 @@ def main():
                 # Disable the safety checker if the flag is present
                 if args.disable_safety_checker:
                     pipeline.safety_checker = None
-                
+
                 images = log_validation(pipeline, args, accelerator, epoch)
 
                 del pipeline
