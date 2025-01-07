@@ -601,9 +601,6 @@ def parse_args(input_args=None):
         help="Whether to offload the VAE and the text encoder to CPU when they are not used.",
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
-    parser.add_argument(
-        "--enable_npu_flash_attention", action="store_true", help="Whether or not to use npu flash attention."
-    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -969,13 +966,6 @@ def main(args):
     transformer.requires_grad_(False)
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
-
-    if args.enable_npu_flash_attention:
-        if is_torch_npu_available():
-            logger.info("npu flash attention enabled.")
-            transformer.enable_npu_flash_attention()
-        else:
-            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu devices.")
 
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
