@@ -124,8 +124,8 @@ class IFInpaintingPipelineSlowTests(unittest.TestCase):
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload(device=torch_device)
 
-        backend_reset_max_memory_allocated(torch_device)
         backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
         backend_reset_peak_memory_stats(torch_device)
 
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)

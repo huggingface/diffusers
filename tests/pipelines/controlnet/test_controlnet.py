@@ -35,6 +35,9 @@ from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetMo
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     enable_full_determinism,
     get_python_version,
     is_torch_compile,
