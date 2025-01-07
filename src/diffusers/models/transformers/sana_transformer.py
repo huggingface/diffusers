@@ -127,7 +127,7 @@ class SanaTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=True,
                 out_bias=attention_out_bias,
-                processor=AttnProcessor2_0,
+                processor=AttnProcessor2_0(),
             )
 
         # 3. Feed-forward
