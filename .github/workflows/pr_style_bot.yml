@@ -1,11 +1,10 @@
-
 name: PR Style Bot
 
 on:
   issue_comment:
     types: [created]
 
-permissions: 
+permissions:
   contents: write
   pull-requests: write
 
@@ -21,24 +20,35 @@ jobs:
         id: pr_info
         uses: actions/github-script@v6
         with:
-            script: |
-                const prNumber = context.payload.issue.number;
-                const { data: pr } = await github.rest.pulls.get({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    pull_number: prNumber
-                });
-                core.setOutput("prNumber", prNumber);
-                core.setOutput("headRef", pr.head.ref);
+          script: |
+            const prNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            
+            // We capture both the branch ref and the "full_name" of the head repo
+            // so that we can check out the correct repository & branch (including forks).
+            core.setOutput("prNumber", prNumber);
+            core.setOutput("headRef", pr.head.ref);
+            core.setOutput("headRepoFullName", pr.head.repo.full_name);
 
       - name: Check out PR branch
         uses: actions/checkout@v3
         with:
-          repository: ${{ github.repository }}
+          # Instead of checking out the base repo, use the contributor's repo name
+          repository: ${{ steps.pr_info.outputs.headRepoFullName }}
           ref: ${{ steps.pr_info.outputs.headRef }}
+          # You may need fetch-depth: 0 for being able to push
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Debug
-        run: echo "Full results ${{ steps.pr_info.outputs.headRef }}"
+        run: |
+          echo "PR Number: ${{ steps.pr_info.outputs.prNumber }}"
+          echo "Head Ref: ${{ steps.pr_info.outputs.headRef }}"
+          echo "Head Repo Full Name: ${{ steps.pr_info.outputs.headRepoFullName }}"
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -49,20 +59,24 @@ jobs:
 
       - name: Run make style and make quality
         run: |
+          # Should we be comparing the Makefile to check for any differences with `diffusers` main?
           make style && make quality
 
       - name: Commit and push changes
         id: commit_and_push
         run: |
-          # Configure git
+          # Configure git with the Actions bot user
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Make sure your 'origin' remote is set to the contributor's fork
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ steps.pr_info.outputs.headRepoFullName }}.git"
 
           # If there are changes after running style/quality, commit them
           if [ -n "$(git status --porcelain)" ]; then
             git add .
             git commit -m "Apply style fixes"
-            # Push back to the PR branch
+            # Push to the original contributor's forked branch
             git push origin HEAD:${{ steps.pr_info.outputs.headRef }}
             echo "changes_pushed=true" >> $GITHUB_OUTPUT
           else
@@ -79,12 +93,12 @@ jobs:
           script: |
             const prNumber = parseInt(process.env.prNumber, 10);
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
-            
+
             await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body: `Style fixes have been applied. [View the workflow run here](${runUrl}).`
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `Style fixes have been applied. [View the workflow run here](${runUrl}).`
             });
         env:
           prNumber: ${{ steps.pr_info.outputs.prNumber }}
