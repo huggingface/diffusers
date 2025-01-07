@@ -926,7 +926,9 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 8e-2
 
     def test_sequential_cpu_offloading(self):
-        flush_memory(torch_device, gc_collect=True, reset_mem_stats=True)
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-seg")
 
