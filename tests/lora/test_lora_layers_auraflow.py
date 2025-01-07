@@ -60,7 +60,6 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     transformer_cls = AuraFlowTransformer2DModel
     tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
     text_encoder_cls, text_encoder_id = UMT5EncoderModel, "hf-internal-testing/tiny-random-umt5"
-    attention_kwargs_name = "joint_attention_kwargs"
 
     text_encoder_target_modules = ["q", "k", "v", "o"]
 

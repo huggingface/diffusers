@@ -588,7 +588,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     return_dict=False,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    attention_kwargs=self.joint_attention_kwargs,
                 )[0]
 
                 # perform guidance
