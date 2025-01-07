@@ -121,7 +121,7 @@ prompt = "A couple, 4k photo, highly detailed"
 
 gen_images = pipe(
   prompt=prompt,
-  condition_image=image,
+  control_image=image,
   num_inference_steps=50,
   joint_attention_kwargs={"scale": 0.9},
   guidance_scale=25., 
@@ -190,7 +190,7 @@ prompt = "A couple, 4k photo, highly detailed"
 
 gen_images = pipe(
   prompt=prompt,
-  condition_image=image,
+  control_image=image,
   num_inference_steps=50,
   guidance_scale=25., 
 ).images[0]
@@ -200,5 +200,5 @@ gen_images.save("output.png")
 ## Things to note
 
 * The scripts provided in this directory are experimental and educational. This means we may have to tweak things around to get good results on a given condition. We believe this is best done with the community 🤗
-* The scripts are not memory-optimized but we offload the VAE and the text encoders to CPU when they are not used. 
+* The scripts are not memory-optimized but we offload the VAE and the text encoders to CPU when they are not used if `--offload` is specified. 
 * We can extract LoRAs from the fully fine-tuned model. While we currently don't provide any utilities for that, users are welcome to refer to [this script](https://github.com/Stability-AI/stability-ComfyUI-nodes/blob/master/control_lora_create.py) that provides a similar functionality. 
