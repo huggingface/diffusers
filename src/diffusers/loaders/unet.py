@@ -343,6 +343,17 @@ class UNet2DConditionLoadersMixin:
                 else:
                     if is_peft_version("<", "0.9.0"):
                         lora_config_kwargs.pop("use_dora")
+
+            if "lora_bias" in lora_config_kwargs:
+                if lora_config_kwargs["lora_bias"]:
+                    if is_peft_version("<=", "0.13.2"):
+                        raise ValueError(
+                            "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<=", "0.13.2"):
+                        lora_config_kwargs.pop("lora_bias")
+
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
