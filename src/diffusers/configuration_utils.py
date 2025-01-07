@@ -361,7 +361,12 @@ class ConfigMixin:
             )
         # Custom path for now
         if dduf_entries:
-            config_file = cls._get_config_file_from_dduf(pretrained_model_name_or_path, subfolder, dduf_entries)
+            if subfolder is not None:
+                raise ValueError(
+                    "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
+                    "Please check the DDUF structure"
+                )
+            config_file = cls._get_config_file_from_dduf(pretrained_model_name_or_path, dduf_entries)
         elif os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
         elif os.path.isdir(pretrained_model_name_or_path):
@@ -623,14 +628,7 @@ class ConfigMixin:
             writer.write(self.to_json_string())
 
     @classmethod
-    def _get_config_file_from_dduf(
-        cls, pretrained_model_name_or_path: str, subfolder: str, dduf_entries: Dict[str, DDUFEntry]
-    ):
-        if subfolder is not None:
-            raise ValueError(
-                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
-                "Please check the DDUF structure"
-            )
+    def _get_config_file_from_dduf(cls, pretrained_model_name_or_path: str, dduf_entries: Dict[str, DDUFEntry]):
         # paths inside a DDUF file must always be "/"
         config_file = (
             cls.config_name

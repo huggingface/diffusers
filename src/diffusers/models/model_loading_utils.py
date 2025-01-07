@@ -28,6 +28,7 @@ from huggingface_hub import DDUFEntry
 from huggingface_hub.utils import EntryNotFoundError
 
 from ..utils import (
+    GGUF_FILE_EXTENSION,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
     WEIGHTS_INDEX_NAME,
@@ -152,7 +153,8 @@ def load_state_dict(
                     return safetensors.torch.load(mm)
             else:
                 return safetensors.torch.load_file(checkpoint_file, device="cpu")
-
+        elif file_extension == GGUF_FILE_EXTENSION:
+            return load_gguf_checkpoint(checkpoint_file)
         else:
             weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
             return torch.load(
