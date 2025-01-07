@@ -1089,6 +1089,15 @@ if is_torch_available():
         "xpu": torch.xpu.reset_peak_memory_stats,
         "default": None,
     }
+    BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
+        "cuda": torch.cuda.reset_max_memory_allocated,
+        "default": None,
+    }
+    BACKEND_MAX_MEMORY_ALLOCATED = {
+       "cuda": torch.cuda.max_memory_allocated,
+       "xpu": torch.xpu.max_memory_allocated,
+       "default": 0,
+    }
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
