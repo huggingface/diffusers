@@ -340,7 +340,7 @@ def _merge_sharded_checkpoints(
     # Load tensors from each unique file
     for file_name in files_to_load:
         part_file_path = os.path.join(sharded_ckpt_cached_folder, file_name)
-        if not os.path.exists(part_file_path) and (dduf_entries and part_file_path not in dduf_entries):
+        if not os.path.exists(part_file_path) or (dduf_entries and part_file_path not in dduf_entries):
             raise FileNotFoundError(f"Part file {file_name} not found.")
 
         if is_safetensors:
