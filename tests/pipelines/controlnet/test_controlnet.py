@@ -951,10 +951,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
             output_type="np",
         )
 
-        if torch_device == "cuda":
-            mem_bytes = torch.cuda.max_memory_allocated()
-        elif torch_device == "xpu":
-            mem_bytes = torch.xpu.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         # make sure that less than 7 GB is allocated
         assert mem_bytes < 4 * 10**9
 
