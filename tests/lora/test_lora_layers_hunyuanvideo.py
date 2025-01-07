@@ -218,7 +218,7 @@ class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
         )
         self.pipeline = HunyuanVideoPipeline.from_pretrained(
             model_id, transformer=transformer, torch_dtype=torch.float16
-        )
+        ).to("cuda")
 
     def tearDown(self):
         super().tearDown()
@@ -233,7 +233,6 @@ class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
         self.pipeline.fuse_lora()
         self.pipeline.unload_lora_weights()
         self.pipeline.vae.enable_tiling()
-        self.pipeline.enable_model_cpu_offload()
 
         prompt = "CSETIARCANE. A cat walks on the grass, realistic"
 
