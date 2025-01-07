@@ -51,16 +51,15 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
-from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import cast_training_params, EMAModel
-from diffusers.utils import check_min_version, deprecate, convert_state_dict_to_diffusers, is_wandb_available
+from diffusers.training_utils import EMAModel, cast_training_params
+from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, deprecate, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
-if is_wandb_available():
 
+if is_wandb_available():
     import wandb
 
 
@@ -73,6 +72,7 @@ DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
 }
 WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
+
 
 def save_model_card(
     repo_id: str,
@@ -156,8 +156,9 @@ def log_validation(
             for edited_image in edited_images:
                 wandb_table.add_data(wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt)
             tracker.log({"validation": wandb_table})
-    
+
     return edited_images
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script for InstructPix2Pix.")
@@ -1137,8 +1138,8 @@ def main():
             variant=args.variant,
         )
         pipeline.load_lora_weights(args.output_dir)
-        
-        images =  None
+
+        images = None
         if (args.val_image_url is not None) and (args.validation_prompt is not None):
             images = log_validation(
                 pipeline,
