@@ -266,7 +266,7 @@ jobs:
         python -m uv pip install -e [quality,test]
         # TODO (sayakpaul, DN6): revisit `--no-deps`
         python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
-        python -m uv pip install -e git+https://github.com/huggingface/transformers.git#egg=transformers --no-deps
+        pip install -e git+https://github.com/huggingface/transformers.git#egg=transformers --no-deps
         python -m uv pip install -U tokenizers@git+https://github.com/huggingface/tokenizers.git#subdirectory=bindings/python --no-deps
         pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
