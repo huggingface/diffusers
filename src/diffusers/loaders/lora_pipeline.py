@@ -1797,7 +1797,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
     def fuse_lora(
         self,
-        components: List[str] = ["transformer", "text_encoder"],
+        components: List[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -2499,10 +2499,9 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
-        components: List[str] = ["transformer", "text_encoder"],
+        components: List[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -2543,8 +2542,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.unfuse_lora with unet->transformer
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
@@ -2558,9 +2556,6 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
@@ -2807,10 +2802,9 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
-        components: List[str] = ["transformer", "text_encoder"],
+        components: List[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -2851,8 +2845,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.unfuse_lora with unet->transformer
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
@@ -2866,9 +2859,6 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
@@ -3115,10 +3105,9 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
-        components: List[str] = ["transformer", "text_encoder"],
+        components: List[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -3159,8 +3148,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.unfuse_lora with unet->transformer
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
@@ -3174,9 +3162,6 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
@@ -3423,10 +3408,9 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
-        components: List[str] = ["transformer", "text_encoder"],
+        components: List[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: Optional[List[str]] = None,
@@ -3467,8 +3451,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.unfuse_lora with unet->transformer
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
@@ -3482,9 +3465,6 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
@@ -3791,9 +3771,6 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
