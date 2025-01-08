@@ -1223,7 +1223,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     # Adapted from `transformers` modeling_utils.py
     def _get_no_split_modules(self, device_map: str):
         """
-        Get the modules of the model that should not be spit when using device_map. We iterate through the modules to
+        Get the modules of the model that should not be split when using device_map. We iterate through the modules to
         get the underlying `_no_split_modules`.
 
         Args:

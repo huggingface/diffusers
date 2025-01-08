@@ -174,7 +174,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             default_processing_resolution=default_processing_resolution,
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
         self.scale_invariant = scale_invariant
         self.shift_invariant = shift_invariant
