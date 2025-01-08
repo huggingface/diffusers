@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import functools
 import inspect
 import os
 import tempfile
@@ -77,6 +78,16 @@ def initialize_dummy_state_dict(state_dict):
 
 
 POSSIBLE_ATTENTION_KWARGS_NAMES = ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]
+
+def require_te_lora_support(f):
+    @functools.wraps(f)
+    def wrapped(self: "PeftLoraLoaderMixinTests", *a, **kw):
+        if not self.supports_text_encoder_lora:
+            self.skipTest("Pipeline class doesn't support text encoder LoRA.")
+        return f(self, *a, **kw)
+
+    return wrapped
+
 
 
 @require_peft_backend
@@ -273,6 +284,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs)[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
+    @require_te_lora_support
     def test_simple_inference_with_text_lora(self):
         """
         Tests a simple inference with lora attached on the text encoder
@@ -434,6 +446,7 @@ class PeftLoraLoaderMixinTests:
                     "Loading from saved checkpoints with `low_cpu_mem_usage` should give same results.",
                 )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_lora_and_scale(self):
         """
         Tests a simple inference with lora attached on the text encoder + scale argument
@@ -490,6 +503,7 @@ class PeftLoraLoaderMixinTests:
                 "Lora + 0 scale should lead to same result as no LoRA",
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_lora_fused(self):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
@@ -530,6 +544,7 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_lora_unloaded(self):
         """
         Tests a simple inference with lora attached to text encoder, then unloads the lora weights
@@ -578,6 +593,7 @@ class PeftLoraLoaderMixinTests:
                 "Fused lora should change the output",
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_lora_save_load(self):
         """
         Tests a simple usecase where users could use saving utilities for LoRA.
@@ -629,6 +645,7 @@ class PeftLoraLoaderMixinTests:
                 "Loading from saved checkpoints should give same results.",
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_partial_text_lora(self):
         """
         Tests a simple inference with lora attached on the text encoder
@@ -797,6 +814,7 @@ class PeftLoraLoaderMixinTests:
                 "Loading from saved checkpoints should give same results.",
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_lora_and_scale(self):
         """
         Tests a simple inference with lora attached on the text encoder + Unet + scale argument
@@ -863,6 +881,7 @@ class PeftLoraLoaderMixinTests:
                     "The scaling parameter has not been correctly restored!",
                 )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_lora_denoiser_fused(self):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
@@ -916,6 +935,7 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(output_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_lora_unloaded(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
@@ -968,6 +988,7 @@ class PeftLoraLoaderMixinTests:
                 "Fused lora should change the output",
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_lora_unfused(
         self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3
     ):
@@ -1023,6 +1044,7 @@ class PeftLoraLoaderMixinTests:
                 "Fused lora should not change the output",
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_multi_adapter(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
@@ -1134,6 +1156,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_adapters("adapter-1")
         _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_block_scale(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
@@ -1191,6 +1214,7 @@ class PeftLoraLoaderMixinTests:
                 "output with no lora and output with lora disabled should give same results",
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
@@ -1265,6 +1289,7 @@ class PeftLoraLoaderMixinTests:
             with self.assertRaises(ValueError):
                 pipe.set_adapters(["adapter-1", "adapter-2"], [scales_1])
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
 
@@ -1354,6 +1379,7 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters("adapter-1", scale_dict)  # test will fail if this line throws an error
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_multi_adapter_delete_adapter(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
@@ -1448,6 +1474,7 @@ class PeftLoraLoaderMixinTests:
                 "output with no lora and output with lora disabled should give same results",
             )
 
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_multi_adapter_weighted(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
@@ -1674,6 +1701,7 @@ class PeftLoraLoaderMixinTests:
             self.assertDictEqual(pipe.get_list_adapters(), dicts_to_be_checked)
 
     @require_peft_version_greater(peft_version="0.6.2")
+    @require_te_lora_support
     def test_simple_inference_with_text_lora_denoiser_fused_multi(
         self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3
     ):
@@ -1852,6 +1880,7 @@ class PeftLoraLoaderMixinTests:
         self.assertTrue(".diffusers_cat" in cap_logger.out)
 
     @unittest.skip("This is failing for now - need to investigate")
+    @require_te_lora_support
     def test_simple_inference_with_text_denoiser_lora_unfused_torch_compile(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
@@ -2098,3 +2127,7 @@ class PeftLoraLoaderMixinTests:
         lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
         self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+
+    @property
+    def supports_text_encoder_lora(self):
+        return len({"text_encoder", "text_encoder_2", "text_encoder_3"}.intersection(self.pipeline_class._lora_loadable_modules)) != 0

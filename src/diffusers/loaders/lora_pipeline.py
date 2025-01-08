@@ -1647,7 +1647,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`AuraFlowTransformer2DModel`] Specific to [`AuraFlowPipeline`].
     """
 
-    _lora_loadable_modules = ["transformer", "text_encoder"]
+    _lora_loadable_modules = ["transformer"]
     transformer_name = TRANSFORMER_NAME
     text_encoder_name = TEXT_ENCODER_NAME
     _control_lora_supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
