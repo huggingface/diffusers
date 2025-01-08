@@ -261,6 +261,7 @@ jobs:
 
     - name: Install dependencies
       run: |
+        curl https://sh.rustup.rs -sSf | sh -s -- -y && export PATH="$HOME/.cargo/bin:$PATH"
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         # TODO (sayakpaul, DN6): revisit `--no-deps`
