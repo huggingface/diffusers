@@ -42,6 +42,16 @@ if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
 
+from ...utils import is_torch_xla_available
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -922,6 +932,10 @@ class TextToVideoZeroSDXLPipeline(
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
         return latents.clone().detach()
 
     @torch.no_grad()

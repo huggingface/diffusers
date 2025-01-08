@@ -48,6 +48,7 @@ from ...schedulers import (
 )
 from ...utils import (
     USE_PEFT_BACKEND,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -60,7 +61,15 @@ from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -1260,6 +1269,9 @@ class AnimateDiffSDXLPipeline(
                         negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", negative_add_time_ids)
 
                     progress_bar.update()
+
+                    if XLA_AVAILABLE:
+                        xm.mark_step()
 
         # make sure the VAE is in float32 mode, as it overflows in float16
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
