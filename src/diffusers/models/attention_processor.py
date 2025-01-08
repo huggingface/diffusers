@@ -294,6 +294,10 @@ class Attention(nn.Module):
             processor = (
                 AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
             )
+
+        if is_torch_npu_available():
+            if isinstance(processor, AttnProcessor2_0):
+                processor = AttnProcessorNPU()
         self.set_processor(processor)
 
     def set_use_xla_flash_attention(
