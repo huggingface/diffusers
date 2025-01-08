@@ -789,7 +789,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         # Currently we only support single control
         if isinstance(controlnet, ControlNetModel):
             control_image = self.prepare_control_image(
-                image=control_frames[0],
+                image=control_frames(frames[0]) if callable(control_frames) else control_frames[0],
                 width=width,
                 height=height,
                 batch_size=batch_size,
@@ -924,7 +924,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         for idx in range(1, len(frames)):
             image = frames[idx]
             prev_image = frames[idx - 1]
-            control_image = control_frames[idx]
+            control_image = control_frames(image) if callable(control_frames) else control_frames[idx]
             # 5.1 prepare frames
             image = self.image_processor.preprocess(image).to(dtype=self.dtype)
             prev_image = self.image_processor.preprocess(prev_image).to(dtype=self.dtype)
