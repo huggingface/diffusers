@@ -272,7 +272,7 @@ jobs:
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
             --make-reports=tests_torch_minimum_version_cuda \
-            tests/models/test_modelling_common.py \
+            tests/models/test_modeling_common.py \
             tests/pipelines/test_pipelines_common.py \
             tests/pipelines/test_pipeline_utils.py \
             tests/pipelines/test_pipelines.py \
