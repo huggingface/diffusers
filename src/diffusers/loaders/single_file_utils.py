@@ -94,6 +94,12 @@ CHECKPOINT_KEY_NAMES = {
     "animatediff_sdxl_beta": "up_blocks.2.motion_modules.0.temporal_transformer.norm.weight",
     "animatediff_scribble": "controlnet_cond_embedding.conv_in.weight",
     "animatediff_rgb": "controlnet_cond_embedding.weight",
+    "auraflow": [
+        "double_layers.0.attn.w2q.weight",
+        "double_layers.0.attn.w1q.weight",
+        "cond_seq_linear.weight",
+        "t_embedder.mlp.0.weight",
+    ],
     "flux": [
         "double_blocks.0.img_attn.norm.key_norm.scale",
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
@@ -154,6 +160,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "animatediff_sdxl_beta": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-sdxl-beta"},
     "animatediff_scribble": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-scribble"},
     "animatediff_rgb": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-rgb"},
+    "auraflow": {"pretrained_model_name_or_path": "fal/AuraFlow-v0.3"},
     "flux-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-dev"},
     "flux-fill": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Fill-dev"},
     "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
@@ -634,6 +641,9 @@ def infer_diffusers_model_type(checkpoint):
 
     elif CHECKPOINT_KEY_NAMES["hunyuan-video"] in checkpoint:
         model_type = "hunyuan-video"
+
+    elif all(key in checkpoint for key in CHECKPOINT_KEY_NAMES["auraflow"]):
+        model_type = "auraflow"
 
     elif (
         CHECKPOINT_KEY_NAMES["instruct-pix2pix"] in checkpoint
@@ -2090,6 +2100,7 @@ def convert_animatediff_checkpoint_to_diffusers(checkpoint, **kwargs):
 def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())
+
     for k in keys:
         if "model.diffusion_model." in k:
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
@@ -2689,3 +2700,95 @@ def convert_hunyuan_video_transformer_to_diffusers(checkpoint, **kwargs):
             handler_fn_inplace(key, checkpoint)
 
     return checkpoint
+
+
+def convert_auraflow_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+    state_dict_keys = list(checkpoint.keys())
+
+    # Handle register tokens and positional embeddings
+    converted_state_dict["register_tokens"] = checkpoint.pop("register_tokens", None)
+
+    # Handle time step projection
+    converted_state_dict["time_step_proj.linear_1.weight"] = checkpoint.pop("t_embedder.mlp.0.weight", None)
+    converted_state_dict["time_step_proj.linear_1.bias"] = checkpoint.pop("t_embedder.mlp.0.bias", None)
+    converted_state_dict["time_step_proj.linear_2.weight"] = checkpoint.pop("t_embedder.mlp.2.weight", None)
+    converted_state_dict["time_step_proj.linear_2.bias"] = checkpoint.pop("t_embedder.mlp.2.bias", None)
+
+    # Handle context embedder
+    converted_state_dict["context_embedder.weight"] = checkpoint.pop("cond_seq_linear.weight", None)
+
+    # Calculate the number of layers
+    def calculate_layers(keys, key_prefix):
+        layers = set()
+        for k in keys:
+            if key_prefix in k:
+                layer_num = int(k.split(".")[1])  # get the layer number
+                layers.add(layer_num)
+        return len(layers)
+
+    mmdit_layers = calculate_layers(state_dict_keys, key_prefix="double_layers")
+    single_dit_layers = calculate_layers(state_dict_keys, key_prefix="single_layers")
+
+    # MMDiT blocks
+    for i in range(mmdit_layers):
+        # Feed-forward
+        path_mapping = {"mlpX": "ff", "mlpC": "ff_context"}
+        weight_mapping = {"c_fc1": "linear_1", "c_fc2": "linear_2", "c_proj": "out_projection"}
+        for orig_k, diffuser_k in path_mapping.items():
+            for k, v in weight_mapping.items():
+                converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.{v}.weight"] = checkpoint.pop(
+                    f"double_layers.{i}.{orig_k}.{k}.weight", None
+                )
+
+        # Norms
+        path_mapping = {"modX": "norm1", "modC": "norm1_context"}
+        for orig_k, diffuser_k in path_mapping.items():
+            converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.linear.weight"] = checkpoint.pop(
+                f"double_layers.{i}.{orig_k}.1.weight", None
+            )
+
+        # Attentions
+        x_attn_mapping = {"w2q": "to_q", "w2k": "to_k", "w2v": "to_v", "w2o": "to_out.0"}
+        context_attn_mapping = {"w1q": "add_q_proj", "w1k": "add_k_proj", "w1v": "add_v_proj", "w1o": "to_add_out"}
+        for attn_mapping in [x_attn_mapping, context_attn_mapping]:
+            for k, v in attn_mapping.items():
+                converted_state_dict[f"joint_transformer_blocks.{i}.attn.{v}.weight"] = checkpoint.pop(
+                    f"double_layers.{i}.attn.{k}.weight", None
+                )
+
+    # Single-DiT blocks
+    for i in range(single_dit_layers):
+        # Feed-forward
+        mapping = {"c_fc1": "linear_1", "c_fc2": "linear_2", "c_proj": "out_projection"}
+        for k, v in mapping.items():
+            converted_state_dict[f"single_transformer_blocks.{i}.ff.{v}.weight"] = checkpoint.pop(
+                f"single_layers.{i}.mlp.{k}.weight", None
+            )
+
+        # Norms
+        converted_state_dict[f"single_transformer_blocks.{i}.norm1.linear.weight"] = checkpoint.pop(
+            f"single_layers.{i}.modCX.1.weight", None
+        )
+
+        # Attentions
+        x_attn_mapping = {"w1q": "to_q", "w1k": "to_k", "w1v": "to_v", "w1o": "to_out.0"}
+        for k, v in x_attn_mapping.items():
+            converted_state_dict[f"single_transformer_blocks.{i}.attn.{v}.weight"] = checkpoint.pop(
+                f"single_layers.{i}.attn.{k}.weight", None
+            )
+    # Final blocks
+    converted_state_dict["proj_out.weight"] = checkpoint.pop("final_linear.weight", None)
+
+    # Handle the final norm layer
+    norm_weight = checkpoint.pop("modF.1.weight", None)
+    if norm_weight is not None:
+        converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(norm_weight, dim=None)
+    else:
+        converted_state_dict["norm_out.linear.weight"] = None
+
+    converted_state_dict["pos_embed.pos_embed"] = checkpoint.pop("positional_encoding")
+    converted_state_dict["pos_embed.proj.weight"] = checkpoint.pop("init_x_linear.weight")
+    converted_state_dict["pos_embed.proj.bias"] = checkpoint.pop("init_x_linear.bias")
+
+    return converted_state_dict
