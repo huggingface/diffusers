@@ -998,8 +998,8 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         # When decoding temporally long video latents, the memory requirement is very high. By decoding latent frames
         # at a fixed frame batch size (based on `self.num_latent_frames_batch_sizes`), the memory requirement can be lowered.
-        self.use_framewise_encoding = False
-        self.use_framewise_decoding = False
+        self.use_framewise_encoding = True
+        self.use_framewise_decoding = True
 
         # This can be configured based on the amount of GPU memory available.
         # `16` for sample frames and `2` for latent frames are sensible defaults for consumer GPUs.
@@ -1122,6 +1122,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_min_num_frames = self.tile_sample_min_num_frames // self.temporal_compression_ratio
 
         if self.use_framewise_decoding and num_frames > tile_latent_min_num_frames:
             return self._temporal_tiled_decode(z, temb, return_dict=return_dict)
@@ -1388,5 +1389,5 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             z = posterior.mode()
         dec = self.decode(z, temb)
         if not return_dict:
-            return (dec,)
+            return (dec.sample,)
         return dec
