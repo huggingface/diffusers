@@ -1299,6 +1299,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
             "masked_image_latents",
             "noise",
             "image_latents",
+            "crops_coords",
         ]
 
     @property
@@ -1350,6 +1351,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         masked_image_latents = state.get_intermediate("masked_image_latents")
         noise = state.get_intermediate("noise")
         image_latents = state.get_intermediate("image_latents")
+        crops_coords = state.get_intermediate("crops_coords")
         num_channels_unet = pipeline.unet.config.in_channels
         if num_channels_unet == 9:
             # default case for runwayml/stable-diffusion-inpainting
@@ -1409,6 +1411,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
+                crops_coords=crops_coords,
             )
         elif isinstance(controlnet, MultiControlNetModel):
             control_images = []
@@ -1422,6 +1425,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
+                    crops_coords=crops_coords,
                 )
 
                 control_images.append(control_image)
@@ -1947,7 +1951,8 @@ class StableDiffusionXLModularPipeline(
             return image_embeds, uncond_image_embeds
 
     # Modified from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.prepare_image
-    # return image without apply any guidance
+    # 1. return image without apply any guidance
+    # 2. add crops_coords and resize_mode to preprocess()
     def prepare_control_image(
         self,
         image,
@@ -1957,8 +1962,12 @@ class StableDiffusionXLModularPipeline(
         num_images_per_prompt,
         device,
         dtype,
-    ):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        crops_coords=None,
+    ):  
+        if crops_coords is not None:
+            image = self.control_image_processor.preprocess(image, height=height, width=width, crops_coords=crops_coords, resize_mode="fill").to(dtype=torch.float32)
+        else:
+            image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
