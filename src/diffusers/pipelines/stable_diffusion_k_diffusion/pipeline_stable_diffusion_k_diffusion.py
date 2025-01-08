@@ -125,7 +125,7 @@ class StableDiffusionKDiffusionPipeline(
             feature_extractor=feature_extractor,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)
