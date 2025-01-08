@@ -207,7 +207,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                     f" {self.config.num_train_timesteps}."
                 )
 
-            timesteps = np.array(timesteps, dtype=np.int64)
+            timesteps = np.array(timesteps, dtype=np.int32)
             self.custom_timesteps = True
         else:
             if num_inference_steps > self.config.num_train_timesteps:
@@ -220,7 +220,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             self.num_inference_steps = num_inference_steps
 
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int32)
             self.custom_timesteps = False
 
         # Map timesteps to Karras sigmas directly for multistep sampling

@@ -331,7 +331,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
 
         if timesteps is not None:
-            timesteps = np.array(timesteps).astype(np.int64)
+            timesteps = np.array(timesteps).astype(np.int32)
         else:
             # Clipping the minimum of all lambda(t) for numerical stability.
             # This is critical for cosine (squaredcos_cap_v2) noise schedule.
@@ -341,7 +341,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 np.linspace(0, self.config.num_train_timesteps - 1 - clipped_idx, num_inference_steps + 1)
                 .round()[::-1][:-1]
                 .copy()
-                .astype(np.int64)
+                .astype(np.int32)
             )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)

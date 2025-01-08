@@ -174,7 +174,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
         step_ratio = (self.config.num_train_timesteps - 1) / (self.num_inference_steps - 1)
-        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int32)
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
     def _get_variance(self, t, prev_timestep=None, predicted_variance=None, variance_type=None):

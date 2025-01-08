@@ -248,19 +248,19 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
                 np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
                 .round()[::-1][:-1]
                 .copy()
-                .astype(np.int64)
+                .astype(np.int32)
             )
         elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // (num_inference_steps + 1)
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int64)
+            timesteps = (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int32)
             timesteps += self.config.steps_offset
         elif self.config.timestep_spacing == "trailing":
             step_ratio = self.config.num_train_timesteps / num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = np.arange(self.config.num_train_timesteps, 0, -step_ratio).round().copy().astype(np.int64)
+            timesteps = np.arange(self.config.num_train_timesteps, 0, -step_ratio).round().copy().astype(np.int32)
             timesteps -= 1
         else:
             raise ValueError(

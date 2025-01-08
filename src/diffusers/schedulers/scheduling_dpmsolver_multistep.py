@@ -359,7 +359,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Cannot set `timesteps` with `config.use_beta_sigmas = True`.")
 
         if timesteps is not None:
-            timesteps = np.array(timesteps).astype(np.int64)
+            timesteps = np.array(timesteps).astype(np.int32)
         else:
             # Clipping the minimum of all lambda(t) for numerical stability.
             # This is critical for cosine (squaredcos_cap_v2) noise schedule.
@@ -372,21 +372,21 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                     np.linspace(0, last_timestep - 1, num_inference_steps + 1)
                     .round()[::-1][:-1]
                     .copy()
-                    .astype(np.int64)
+                    .astype(np.int32)
                 )
             elif self.config.timestep_spacing == "leading":
                 step_ratio = last_timestep // (num_inference_steps + 1)
                 # creates integer timesteps by multiplying by ratio
                 # casting to int to avoid issues when num_inference_step is power of 3
                 timesteps = (
-                    (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int64)
+                    (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int32)
                 )
                 timesteps += self.config.steps_offset
             elif self.config.timestep_spacing == "trailing":
                 step_ratio = self.config.num_train_timesteps / num_inference_steps
                 # creates integer timesteps by multiplying by ratio
                 # casting to int to avoid issues when num_inference_step is power of 3
-                timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(np.int64)
+                timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(np.int32)
                 timesteps -= 1
             else:
                 raise ValueError(
