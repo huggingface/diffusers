@@ -20,7 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_processor import (
@@ -254,7 +254,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
     r"""
     A 2D Transformer model as introduced in AuraFlow (https://blog.fal.ai/auraflow/).
 

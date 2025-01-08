@@ -268,8 +268,8 @@ class StableDiffusionDiffEditPipeline(
             A scheduler to be used in combination with `unet` to fill in the unmasked part of the input latents.
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
@@ -292,7 +292,7 @@ class StableDiffusionDiffEditPipeline(
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if scheduler is not None and getattr(scheduler.config, "steps_offset", 1) != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -306,7 +306,7 @@ class StableDiffusionDiffEditPipeline(
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "skip_prk_steps") and scheduler.config.skip_prk_steps is False:
+        if scheduler is not None and getattr(scheduler.config, "skip_prk_steps", True) is False:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration"
                 " `skip_prk_steps`. `skip_prk_steps` should be set to True in the configuration file. Please make"
@@ -367,7 +367,7 @@ class StableDiffusionDiffEditPipeline(
             feature_extractor=feature_extractor,
             inverse_scheduler=inverse_scheduler,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 

@@ -920,14 +920,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
-                    force_hook = True
                     device_map = _determine_device_map(
                         model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
                     )
                     if device_map is None and is_sharded:
                         # we load the parameters on the cpu
                         device_map = {"": "cpu"}
-                        force_hook = False
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
@@ -937,7 +935,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             offload_folder=offload_folder,
                             offload_state_dict=offload_state_dict,
                             dtype=torch_dtype,
-                            force_hooks=force_hook,
                             strict=True,
                         )
                     except AttributeError as e:
@@ -967,7 +964,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                                 offload_folder=offload_folder,
                                 offload_state_dict=offload_state_dict,
                                 dtype=torch_dtype,
-                                force_hooks=force_hook,
                                 strict=True,
                             )
                             model._undo_temp_convert_self_to_deprecated_attention_blocks()
@@ -1214,7 +1210,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     # Adapted from `transformers` modeling_utils.py
     def _get_no_split_modules(self, device_map: str):
         """
-        Get the modules of the model that should not be spit when using device_map. We iterate through the modules to
+        Get the modules of the model that should not be split when using device_map. We iterate through the modules to
         get the underlying `_no_split_modules`.
 
         Args:
