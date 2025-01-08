@@ -19,12 +19,11 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers, is_torch_npu_available
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
     AttnProcessor2_0,
-    AttnProcessorNPU,
     SanaLinearAttnProcessor2_0,
 )
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
