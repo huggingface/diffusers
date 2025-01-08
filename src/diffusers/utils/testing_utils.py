@@ -1067,7 +1067,7 @@ if is_torch_available():
         "cuda": torch.cuda.empty_cache,
         "xpu": torch.xpu.empty_cache,
         "cpu": None,
-        "mps": None,
+        "mps": torch.mps.empty_cache,
         "default": None,
     }
     BACKEND_DEVICE_COUNT = {
