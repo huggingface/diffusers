@@ -33,12 +33,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     torch_device,
 )
 
@@ -292,18 +293,18 @@ class StableDiffusionDiffEditPipelineFastTests(
         self.assertLessEqual(max_diff, 1e-3)
 
 
-@require_torch_gpu
+@require_torch_accelerator
 @nightly
 class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @classmethod
     def setUpClass(cls):
@@ -324,7 +325,7 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
         pipe.scheduler.clip_sample = True
 
         pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         source_prompt = "a bowl of fruit"
@@ -370,17 +371,17 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionDiffEditPipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @classmethod
     def setUpClass(cls):

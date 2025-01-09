@@ -1088,10 +1088,6 @@ if is_torch_available():
         "xpu": torch.xpu.reset_peak_memory_stats,
         "default": None,
     }
-    BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.reset_max_memory_allocated,
-        "default": None,
-    }
     BACKEND_MAX_MEMORY_ALLOCATED = {
        "cuda": torch.cuda.max_memory_allocated,
        "xpu": torch.xpu.max_memory_allocated,
@@ -1101,6 +1097,7 @@ if is_torch_available():
 
 # This dispatches a defined function according to the accelerator from the function definitions.
 def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
+
     if device not in dispatch_table:
         return dispatch_table["default"](*args, **kwargs)
 
@@ -1129,10 +1126,6 @@ def backend_device_count(device: str):
 
 def backend_reset_peak_memory_stats(device: str):
     return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
-
-
-def backend_reset_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
 
 
 def backend_max_memory_allocated(device: str):
@@ -1196,7 +1189,6 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
         update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
         update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEMORY_STATS_FN")
-        update_mapping_from_spec(BACKEND_RESET_MAX_MEMORY_ALLOCATED, "RESET_MAX_MEMORY_ALLOCATED_FN")
         update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
 
 

@@ -24,11 +24,12 @@ from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     load_numpy,
     load_pt,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -309,25 +310,25 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_cascade_decoder(self):
         pipe = StableCascadeDecoderPipeline.from_pretrained(
             "stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.bfloat16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."

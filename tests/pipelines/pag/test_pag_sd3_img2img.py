@@ -16,10 +16,11 @@ from diffusers import (
     StableDiffusion3PAGImg2ImgPipeline,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -193,7 +194,7 @@ class StableDiffusion3PAGImg2ImgPipelineFastTests(unittest.TestCase, PipelineTes
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusion3PAGImg2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
@@ -201,12 +202,12 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(
         self, device, generator_device="cpu", dtype=torch.float32, seed=0, guidance_scale=7.0, pag_scale=0.7
@@ -233,7 +234,7 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipeline = AutoPipelineForImage2Image.from_pretrained(
             self.repo_id, enable_pag=True, torch_dtype=torch.float16, pag_applied_layers=["blocks.17"]
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)

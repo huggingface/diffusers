@@ -22,7 +22,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import DDPMWuerstchenScheduler, StableCascadeCombinedPipeline
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -205,7 +205,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -214,12 +214,12 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []

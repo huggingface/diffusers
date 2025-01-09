@@ -28,9 +28,10 @@ from diffusers import (
     PixArtTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -355,7 +356,7 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     ckpt_id_1024 = "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS"
     ckpt_id_512 = "PixArt-alpha/PixArt-Sigma-XL-2-512-MS"
@@ -364,18 +365,18 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_pixart_1024(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
@@ -395,7 +396,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         pipe = PixArtSigmaPipeline.from_pretrained(
             self.ckpt_id_1024, transformer=transformer, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
 
@@ -411,7 +412,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(0)
 
         pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
         height, width = 1024, 768
@@ -450,7 +451,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         pipe = PixArtSigmaPipeline.from_pretrained(
             self.ckpt_id_1024, transformer=transformer, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
         height, width = 512, 768

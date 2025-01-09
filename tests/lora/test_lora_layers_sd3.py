@@ -32,7 +32,7 @@ from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -91,7 +91,7 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def output_shape(self):
         return (1, 32, 32, 3)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sd3_lora(self):
         """
         Test loading the loras that are saved with the diffusers and peft formats.
@@ -130,7 +130,7 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
 @slow
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 @require_peft_backend
 class LoraSD3IntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Img2ImgPipeline
@@ -139,12 +139,12 @@ class LoraSD3IntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         init_image = load_image(
