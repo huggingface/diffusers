@@ -59,9 +59,76 @@ image.save("sd3_hello_world.png")
 - [`stabilityai/stable-diffusion-3.5-large`](https://huggingface.co/stabilityai/stable-diffusion-3-5-large)
 - [`stabilityai/stable-diffusion-3.5-large-turbo`](https://huggingface.co/stabilityai/stable-diffusion-3-5-large-turbo)
 
+## Image Prompting with IP-Adapters
+
+An IP-Adapter lets you prompt SD3 with images, in addition to the text prompt. This is especially useful when describing complex concepts that are difficult to articulate through text alone and you have reference images. To load and use an IP-Adapter, you need:
+
+- `image_encoder`: Pre-trained vision model used to obtain image features, usually a CLIP image encoder.
+- `feature_extractor`: Image processor that prepares the input image for the chosen `image_encoder`.
+- `ip_adapter_id`: Checkpoint containing parameters of image cross attention layers and image projection. 
+
+IP-Adapters are trained for a specific model architecture, so they also work in finetuned variations of the base model. You can use the [`~SD3IPAdapterMixin.set_ip_adapter_scale`] function to adjust how strongly the output aligns with the image prompt. The higher the value, the more closely the model follows the image prompt. A default value of 0.5 is typically a good balance, ensuring the model considers both the text and image prompts equally.
+
+```python
+import torch
+from PIL import Image
+
+from diffusers import StableDiffusion3Pipeline
+from transformers import SiglipVisionModel, SiglipImageProcessor
+
+image_encoder_id = "google/siglip-so400m-patch14-384"
+ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
+
+feature_extractor = SiglipImageProcessor.from_pretrained(
+    image_encoder_id,
+    torch_dtype=torch.float16
+)
+image_encoder = SiglipVisionModel.from_pretrained(
+    image_encoder_id,
+    torch_dtype=torch.float16
+).to( "cuda")
+
+pipe = StableDiffusion3Pipeline.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-large",
+    torch_dtype=torch.float16,
+    feature_extractor=feature_extractor,
+    image_encoder=image_encoder,
+).to("cuda")
+
+pipe.load_ip_adapter(ip_adapter_id)
+pipe.set_ip_adapter_scale(0.6)
+
+ref_img = Image.open("image.jpg").convert('RGB')
+
+image = pipe(
+    width=1024,
+    height=1024,
+    prompt="a cat",
+    negative_prompt="lowres, low quality, worst quality",
+    num_inference_steps=24,
+    guidance_scale=5.0,
+    ip_adapter_image=ref_img
+).images[0]
+
+image.save("result.jpg")
+```
+
+<div class="justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sd3_ip_adapter_example.png"/>
+    <figcaption class="mt-2 text-sm text-center text-gray-500">IP-Adapter examples with prompt "a cat"</figcaption>
+</div>
+
+
+<Tip>
+
+Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
+
+</Tip>
+
+
 ## Memory Optimisations for SD3
 
-SD3 uses three text encoders, one if which is the very large T5-XXL model. This makes it challenging to run the model on GPUs with less than 24GB of VRAM, even when using `fp16` precision. The following section outlines a few memory optimizations in Diffusers that make it easier to run SD3 on low resource hardware.
+SD3 uses three text encoders, one of which is the very large T5-XXL model. This makes it challenging to run the model on GPUs with less than 24GB of VRAM, even when using `fp16` precision. The following section outlines a few memory optimizations in Diffusers that make it easier to run SD3 on low resource hardware.
 
 ### Running Inference with Model Offloading
 
@@ -200,6 +267,46 @@ image.save("sd3_hello_world.png")
 ```
 
 Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97).
+
+## Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`StableDiffusion3Pipeline`] for inference with bitsandbytes.
+
+```py
+import torch
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, SD3Transformer2DModel, StableDiffusion3Pipeline
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
+
+quant_config = BitsAndBytesConfig(load_in_8bit=True)
+text_encoder_8bit = T5EncoderModel.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-large",
+    subfolder="text_encoder_3",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_8bit = SD3Transformer2DModel.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-large",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+pipeline = StableDiffusion3Pipeline.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-large",
+    text_encoder=text_encoder_8bit,
+    transformer=transformer_8bit,
+    torch_dtype=torch.float16,
+    device_map="balanced",
+)
+
+prompt = "a tiny astronaut hatching from an egg on the moon"
+image = pipeline(prompt, num_inference_steps=28, guidance_scale=7.0).images[0]
+image.save("sd3.png")
+```
 
 ## Using Long Prompts with the T5 Text Encoder
 

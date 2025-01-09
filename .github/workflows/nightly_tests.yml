@@ -180,14 +180,128 @@ jobs:
         pip install slack_sdk tabulate
         python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
+  run_big_gpu_torch_tests:
+    name: Torch tests on big GPU
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+    runs-on:
+      group: aws-g6e-xlarge-plus
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --shm-size "16gb" --ipc host --gpus 0
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: NVIDIA-SMI
+        run: nvidia-smi
+      - name: Install dependencies
+        run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+          python -m uv pip install peft@git+https://github.com/huggingface/peft.git
+          pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          python -m uv pip install pytest-reportlog
+      - name: Environment
+        run: |
+          python utils/print_env.py
+      - name: Selected Torch CUDA Test on big GPU
+        env:
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+          CUBLAS_WORKSPACE_CONFIG: :16:8
+          BIG_GPU_MEMORY: 40
+        run: |
+          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -m "big_gpu_with_torch_cuda" \
+            --make-reports=tests_big_gpu_torch_cuda \
+            --report-log=tests_big_gpu_torch_cuda.log \
+            tests/
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_big_gpu_torch_cuda_stats.txt
+          cat reports/tests_big_gpu_torch_cuda_failures_short.txt
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: torch_cuda_big_gpu_test_reports
+          path: reports
+      - name: Generate Report and Notify Channel
+        if: always()
+        run: |
+          pip install slack_sdk tabulate
+          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
+          
+  torch_minimum_version_cuda_tests:
+    name: Torch Minimum Version CUDA Tests
+    runs-on:
+      group: aws-g4dn-2xlarge
+    container:
+      image: diffusers/diffusers-pytorch-minimum-cuda
+      options: --shm-size "16gb" --ipc host --gpus 0
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Install dependencies
+        run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+          python -m uv pip install peft@git+https://github.com/huggingface/peft.git
+          pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+
+      - name: Environment
+        run: |
+          python utils/print_env.py
+
+      - name: Run PyTorch CUDA tests
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+          CUBLAS_WORKSPACE_CONFIG: :16:8
+        run: |
+          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -s -v -k "not Flax and not Onnx" \
+            --make-reports=tests_torch_minimum_version_cuda \
+            tests/models/test_modeling_common.py \
+            tests/pipelines/test_pipelines_common.py \
+            tests/pipelines/test_pipeline_utils.py \
+            tests/pipelines/test_pipelines.py \
+            tests/pipelines/test_pipelines_auto.py \
+            tests/schedulers/test_schedulers.py \
+            tests/others
+
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_torch_minimum_version_cuda_stats.txt
+          cat reports/tests_torch_minimum_version_cuda_failures_short.txt
+
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: torch_minimum_version_cuda_test_reports
+          path: reports
+ 
   run_flax_tpu_tests:
     name: Nightly Flax TPU Tests
-    runs-on: docker-tpu
+    runs-on:
+      group: gcp-ct5lp-hightpu-8t
     if: github.event_name == 'schedule'
 
     container:
       image: diffusers/diffusers-flax-tpu
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --privileged
+      options: --shm-size "16gb" --ipc host --privileged ${{ vars.V5_LITEPOD_8_ENV}} -v /mnt/hf_cache:/mnt/hf_cache
     defaults:
       run:
         shell: bash
@@ -290,6 +404,68 @@ jobs:
       run: |
         pip install slack_sdk tabulate
         python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
+
+  run_nightly_quantization_tests:
+    name: Torch quantization nightly tests
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: 
+        config:
+          - backend: "bitsandbytes"
+            test_location: "bnb"
+          - backend: "gguf"
+            test_location: "gguf"
+          - backend: "torchao"
+            test_location: "torchao"
+    runs-on:
+      group: aws-g6e-xlarge-plus
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --shm-size "20gb" --ipc host --gpus 0
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: NVIDIA-SMI
+        run: nvidia-smi
+      - name: Install dependencies
+        run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+          python -m uv pip install -U ${{ matrix.config.backend }}
+          python -m uv pip install pytest-reportlog
+      - name: Environment
+        run: |
+          python utils/print_env.py
+      - name: ${{ matrix.config.backend }} quantization tests on GPU
+        env:
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+          CUBLAS_WORKSPACE_CONFIG: :16:8
+          BIG_GPU_MEMORY: 40
+        run: |
+          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            --make-reports=tests_${{ matrix.config.backend }}_torch_cuda \
+            --report-log=tests_${{ matrix.config.backend }}_torch_cuda.log \
+            tests/quantization/${{ matrix.config.test_location }}
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_${{ matrix.config.backend }}_torch_cuda_stats.txt
+          cat reports/tests_${{ matrix.config.backend }}_torch_cuda_failures_short.txt
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: torch_cuda_${{ matrix.config.backend }}_reports
+          path: reports
+      - name: Generate Report and Notify Channel
+        if: always()
+        run: |
+          pip install slack_sdk tabulate
+          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
 # M1 runner currently not well supported
 # TODO: (Dhruv) add these back when we setup better testing for Apple Silicon

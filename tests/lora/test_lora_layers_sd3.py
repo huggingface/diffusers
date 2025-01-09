@@ -29,16 +29,14 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
-    is_peft_available,
+    nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
+    slow,
     torch_device,
 )
 
-
-if is_peft_available():
-    pass
 
 sys.path.append(".")
 
@@ -130,6 +128,8 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pass
 
 
+@slow
+@nightly
 @require_torch_gpu
 @require_peft_backend
 class LoraSD3IntegrationTests(unittest.TestCase):
@@ -166,48 +166,14 @@ class LoraSD3IntegrationTests(unittest.TestCase):
 
     def test_sd3_img2img_lora(self):
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
-        pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors")
+        pipe.load_lora_weights("zwloong/sd3-lora-training-rank16-v2", weight_name="pytorch_lora_weights.safetensors")
         pipe.enable_sequential_cpu_offload()
 
         inputs = self.get_inputs(torch_device)
 
         image = pipe(**inputs).images[0]
-        image_slice = image[0, :10, :10]
-        expected_slice = np.array(
-            [
-                0.47827148,
-                0.5,
-                0.71972656,
-                0.3955078,
-                0.4194336,
-                0.69628906,
-                0.37036133,
-                0.40820312,
-                0.6923828,
-                0.36450195,
-                0.40429688,
-                0.6904297,
-                0.35595703,
-                0.39257812,
-                0.68652344,
-                0.35498047,
-                0.3984375,
-                0.68310547,
-                0.34716797,
-                0.3996582,
-                0.6855469,
-                0.3388672,
-                0.3959961,
-                0.6816406,
-                0.34033203,
-                0.40429688,
-                0.6845703,
-                0.34228516,
-                0.4086914,
-                0.6870117,
-            ]
-        )
-
+        image_slice = image[0, -3:, -3:]
+        expected_slice = np.array([0.5396, 0.5776, 0.7432, 0.5151, 0.5586, 0.7383, 0.5537, 0.5933, 0.7153])
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4, f"Outputs are not close enough, got {max_diff}"

@@ -71,7 +71,7 @@ class CogView3PlusTransformerTests(ModelTesterMixin, unittest.TestCase):
         init_dict = {
             "patch_size": 2,
             "in_channels": 4,
-            "num_layers": 1,
+            "num_layers": 2,
             "attention_head_dim": 4,
             "num_attention_heads": 2,
             "out_channels": 4,
@@ -83,3 +83,7 @@ class CogView3PlusTransformerTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"CogView3PlusTransformer2DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

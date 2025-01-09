@@ -20,6 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_processor import (
@@ -253,7 +254,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
+class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model as introduced in AuraFlow (https://blog.fal.ai/auraflow/).
 
@@ -466,7 +467,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
 
         # MMDiT blocks.
         for index_block, block in enumerate(self.joint_transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -497,7 +498,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
             combined_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
             for index_block, block in enumerate(self.single_transformer_blocks):
-                if self.training and self.gradient_checkpointing:
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                     def create_custom_forward(module, return_dict=None):
                         def custom_forward(*inputs):

@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import enum
 import fnmatch
 import importlib
 import inspect
@@ -65,7 +66,6 @@ from ..utils.torch_utils import is_compiled_module
 
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
-
 
 from .pipeline_loading_utils import (
     ALL_IMPORTABLE_CLASSES,
@@ -229,7 +229,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
-            private = kwargs.pop("private", False)
+            private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
@@ -388,6 +388,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         device = device or device_arg
+        pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
@@ -410,16 +411,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
-        if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
-            raise ValueError(
-                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
-            )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
-                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
+                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` to remove the existing device map from the pipeline."
             )
+
+        if device and torch.device(device).type == "cuda":
+            if pipeline_is_sequentially_offloaded and not pipeline_has_bnb:
+                raise ValueError(
+                    "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
+                )
+            # PR: https://github.com/huggingface/accelerate/pull/3223/
+            elif pipeline_has_bnb and is_accelerate_version("<", "1.1.0.dev0"):
+                raise ValueError(
+                    "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
+                )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
@@ -509,7 +517,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -636,7 +644,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 
         >>> # Use a different scheduler
         >>> from diffusers import LMSDiscreteScheduler
@@ -805,6 +813,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # in this case they are already instantiated in `kwargs`
         # extract them here
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+        expected_types = pipeline_class._get_signature_types()
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
@@ -826,6 +835,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return True
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+
+        for key in init_dict.keys():
+            if key not in passed_class_obj:
+                continue
+            if "scheduler" in key:
+                continue
+
+            class_obj = passed_class_obj[key]
+            _expected_class_types = []
+            for expected_type in expected_types[key]:
+                if isinstance(expected_type, enum.EnumMeta):
+                    _expected_class_types.extend(expected_type.__members__.keys())
+                else:
+                    _expected_class_types.append(expected_type.__name__)
+
+            _is_valid_type = class_obj.__class__.__name__ in _expected_class_types
+            if not _is_valid_type:
+                logger.warning(
+                    f"Expected types for {key}: {_expected_class_types}, got {class_obj.__class__.__name__}."
+                )
 
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
@@ -1527,7 +1556,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ...     StableDiffusionInpaintPipeline,
         ... )
 
-        >>> text2img = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> text2img = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
         >>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
         ```
@@ -1552,6 +1581,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         return numpy_to_pil(images)
 
+    @torch.compiler.disable
     def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}
@@ -1659,7 +1689,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> from diffusers import StableDiffusionPipeline
 
         >>> pipe = StableDiffusionPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5",
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
         ...     torch_dtype=torch.float16,
         ...     use_safetensors=True,
         ... )
@@ -1706,7 +1736,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```py
         >>> from diffusers import StableDiffusionPipeline, StableDiffusionSAGPipeline
 
-        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> new_pipe = StableDiffusionSAGPipeline.from_pipe(pipe)
         ```
         """

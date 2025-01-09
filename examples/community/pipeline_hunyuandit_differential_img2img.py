@@ -327,9 +327,7 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor,
@@ -1008,6 +1006,8 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
             self.transformer.inner_dim // self.transformer.num_heads,
             grid_crops_coords,
             (grid_height, grid_width),
+            device=device,
+            output_type="pt",
         )
 
         style = torch.tensor([0], device=device)

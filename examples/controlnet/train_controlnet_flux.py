@@ -65,7 +65,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():
@@ -152,6 +152,7 @@ def log_validation(
                     guidance_scale=3.5,
                     generator=generator,
                 ).images[0]
+            image = image.resize((args.resolution, args.resolution))
             images.append(image)
         image_logs.append(
             {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}

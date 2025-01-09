@@ -868,7 +868,7 @@ class CrossAttnDownBlock2D(nn.Module):
         blocks = list(zip(self.resnets, self.attentions))
 
         for i, (resnet, attn) in enumerate(blocks):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1029,7 +1029,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1191,7 +1191,7 @@ class CrossAttnUpBlock2D(nn.Module):
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1364,7 +1364,7 @@ class MatryoshkaTransformer2DModel(LegacyModelMixin, LegacyConfigMixin):
 
         # Blocks
         for block in self.transformer_blocks:
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -3766,7 +3766,7 @@ class MatryoshkaPipeline(
         else:
             raise ValueError("Currently, nesting levels 0, 1, and 2 are supported.")
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if scheduler is not None and getattr(scheduler.config, "steps_offset", 1) != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -3780,7 +3780,7 @@ class MatryoshkaPipeline(
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        # if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+        # if scheduler is not None and getattr(scheduler.config, "clip_sample", False) is True:
         #     deprecation_message = (
         #         f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
         #         " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
