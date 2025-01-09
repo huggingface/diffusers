@@ -38,7 +38,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -346,7 +346,7 @@ class StableDiffusionXLPipelineFastTests(
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -355,12 +355,12 @@ class StableDiffusionXLPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []

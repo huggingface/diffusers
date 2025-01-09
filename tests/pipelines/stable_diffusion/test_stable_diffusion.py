@@ -988,7 +988,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_stable_diffusion_vae_slicing(self):
-        torch.cuda.reset_peak_memory_stats()
+        backend_reset_peak_memory_stats(torch_device)
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

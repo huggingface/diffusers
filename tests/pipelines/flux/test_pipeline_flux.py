@@ -9,6 +9,7 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPToken
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     slow,
@@ -219,12 +220,12 @@ class FluxPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
@@ -254,7 +255,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
         pipe = self.pipeline_class.from_pretrained(
             self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
 

@@ -36,6 +36,9 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
+    backend_max_memory_allocated,
     enable_full_determinism,
     floats_tensor,
     is_peft_available,
@@ -1014,7 +1017,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_from_hub_local_subfolder(self):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy-subfolder")
@@ -1025,7 +1028,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     @parameterized.expand(
         [
             ("hf-internal-testing/unet2d-sharded-dummy", None),
@@ -1040,7 +1043,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     @parameterized.expand(
         [
             ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
@@ -1055,7 +1058,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_device_map_from_hub_local(self):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
@@ -1065,7 +1068,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_device_map_from_hub_local_subfolder(self):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy-subfolder")
@@ -1165,11 +1168,11 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
         return model
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_set_attention_slice_auto(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         unet = self.get_unet_model()
         unet.set_attention_slice("auto")
@@ -1181,15 +1184,15 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         with torch.no_grad():
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
 
         assert mem_bytes < 5 * 10**9
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_set_attention_slice_max(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         unet = self.get_unet_model()
         unet.set_attention_slice("max")
@@ -1201,15 +1204,15 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         with torch.no_grad():
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
-        mem_bytes = torch.cuda.max_memory_allocated()
-
+        mem_bytes = backend_max_memory_allocated(torch_device)
+        
         assert mem_bytes < 5 * 10**9
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_set_attention_slice_int(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         unet = self.get_unet_model()
         unet.set_attention_slice(2)
@@ -1221,15 +1224,15 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         with torch.no_grad():
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
 
         assert mem_bytes < 5 * 10**9
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_set_attention_slice_list(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         # there are 32 sliceable layers
         slice_list = 16 * [2, 3]
@@ -1243,7 +1246,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         with torch.no_grad():
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
 
         assert mem_bytes < 5 * 10**9
 

@@ -1137,6 +1137,8 @@ def backend_device_count(device: str):
 def backend_reset_peak_memory_stats(device: str):
     return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
 
+def backend_reset_max_memory_allocated(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
 
 def backend_max_memory_allocated(device: str):
     return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
