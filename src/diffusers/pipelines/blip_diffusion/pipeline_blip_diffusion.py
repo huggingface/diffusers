@@ -20,6 +20,7 @@ from transformers import CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import PNDMScheduler
 from ...utils import (
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -30,7 +31,15 @@ from .modeling_blip2 import Blip2QFormerModel
 from .modeling_ctx_clip import ContextCLIPTextModel
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -335,6 +344,9 @@ class BlipDiffusionPipeline(DiffusionPipeline):
                 t,
                 latents,
             )["prev_sample"]
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         image = self.image_processor.postprocess(image, output_type=output_type)
