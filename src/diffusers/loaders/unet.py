@@ -48,9 +48,6 @@ from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER
 from .utils import AttnProcsLayers
 
 
-if is_accelerate_available():
-    pass
-
 logger = logging.get_logger(__name__)
 
 

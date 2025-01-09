@@ -56,9 +56,6 @@ if is_torch_version(">=", "1.9.0"):
         _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
 
 
-if is_transformers_available():
-    pass
-
 logger = logging.get_logger(__name__)
 
 TEXT_ENCODER_NAME = "text_encoder"

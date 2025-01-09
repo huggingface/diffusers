@@ -29,7 +29,6 @@ from ..utils import (
     delete_adapter_layers,
     get_adapter_name,
     get_peft_kwargs,
-    is_accelerate_available,
     is_peft_available,
     is_peft_version,
     logging,
@@ -39,9 +38,6 @@ from ..utils import (
 from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
 from .unet_loader_utils import _maybe_expand_lora_scales
 
-
-if is_accelerate_available():
-    pass
 
 logger = logging.get_logger(__name__)
 
