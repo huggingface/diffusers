@@ -632,7 +632,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             frames (`List[np.ndarray]` or `torch.Tensor`): The input images to be used as the starting point for the image generation process.
-            control_frames (`List[np.ndarray]` or `torch.Tensor`): The ControlNet input images condition to provide guidance to the `unet` for generation or any callable object to convert frame to control_frame.
+            control_frames (`List[np.ndarray]` or `torch.Tensor` or `Callable`): The ControlNet input images condition to provide guidance to the `unet` for generation or any callable object to convert frame to control_frame.
             strength ('float'): SDEdit strength.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
