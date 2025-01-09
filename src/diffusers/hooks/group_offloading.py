@@ -134,7 +134,7 @@ def _apply_group_offloading_diffusers_block(
             group = ModuleGroup(
                 blocks, offload_device, onload_device, offload_leader=blocks[-1], onload_leader=blocks[0]
             )
-            should_offload = force_offload or i == 0
+            should_offload = force_offload or i > 0
             _apply_group_offloading(group, should_offload)
 
 
