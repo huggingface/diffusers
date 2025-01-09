@@ -264,7 +264,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
@@ -1622,7 +1622,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
-            # default case for runwayml/stable-diffusion-inpainting
+            # default case for stable-diffusion-v1-5/stable-diffusion-inpainting
             num_channels_mask = mask.shape[1]
             num_channels_masked_image = masked_image_latents.shape[1]
             if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
