@@ -17,6 +17,7 @@ from ...utils import (
     PIL_INTERPOLATION,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -27,7 +28,15 @@ from .safety_checker import IFSafetyChecker
 from .watermark import IFWatermarker
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 if is_bs4_available():
     from bs4 import BeautifulSoup
@@ -855,6 +864,9 @@ class IFImg2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, intermediate_images)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         image = intermediate_images
 
