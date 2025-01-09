@@ -24,7 +24,7 @@ from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTXVideo
 from ...models.transformers import LTXVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -69,24 +69,11 @@ EXAMPLE_DOC_STRING = """
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
-    base_seq_len: Optional[int] = 256,
-    max_seq_len: Optional[int] = 4096,
-    base_shift: Optional[float] = 0.5,
-    max_shift: Optional[float] = 1.16,
-    scheduler: Optional[FlowMatchEulerDiscreteScheduler] = None,
+    base_seq_len: int = 256,
+    max_seq_len: int = 4096,
+    base_shift: float = 0.5,
+    max_shift: float = 1.16,
 ):
-    if base_seq_len or max_seq_len or base_shift or max_shift or scheduler is None:
-        deprecation_message = "Pass `scheduler` to `calculate_shift`."
-        deprecate(
-            "calculate_shift scheduler",
-            "1.0.0",
-            deprecation_message,
-            standard_warn=False,
-        )
-    base_seq_len = base_seq_len or scheduler.config.get("base_image_seq_len", 256)
-    max_seq_len = max_seq_len or scheduler.config.get("max_image_seq_len", 4096)
-    base_shift = base_shift or scheduler.config.get("base_shift", 0.5)
-    max_shift = max_shift or scheduler.config.get("max_shift", 1.16)
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
     mu = image_seq_len * m + b
@@ -684,7 +671,10 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         mu = calculate_shift(
             video_sequence_length,
-            scheduler=self.scheduler,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.16),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
