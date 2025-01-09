@@ -132,7 +132,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
 
-        is_unet_version_less_0_9_0 = is_unet_version_less_0_9_0 = (
+        is_unet_version_less_0_9_0 = (
             unet is not None
             and hasattr(unet.config, "_diffusers_version")
             and version.parse(version.parse(unet.config._diffusers_version).base_version) < version.parse("0.9.0.dev0")
