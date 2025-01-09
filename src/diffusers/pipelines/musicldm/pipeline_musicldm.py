@@ -42,7 +42,19 @@ from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, StableDiffu
 if is_librosa_available():
     import librosa
 
+
+from ...utils import is_torch_xla_available
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -602,6 +614,9 @@ class MusicLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         self.maybe_free_model_hooks()
 
