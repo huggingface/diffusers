@@ -2813,7 +2813,6 @@ class CogVideoXAttnProcessor2_0:
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        **kwargs,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
@@ -2885,7 +2884,6 @@ class FusedCogVideoXAttnProcessor2_0:
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        **kwargs,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
