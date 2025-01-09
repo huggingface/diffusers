@@ -308,8 +308,6 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
 
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        print(image_from_tuple_slice)
-
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array([0.0320, 0.0860, 0.4013, 0.0518, 0.2484, 0.5847, 0.4411, 0.2321, 0.4593])

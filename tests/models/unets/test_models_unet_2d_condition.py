@@ -175,8 +175,7 @@ def create_ip_adapter_plus_state_dict(model):
     )
 
     ip_image_projection_state_dict = OrderedDict()
-    keys = [k for k in image_projection.state_dict() if "layers." in k]
-    print(keys)
+
     for k, v in image_projection.state_dict().items():
         if "2.to" in k:
             k = k.replace("2.to", "0.to")

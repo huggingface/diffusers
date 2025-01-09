@@ -219,9 +219,7 @@ class RFInversionFluxPipeline(
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
@@ -419,7 +417,7 @@ class RFInversionFluxPipeline(
             )
         image = image.to(dtype)
 
-        x0 = self.vae.encode(image.to(self.device)).latent_dist.sample()
+        x0 = self.vae.encode(image.to(self._execution_device)).latent_dist.sample()
         x0 = (x0 - self.vae.config.shift_factor) * self.vae.config.scaling_factor
         x0 = x0.to(dtype)
         return x0, resized

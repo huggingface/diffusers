@@ -1248,7 +1248,8 @@ class FluxPosEmbed(nn.Module):
         sin_out = []
         pos = ids.float()
         is_mps = ids.device.type == "mps"
-        freqs_dtype = torch.float32 if is_mps else torch.float64
+        is_npu = ids.device.type == "npu"
+        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
                 self.axes_dim[i],
