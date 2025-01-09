@@ -1015,7 +1015,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 448
         self.tile_sample_stride_width = 448
-        self.tile_sample_stride_num_frames = 8 
+        self.tile_sample_stride_num_frames = 8
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (LTXVideoEncoder3d, LTXVideoDecoder3d)):
@@ -1185,7 +1185,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 x / blend_extent
             )
         return b
-        
+
     def blend_t(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[-3], b.shape[-3], blend_extent)
         for x in range(blend_extent):
@@ -1280,9 +1280,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for i in range(0, height, tile_latent_stride_height):
             row = []
             for j in range(0, width, tile_latent_stride_width):
-                time = self.decoder(
-                    z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width], temb
-                )
+                time = self.decoder(z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width], temb)
 
                 row.append(time)
             rows.append(row)
@@ -1337,7 +1335,9 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         enc = torch.cat(result_row, dim=2)[:, :, :latent_num_frames]
         return enc
 
-    def _temporal_tiled_decode(self, z: torch.Tensor, temb: Optional[torch.Tensor], return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _temporal_tiled_decode(
+        self, z: torch.Tensor, temb: Optional[torch.Tensor], return_dict: bool = True
+    ) -> Union[DecoderOutput, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = z.shape
         num_sample_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
 
@@ -1365,7 +1365,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 tile = tile[:, :, : self.tile_sample_stride_num_frames, :, :]
                 result_row.append(tile)
             else:
-                result_row.append(tile[:, :, :self.tile_sample_stride_num_frames + 1, :, :])
+                result_row.append(tile[:, :, : self.tile_sample_stride_num_frames + 1, :, :])
 
         dec = torch.cat(result_row, dim=2)[:, :, :num_sample_frames]
 
