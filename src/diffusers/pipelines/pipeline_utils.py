@@ -37,8 +37,7 @@ from tqdm.auto import tqdm
 from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..loaders.single_file import FromSingleFileMixin
-from ..loaders.single_file_utils import load_single_file_checkpoint
-from ..loaders.single_file_utils import get_keyword_types
+from ..loaders.single_file_utils import get_keyword_types, load_single_file_checkpoint
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
@@ -755,7 +754,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin, FromSingleFileMixin):
             if cls.__name__ == "DiffusionPipeline":
                 # import it here to avoid circular import
                 from .stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
-                
+
                 checkpoint = load_single_file_checkpoint(
                     pretrained_model_name_or_path,
                     force_download=force_download,
@@ -1443,8 +1442,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin, FromSingleFileMixin):
 
             if load_components_from_hub and not trust_remote_code:
                 raise ValueError(
-                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k,v in custom_components.items()])} which must be executed to correctly "
-                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k,v in custom_components.items()])}.\n"
+                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k, v in custom_components.items()])} which must be executed to correctly "
+                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k, v in custom_components.items()])}.\n"
                     f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
                 )
 
