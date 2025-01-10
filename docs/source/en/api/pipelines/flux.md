@@ -143,6 +143,35 @@ image = pipe(
 image.save("output.png")
 ```
 
+Canny Control is also possible with a LoRA variant of this condition. The usage is as follows:
+
+```python
+# !pip install -U controlnet-aux
+import torch
+from controlnet_aux import CannyDetector
+from diffusers import FluxControlPipeline
+from diffusers.utils import load_image
+
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = CannyDetector()
+control_image = processor(control_image, low_threshold=50, high_threshold=200, detect_resolution=1024, image_resolution=1024)
+
+image = pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=50,
+    guidance_scale=30.0,
+).images[0]
+image.save("output.png")
+```
+
 ### Depth Control
 
 **Note:** `black-forest-labs/Flux.1-Depth-dev` is _not_ a ControlNet model. [`ControlNetModel`] models are a separate component from the UNet/Transformer whose residuals are added to the actual underlying model. Depth Control is an alternate architecture that achieves effectively the same results as a ControlNet model would, by using channel-wise concatenation with input control condition and ensuring the transformer learns structure control by following the condition as closely as possible.
@@ -155,6 +184,36 @@ from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
 
 pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", torch_dtype=torch.bfloat16).to("cuda")
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = DepthPreprocessor.from_pretrained("LiheYoung/depth-anything-large-hf")
+control_image = processor(control_image)[0].convert("RGB")
+
+image = pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=30,
+    guidance_scale=10.0,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("output.png")
+```
+
+Depth Control is also possible with a LoRA variant of this condition. The usage is as follows:
+
+```python
+# !pip install git+https://github.com/huggingface/image_gen_aux
+import torch
+from diffusers import FluxControlPipeline, FluxTransformer2DModel
+from diffusers.utils import load_image
+from image_gen_aux import DepthPreprocessor
+
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
@@ -209,6 +268,47 @@ images = pipe(
 images[0].save("flux-redux.png")
 ```
 
+## Combining Flux Turbo LoRAs with Flux Control, Fill, and Redux
+
+We can combine Flux Turbo LoRAs with Flux Control and other pipelines like Fill and Redux to enable few-steps' inference. The example below shows how to do that for Flux Control LoRA for depth and turbo LoRA from [`ByteDance/Hyper-SD`](https://hf.co/ByteDance/Hyper-SD).
+
+```py
+from diffusers import FluxControlPipeline
+from image_gen_aux import DepthPreprocessor
+from diffusers.utils import load_image
+from huggingface_hub import hf_hub_download
+import torch
+
+control_pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+control_pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora", adapter_name="depth")
+control_pipe.load_lora_weights(
+    hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
+)
+control_pipe.set_adapters(["depth", "hyper-sd"], adapter_weights=[0.85, 0.125])
+control_pipe.enable_model_cpu_offload()
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = DepthPreprocessor.from_pretrained("LiheYoung/depth-anything-large-hf")
+control_image = processor(control_image)[0].convert("RGB")
+
+image = control_pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=8,
+    guidance_scale=10.0,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("output.png")
+```
+
+## Note about `unload_lora_weights()` when using Flux LoRAs
+
+When unloading the Control LoRA weights, call `pipe.unload_lora_weights(reset_to_overwritten_params=True)` to reset the `pipe.transformer` completely back to its original form. The resultant pipeline can then be used with methods like [`DiffusionPipeline.from_pipe`]. More details about this argument are available in [this PR](https://github.com/huggingface/diffusers/pull/10397).
+
 ## Running FP16 inference
 
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
@@ -236,6 +336,46 @@ out = pipe(
     max_sequence_length=256,
 ).images[0]
 out.save("image.png")
+```
+
+## Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`FluxPipeline`] for inference with bitsandbytes.
+
+```py
+import torch
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, FluxTransformer2DModel, FluxPipeline
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
+
+quant_config = BitsAndBytesConfig(load_in_8bit=True)
+text_encoder_8bit = T5EncoderModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="text_encoder_2",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_8bit = FluxTransformer2DModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+pipeline = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    text_encoder=text_encoder_8bit,
+    transformer=transformer_8bit,
+    torch_dtype=torch.float16,
+    device_map="balanced",
+)
+
+prompt = "a tiny astronaut hatching from an egg on the moon"
+image = pipeline(prompt, guidance_scale=3.5, height=768, width=1360, num_inference_steps=50).images[0]
+image.save("flux.png")
 ```
 
 ## Single File Loading for the `FluxTransformer2DModel`

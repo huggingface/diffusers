@@ -32,6 +32,7 @@ from .import_utils import (
     is_bitsandbytes_available,
     is_compel_available,
     is_flax_available,
+    is_gguf_available,
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
@@ -39,6 +40,7 @@ from .import_utils import (
     is_timm_available,
     is_torch_available,
     is_torch_version,
+    is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
 )
@@ -471,6 +473,30 @@ def require_bitsandbytes_version_greater(bnb_version):
         ) > version.parse(bnb_version)
         return unittest.skipUnless(
             correct_bnb_version, f"Test requires bitsandbytes with the version greater than {bnb_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_gguf_version_greater_or_equal(gguf_version):
+    def decorator(test_case):
+        correct_gguf_version = is_gguf_available() and version.parse(
+            version.parse(importlib.metadata.version("gguf")).base_version
+        ) >= version.parse(gguf_version)
+        return unittest.skipUnless(
+            correct_gguf_version, f"Test requires gguf with the version greater than {gguf_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_torchao_version_greater_or_equal(torchao_version):
+    def decorator(test_case):
+        correct_torchao_version = is_torchao_available() and version.parse(
+            version.parse(importlib.metadata.version("torchao")).base_version
+        ) >= version.parse(torchao_version)
+        return unittest.skipUnless(
+            correct_torchao_version, f"Test requires torchao with version greater than {torchao_version}."
         )(test_case)
 
     return decorator

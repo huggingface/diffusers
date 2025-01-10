@@ -33,12 +33,21 @@ from ...utils import (
     deprecate,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from .pipeline_output import AllegroPipelineOutput
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 
 logger = logging.get_logger(__name__)
@@ -59,6 +68,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> vae = AutoencoderKLAllegro.from_pretrained("rhymes-ai/Allegro", subfolder="vae", torch_dtype=torch.float32)
         >>> pipe = AllegroPipeline.from_pretrained("rhymes-ai/Allegro", vae=vae, torch_dtype=torch.bfloat16).to("cuda")
+        >>> pipe.enable_vae_tiling()
 
         >>> prompt = (
         ...     "A seaside harbor with bright sunlight and sparkling seawater, with many boats in the water. From an aerial view, "
@@ -193,10 +203,10 @@ class AllegroPipeline(DiffusionPipeline):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
         self.vae_scale_factor_spatial = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+            2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         )
         self.vae_scale_factor_temporal = (
-            self.vae.config.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
+            self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
         )
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -623,21 +633,47 @@ class AllegroPipeline(DiffusionPipeline):
                 self.transformer.config.interpolation_scale_h,
                 self.transformer.config.interpolation_scale_w,
             ),
+            device=device,
         )
 
-        grid_t = torch.from_numpy(grid_t).to(device=device, dtype=torch.long)
-        grid_h = torch.from_numpy(grid_h).to(device=device, dtype=torch.long)
-        grid_w = torch.from_numpy(grid_w).to(device=device, dtype=torch.long)
+        grid_t = grid_t.to(dtype=torch.long)
+        grid_h = grid_h.to(dtype=torch.long)
+        grid_w = grid_w.to(dtype=torch.long)
 
         pos = torch.cartesian_prod(grid_t, grid_h, grid_w)
         pos = pos.reshape(-1, 3).transpose(0, 1).reshape(3, 1, -1).contiguous()
         grid_t, grid_h, grid_w = pos
 
-        freqs_t = (freqs_t[0].to(device=device), freqs_t[1].to(device=device))
-        freqs_h = (freqs_h[0].to(device=device), freqs_h[1].to(device=device))
-        freqs_w = (freqs_w[0].to(device=device), freqs_w[1].to(device=device))
-
         return (freqs_t, freqs_h, freqs_w), (grid_t, grid_h, grid_w)
+
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
 
     @property
     def guidance_scale(self):
@@ -893,6 +929,9 @@ class AllegroPipeline(DiffusionPipeline):
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype)

@@ -642,9 +642,6 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
 
-        debug = [str(round(i, 4)) for i in image_slice.flatten().tolist()]
-        print(",".join(debug))
-
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_adapter_sdxl_lcm_custom_timesteps(self):
@@ -666,8 +663,5 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
-
-        debug = [str(round(i, 4)) for i in image_slice.flatten().tolist()]
-        print(",".join(debug))
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

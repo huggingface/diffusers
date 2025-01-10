@@ -175,8 +175,7 @@ def create_ip_adapter_plus_state_dict(model):
     )
 
     ip_image_projection_state_dict = OrderedDict()
-    keys = [k for k in image_projection.state_dict() if "layers." in k]
-    print(keys)
+
     for k, v in image_projection.state_dict().items():
         if "2.to" in k:
             k = k.replace("2.to", "0.to")
@@ -1118,6 +1117,24 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert torch.allclose(
             lora_sample_1, lora_sample_2, atol=1e-4, rtol=1e-4
         ), "Loading from a saved checkpoint should produce identical results."
+
+    @require_peft_backend
+    def test_save_attn_procs_raise_warning(self):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        unet_lora_config = get_unet_lora_config()
+        model.add_adapter(unet_lora_config)
+
+        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertWarns(FutureWarning) as warning:
+                model.save_attn_procs(tmpdirname)
+
+        warning_message = str(warning.warnings[0].message)
+        assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
 
 
 @slow

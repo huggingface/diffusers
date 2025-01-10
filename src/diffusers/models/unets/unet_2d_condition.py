@@ -170,7 +170,7 @@ class UNet2DConditionModel(
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int] = None,
+        sample_size: Optional[Union[int, Tuple[int, int]]] = None,
         in_channels: int = 4,
         out_channels: int = 4,
         center_input_sample: bool = False,
