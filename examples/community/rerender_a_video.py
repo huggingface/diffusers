@@ -907,6 +907,9 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+                        
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
