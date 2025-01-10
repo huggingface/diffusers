@@ -15,6 +15,7 @@
 import inspect
 import tempfile
 import unittest
+import unittest
 from typing import Dict, List, Tuple
 
 from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
@@ -675,6 +676,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
             assert jnp.sum(jnp.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
+    @unittest.skip("Test not supported.")
     def test_from_save_pretrained(self):
         pass
 

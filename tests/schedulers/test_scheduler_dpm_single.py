@@ -8,7 +8,7 @@ from diffusers import (
     DPMSolverSinglestepScheduler,
     UniPCMultistepScheduler,
 )
-
+import unittest
 from .test_schedulers import SchedulerCommonTest
 
 
@@ -65,6 +65,7 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
                 assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
+    @unittest.skip("Test not supported.")
     def test_from_save_pretrained(self):
         pass
 

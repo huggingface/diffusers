@@ -4,9 +4,9 @@ import unittest
 import torch
 
 from diffusers import (
-    EDMDPMSolverMultistepScheduler,
+    EDMDPMSolverMultistepScheduler
 )
-
+import unittest
 from .test_schedulers import SchedulerCommonTest
 
 
@@ -63,6 +63,7 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
                 assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
+    @unittest.skip("Test not supported.")
     def test_from_save_pretrained(self):
         pass
 
@@ -258,5 +259,6 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             scheduler.set_timesteps(scheduler.config.num_train_timesteps)
             assert len(scheduler.timesteps) == scheduler.num_inference_steps
 
+    @unittest.skip("Test not supported.")
     def test_trained_betas(self):
         pass

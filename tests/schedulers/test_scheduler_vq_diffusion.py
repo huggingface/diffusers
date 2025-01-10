@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 
 from diffusers import VQDiffusionScheduler
+import unittest
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -52,5 +53,6 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
         for t in [0, 50, 99]:
             self.check_over_forward(time_step=t)
 
+    @unittest.skip("Test not supported.")
     def test_add_noise_device(self):
         pass
