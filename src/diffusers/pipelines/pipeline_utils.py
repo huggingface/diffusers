@@ -37,6 +37,7 @@ from tqdm.auto import tqdm
 from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..loaders.single_file import FromSingleFileMixin
+from ..loaders.single_file_utils import load_single_file_checkpoint
 from ..loaders.single_file_utils import get_keyword_types
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
@@ -754,8 +755,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin, FromSingleFileMixin):
             if cls.__name__ == "DiffusionPipeline":
                 # import it here to avoid circular import
                 from .stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
+                
+                checkpoint = load_single_file_checkpoint(
+                    pretrained_model_name_or_path,
+                    force_download=force_download,
+                    proxies=proxies,
+                    token=token,
+                    cache_dir=cache_dir,
+                    local_files_only=local_files_only,
+                    revision=revision,
+                )
 
-                return download_from_original_stable_diffusion_ckpt(pretrained_model_name_or_path, **kwargs)
+                return download_from_original_stable_diffusion_ckpt(checkpoint, **kwargs)
             else:
                 return cls.from_single_file(pretrained_model_name_or_path, **kwargs)
 
