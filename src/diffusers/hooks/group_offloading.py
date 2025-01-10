@@ -164,9 +164,11 @@ def _apply_group_offloading_diffusers_block(
 
     # Always keep parameters and buffers on onload_device
     for name, param in module.named_parameters(recurse=False):
-        param.data = param.data.to(onload_device)
+        if torch.is_tensor(param.data):
+            param.data = param.data.to(onload_device)
     for name, buffer in module.named_buffers(recurse=False):
-        buffer.data = buffer.data.to(onload_device)
+        if torch.is_tensor(buffer.data):
+            buffer.data = buffer.data.to(onload_device)
 
 
 def _apply_group_offloading_group_patterns(
