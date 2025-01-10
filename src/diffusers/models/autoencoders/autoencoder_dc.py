@@ -643,7 +643,9 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             for j in range(0, x.shape[3], self.tile_sample_stride_width):
                 tile = x[:, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
                 if tile.shape[2] % self.spatial_compression_ratio != 0 or tile.shape[3] % self.spatial_compression_ratio != 0:
-                    tile = F.pad(tile, (0, (self.spatial_compression_ratio - tile.shape[3]) % self.spatial_compression_ratio, 0, (self.spatial_compression_ratio - tile.shape[2]) % self.spatial_compression_ratio))
+                    pad_h = (self.spatial_compression_ratio - tile.shape[2]) % self.spatial_compression_ratio
+                    pad_w = (self.spatial_compression_ratio - tile.shape[3]) % self.spatial_compression_ratio
+                    tile = F.pad(tile, (0, pad_w, 0, pad_h))
                 tile = self.encoder(tile)
                 row.append(tile)
             rows.append(row)
