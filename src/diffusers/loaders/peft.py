@@ -20,7 +20,6 @@ from typing import Dict, List, Optional, Union
 
 import safetensors
 import torch
-import torch.nn as nn
 
 from ..utils import (
     MIN_PEFT_VERSION,
@@ -30,19 +29,15 @@ from ..utils import (
     delete_adapter_layers,
     get_adapter_name,
     get_peft_kwargs,
-    is_accelerate_available,
     is_peft_available,
     is_peft_version,
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .lora_base import _fetch_state_dict
+from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
 from .unet_loader_utils import _maybe_expand_lora_scales
 
-
-if is_accelerate_available():
-    from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
 
 logger = logging.get_logger(__name__)
 
@@ -141,27 +136,7 @@ class PeftAdapterMixin:
             tuple:
                 A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
         """
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-
-        if _pipeline is not None and _pipeline.hf_device_map is None:
-            for _, component in _pipeline.components.items():
-                if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
-                    if not is_model_cpu_offload:
-                        is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
-                    if not is_sequential_cpu_offload:
-                        is_sequential_cpu_offload = (
-                            isinstance(component._hf_hook, AlignDevicesHook)
-                            or hasattr(component._hf_hook, "hooks")
-                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
-                        )
-
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
-
-        return (is_model_cpu_offload, is_sequential_cpu_offload)
+        return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
     def load_lora_adapter(self, pretrained_model_name_or_path_or_dict, prefix="transformer", **kwargs):
         r"""
