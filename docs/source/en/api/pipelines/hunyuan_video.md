@@ -48,7 +48,7 @@ transformer_8bit = HunyuanVideoTransformer3DModel.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    torch_dtype=torch.bfloat16,
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
