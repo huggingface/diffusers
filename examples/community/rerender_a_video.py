@@ -907,7 +907,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-                        
+
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
