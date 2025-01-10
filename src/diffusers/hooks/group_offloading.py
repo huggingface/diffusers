@@ -98,7 +98,6 @@ class GroupOffloadingHook(ModelHook):
 
     def onload_(self, module: torch.nn.Module) -> None:
         if self.group.onload_leader == module:
-            breakpoint()
             if self.stream is not None:
                 # Wait for previous Host->Device transfer to complete
                 self.stream.synchronize()
