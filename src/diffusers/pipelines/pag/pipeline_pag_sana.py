@@ -30,6 +30,7 @@ from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -43,7 +44,15 @@ from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
 from .pag_utils import PAGMixin
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 if is_bs4_available():
     from bs4 import BeautifulSoup
@@ -162,7 +171,11 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.encoder_block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.encoder_block_out_channels) - 1)
+            if hasattr(self, "vae") and self.vae is not None
+            else 8
+        )
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         self.set_pag_applied_layers(
@@ -862,6 +875,9 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if output_type == "latent":
             image = latents

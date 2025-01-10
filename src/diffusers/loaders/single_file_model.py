@@ -25,6 +25,7 @@ from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
+    convert_auraflow_transformer_checkpoint_to_diffusers,
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_flux_transformer_checkpoint_to_diffusers,
@@ -104,6 +105,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "HunyuanVideoTransformer3DModel": {
         "checkpoint_mapping_fn": convert_hunyuan_video_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "AuraFlowTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_auraflow_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
 }
