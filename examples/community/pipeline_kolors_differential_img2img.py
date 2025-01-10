@@ -216,7 +216,11 @@ class KolorsDifferentialImg2ImgPipeline(
             vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_convert_grayscale=True
         )
 
-        self.default_sample_size = self.unet.config.sample_size
+        self.default_sample_size = (
+            self.unet.config.sample_size
+            if hasattr(self, "unet") and self.unet is not None and hasattr(self.unet.config, "sample_size")
+            else 128
+        )
 
     # Copied from diffusers.pipelines.kolors.pipeline_kolors.KolorsPipeline.encode_prompt
     def encode_prompt(
