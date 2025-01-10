@@ -62,6 +62,33 @@ image = pipeline(prompt).images[0]
 image.save("auraflow.png")
 ```
 
+Loading [GGUF checkpoints](https://huggingface.co/docs/diffusers/quantization/gguf) are also supported:
+
+```py
+import torch
+from diffusers import (
+    AuraFlowPipeline,
+    GGUFQuantizationConfig,
+    AuraFlowTransformer2DModel,
+)
+
+transformer = AuraFlowTransformer2DModel.from_single_file(
+    "https://huggingface.co/city96/AuraFlow-v0.3-gguf/blob/main/aura_flow_0.3-Q2_K.gguf",
+    quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+    torch_dtype=torch.bfloat16,
+)
+
+pipeline = AuraFlowPipeline.from_pretrained(
+    "fal/AuraFlow-v0.3",
+    transformer=transformer,
+    torch_dtype=torch.bfloat16,
+)
+
+prompt = "a cute pony in a field of flowers"
+image = pipeline(prompt).images[0]
+image.save("auraflow.png")
+```
+
 ## AuraFlowPipeline
 
 [[autodoc]] AuraFlowPipeline
