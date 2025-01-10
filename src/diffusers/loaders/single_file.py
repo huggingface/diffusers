@@ -32,7 +32,6 @@ from .single_file_utils import (
     create_diffusers_t5_model_from_checkpoint,
     fetch_diffusers_config,
     fetch_original_config,
-    get_keyword_types,
     is_clip_model_in_single_file,
     is_t5_in_single_file,
     load_single_file_checkpoint,

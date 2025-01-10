@@ -28,13 +28,7 @@ import numpy as np
 import PIL.Image
 import requests
 import torch
-from huggingface_hub import (
-    ModelCard,
-    create_repo,
-    hf_hub_download,
-    model_info,
-    snapshot_download,
-)
+from huggingface_hub import ModelCard, create_repo, hf_hub_download, model_info, snapshot_download
 from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
 from requests.exceptions import HTTPError
@@ -42,6 +36,8 @@ from tqdm.auto import tqdm
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..loaders.single_file import FromSingleFileMixin
+from ..loaders.single_file_utils import get_keyword_types
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
@@ -62,8 +58,7 @@ from ..utils import (
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
-from ..loaders.single_file_utils import get_keyword_types
-from ..loaders.single_file import FromSingleFileMixin
+
 
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
