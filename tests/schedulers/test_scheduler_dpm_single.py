@@ -1,4 +1,5 @@
 import tempfile
+import unittest
 
 import torch
 
@@ -8,7 +9,7 @@ from diffusers import (
     DPMSolverSinglestepScheduler,
     UniPCMultistepScheduler,
 )
-import unittest
+
 from .test_schedulers import SchedulerCommonTest
 
 

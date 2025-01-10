@@ -15,7 +15,6 @@
 import inspect
 import tempfile
 import unittest
-import unittest
 from typing import Dict, List, Tuple
 
 from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler

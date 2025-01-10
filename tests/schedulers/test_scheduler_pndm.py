@@ -1,7 +1,7 @@
 import tempfile
+import unittest
 
 import torch
-import unittest
 
 from diffusers import PNDMScheduler
 

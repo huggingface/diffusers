@@ -1,8 +1,9 @@
+import unittest
+
 import torch
 import torch.nn.functional as F
 
 from diffusers import VQDiffusionScheduler
-import unittest
 
 from .test_schedulers import SchedulerCommonTest
 

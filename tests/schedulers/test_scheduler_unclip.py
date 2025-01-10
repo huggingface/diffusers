@@ -1,7 +1,8 @@
+import unittest
+
 import torch
 
 from diffusers import UnCLIPScheduler
-import unittest
 
 from .test_schedulers import SchedulerCommonTest
 

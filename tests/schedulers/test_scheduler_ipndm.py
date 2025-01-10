@@ -1,7 +1,8 @@
 import tempfile
+import unittest
 
 import torch
-import unittest
+
 from diffusers import IPNDMScheduler
 
 from .test_schedulers import SchedulerCommonTest

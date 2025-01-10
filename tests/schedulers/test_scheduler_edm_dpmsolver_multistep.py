@@ -3,10 +3,8 @@ import unittest
 
 import torch
 
-from diffusers import (
-    EDMDPMSolverMultistepScheduler
-)
-import unittest
+from diffusers import EDMDPMSolverMultistepScheduler
+
 from .test_schedulers import SchedulerCommonTest
 
 
