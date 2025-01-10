@@ -748,8 +748,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin, FromSingleFileMixin):
             # Raise an error if the path is invalid
             raise ValueError(f"Invalid path or URL: {pretrained_model_name_or_path}")
 
+        # Load the pipeline from a single file
         elif load_method_name == "from_single_file":
-            return cls.from_single_file(pretrained_model_name_or_path, **kwargs)
+            # The arguments for the __init__ method of `DiffusionPipeline` are keyword arguments, so they cannot be loaded from `from_single_file`
+            if cls.__name__ == "DiffusionPipeline":
+                # import it here to avoid circular import
+                from .stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
+
+                return download_from_original_stable_diffusion_ckpt(pretrained_model_name_or_path, **kwargs)
+            else:
+                return cls.from_single_file(pretrained_model_name_or_path, **kwargs)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
