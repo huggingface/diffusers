@@ -521,6 +521,9 @@ class AutoPipelineForText2Image(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
+                    - A link to the `.ckpt` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
@@ -602,7 +605,15 @@ class AutoPipelineForText2Image(ConfigMixin):
         >>> pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt).images[0]
         ```
+        Example_2:
+        ```py
+        >>> from diffusers import AutoPipelineForText2Image
+
+        >>> pipeline = AutoPipelineForText2Image.from_pretrained(
+        ...     "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
+        ... )
         """
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -619,27 +630,44 @@ class AutoPipelineForText2Image(ConfigMixin):
             "revision": revision,
         }
 
-        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-        orig_class_name = config["_class_name"]
-        if "ControlPipeline" in orig_class_name:
-            to_replace = "ControlPipeline"
-        else:
-            to_replace = "Pipeline"
+        # Get the keyword types for the provided model path
+        hf_model_status = get_keyword_types(pretrained_model_or_path)
 
-        if "controlnet" in kwargs:
-            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
-                orig_class_name = config["_class_name"].replace(to_replace, "ControlNetUnionPipeline")
+        # Check if it is loadable.
+        if hf_model_status["loading_method"] is not None:
+            if hf_model_status["loading_method"] == "from_single_file":
+                # For single file checkpoint
+                return auto_load_single_checkpoint(
+                    pretrained_model_or_path=pretrained_model_or_path,
+                    pipeline_mapping=SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING,
+                    **kwargs,
+                )
             else:
-                orig_class_name = config["_class_name"].replace(to_replace, "ControlNetPipeline")
-        if "enable_pag" in kwargs:
-            enable_pag = kwargs.pop("enable_pag")
-            if enable_pag:
-                orig_class_name = orig_class_name.replace(to_replace, "PAGPipeline")
+                # Load the pipeline using the standard from_pretrained method if not a single file checkpoint
+                config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+                orig_class_name = config["_class_name"]
+                if "ControlPipeline" in orig_class_name:
+                    to_replace = "ControlPipeline"
+                else:
+                    to_replace = "Pipeline"
 
-        text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
+                if "controlnet" in kwargs:
+                    if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                        orig_class_name = config["_class_name"].replace(to_replace, "ControlNetUnionPipeline")
+                    else:
+                        orig_class_name = config["_class_name"].replace(to_replace, "ControlNetPipeline")
+                if "enable_pag" in kwargs:
+                    enable_pag = kwargs.pop("enable_pag")
+                    if enable_pag:
+                        orig_class_name = orig_class_name.replace(to_replace, "PAGPipeline")
 
-        kwargs = {**load_config_kwargs, **kwargs}
-        return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+                text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
+
+                kwargs = {**load_config_kwargs, **kwargs}
+                return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+        else:
+            # Exception handling when loading is not possible
+            raise ValueError(f"Invalid path or URL: {pretrained_model_or_path}")
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
