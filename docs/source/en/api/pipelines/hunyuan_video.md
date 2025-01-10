@@ -45,14 +45,14 @@ from diffusers.utils import export_to_video
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
 transformer_8bit = HunyuanVideoTransformer3DModel.from_pretrained(
-    "tencent/HunyuanVideo",
+    "hunyuanvideo-community/HunyuanVideo",
     subfolder="transformer",
     quantization_config=quant_config,
     torch_dtype=torch.float16,
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
-    "tencent/HunyuanVideo",
+    "hunyuanvideo-community/HunyuanVideo",
     transformer=transformer_8bit,
     torch_dtype=torch.float16,
     device_map="balanced",
