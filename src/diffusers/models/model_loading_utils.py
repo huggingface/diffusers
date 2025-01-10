@@ -246,6 +246,17 @@ def load_model_dict_into_meta(
             else:
                 set_module_tensor_to_device(model, param_name, device, value=param)
 
+    for param_name, param in model.named_buffers():
+        if is_quantized and (
+            hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
+        ):
+            hf_quantizer.create_quantized_param(model, param, param_name, device, state_dict, unexpected_keys)
+        else:
+            if accepts_dtype:
+                set_module_tensor_to_device(model, param_name, device, value=param, **set_module_kwargs)
+            else:
+                set_module_tensor_to_device(model, param_name, device, value=param)
+
     return unexpected_keys
 
 
