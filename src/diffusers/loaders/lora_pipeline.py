@@ -17,9 +17,11 @@ from typing import Callable, Dict, List, Optional, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
+from torch import nn
 
 from ..utils import (
     USE_PEFT_BACKEND,
+    StateDictType,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
     deprecate,
@@ -388,21 +390,13 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
                 # convert state dict
-                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict, original_type=StateDictType.DIFFUSERS)
 
-                for name, _ in text_encoder_attn_modules(text_encoder):
-                    for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
-
-                for name, _ in text_encoder_mlp_modules(text_encoder):
-                    for module in ("fc1", "fc2"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+                for name, module in text_encoder.named_modules():
+                    if "lora_A" not in name and "lora_B" not in name and isinstance(module, (nn.Linear, nn.Conv2d)):
+                        rank_key = f"{name.removesuffix(".base_layer")}.lora_B.weight"
+                        if rank_key in text_encoder_lora_state_dict:
+                            rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -931,21 +925,13 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
                 # convert state dict
-                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict, original_type=StateDictType.DIFFUSERS)
 
-                for name, _ in text_encoder_attn_modules(text_encoder):
-                    for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
-
-                for name, _ in text_encoder_mlp_modules(text_encoder):
-                    for module in ("fc1", "fc2"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+                for name, module in text_encoder.named_modules():
+                    if "lora_A" not in name and "lora_B" not in name and isinstance(module, (nn.Linear, nn.Conv2d)):
+                        rank_key = f"{name.removesuffix(".base_layer")}.lora_B.weight"
+                        if rank_key in text_encoder_lora_state_dict:
+                            rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -1440,21 +1426,13 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
                 # convert state dict
-                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict, original_type=StateDictType.DIFFUSERS)
 
-                for name, _ in text_encoder_attn_modules(text_encoder):
-                    for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
-
-                for name, _ in text_encoder_mlp_modules(text_encoder):
-                    for module in ("fc1", "fc2"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+                for name, module in text_encoder.named_modules():
+                    if "lora_A" not in name and "lora_B" not in name and isinstance(module, (nn.Linear, nn.Conv2d)):
+                        rank_key = f"{name.removesuffix(".base_layer")}.lora_B.weight"
+                        if rank_key in text_encoder_lora_state_dict:
+                            rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -1647,7 +1625,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`AuraFlowTransformer2DModel`] Specific to [`AuraFlowPipeline`].
     """
 
-    _lora_loadable_modules = ["transformer"]
+    _lora_loadable_modules = ["transformer", "text_encoder"]
     transformer_name = TRANSFORMER_NAME
     text_encoder_name = TEXT_ENCODER_NAME
     _control_lora_supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
@@ -2181,21 +2159,13 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
                 # convert state dict
-                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict, original_type=StateDictType.DIFFUSERS)
 
-                for name, _ in text_encoder_attn_modules(text_encoder):
-                    for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
-
-                for name, _ in text_encoder_mlp_modules(text_encoder):
-                    for module in ("fc1", "fc2"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+                for name, module in text_encoder.named_modules():
+                    if "lora_A" not in name and "lora_B" not in name and isinstance(module, (nn.Linear, nn.Conv2d)):
+                        rank_key = f"{name.removesuffix(".base_layer")}.lora_B.weight"
+                        if rank_key in text_encoder_lora_state_dict:
+                            rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -2820,21 +2790,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
                 # convert state dict
-                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict, original_type=StateDictType.DIFFUSERS)
 
-                for name, _ in text_encoder_attn_modules(text_encoder):
-                    for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
-
-                for name, _ in text_encoder_mlp_modules(text_encoder):
-                    for module in ("fc1", "fc2"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+                for name, module in text_encoder.named_modules():
+                    if "lora_A" not in name and "lora_B" not in name and isinstance(module, (nn.Linear, nn.Conv2d)):
+                        rank_key = f"{name.removesuffix(".base_layer")}.lora_B.weight"
+                        if rank_key in text_encoder_lora_state_dict:
+                            rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -3385,21 +3347,13 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
                 # convert state dict
-                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict, original_type=StateDictType.DIFFUSERS)
 
-                for name, _ in text_encoder_attn_modules(text_encoder):
-                    for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
-
-                for name, _ in text_encoder_mlp_modules(text_encoder):
-                    for module in ("fc1", "fc2"):
-                        rank_key = f"{name}.{module}.lora_B.weight"
-                        if rank_key not in text_encoder_lora_state_dict:
-                            continue
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+                for name, module in text_encoder.named_modules():
+                    if "lora_A" not in name and "lora_B" not in name and isinstance(module, (nn.Linear, nn.Conv2d)):
+                        rank_key = f"{name.removesuffix(".base_layer")}.lora_B.weight"
+                        if rank_key in text_encoder_lora_state_dict:
+                            rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
