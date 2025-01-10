@@ -372,6 +372,8 @@ class SlowBnb8bitTests(Base8bitTests):
             output_type="np",
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
+        from diffusers.utils.testing_utils import print_tensor_test
+        print_tensor_test(out_slice)
         expected_slice = np.array([0.0376, 0.0359, 0.0015, 0.0449, 0.0479, 0.0098, 0.0083, 0.0295, 0.0295])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
