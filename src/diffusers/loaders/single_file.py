@@ -376,7 +376,7 @@ class FromSingleFileMixin:
 
         from ..pipelines.pipeline_utils import _get_pipeline_class
 
-        pipeline_class = _get_pipeline_class(cls, config=None)
+        pipeline_class = _get_pipeline_class(cls, class_name=cls.__name__, config=None)
 
         if checkpoint is None:
             checkpoint = load_single_file_checkpoint(
