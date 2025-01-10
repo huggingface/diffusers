@@ -636,9 +636,12 @@ class AutoPipelineForText2Image(ConfigMixin):
         # Get the keyword types for the provided model path
         hf_model_status = get_keyword_types(pretrained_model_or_path)
 
+        # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
+        load_method_name = hf_model_status["loading_method"]
+
         # Check if it is loadable.
-        if hf_model_status["loading_method"] is not None:
-            if hf_model_status["loading_method"] == "from_single_file":
+        if load_method_name is not None:
+            if load_method_name == "from_single_file":
                 # For single file checkpoint
                 return auto_load_single_checkpoint(
                     pretrained_model_or_path=pretrained_model_or_path,
@@ -963,9 +966,12 @@ class AutoPipelineForImage2Image(ConfigMixin):
         # Get the keyword types for the provided model path
         hf_model_status = get_keyword_types(pretrained_model_or_path)
 
+        # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
+        load_method_name = hf_model_status["loading_method"]
+
         # Check if it is loadable.
-        if hf_model_status["loading_method"] is not None:
-            if hf_model_status["loading_method"] == "from_single_file":
+        if load_method_name is not None:
+            if load_method_name == "from_single_file":
                 # For single file checkpoint
                 return auto_load_single_checkpoint(
                     pretrained_model_or_path=pretrained_model_or_path,
@@ -1296,9 +1302,12 @@ class AutoPipelineForInpainting(ConfigMixin):
         # Get the keyword types for the provided model path
         hf_model_status = get_keyword_types(pretrained_model_or_path)
 
+        # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
+        load_method_name = hf_model_status["loading_method"]
+
         # Check if it is loadable.
-        if hf_model_status["loading_method"] is not None:
-            if hf_model_status["loading_method"] == "from_single_file":
+        if load_method_name is not None:
+            if load_method_name == "from_single_file":
                 # For single file checkpoint
                 return auto_load_single_checkpoint(
                     pretrained_model_or_path=pretrained_model_or_path,

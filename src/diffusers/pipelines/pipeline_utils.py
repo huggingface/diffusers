@@ -62,7 +62,8 @@ from ..utils import (
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
-
+from ..loaders.single_file_utils import get_keyword_types
+from ..loaders.single_file import FromSingleFileMixin
 
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
@@ -651,6 +652,27 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin, FromSingleFileMixin):
         >>> scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
         >>> pipeline.scheduler = scheduler
         ```
+        Examples_2:
+
+        ```py
+        >>> from diffusers import StableDiffusionPipeline
+
+        >>> # Download pipeline from huggingface.co and cache.
+        >>> pipeline = StableDiffusionPipeline.from_single_file(
+        ...     "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors"
+        ... )
+
+        >>> # Download pipeline from local file
+        >>> # file is downloaded under ./v1-5-pruned-emaonly.ckpt
+        >>> pipeline = StableDiffusionPipeline.from_single_file("./v1-5-pruned-emaonly.ckpt")
+
+        >>> # Enable float16 and move to GPU
+        >>> pipeline = StableDiffusionPipeline.from_single_file(
+        ...     "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
+        ...     torch_dtype=torch.float16,
+        ... )
+        >>> pipeline.to("cuda")
+        ```
         """
         # Copy the kwargs to re-use during loading connected pipeline.
         kwargs_copied = kwargs.copy()
@@ -720,6 +742,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin, FromSingleFileMixin):
                 f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
+
+        # Retrieve information about the path or repo ID
+        hf_model_status = get_keyword_types(pretrained_model_name_or_path)
+
+        # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
+        load_method_name = hf_model_status["loading_method"]
+
+        if load_method_name is None:
+            # Raise an error if the path is invalid
+            raise ValueError(f"Invalid path or URL: {pretrained_model_name_or_path}")
+        
+        elif load_method_name == "from_single_file":
+            return cls.from_single_file(pretrained_model_name_or_path, **kwargs)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
