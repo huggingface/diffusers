@@ -31,6 +31,7 @@ from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -38,7 +39,15 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 if is_bs4_available():
     from bs4 import BeautifulSoup
@@ -873,6 +882,9 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                         latents = latents.to(latents_dtype)
 
                 progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             latents = latents / self.vae.config.scaling_factor
