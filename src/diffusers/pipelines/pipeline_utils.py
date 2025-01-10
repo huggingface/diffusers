@@ -747,7 +747,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin, FromSingleFileMixin):
         if load_method_name is None:
             # Raise an error if the path is invalid
             raise ValueError(f"Invalid path or URL: {pretrained_model_name_or_path}")
-        
+
         elif load_method_name == "from_single_file":
             return cls.from_single_file(pretrained_model_name_or_path, **kwargs)
 
