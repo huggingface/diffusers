@@ -450,7 +450,7 @@ class GGUFLinear(nn.Linear):
     def forward(self, inputs):
         weight = dequantize_gguf_tensor(self.weight)
         weight = weight.to(self.compute_dtype)
-        bias = self.bias.to(self.compute_dtype)
+        bias = self.bias.to(self.compute_dtype) if self.bias is not None else None
 
         output = torch.nn.functional.linear(inputs, weight, bias)
         return output
