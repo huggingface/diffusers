@@ -470,6 +470,11 @@ class FromSingleFileMixin:
         init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict}
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+            )
+
         from diffusers import pipelines
 
         # remove `null` components
