@@ -186,11 +186,12 @@ class DiTPipeline(DiffusionPipeline):
             if not torch.is_tensor(timesteps):
                 # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                 # This would be a good case for the `match` statement (Python 3.10+)
-                is_mps_or_npu = latent_model_input.device.type == "mps" or latent_model_input.device.type == "npu"
+                is_mps = latent_model_input.device.type == "mps"
+                is_npu = latent_model_input.device.type == "npu"
                 if isinstance(timesteps, float):
-                    dtype = torch.float32 if is_mps_or_npu else torch.float64
+                    dtype = torch.float32 if (is_mps or is_npu) else torch.float64
                 else:
-                    dtype = torch.int32 if is_mps_or_npu else torch.int64
+                    dtype = torch.int32 if (is_mps or is_npu) else torch.int64
                 timesteps = torch.tensor([timesteps], dtype=dtype, device=latent_model_input.device)
             elif len(timesteps.shape) == 0:
                 timesteps = timesteps[None].to(latent_model_input.device)
