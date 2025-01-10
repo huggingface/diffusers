@@ -614,6 +614,9 @@ class AutoPipelineForText2Image(ConfigMixin):
         ... )
         """
 
+        # Copy the kwargs to re-use during loading connected pipeline.
+        kwargs_copied = kwargs.copy()
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -640,7 +643,7 @@ class AutoPipelineForText2Image(ConfigMixin):
                 return auto_load_single_checkpoint(
                     pretrained_model_or_path=pretrained_model_or_path,
                     pipeline_mapping=SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING,
-                    **kwargs,
+                    **kwargs_copied,
                 )
             else:
                 # Load the pipeline using the standard from_pretrained method if not a single file checkpoint
