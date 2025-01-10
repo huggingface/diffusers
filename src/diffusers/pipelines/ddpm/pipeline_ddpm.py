@@ -17,8 +17,17 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
+from ...utils import is_torch_xla_available
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 
 class DDPMPipeline(DiffusionPipeline):
@@ -115,6 +124,9 @@ class DDPMPipeline(DiffusionPipeline):
 
             # 2. compute previous image: x_t -> x_t-1
             image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
