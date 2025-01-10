@@ -131,16 +131,8 @@ class HookRegistry:
                 output = old_forward(*args, **kwargs)
                 return hook.post_forward(module, output)
 
-        # Overriding a GraphModuleImpl forward freezes the forward call and later modifications on the graph will fail.
-        # Reference: https://pytorch.slack.com/archives/C3PDTEV8E/p1705929610405409
-        if "GraphModuleImpl" in str(type(self._module_ref)):
-            self._module_ref.__class__.forward = functools.update_wrapper(
-                functools.partial(new_forward, self._module_ref), old_forward
-            )
-        else:
-            self._module_ref.forward = functools.update_wrapper(
-                functools.partial(new_forward, self._module_ref), old_forward
-            )
+        new_forward = functools.update_wrapper(new_forward, old_forward)
+        self._module_ref.forward = new_forward.__get__(self._module_ref)
 
         self.hooks[name] = hook
         self._hook_order.append(name)

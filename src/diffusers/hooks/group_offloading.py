@@ -20,14 +20,17 @@ import torch
 from .hooks import HookRegistry, ModelHook
 
 
-_TRANSFORMER_STACK_IDENTIFIERS = [
+_COMMON_STACK_IDENTIFIERS = {
     "transformer_blocks",
     "single_transformer_blocks",
     "temporal_transformer_blocks",
     "transformer_layers",
     "layers",
     "blocks",
-]
+    "down_blocks",
+    "up_blocks",
+    "mid_blocks",
+}
 
 
 class ModuleGroup:
@@ -62,24 +65,15 @@ class GroupOffloadingHook(ModelHook):
       encounter such an error.
     """
 
-    def __init__(self, group: ModuleGroup, offload_on_init: bool = True) -> None:
+    def __init__(self, group: ModuleGroup, offload_on_init: bool = True, non_blocking: bool = False) -> None:
         self.group = group
         self.offload_on_init = offload_on_init
+        self.non_blocking = non_blocking
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         if self.offload_on_init:
             self.offload_(module)
         return module
-
-    def onload_(self, module: torch.nn.Module) -> None:
-        if self.group.onload_leader is not None and self.group.onload_leader == module:
-            for group_module in self.group.modules:
-                group_module.to(self.group.onload_device)
-
-    def offload_(self, module: torch.nn.Module) -> None:
-        if self.group.offload_leader == module:
-            for group_module in self.group.modules:
-                group_module.to(self.group.offload_device)
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
         if self.group.onload_leader is None:
@@ -91,6 +85,19 @@ class GroupOffloadingHook(ModelHook):
         self.offload_(module)
         return output
 
+    def onload_(self, module: torch.nn.Module) -> None:
+        if self.group.onload_leader == module:
+            for group_module in self.group.modules:
+                group_module.to(self.group.onload_device, non_blocking=self.non_blocking)
+
+    def offload_(self, module: torch.nn.Module) -> None:
+        if self.group.offload_leader == module:
+            for group_module in self.group.modules:
+                group_module.to(self.group.offload_device, non_blocking=self.non_blocking)
+            # TODO: do we need to sync here because of GPU->CPU transfer?
+            if self.non_blocking and self.group.offload_device.type == "cpu":
+                torch.cpu.synchronize()
+
 
 def apply_group_offloading(
     module: torch.nn.Module,
@@ -99,14 +106,17 @@ def apply_group_offloading(
     offload_device: torch.device = torch.device("cpu"),
     onload_device: torch.device = torch.device("cuda"),
     force_offload: bool = True,
+    non_blocking: bool = False,
 ) -> None:
     if offload_group_patterns == "diffusers_block":
+        if num_blocks_per_group is None:
+            raise ValueError("num_blocks_per_group must be provided when using GroupOffloadingType.DIFFUSERS_BLOCK.")
         _apply_group_offloading_diffusers_block(
-            module, num_blocks_per_group, offload_device, onload_device, force_offload
+            module, num_blocks_per_group, offload_device, onload_device, force_offload, non_blocking
         )
     else:
         _apply_group_offloading_group_patterns(
-            module, offload_group_patterns, offload_device, onload_device, force_offload
+            module, offload_group_patterns, offload_device, onload_device, force_offload, non_blocking
         )
 
 
@@ -116,26 +126,47 @@ def _apply_group_offloading_diffusers_block(
     offload_device: torch.device,
     onload_device: torch.device,
     force_offload: bool,
+    non_blocking: bool,
 ) -> None:
-    if num_blocks_per_group is None:
-        raise ValueError("num_blocks_per_group must be provided when using GroupOffloadingType.DIFFUSERS_BLOCK.")
-
-    for transformer_stack_identifier in _TRANSFORMER_STACK_IDENTIFIERS:
-        if not hasattr(module, transformer_stack_identifier) or not isinstance(
-            getattr(module, transformer_stack_identifier), torch.nn.ModuleList
+    # Handle device offloading/onloading for unet/transformer stack modules
+    for stack_identifier in _COMMON_STACK_IDENTIFIERS:
+        if not hasattr(module, stack_identifier) or not isinstance(
+            getattr(module, stack_identifier), torch.nn.ModuleList
         ):
             continue
 
-        transformer_stack = getattr(module, transformer_stack_identifier)
-        num_blocks = len(transformer_stack)
+        stack = getattr(module, stack_identifier)
+        num_blocks = len(stack)
 
         for i in range(0, num_blocks, num_blocks_per_group):
-            blocks = transformer_stack[i : i + num_blocks_per_group]
+            blocks = stack[i : i + num_blocks_per_group]
             group = ModuleGroup(
                 blocks, offload_device, onload_device, offload_leader=blocks[-1], onload_leader=blocks[0]
             )
             should_offload = force_offload or i > 0
-            _apply_group_offloading(group, should_offload)
+            _apply_group_offloading(group, should_offload, non_blocking)
+
+    # Handle device offloading/onloading for non-stack modules
+    for name, submodule in module.named_modules():
+        name_split = name.split(".")
+        if not isinstance(submodule, torch.nn.Module) or name == "" or len(name_split) > 1:
+            # We only want the layers that are top-level in the module (encompass all the submodules)
+            # for enabling offloading.
+            continue
+        layer_name = name_split[0]
+        print(layer_name)
+        if layer_name in _COMMON_STACK_IDENTIFIERS:
+            continue
+        group = ModuleGroup(
+            [submodule], offload_device, onload_device, offload_leader=submodule, onload_leader=submodule
+        )
+        _apply_group_offloading(group, force_offload, non_blocking)
+
+    # Always keep parameters and buffers on onload_device
+    for name, param in module.named_parameters(recurse=False):
+        param.data = param.data.to(onload_device)
+    for name, buffer in module.named_buffers(recurse=False):
+        buffer.data = buffer.data.to(onload_device)
 
 
 def _apply_group_offloading_group_patterns(
@@ -144,6 +175,7 @@ def _apply_group_offloading_group_patterns(
     offload_device: torch.device,
     onload_device: torch.device,
     force_offload: bool,
+    non_blocking: bool,
 ) -> None:
     per_group_modules = []
     for i, offload_group_pattern in enumerate(offload_group_patterns):
@@ -174,11 +206,11 @@ def _apply_group_offloading_group_patterns(
     for group in per_group_modules:
         # TODO: handle offload leader correctly
         group = ModuleGroup(group["modules"], offload_device, onload_device, offload_leader=group["modules"][-1])
-        _apply_group_offloading(group, force_offload)
+        _apply_group_offloading(group, force_offload, non_blocking)
 
 
-def _apply_group_offloading(group: ModuleGroup, offload_on_init) -> None:
+def _apply_group_offloading(group: ModuleGroup, offload_on_init: bool, non_blocking: bool) -> None:
     for module in group.modules:
-        hook = GroupOffloadingHook(group, offload_on_init=offload_on_init)
+        hook = GroupOffloadingHook(group, offload_on_init, non_blocking)
         registry = HookRegistry.check_if_exists_or_initialize(module)
         registry.register_hook(hook, "group_offloading")
