@@ -505,7 +505,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
 class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A Transformer model for video-like data used in
-    [HunyuanVideo](https://huggingface.co/hunyuanvideo-community/HunyuanVideo).
+    [HunyuanVideo](https://huggingface.co/tencent/HunyuanVideo).
 
     Args:
         in_channels (`int`, defaults to `16`):
