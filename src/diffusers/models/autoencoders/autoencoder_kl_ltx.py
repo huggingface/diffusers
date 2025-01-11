@@ -998,8 +998,8 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         # When decoding temporally long video latents, the memory requirement is very high. By decoding latent frames
         # at a fixed frame batch size (based on `self.num_latent_frames_batch_sizes`), the memory requirement can be lowered.
-        self.use_framewise_encoding = True
-        self.use_framewise_decoding = True
+        self.use_framewise_encoding = False
+        self.use_framewise_decoding = False
 
         # This can be configured based on the amount of GPU memory available.
         # `16` for sample frames and `2` for latent frames are sensible defaults for consumer GPUs.
