@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # AutoencoderKLHunyuanVideo
 
-The 3D variational autoencoder (VAE) model with KL loss used in [HunyuanVideo](https://github.com/hunyuanvideo-community/HunyuanVideo/), which was introduced in [HunyuanVideo: A Systematic Framework For Large Video Generative Models](https://huggingface.co/papers/2412.03603) by Tencent.
+The 3D variational autoencoder (VAE) model with KL loss used in [HunyuanVideo](https://github.com/tencent/HunyuanVideo/), which was introduced in [HunyuanVideo: A Systematic Framework For Large Video Generative Models](https://huggingface.co/papers/2412.03603) by Tencent.
 
 The model can be loaded with the following code snippet.
 
