@@ -30,7 +30,7 @@ Recommendations for inference:
 - VAE should be in `torch.float16`.
 - `num_frames` should be of the form `4 * k + 1`, for example `49` or `129`.
 - For smaller resolution videos, try lower values of `shift` (between `2.0` to `5.0`) in the [Scheduler](https://huggingface.co/docs/diffusers/main/en/api/schedulers/flow_match_euler_discrete#diffusers.FlowMatchEulerDiscreteScheduler.shift). For larger resolution images, try higher values (between `7.0` and `12.0`). The default value is `7.0` for HunyuanVideo.
-- For more information about supported resolutions and other details, please refer to the original repository [here](https://github.com/hunyuanvideo-community/HunyuanVideo/).
+- For more information about supported resolutions and other details, please refer to the original repository [here](https://github.com/tencent/HunyuanVideo/).
 
 ## Quantization
 
