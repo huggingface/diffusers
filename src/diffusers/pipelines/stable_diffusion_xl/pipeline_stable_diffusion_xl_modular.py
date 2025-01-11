@@ -131,9 +131,12 @@ class StableDiffusionXLInputStep(PipelineBlock):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             ("prompt", None),
-            ("prompt_embeds", None),
         ]
 
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["prompt_embeds"]
+    
     @property
     def intermediates_outputs(self) -> List[str]:
         return ["batch_size"]
@@ -141,7 +144,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         prompt = state.get_input("prompt")
-        prompt_embeds = state.get_input("prompt_embeds")
+        prompt_embeds = state.get_intermediate("prompt_embeds")
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -168,15 +171,15 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             ("negative_prompt", None),
             ("negative_prompt_2", None),
             ("cross_attention_kwargs", None),
-            ("prompt_embeds", None),
-            ("negative_prompt_embeds", None),
-            ("pooled_prompt_embeds", None),
-            ("negative_pooled_prompt_embeds", None),
             ("num_images_per_prompt", 1),
             ("guidance_scale", 5.0),
             ("clip_skip", None),
         ]
 
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["prompt_embeds", "negative_prompt_embeds", "pooled_prompt_embeds", "negative_pooled_prompt_embeds"]
+    
     @property
     def intermediates_outputs(self) -> List[str]:
         return [
@@ -263,13 +266,14 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         negative_prompt = state.get_input("negative_prompt")
         negative_prompt_2 = state.get_input("negative_prompt_2")
         cross_attention_kwargs = state.get_input("cross_attention_kwargs")
-        prompt_embeds = state.get_input("prompt_embeds")
-        negative_prompt_embeds = state.get_input("negative_prompt_embeds")
-        pooled_prompt_embeds = state.get_input("pooled_prompt_embeds")
-        negative_pooled_prompt_embeds = state.get_input("negative_pooled_prompt_embeds")
         num_images_per_prompt = state.get_input("num_images_per_prompt")
         guidance_scale = state.get_input("guidance_scale")
         clip_skip = state.get_input("clip_skip")
+
+        prompt_embeds = state.get_intermediate("prompt_embeds")
+        negative_prompt_embeds = state.get_intermediate("negative_prompt_embeds")
+        pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
+        negative_pooled_prompt_embeds = state.get_intermediate("negative_pooled_prompt_embeds")
 
         do_classifier_free_guidance = guidance_scale > 1.0
         device = pipeline._execution_device
@@ -335,7 +339,7 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "dtype","preprocess_kwargs"]
+        return ["batch_size", "dtype", "preprocess_kwargs"]
 
     @property
     def intermediates_outputs(self) -> List[str]:
@@ -1771,8 +1775,8 @@ class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
 
 
 TEXT2IMAGE_BLOCKS = OrderedDict([
-    ("input", StableDiffusionXLInputStep),
     ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("input", StableDiffusionXLInputStep),
     ("set_timesteps", StableDiffusionXLAutoSetTimestepsStep),
     ("prepare_latents", StableDiffusionXLAutoPrepareLatentsStep),
     ("prepare_add_cond", StableDiffusionXLAutoPrepareAdditionalConditioningStep),
@@ -1781,8 +1785,8 @@ TEXT2IMAGE_BLOCKS = OrderedDict([
 ])
 
 IMAGE2IMAGE_BLOCKS = OrderedDict([
-    ("input", StableDiffusionXLInputStep),
     ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("input", StableDiffusionXLInputStep),
     ("image_encoder", StableDiffusionXLVaeEncoderStep),
     ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
     ("prepare_latents", StableDiffusionXLImg2ImgPrepareLatentsStep),
@@ -1792,8 +1796,8 @@ IMAGE2IMAGE_BLOCKS = OrderedDict([
 ])
 
 INPAINT_BLOCKS = OrderedDict([
-    ("input", StableDiffusionXLInputStep),
     ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("input", StableDiffusionXLInputStep),
     ("image_encoder", StableDiffusionXLInpaintVaeEncoderStep),
     ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
     ("prepare_latents", StableDiffusionXLInpaintPrepareLatentsStep),
@@ -1807,8 +1811,8 @@ CONTROLNET_BLOCKS = OrderedDict([
 ])
 
 AUTO_BLOCKS = OrderedDict([
-    ("input", StableDiffusionXLInputStep),
     ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("input", StableDiffusionXLInputStep),
     ("image_encoder", StableDiffusionXLAutoVaeEncoderStep),
     ("set_timesteps", StableDiffusionXLAutoSetTimestepsStep),
     ("prepare_latents", StableDiffusionXLAutoPrepareLatentsStep),

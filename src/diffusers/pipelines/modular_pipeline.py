@@ -131,37 +131,57 @@ class PipelineBlock:
 
     def __repr__(self):
         class_name = self.__class__.__name__
+        base_class = self.__class__.__bases__[0].__name__
 
-        # Components section
+        # Components section - group into main components and auxiliaries if needed
         expected_components = set(getattr(self, "expected_components", []))
         loaded_components = set(self.components.keys())
         all_components = sorted(expected_components | loaded_components)
-        components = ", ".join(
-            f"{k}={type(self.components[k]).__name__}" if k in loaded_components else f"{k}" for k in all_components
-        )
+
+        main_components = []
+        auxiliary_components = []
+        for k in all_components:
+            component_str = f"    - {k}={type(self.components[k]).__name__}" if k in loaded_components else f"    - {k}"
+            if k in getattr(self, "auxiliary_components", []):
+                auxiliary_components.append(component_str)
+            else:
+                main_components.append(component_str)
+
+        components = "Components:\n" + "\n".join(main_components)
+        if auxiliary_components:
+            components += "\n  Auxiliaries:\n" + "\n".join(auxiliary_components)
 
         # Configs section
         expected_configs = set(getattr(self, "expected_configs", []))
         loaded_configs = set(self.configs.keys())
         all_configs = sorted(expected_configs | loaded_configs)
-        configs = ", ".join(f"{k}={self.configs[k]}" if k in loaded_configs else f"{k}" for k in all_configs)
+        configs = "Configs:\n" + "\n".join(
+            f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" 
+            for k in all_configs
+        )
 
-        # Single block shows itself
-        blocks = f"step={self.__class__.__name__}"
+        # Inputs section
+        inputs = "inputs: " + ", ".join(
+            f"{name}={default}" if default is not None else name 
+            for name, default in self.inputs
+        )
 
-        # Other information
-        inputs = ", ".join(f"{name}={default}" for name, default in self.inputs)
-        intermediates_inputs = ", ".join(self.intermediates_inputs)
-        intermediates_outputs = ", ".join(self.intermediates_outputs)
+        # Intermediates section
+        input_set = set(self.intermediates_inputs)
+        output_set = set(self.intermediates_outputs)
+        
+        modified_inputs = [f"{item}*" for item in self.intermediates_inputs]
+        new_outputs = [item for item in self.intermediates_outputs if item not in input_set]
+        
+        intermediates = f"intermediates: {', '.join(modified_inputs)} -> {', '.join(new_outputs)}"
 
         return (
             f"{class_name}(\n"
-            f"  components: {components}\n"
-            f"  configs: {configs}\n"
-            f"  blocks: {blocks}\n"
-            f"  inputs: {inputs}\n"
-            f"  intermediates_inputs: {intermediates_inputs}\n"
-            f"  intermediates_outputs: {intermediates_outputs}\n"
+            f"  Class: {base_class}\n"
+            f"  {components}\n"
+            f"  {configs}\n"
+            f"  {inputs}\n"
+            f"  {intermediates}\n"
             f")"
         )
 
@@ -175,7 +195,6 @@ def combine_inputs(*named_input_lists: List[Tuple[str, List[Tuple[str, Any]]]]) 
         named_input_lists: List of tuples containing (block_name, input_list) pairs
     """
     combined_dict = {}
-    # Track which block provided which value
     value_sources = {}
     
     for block_name, inputs in named_input_lists:
@@ -229,6 +248,7 @@ class AutoPipelineBlocks:
 
         # Map trigger inputs to block objects
         self.trigger_to_block_map = dict(zip(self.block_trigger_inputs, self.blocks.values()))
+        self.block_to_trigger_map = dict(zip(self.blocks.keys(), self.block_trigger_inputs))
 
     @property
     def model_name(self):
@@ -321,73 +341,99 @@ class AutoPipelineBlocks:
             logger.error(error_msg)
             raise
 
+    def _get_trigger_inputs(self):
+        """
+        Returns a set of all unique trigger input values found in the blocks.
+        Returns: Set[str] containing all unique block_trigger_inputs values
+        """
+        def fn_recursive_get_trigger(blocks):
+            trigger_values = set()
+            
+            if blocks is not None:
+                for name, block in blocks.items():
+                    # Check if current block has trigger inputs(i.e. auto block)
+                    if hasattr(block, 'block_trigger_inputs') and block.block_trigger_inputs is not None:
+                        # Add all non-None values from the trigger inputs list
+                        trigger_values.update(t for t in block.block_trigger_inputs if t is not None)
+                    
+                    # If block has blocks, recursively check them
+                    if hasattr(block, 'blocks'):
+                        nested_triggers = fn_recursive_get_trigger(block.blocks)
+                        trigger_values.update(nested_triggers)
+            
+            return trigger_values
+        
+        trigger_inputs = set(self.block_trigger_inputs)
+        trigger_inputs.update(fn_recursive_get_trigger(self.blocks))
+        
+        return trigger_inputs
+
+    @property
+    def trigger_inputs(self):
+        return self._get_trigger_inputs()
+
     def __repr__(self):
         class_name = self.__class__.__name__
+        base_class = self.__class__.__bases__[0].__name__
 
-        # Components section
-        expected_components = set(getattr(self, "expected_components", []))
-        loaded_components = set(self.components.keys())
-        all_components = sorted(expected_components | loaded_components)
-        components_str = "  Components:\n" + "\n".join(
-            f"    - {k}={type(self.components[k]).__name__}" if k in loaded_components else f"    - {k}"
-            for k in all_components
-        )
+        all_triggers = set(self.trigger_to_block_map.keys())
+        
+        sections = []
+        for trigger in sorted(all_triggers, key=lambda x: str(x)):
+            sections.append(f"\n  Trigger Input: {trigger}\n")
+            
+            block = self.trigger_to_block_map.get(trigger)
+            if block is None:
+                continue
+                
+            expected_components = set(getattr(block, "expected_components", []))
+            loaded_components = set(k for k, v in self.components.items() 
+                                 if v is not None and hasattr(block, k))
+            all_components = sorted(expected_components | loaded_components)
+            if all_components:
+                sections.append("    Components:\n" + "\n".join(
+                    f"      - {k}={type(self.components[k]).__name__}" if k in loaded_components 
+                    else f"      - {k}" for k in all_components
+                ))
 
-        # Auxiliaries section
-        auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
-            f"    - {k}={type(v).__name__}" for k, v in self.auxiliaries.items()
-        )
+            if self.auxiliaries:
+                sections.append("    Auxiliaries:\n" + "\n".join(
+                    f"      - {k}={type(v).__name__}" 
+                    for k, v in self.auxiliaries.items()
+                ))
 
-        # Configs section
-        expected_configs = set(getattr(self, "expected_configs", []))
-        loaded_configs = set(self.configs.keys())
-        all_configs = sorted(expected_configs | loaded_configs)
-        configs_str = "  Configs:\n" + "\n".join(
-            f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" for k in all_configs
-        )
+            if self.configs:
+                sections.append("    Configs:\n" + "\n".join(
+                    f"      - {k}={v}" for k, v in self.configs.items()
+                ))
 
-        # Blocks section with trigger information
-        blocks_str = "  Blocks:\n"
-        for name, block in self.blocks.items():
-            # Find trigger for this block
-            trigger = next((t for t, b in self.trigger_to_block_map.items() if b == block), None)
-            trigger_str = " (default)" if trigger is None else f" (triggered by: {trigger})"
-
-            blocks_str += f"    {name} ({block.__class__.__name__}){trigger_str}\n"
-
-            # Add inputs information
+            sections.append(f"    Block: {block.__class__.__name__}")
+            
             if hasattr(block, "inputs"):
-                inputs_str = ", ".join(f"{name}={default}" for name, default in block.inputs)
+                inputs_str = ", ".join(
+                    name if default is None else f"{name}={default}"
+                    for name, default in block.inputs
+                )
                 if inputs_str:
-                    blocks_str += f"       inputs: {inputs_str}\n"
+                    sections.append(f"      inputs: {inputs_str}")
 
-            # Add intermediates information
             if hasattr(block, "intermediates_inputs") or hasattr(block, "intermediates_outputs"):
                 intermediates_str = ""
                 if hasattr(block, "intermediates_inputs"):
                     intermediates_str += f"{', '.join(block.intermediates_inputs)}"
-
                 if hasattr(block, "intermediates_outputs"):
                     if intermediates_str:
                         intermediates_str += " -> "
                     intermediates_str += f"{', '.join(block.intermediates_outputs)}"
-
                 if intermediates_str:
-                    blocks_str += f"       intermediates: {intermediates_str}\n"
-            blocks_str += "\n"
-        intermediates_str = (
-            "\n    Intermediates:\n"
-            f"      - inputs: {', '.join(self.intermediates_inputs)}\n"
-            f"      - outputs: {', '.join(self.intermediates_outputs)}"
-        )
+                    sections.append(f"      intermediates: {intermediates_str}")
+            
+            sections.append("") 
 
         return (
             f"{class_name}(\n"
-            f"{components_str}\n"
-            f"{auxiliaries_str}\n"
-            f"{configs_str}\n"
-            f"{blocks_str}\n"
-            f"{intermediates_str}\n"
+            f"  Class: {base_class}\n"
+            f"{chr(10).join(sections)}"
             f")"
         )
 
@@ -421,6 +467,22 @@ class SequentialPipelineBlocks:
                     expected_configs.append(config)
         return expected_configs
 
+    @classmethod
+    def from_blocks_dict(cls, blocks_dict: Dict[str, Any]) -> "SequentialPipelineBlocks":
+        """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
+        
+        Args:
+            blocks_dict: Dictionary mapping block names to block instances
+            
+        Returns:
+            A new SequentialPipelineBlocks instance
+        """
+        instance = cls()
+        instance.block_classes = [block.__class__ for block in blocks_dict.values()]
+        instance.block_names = list(blocks_dict.keys())
+        instance.blocks = blocks_dict
+        return instance
+    
     def __init__(self):
         blocks = OrderedDict()
         for block_name, block_cls in zip(self.block_names, self.block_classes):
@@ -498,9 +560,120 @@ class SequentialPipelineBlocks:
                 logger.error(error_msg)
                 raise
         return pipeline, state
+    
+    def _get_trigger_inputs(self):
+        """
+        Returns a set of all unique trigger input values found in the blocks.
+        Returns: Set[str] containing all unique block_trigger_inputs values
+        """
+        def fn_recursive_get_trigger(blocks):
+            trigger_values = set()
+            
+            if blocks is not None:
+                for name, block in blocks.items():
+                    # Check if current block has trigger inputs(i.e. auto block)
+                    if hasattr(block, 'block_trigger_inputs') and block.block_trigger_inputs is not None:
+                        # Add all non-None values from the trigger inputs list
+                        trigger_values.update(t for t in block.block_trigger_inputs if t is not None)
+                    
+                    # If block has blocks, recursively check them
+                    if hasattr(block, 'blocks'):
+                        nested_triggers = fn_recursive_get_trigger(block.blocks)
+                        trigger_values.update(nested_triggers)
+            
+            return trigger_values
+        
+        return fn_recursive_get_trigger(self.blocks)
 
+    @property
+    def trigger_inputs(self):
+        return self._get_trigger_inputs()
+
+    def _traverse_trigger_blocks(self, trigger_inputs):
+
+        def fn_recursive_traverse(block, block_name, trigger_inputs):
+            result_blocks = OrderedDict()
+            # sequential or PipelineBlock
+            if not hasattr(block, 'block_trigger_inputs'):
+                if hasattr(block, 'blocks'):
+                    # sequential
+                    for block_name, block in block.blocks.items():
+                        blocks_to_update = fn_recursive_traverse(block, block_name, trigger_inputs)
+                        result_blocks.update(blocks_to_update)
+                else:
+                    # PipelineBlock
+                    result_blocks[block_name] = block
+                return result_blocks
+                
+            # auto
+            else:
+                # Find first block_trigger_input that matches any value in our trigger_value tuple
+                this_block = None
+                for trigger_input in block.block_trigger_inputs:
+                    if trigger_input is not None and trigger_input in trigger_inputs:
+                        this_block = block.trigger_to_block_map[trigger_input]
+                        break
+                
+                # If no matches found, try to get the default (None) block
+                if this_block is None and None in block.block_trigger_inputs:
+                    this_block = block.trigger_to_block_map[None]
+                
+                if this_block is not None:
+                    # sequential/auto
+                    if hasattr(this_block, 'blocks'):
+                        result_blocks.update(fn_recursive_traverse(this_block, block_name, trigger_inputs))
+                    else:
+                        # PipelineBlock
+                        result_blocks[block_name] = this_block
+
+            return result_blocks
+        
+        all_blocks = OrderedDict()
+        for block_name, block in self.blocks.items():
+            blocks_to_update = fn_recursive_traverse(block, block_name, trigger_inputs)
+            all_blocks.update(blocks_to_update)
+        return all_blocks
+    
+    def get_triggered_blocks(self, *trigger_inputs):
+        trigger_inputs_all = self.trigger_inputs
+
+        if trigger_inputs is not None:
+
+            if not isinstance(trigger_inputs, (list, tuple, set)):
+                trigger_inputs = [trigger_inputs]
+            invalid_inputs = [x for x in trigger_inputs if x not in trigger_inputs_all]
+            if invalid_inputs:
+                logger.warning(
+                    f"The following trigger inputs will be ignored as they are not supported: {invalid_inputs}"
+                )
+                trigger_inputs = [x for x in trigger_inputs if x in trigger_inputs_all]
+        
+        if trigger_inputs is None:
+            if None in trigger_inputs_all:
+                trigger_inputs = [None]
+            else:
+                trigger_inputs = [trigger_inputs_all[0]]
+        blocks_triggered = self._traverse_trigger_blocks(trigger_inputs)
+        return SequentialPipelineBlocks.from_blocks_dict(blocks_triggered)
+    
     def __repr__(self):
         class_name = self.__class__.__name__
+        base_class = self.__class__.__bases__[0].__name__
+        header = (
+            f"{class_name}(\n  Class: {base_class}\n"
+            if base_class and base_class != "object"
+            else f"{class_name}(\n"
+        )
+
+    
+        if self.trigger_inputs:
+            header += "\n"  # Add empty line before
+            header += "  " + "=" * 100 + "\n"  # Add decorative line
+            header += "  This pipeline block contains AutoPipelineBlocks where different blocks are dispatched at runtime based on your inputs.\n"
+            header += "  You can use `get_triggered_blocks(input1, input2,...)` to get specific information for your trigger inputs.\n"
+            header += f"  Trigger Inputs: {self.trigger_inputs}\n"
+            header += "  " + "=" * 100 + "\n"  # Add decorative line
+            header += "\n"  # Add empty line after
 
         # Components section
         expected_components = set(getattr(self, "expected_components", []))
@@ -524,44 +697,57 @@ class SequentialPipelineBlocks:
             f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" for k in all_configs
         )
 
-        # Detailed blocks section with data flow
         blocks_str = "  Blocks:\n"
         for i, (name, block) in enumerate(self.blocks.items()):
             blocks_str += f"    {i}. {name} ({block.__class__.__name__})\n"
 
-            # Add inputs information
             if hasattr(block, "inputs"):
-                inputs_str = ", ".join(f"{name}={default}" for name, default in block.inputs)
+                inputs_str = ", ".join(
+                    name if default is None else f"{name}={default}"
+                    for name, default in block.inputs
+                )
                 blocks_str += f"       inputs: {inputs_str}\n"
 
-            # Add intermediates information
             if hasattr(block, "intermediates_inputs") or hasattr(block, "intermediates_outputs"):
                 intermediates_str = ""
                 if hasattr(block, "intermediates_inputs"):
-                    intermediates_str += f"{', '.join(block.intermediates_inputs)}"
+                    inputs_set = set(block.intermediates_inputs)
+                    intermediates_str += ", ".join(f"*{inp}" if inp in (getattr(block, "intermediates_outputs", set())) else inp 
+                                                for inp in block.intermediates_inputs)
 
                 if hasattr(block, "intermediates_outputs"):
                     if intermediates_str:
                         intermediates_str += " -> "
-                    intermediates_str += f"{', '.join(block.intermediates_outputs)}"
+                    outputs_set = set(block.intermediates_outputs)
+                    new_outputs = outputs_set - inputs_set if hasattr(block, "intermediates_inputs") else outputs_set
+                    intermediates_str += ", ".join(new_outputs)
 
                 if intermediates_str:
                     blocks_str += f"       intermediates: {intermediates_str}\n"
             blocks_str += "\n"
+        
+        inputs_str = "  inputs:\n    " + ", ".join(
+            f"{name}={default}" if default is not None else f"{name}"
+            for name, default in self.inputs
+        )
+ 
+        modified_inputs = [f"*{inp}" if inp in self.intermediates_outputs else inp for inp in self.intermediates_inputs]
+        new_outputs = [out for out in self.intermediates_outputs if out not in self.intermediates_inputs]
 
         intermediates_str = (
-            "\n    Intermediates:\n"
-            f"      - inputs: {', '.join(self.intermediates_inputs)}\n"
-            f"      - outputs: {', '.join(self.intermediates_outputs)}\n"
+            "\n  Intermediates:\n"
+            f"      - inputs: {', '.join(modified_inputs)}\n"
+            f"      - outputs: {', '.join(new_outputs)}\n"
             f"      - final outputs: {', '.join(self.final_intermediates_outputs)}"
         )
 
         return (
-            f"{class_name}(\n"
+            f"{header}\n"
             f"{components_str}\n"
             f"{auxiliaries_str}\n"
             f"{configs_str}\n"
             f"{blocks_str}\n"
+            f"{inputs_str}\n"
             f"{intermediates_str}\n"
             f")"
         )
@@ -785,29 +971,33 @@ class ModularPipeline(ConfigMixin):
     def __repr__(self):
         output = "ModularPipeline:\n"
         output += "==============================\n\n"
+        
+        block = self.pipeline_block
+        if hasattr(block, "trigger_inputs") and block.trigger_inputs:
+            output += "\n"
+            output += "  Trigger Inputs:\n"
+            output += "  --------------\n"
+            output += f"  This pipeline contains dynamic blocks that are selected at runtime based on your inputs.\n"
+            output += f"  • Trigger inputs: {block.trigger_inputs}\n"
+            output += f"  • Use .pipeline_block.get_triggered_blocks(*inputs) to see which blocks will be used for specific inputs\n"
+            output += "\n"
 
         output += "Pipeline Block:\n"
         output += "--------------\n"
-        block = self.pipeline_block
         if hasattr(block, "blocks"):
             output += f"{block.__class__.__name__}\n"
-            # Add sub-blocks information
+            base_class = block.__class__.__bases__[0].__name__
+            output += f" (Class: {base_class})\n" if base_class != "object" else "\n"
             for sub_block_name, sub_block in block.blocks.items():
-                output += f"  • {sub_block_name} ({sub_block.__class__.__name__}) \n"
+                if hasattr(block, "block_trigger_inputs"):
+                    trigger_input = block.block_to_trigger_map[sub_block_name]
+                    trigger_info = f" [trigger: {trigger_input}]" if trigger_input is not None else " [default]"
+                    output += f"  • {sub_block_name} ({sub_block.__class__.__name__}){trigger_info}\n"
+                else:
+                    output += f"  • {sub_block_name} ({sub_block.__class__.__name__})\n"
         else:
             output += f"{block.__class__.__name__}\n"
         output += "\n"
-
-        if hasattr(block, "intermediates_outputs"):
-            intermediates_str = f"-> {', '.join(block.intermediates_outputs)}"
-            output += f"   {intermediates_str}\n"
-            output += "\n"
-
-        # Add final intermediate outputs for SequentialPipelineBlocks
-        if hasattr(block, "final_intermediate_output"):
-            final_intermediates_str = f"   (final intermediate outputs: {', '.join(block.final_intermediate_output)})"
-            output += f"   {final_intermediates_str}\n"
-            output += "\n"
 
         # List the components registered in the pipeline
         output += "Registered Components:\n"
@@ -836,6 +1026,19 @@ class ModularPipeline(ConfigMixin):
         output += "--------------------------\n"
         for name in self.pipeline_block.intermediates_inputs:
             output += f"{name}: \n"
+
+
+        if hasattr(block, "intermediates_outputs"):
+            output += "\nIntermediate outputs:\n"
+            output += "--------------------------\n"
+            output += f"{', '.join(block.intermediates_outputs)}\n\n"
+
+        # Add final intermediate outputs section at the bottom
+        if hasattr(block, "final_intermediates_outputs"):
+            output += "Final intermediate outputs:\n"
+            output += "--------------------------\n"
+            output += f"{', '.join(block.final_intermediates_outputs)}\n"
+
         return output
 
     # YiYi TO-DO: try to unify the to method with the one in DiffusionPipeline
