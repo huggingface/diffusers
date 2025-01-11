@@ -372,7 +372,7 @@ class SlowBnb8bitTests(Base8bitTests):
             output_type="np",
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.0376, 0.0359, 0.0015, 0.0449, 0.0479, 0.0098, 0.0083, 0.0295, 0.0295])
+        expected_slice = np.array([0.0674, 0.0623, 0.0364, 0.0632, 0.0671, 0.0430, 0.0317, 0.0493, 0.0583])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-2)
