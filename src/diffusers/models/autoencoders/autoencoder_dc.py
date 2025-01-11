@@ -627,7 +627,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         batch_size, num_channels, height, width = x.shape
         latent_height = height // self.spatial_compression_ratio
         latent_width = width // self.spatial_compression_ratio
-        
+
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
         tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
@@ -642,7 +642,10 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             row = []
             for j in range(0, x.shape[3], self.tile_sample_stride_width):
                 tile = x[:, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
-                if tile.shape[2] % self.spatial_compression_ratio != 0 or tile.shape[3] % self.spatial_compression_ratio != 0:
+                if (
+                    tile.shape[2] % self.spatial_compression_ratio != 0
+                    or tile.shape[3] % self.spatial_compression_ratio != 0
+                ):
                     pad_h = (self.spatial_compression_ratio - tile.shape[2]) % self.spatial_compression_ratio
                     pad_w = (self.spatial_compression_ratio - tile.shape[3]) % self.spatial_compression_ratio
                     tile = F.pad(tile, (0, pad_w, 0, pad_h))
