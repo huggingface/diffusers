@@ -51,9 +51,11 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def output_shape(self):
         return (4, 14, 16)
 
+    @unittest.skip("Test not supported.")
     def test_ema_training(self):
         pass
 
+    @unittest.skip("Test not supported.")
     def test_training(self):
         pass
 
@@ -126,6 +128,7 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
 
+    @unittest.skip("Test not supported.")
     def test_forward_with_norm_groups(self):
         # Not implemented yet for this UNet
         pass
@@ -205,9 +208,11 @@ class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         expected_shape = torch.Size((inputs_dict["sample"].shape[0], 1))
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
+    @unittest.skip("Test not supported.")
     def test_ema_training(self):
         pass
 
+    @unittest.skip("Test not supported.")
     def test_training(self):
         pass
 
@@ -265,6 +270,7 @@ class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         # fmt: on
         self.assertTrue(torch.allclose(output, expected_output_slice, rtol=1e-3))
 
+    @unittest.skip("Test not supported.")
     def test_forward_with_norm_groups(self):
         # Not implemented yet for this UNet
         pass
