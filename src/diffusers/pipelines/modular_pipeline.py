@@ -669,8 +669,9 @@ class SequentialPipelineBlocks:
         if self.trigger_inputs:
             header += "\n"  # Add empty line before
             header += "  " + "=" * 100 + "\n"  # Add decorative line
-            header += "  This pipeline block contains AutoPipelineBlocks where different blocks are dispatched at runtime based on your inputs.\n"
-            header += "  You can use `get_triggered_blocks(input1, input2,...)` to get specific information for your trigger inputs.\n"
+            header += "  This pipeline block contains dynamic blocks that are selected at runtime based on your inputs.\n"
+            header += "  You can use `get_triggered_blocks(input1, input2,...)` to see which blocks will be used for your trigger inputs.\n"
+            header += "  Use `get_triggered_blocks()` to see blocks will be used for default inputs (when no trigger inputs are provided)\n"
             header += f"  Trigger Inputs: {self.trigger_inputs}\n"
             header += "  " + "=" * 100 + "\n"  # Add decorative line
             header += "\n"  # Add empty line after
@@ -980,6 +981,7 @@ class ModularPipeline(ConfigMixin):
             output += f"  This pipeline contains dynamic blocks that are selected at runtime based on your inputs.\n"
             output += f"  • Trigger inputs: {block.trigger_inputs}\n"
             output += f"  • Use .pipeline_block.get_triggered_blocks(*inputs) to see which blocks will be used for specific inputs\n"
+            output += f"  • Use .pipeline_block.get_triggered_blocks() to see blocks will be used for default inputs (when no trigger inputs are provided)\n"
             output += "\n"
 
         output += "Pipeline Block:\n"
