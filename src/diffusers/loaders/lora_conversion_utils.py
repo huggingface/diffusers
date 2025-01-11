@@ -519,7 +519,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         remaining_keys = list(sds_sd.keys())
         te_state_dict = {}
         if remaining_keys:
-            if not all(k.startswith("lora_te1") for k in remaining_keys):
+            if not all(k.startswith("lora_te") for k in remaining_keys):
                 raise ValueError(f"Incompatible keys detected: \n\n {', '.join(remaining_keys)}")
             for key in remaining_keys:
                 if not key.endswith("lora_down.weight"):
@@ -558,6 +558,13 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         new_state_dict = {**ait_sd, **te_state_dict}
         return new_state_dict
 
+    # This is  weird.
+    # https://huggingface.co/sayakpaul/different-lora-from-civitai/tree/main?show_file_info=sharp_detailed_foot.safetensors
+    # has both `peft` and non-peft state dict.
+    has_peft_state_dict = any(k.startswith("transformer.") for k in state_dict)
+    if has_peft_state_dict:
+        state_dict = {k: v for k, v in state_dict.items() if k.startswith("transformer.")}
+        return state_dict
     return _convert_sd_scripts_to_ai_toolkit(state_dict)
 
 
