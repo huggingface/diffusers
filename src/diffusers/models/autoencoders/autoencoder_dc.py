@@ -479,12 +479,12 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.use_tiling = False
 
         # The minimal tile height and width for spatial tiling to be used
-        self.tile_sample_min_height = 1024
-        self.tile_sample_min_width = 1024
+        self.tile_sample_min_height = 512
+        self.tile_sample_min_width = 512
 
         # The minimal distance between two spatial tiles
-        self.tile_sample_stride_height = 896
-        self.tile_sample_stride_width = 896
+        self.tile_sample_stride_height = 448
+        self.tile_sample_stride_width = 448
 
         self.tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         self.tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
