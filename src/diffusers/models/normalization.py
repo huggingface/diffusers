@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import is_torch_version
+from ..utils import is_torch_version, is_torch_npu_available
 from .activations import get_activation
 from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
@@ -505,19 +505,30 @@ class RMSNorm(nn.Module):
                 self.bias = nn.Parameter(torch.zeros(dim))
 
     def forward(self, hidden_states):
-        input_dtype = hidden_states.dtype
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+        if is_torch_npu_available():
+            import torch_npu
 
-        if self.weight is not None:
-            # convert into half-precision if necessary
-            if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                hidden_states = hidden_states.to(self.weight.dtype)
-            hidden_states = hidden_states * self.weight
+            if self.weight is not None:
+                # convert into half-precision if necessary
+                if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                    hidden_states = hidden_states.to(self.weight.dtype)
+            hidden_states = torch_npu.npu_rms_norm(hidden_states, self.weight, epsilon=self.eps)[0]
             if self.bias is not None:
                 hidden_states = hidden_states + self.bias
         else:
-            hidden_states = hidden_states.to(input_dtype)
+            input_dtype = hidden_states.dtype
+            variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+            hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+
+            if self.weight is not None:
+                # convert into half-precision if necessary
+                if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                    hidden_states = hidden_states.to(self.weight.dtype)
+                hidden_states = hidden_states * self.weight
+                if self.bias is not None:
+                    hidden_states = hidden_states + self.bias
+            else:
+                hidden_states = hidden_states.to(input_dtype)
 
         return hidden_states
 
