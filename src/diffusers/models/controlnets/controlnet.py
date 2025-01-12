@@ -768,7 +768,16 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         if self.config.addition_embed_type is not None:
             if self.config.addition_embed_type == "text":
-                aug_emb = self.add_embedding(encoder_hidden_states)
+                if len(encoder_hidden_states.shape) == 3:
+                    aug_emb = self.add_embedding(encoder_hidden_states)
+                else: 
+                    aug_emb_list = []
+                    for index in range(encoder_hidden_states.shape[1]):
+                        aug_emb = self.add_embedding(encoder_hidden_states[:,index,:,:])
+                        aug_emb_list.append(aug_emb)
+                        
+                    aug_emb_list = torch.stack(aug_emb_list)
+                    aug_emb = torch.mean(aug_emb_list, dim=0, keepdim=False)
 
             elif self.config.addition_embed_type == "text_time":
                 if "text_embeds" not in added_cond_kwargs:
