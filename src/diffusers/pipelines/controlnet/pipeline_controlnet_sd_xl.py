@@ -1592,7 +1592,7 @@ class StableDiffusionXLControlNetPipeline(
                 else:
                     print(f'prompt_embeds_list in ctln')
                     control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds_list if isinstance(prompt, list) else prompt_embeds, #prompt_embeds, thesea modified
+                    controlnet_prompt_embeds = prompt_embeds_list if isinstance(prompt, list) else prompt_embeds #prompt_embeds, thesea modified
                     controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
