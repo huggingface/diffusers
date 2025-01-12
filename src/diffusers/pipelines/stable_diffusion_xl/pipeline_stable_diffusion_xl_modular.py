@@ -1112,6 +1112,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
             "mask", # inpainting
             "masked_image_latents", # inpainting
             "noise", # inpainting
+            "image_latents", # inpainting
         ]
 
     @property
@@ -2028,25 +2029,24 @@ class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks):
     block_trigger_inputs = ["mask_image", "image"]
 
 
-class StableDiffusionXLAutoSetTimestepsStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLSetTimestepsStep]
-    block_names = ["img2img", "text2img"]
-    block_trigger_inputs = ["image", None]
+class StableDiffusionXLBeforeDenoiseStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLInputStep, StableDiffusionXLSetTimestepsStep, StableDiffusionXLPrepareLatentsStep, StableDiffusionXLPrepareAdditionalConditioningStep]
+    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
+
+class StableDiffusionXLImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLInputStep, StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLImg2ImgPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep]
+    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
+
+class StableDiffusionXLInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLInputStep, StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLInpaintPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep]
+    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
 
 
-class StableDiffusionXLAutoPrepareLatentsStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLInpaintPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareLatentsStep, StableDiffusionXLPrepareLatentsStep]
-    block_names = ["inpaint","img2img", "text2img"]
-    block_trigger_inputs = ["mask_image", "image", None]
+class StableDiffusionXLAutoBeforeDenoiseStep(AutoPipelineBlocks):
+    block_classes = [StableDiffusionXLInpaintBeforeDenoiseStep, StableDiffusionXLImg2ImgBeforeDenoiseStep, StableDiffusionXLBeforeDenoiseStep]
+    block_names = ["inpaint", "img2img", "text2img"]
+    block_trigger_inputs = ["mask", "image_latents", None]
 
-
-class StableDiffusionXLAutoPrepareAdditionalConditioningStep(AutoPipelineBlocks):
-    block_classes = [
-        StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
-        StableDiffusionXLPrepareAdditionalConditioningStep,
-    ]
-    block_names = ["img2img", "text2img"]
-    block_trigger_inputs = ["image", None]
 
 
 class StableDiffusionXLAutoDenoiseStep(AutoPipelineBlocks):
@@ -2064,10 +2064,10 @@ class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
 TEXT2IMAGE_BLOCKS = OrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
     ("input", StableDiffusionXLInputStep),
-    ("set_timesteps", StableDiffusionXLAutoSetTimestepsStep),
-    ("prepare_latents", StableDiffusionXLAutoPrepareLatentsStep),
-    ("prepare_add_cond", StableDiffusionXLAutoPrepareAdditionalConditioningStep),
-    ("denoise", StableDiffusionXLAutoDenoiseStep),
+    ("set_timesteps", StableDiffusionXLSetTimestepsStep),
+    ("prepare_latents", StableDiffusionXLPrepareLatentsStep),
+    ("prepare_add_cond", StableDiffusionXLPrepareAdditionalConditioningStep),
+    ("denoise", StableDiffusionXLDenoiseStep),
     ("decode", StableDiffusionXLDecodeStep)
 ])
 
@@ -2099,11 +2099,8 @@ CONTROLNET_BLOCKS = OrderedDict([
 
 AUTO_BLOCKS = OrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
-    ("input", StableDiffusionXLInputStep),
     ("image_encoder", StableDiffusionXLAutoVaeEncoderStep),
-    ("set_timesteps", StableDiffusionXLAutoSetTimestepsStep),
-    ("prepare_latents", StableDiffusionXLAutoPrepareLatentsStep),
-    ("prepare_add_cond", StableDiffusionXLAutoPrepareAdditionalConditioningStep),
+    ("before_denoise", StableDiffusionXLAutoBeforeDenoiseStep),
     ("denoise", StableDiffusionXLAutoDenoiseStep),
     ("decode", StableDiffusionXLAutoDecodeStep)
 ])
@@ -2139,10 +2136,17 @@ class StableDiffusionXLModularPipeline(
         return vae_scale_factor
 
     @property
+    def num_channels_unet(self):
+        num_channels_unet = 4
+        if hasattr(self, "unet") and self.unet is not None:
+            num_channels_unet = self.unet.config.in_channels
+        return num_channels_unet
+
+    @property
     def num_channels_latents(self):
         num_channels_latents = 4
-        if hasattr(self, "unet") and self.unet is not None:
-            num_channels_latents = self.unet.config.in_channels
+        if hasattr(self, "vae") and self.vae is not None:
+            num_channels_latents = self.vae.config.latent_channels
         return num_channels_latents
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids

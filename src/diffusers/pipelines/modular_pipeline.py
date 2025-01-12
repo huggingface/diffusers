@@ -82,9 +82,9 @@ class PipelineState:
     def __repr__(self):
         def format_value(v):
             if hasattr(v, "shape") and hasattr(v, "dtype"):
-                return f"Tensor(\n      dtype={v.dtype}, shape={v.shape}\n      {v})"
+                return f"Tensor(dtype={v.dtype}, shape={v.shape})"
             elif isinstance(v, list) and len(v) > 0 and hasattr(v[0], "shape") and hasattr(v[0], "dtype"):
-                return f"[Tensor(\n      dtype={v[0].dtype}, shape={v[0].shape}\n      {v[0]}), ...]"
+                return f"[Tensor(dtype={v[0].dtype}, shape={v[0].shape}), ...]"
             else:
                 return repr(v)
 
@@ -238,6 +238,10 @@ class AutoPipelineBlocks:
         if not (len(self.block_classes) == len(self.block_names) == len(self.block_trigger_inputs)):
             raise ValueError(f"In {self.__class__.__name__}, the number of block_classes, block_names, and block_trigger_inputs must be the same.")
         default_blocks = [t for t in self.block_trigger_inputs if t is None]
+        # can only have 1 or 0 default block, and has to put in the last 
+        # the order of blocksmatters here because the first block with matching trigger will be dispatched
+        # e.g. blocks = [inpaint, img2img] and block_trigger_inputs = ["mask", "image"]
+        # if both mask and image are provided, it is inpaint; if only image is provided, it is img2img
         if len(default_blocks) > 1 or (
                 len(default_blocks) == 1 and self.block_trigger_inputs[-1] is not None
             ):
@@ -248,6 +252,7 @@ class AutoPipelineBlocks:
 
         # Map trigger inputs to block objects
         self.trigger_to_block_map = dict(zip(self.block_trigger_inputs, self.blocks.values()))
+        self.trigger_to_block_name_map = dict(zip(self.block_trigger_inputs, self.blocks.keys()))
         self.block_to_trigger_map = dict(zip(self.blocks.keys(), self.block_trigger_inputs))
 
     @property
@@ -322,6 +327,9 @@ class AutoPipelineBlocks:
         block = self.trigger_to_block_map.get(None)
         for input_name in self.block_trigger_inputs:
             if input_name is not None and state.get_input(input_name) is not None:
+                block = self.trigger_to_block_map[input_name]
+                break
+            elif input_name is not None and state.get_intermediate(input_name) is not None:
                 block = self.trigger_to_block_map[input_name]
                 break
 
