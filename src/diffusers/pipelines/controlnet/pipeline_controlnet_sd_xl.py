@@ -1588,8 +1588,7 @@ class StableDiffusionXLControlNetPipeline(
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # thesea modified
-                added_cond_kwargs = {"text_embeds": add_text_embeds_list if isinstance(prompt, list) else add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 # controlnet(s) inference
                 if guess_mode and self.do_classifier_free_guidance:
