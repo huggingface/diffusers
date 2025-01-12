@@ -23,7 +23,7 @@ import re
 from collections import OrderedDict
 from functools import partial, wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Type, Union
 
 import safetensors
 import torch
@@ -32,6 +32,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
+from ..hooks import apply_layerwise_upcasting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -48,6 +49,7 @@ from ..utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
+    is_peft_available,
     is_torch_version,
     logging,
 )
@@ -56,7 +58,6 @@ from ..utils.hub_utils import (
     load_or_create_model_card,
     populate_model_card,
 )
-from .layerwise_upcasting_utils import LayerwiseUpcastingGranularity, apply_layerwise_upcasting
 from .model_loading_utils import (
     _determine_device_map,
     _fetch_index_file,
@@ -320,8 +321,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self,
         storage_dtype: torch.dtype = torch.float8_e4m3fn,
         compute_dtype: Optional[torch.dtype] = None,
-        granularity: LayerwiseUpcastingGranularity = LayerwiseUpcastingGranularity.PYTORCH_LAYER,
         skip_modules_pattern: Optional[List[str]] = None,
+        skip_modules_classes: Optional[List[Type[torch.nn.Module]]] = None,
     ) -> None:
         r"""
         Activates layerwise upcasting for the current model.
@@ -373,11 +374,22 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             skip_modules_pattern.extend(self._always_upcast_modules)
         skip_modules_pattern = list(set(skip_modules_pattern))
 
+        if skip_modules_classes is None:
+            skip_modules_classes = []
+        if is_peft_available():
+            # By default, we want to skip all peft layers because they have a very low memory footprint.
+            # If users want to apply layerwise upcasting on peft layers as well, they can utilize the
+            # `~diffusers.hooks.layerwise_upcasting.apply_layerwise_upcasting` function which provides
+            # them with more flexibility and control.
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            skip_modules_classes.append(BaseTunerLayer)
+
         if compute_dtype is None:
-            logger.info("`compute_dtype` not provided when enabling layerwise upcasting. Using `storage_dtype`.")
+            logger.info("`compute_dtype` not provided when enabling layerwise upcasting. Using dtype of the model.")
             compute_dtype = self.dtype
 
-        apply_layerwise_upcasting(self, storage_dtype, compute_dtype, granularity, skip_modules_pattern)
+        apply_layerwise_upcasting(self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes)
 
     def save_pretrained(
         self,

@@ -452,21 +452,6 @@ class LatteTransformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class LayerwiseUpcastingGranularity(metaclass=DummyObject):
-    _backends = ["torch"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-
 class LTXVideoTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -870,14 +855,6 @@ class VQModel(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
-
-
-def apply_layerwise_upcasting(*args, **kwargs):
-    requires_backends(apply_layerwise_upcasting, ["torch"])
-
-
-def apply_layerwise_upcasting_hook(*args, **kwargs):
-    requires_backends(apply_layerwise_upcasting_hook, ["torch"])
 
 
 def get_constant_schedule(*args, **kwargs):
