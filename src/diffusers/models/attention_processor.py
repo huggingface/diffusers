@@ -3238,6 +3238,7 @@ class AttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
+        text_masks: Optional[torch.Tensor] = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -3246,60 +3247,137 @@ class AttnProcessor2_0:
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
+        if (encoder_hidden_states is not None) and (encoder_hidden_states.ndim == 4):
+            hidden_states_list = []
+            if not text_masks.shape[0] == encoder_hidden_states.shape[1]:
+                raise ValueError(
+                    f"Length of text masks ({text_masks.shape[0]}) must match "
+                    f"the number of text prompts "
+                    f"({encoder_hidden_states.shape[1]})")
 
-        input_ndim = hidden_states.ndim
+            for index in range(encoder_hidden_states.shape[1]):
+                _hidden_states = hidden_states
+                
+                if attn.spatial_norm is not None:
+                    _hidden_states = attn.spatial_norm(_hidden_states, temb)
 
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+                input_ndim = _hidden_states.ndim
 
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+                if input_ndim == 4:
+                    batch_size, channel, height, width = _hidden_states.shape
+                    _hidden_states = _hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+                batch_size, sequence_length, _ = (
+                    _hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states[:,index,:,:].shape
+                )
 
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+                if attention_mask is not None:
+                    attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+                    # scaled_dot_product_attention expects attention_mask shape to be
+                    # (batch, heads, source_length, target_length)
+                    attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
-        query = attn.to_q(hidden_states)
+                if attn.group_norm is not None:
+                    _hidden_states = attn.group_norm(_hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+                query = attn.to_q(_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
+                _encoder_hidden_states = encoder_hidden_states[:,index,:,:]
+                if attn.norm_cross:
+                    _encoder_hidden_states = attn.norm_encoder_hidden_states(_encoder_hidden_states)
 
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
+                key = attn.to_k(_encoder_hidden_states)
+                value = attn.to_v(_encoder_hidden_states)
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                inner_dim = key.shape[-1]
+                head_dim = inner_dim // attn.heads
 
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
+                key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+                if attn.norm_q is not None:
+                    query = attn.norm_q(query)
+                if attn.norm_k is not None:
+                    key = attn.norm_k(key)
 
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
+                # the output of sdp = (batch, num_heads, seq_len, head_dim)
+                # TODO: add support for attn.scale when we move to Torch 2.1
+                _hidden_states = F.scaled_dot_product_attention(
+                    query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                )
 
+                _hidden_states = _hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                _hidden_states = _hidden_states.to(query.dtype)
+                
+                mask_downsample = IPAdapterMaskProcessor.downsample(
+                    text_masks[index,:,:,:],
+                    batch_size,
+                    _hidden_states.shape[1],
+                    _hidden_states.shape[2],
+                )
+
+                mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+                hidden_states_list.append(_hidden_states * mask_downsample)
+
+            hidden_states_list = torch.stack(hidden_states_list)
+            hidden_states = torch.sum(hidden_states_list, dim=0, keepdim=False)
+        else:
+            if attn.spatial_norm is not None:
+                hidden_states = attn.spatial_norm(hidden_states, temb)
+
+            input_ndim = hidden_states.ndim
+
+            if input_ndim == 4:
+                batch_size, channel, height, width = hidden_states.shape
+                hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+            batch_size, sequence_length, _ = (
+                hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+            )
+
+            if attention_mask is not None:
+                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+                # scaled_dot_product_attention expects attention_mask shape to be
+                # (batch, heads, source_length, target_length)
+                attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+            if attn.group_norm is not None:
+                hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+            query = attn.to_q(hidden_states)
+
+            if encoder_hidden_states is None:
+                encoder_hidden_states = hidden_states
+            elif attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+            key = attn.to_k(encoder_hidden_states)
+            value = attn.to_v(encoder_hidden_states)
+
+            inner_dim = key.shape[-1]
+            head_dim = inner_dim // attn.heads
+
+            query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+            key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+            if attn.norm_q is not None:
+                query = attn.norm_q(query)
+            if attn.norm_k is not None:
+                key = attn.norm_k(key)
+
+            # the output of sdp = (batch, num_heads, seq_len, head_dim)
+            # TODO: add support for attn.scale when we move to Torch 2.1
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
+
+            hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            hidden_states = hidden_states.to(query.dtype)
+            
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
