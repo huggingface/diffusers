@@ -1538,16 +1538,19 @@ class StableDiffusionXLControlNetPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             if isinstance(prompt, list): # modified
                 prompt_embeds_list = torch.cat([negative_prompt_embeds_list, prompt_embeds_list], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             if isinstance(prompt, list): # modified
                 add_text_embeds_list = torch.cat([negative_pooled_prompt_embeds_list, add_text_embeds_list], dim=0)
+            else:
+                add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            
             add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         if isinstance(prompt, list): # modified
             prompt_embeds_list = prompt_embeds_list.to(device)
             add_text_embeds_list = add_text_embeds_list.to(device)
-        add_text_embeds = add_text_embeds.to(device)
+        else:
+            add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         # 8. Denoising loop
