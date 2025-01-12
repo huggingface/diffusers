@@ -763,12 +763,14 @@ class StableDiffusionXLControlNetPipeline(
 
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
-        if isinstance(self.controlnet, MultiControlNetModel):
-            if isinstance(prompt, list):
-                logger.warning(
-                    f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
-                    " prompts. The conditionings will be fixed across the prompts."
-                )
+        
+        ## thesea modified
+        #if isinstance(self.controlnet, MultiControlNetModel):
+        #    if isinstance(prompt, list):
+        #        logger.warning(
+        #            f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
+        #            " prompts. The conditionings will be fixed across the prompts."
+        #        )
 
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
@@ -1329,7 +1331,7 @@ class StableDiffusionXLControlNetPipeline(
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = 1 #len(prompt), modified
+            batch_size = 1 #len(prompt), thesea modified
         else:
             batch_size = prompt_embeds.shape[0]
 
@@ -1350,7 +1352,7 @@ class StableDiffusionXLControlNetPipeline(
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
 
-        ## added to store multiple prompt embeds 
+        ## thesea modified
         prompt_embeds_list = []
         negative_prompt_embeds_list = []
         pooled_prompt_embeds_list = []
@@ -1529,13 +1531,13 @@ class StableDiffusionXLControlNetPipeline(
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            if isinstance(prompt, list): # modifed
+            if isinstance(prompt, list): # modified
                 prompt_embeds_list = torch.cat([negative_prompt_embeds_list, prompt_embeds_list], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
-        if isinstance(prompt, list): # modifed
+        if isinstance(prompt, list): # modified
             prompt_embeds_list = prompt_embeds_list.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
@@ -1625,7 +1627,7 @@ class StableDiffusionXLControlNetPipeline(
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds_list if isinstance(prompt, list) else prompt_embeds, #prompt_embeds, modified for multiple text promts
+                    encoder_hidden_states=prompt_embeds_list if isinstance(prompt, list) else prompt_embeds, #prompt_embeds, thesea modified for multiple text promts
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     down_block_additional_residuals=down_block_res_samples,

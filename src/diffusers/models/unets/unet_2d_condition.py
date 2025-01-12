@@ -1147,9 +1147,21 @@ class UNet2DConditionModel(
             else:
                 emb = emb + class_emb
 
-        aug_emb = self.get_aug_embed(
-            emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-        )
+        # thesea modifed
+        if len(encoder_hidden_states.shape) == 3:
+            aug_emb = self.get_aug_embed(
+                emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+            )
+        else: 
+            aug_emb_list = []
+            for index in range(encoder_hidden_states.shape[1]):
+                aug_emb = self.get_aug_embed(
+                    emb=emb, encoder_hidden_states=encoder_hidden_states[:,index,:,:], added_cond_kwargs=added_cond_kwargs
+                )
+                aug_emb_list.append(aug_emb)
+            aug_emb_list = torch.stack(aug_emb_list)
+            aug_emb = torch.mean(aug_emb_list, dim=0, keepdim=False)
+
         if self.config.addition_embed_type == "image_hint":
             aug_emb, hint = aug_emb
             sample = torch.cat([sample, hint], dim=1)
@@ -1159,9 +1171,16 @@ class UNet2DConditionModel(
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
 
-        encoder_hidden_states = self.process_encoder_hidden_states(
-            encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-        )
+        # thesea modifed
+        if len(encoder_hidden_states.shape) == 3:
+            encoder_hidden_states = self.process_encoder_hidden_states(
+                encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+            )
+        else:
+            for index in range(encoder_hidden_states.shape[1]):
+                encoder_hidden_states[:,index,:,:] = self.process_encoder_hidden_states(
+                    encoder_hidden_states=encoder_hidden_states[:,index,:,:], added_cond_kwargs=added_cond_kwargs
+                )   
 
         # 2. pre-process
         sample = self.conv_in(sample)
