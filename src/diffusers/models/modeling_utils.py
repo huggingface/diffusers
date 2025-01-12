@@ -323,6 +323,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         compute_dtype: Optional[torch.dtype] = None,
         skip_modules_pattern: Optional[List[str]] = None,
         skip_modules_classes: Optional[List[Type[torch.nn.Module]]] = None,
+        non_blocking: bool = False,
     ) -> None:
         r"""
         Activates layerwise upcasting for the current model.
@@ -361,9 +362,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The dtype to which the model should be cast for storage.
             compute_dtype (`torch.dtype`):
                 The dtype to which the model weights should be cast during the forward pass.
-            granularity (`LayerwiseUpcastingGranularity`, defaults to "pytorch_layer"):
-                The granularity of the layerwise upcasting process. Read the documentation of
-                [`~LayerwiseUpcastingGranularity`] for more information.
+            skip_modules_pattern (`List[str]`, *optional*):
+                A list of patterns to match the names of the modules to skip during the layerwise upcasting process.
+            skip_modules_classes (`List[Type[torch.nn.Module]]`, *optional*):
+                A list of module classes to skip during the layerwise upcasting process.
+            non_blocking (`bool`, *optional*, defaults to `False`):
+                If `True`, the weight casting operations are non-blocking.
         """
 
         if skip_modules_pattern is None:
@@ -389,7 +393,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             logger.info("`compute_dtype` not provided when enabling layerwise upcasting. Using dtype of the model.")
             compute_dtype = self.dtype
 
-        apply_layerwise_upcasting(self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes)
+        apply_layerwise_upcasting(
+            self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
+        )
 
     def save_pretrained(
         self,

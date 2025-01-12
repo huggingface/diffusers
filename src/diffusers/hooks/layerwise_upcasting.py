@@ -44,20 +44,21 @@ class LayerwiseUpcastingHook(ModelHook):
 
     _is_stateful = False
 
-    def __init__(self, storage_dtype: torch.dtype, compute_dtype: torch.dtype) -> None:
+    def __init__(self, storage_dtype: torch.dtype, compute_dtype: torch.dtype, non_blocking: bool) -> None:
         self.storage_dtype = storage_dtype
         self.compute_dtype = compute_dtype
+        self.non_blocking = non_blocking
 
     def initialize_hook(self, module: torch.nn.Module):
-        module.to(dtype=self.storage_dtype)
+        module.to(dtype=self.storage_dtype, non_blocking=self.non_blocking)
         return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
-        module.to(dtype=self.compute_dtype)
+        module.to(dtype=self.compute_dtype, non_blocking=self.non_blocking)
         return args, kwargs
 
     def post_forward(self, module: torch.nn.Module, output):
-        module.to(dtype=self.storage_dtype)
+        module.to(dtype=self.storage_dtype, non_blocking=self.non_blocking)
         return output
 
 
@@ -67,6 +68,7 @@ def apply_layerwise_upcasting(
     compute_dtype: torch.dtype,
     skip_modules_pattern: List[str] = _DEFAULT_SKIP_MODULES_PATTERN,
     skip_modules_classes: List[Type[torch.nn.Module]] = [],
+    non_blocking: bool = False,
 ) -> torch.nn.Module:
     r"""
     Applies layerwise upcasting to a given module. The module expected here is a Diffusers ModelMixin but it can be any
@@ -84,6 +86,8 @@ def apply_layerwise_upcasting(
             A list of patterns to match the names of the modules to skip during the layerwise upcasting process.
         skip_modules_classes (`List[Type[torch.nn.Module]]`, defaults to `[]`):
             A list of module classes to skip during the layerwise upcasting process.
+        non_blocking (`bool`, defaults to `False`):
+            If `True`, the weight casting operations are non-blocking.
     """
     for name, submodule in module.named_modules():
         if (
@@ -95,12 +99,12 @@ def apply_layerwise_upcasting(
             logger.debug(f'Skipping layerwise upcasting for layer "{name}"')
             continue
         logger.debug(f'Applying layerwise upcasting to layer "{name}"')
-        apply_layerwise_upcasting_hook(submodule, storage_dtype, compute_dtype)
+        apply_layerwise_upcasting_hook(submodule, storage_dtype, compute_dtype, non_blocking)
     return module
 
 
 def apply_layerwise_upcasting_hook(
-    module: torch.nn.Module, storage_dtype: torch.dtype, compute_dtype: torch.dtype
+    module: torch.nn.Module, storage_dtype: torch.dtype, compute_dtype: torch.dtype, non_blocking: bool
 ) -> torch.nn.Module:
     r"""
     Applies a `LayerwiseUpcastingHook` to a given module.
@@ -112,11 +116,13 @@ def apply_layerwise_upcasting_hook(
             The dtype to cast the module to before the forward pass.
         compute_dtype (`torch.dtype`):
             The dtype to cast the module to during the forward pass.
+        non_blocking (`bool`):
+            If `True`, the weight casting operations are non-blocking.
 
     Returns:
         `torch.nn.Module`:
             The same module, with the hook attached (the module is modified in place).
     """
     registry = HookRegistry.check_if_exists_or_initialize(module)
-    hook = LayerwiseUpcastingHook(storage_dtype, compute_dtype)
+    hook = LayerwiseUpcastingHook(storage_dtype, compute_dtype, non_blocking)
     registry.register_hook(hook, "layerwise_upcasting")
