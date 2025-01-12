@@ -1329,7 +1329,7 @@ class StableDiffusionXLControlNetPipeline(
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+            batch_size = 1 #len(prompt), modified
         else:
             batch_size = prompt_embeds.shape[0]
 
@@ -1349,27 +1349,44 @@ class StableDiffusionXLControlNetPipeline(
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = self.encode_prompt(
-            prompt,
-            prompt_2,
-            device,
-            num_images_per_prompt,
-            self.do_classifier_free_guidance,
-            negative_prompt,
-            negative_prompt_2,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
-            clip_skip=self.clip_skip,
-        )
 
+        ## added to store multiple prompt embeds 
+        prompt_embeds_list = []
+        negative_prompt_embeds_list = []
+        pooled_prompt_embeds_list = []
+        negative_pooled_prompt_embeds_list = []
+        
+        for pmt in prompt:
+            (
+                prompt_embeds,
+                negative_prompt_embeds,
+                pooled_prompt_embeds,
+                negative_pooled_prompt_embeds,
+            ) = self.encode_prompt(
+                pmt,
+                prompt_2,
+                device,
+                num_images_per_prompt,
+                self.do_classifier_free_guidance,
+                negative_prompt,
+                negative_prompt_2,
+                #prompt_embeds=prompt_embeds,
+                #negative_prompt_embeds=negative_prompt_embeds,
+                #pooled_prompt_embeds=pooled_prompt_embeds,
+                #negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                lora_scale=text_encoder_lora_scale,
+                clip_skip=self.clip_skip,
+            )
+            print(f'prompt_embeds shape={prompt_embeds.shape}')
+            prompt_embeds_list.append(prompt_embeds)
+            negative_prompt_embeds_list.append(negative_prompt_embeds)
+            pooled_prompt_embeds_list.append(pooled_prompt_embeds)
+            negative_pooled_prompt_embeds_list.append(negative_pooled_prompt_embeds)
+        prompt_embeds_list = torch.stack(prompt_embeds_list,dim=1)
+        negative_prompt_embeds_list = torch.stack(negative_prompt_embeds_list,dim=1)
+        pooled_prompt_embeds_list = torch.stack(pooled_prompt_embeds_list,dim=1)
+        negative_pooled_prompt_embeds_list = torch.stack(negative_pooled_prompt_embeds_list,dim=1)
+        print(f'prompt_embeds_list={prompt_embeds_list.shape}')
         # 3.2 Encode ip_adapter_image
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             
@@ -1491,10 +1508,12 @@ class StableDiffusionXLControlNetPipeline(
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            prompt_embeds_list = torch.cat([negative_prompt_embeds_list, prompt_embeds_list], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
+        prompt_embeds_list = prompt_embeds_list.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
@@ -1547,7 +1566,7 @@ class StableDiffusionXLControlNetPipeline(
                     }
                 else:
                     control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
+                    controlnet_prompt_embeds = prompt_embeds 
                     controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
@@ -1583,7 +1602,7 @@ class StableDiffusionXLControlNetPipeline(
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=prompt_embeds_list, #prompt_embeds, modified for multiple text promts
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     down_block_additional_residuals=down_block_res_samples,
