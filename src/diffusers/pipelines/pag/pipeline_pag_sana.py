@@ -41,6 +41,7 @@ from ..pixart_alpha.pipeline_pixart_alpha import (
     ASPECT_RATIO_1024_BIN,
 )
 from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
+from ..sana.pipeline_sana import ASPECT_RATIO_4096_BIN
 from .pag_utils import PAGMixin
 
 
@@ -755,7 +756,9 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         if use_resolution_binning:
-            if self.transformer.config.sample_size == 64:
+            if self.transformer.config.sample_size == 128:
+                aspect_ratio_bin = ASPECT_RATIO_4096_BIN
+            elif self.transformer.config.sample_size == 64:
                 aspect_ratio_bin = ASPECT_RATIO_2048_BIN
             elif self.transformer.config.sample_size == 32:
                 aspect_ratio_bin = ASPECT_RATIO_1024_BIN
