@@ -640,7 +640,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        clean_caption: bool = True,
+        clean_caption: bool = False,
         use_resolution_binning: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
