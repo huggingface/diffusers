@@ -3322,8 +3322,6 @@ class AttnProcessor2_0:
                     _hidden_states.shape[2],
                 )
 
-                print(f'mask_downsample shape={mask_downsample.shape}')
-                print(f'_hidden_states shape={_hidden_states.shape}')
                 mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
                 hidden_states_list.append(_hidden_states * mask_downsample)
 
@@ -5311,9 +5309,6 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                             _current_ip_hidden_states.shape[2],
                         )
                         
-                        print(f'mask_downsample shape={mask_downsample.shape}')
-                        print(f'_current_ip_hidden_states={_current_ip_hidden_states.shape}')
-                        print(f'scale[i]={scale[i]}')
                         mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
                         hidden_states = hidden_states + scale[i] * (_current_ip_hidden_states * mask_downsample)
                 else:
@@ -5507,7 +5502,6 @@ class CustomIPAdapterAttnProcessor2_0(torch.nn.Module):
         if ip_adapter_masks is not None:
             # [scale] * mask.shape[1] for setting strength. disabled by default
             scale = ip_adapter_masks[0].shape[1] 
-            print(f'text prompt strength = {scale}')
             mask_downsample = IPAdapterMaskProcessor.downsample(
                 ip_adapter_masks[0][:, i, :, :],
                 batch_size,
