@@ -14,6 +14,7 @@
 import inspect
 import math
 from typing import Callable, List, Optional, Tuple, Union
+import copy
 
 import torch
 import torch.nn.functional as F
@@ -582,7 +583,7 @@ class Attention(nn.Module):
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
 
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
-        quiet_attn_parameters = {"ip_adapter_masks", "ip_hidden_states"}
+        quiet_attn_parameters = {"text_masks", "ip_adapter_masks", "ip_hidden_states"}
         unused_kwargs = [
             k for k, _ in cross_attention_kwargs.items() if k not in attn_parameters and k not in quiet_attn_parameters
         ]
@@ -3256,31 +3257,32 @@ class AttnProcessor2_0:
                     f"({encoder_hidden_states.shape[1]})")
 
             for index in range(encoder_hidden_states.shape[1]):
-                _hidden_states = hidden_states
-                
-                if attn.spatial_norm is not None:
-                    _hidden_states = attn.spatial_norm(_hidden_states, temb)
+                if index == 0:
+                    _hidden_states = copy.deepcopy(hidden_states)
+                    
+                    if attn.spatial_norm is not None:
+                        _hidden_states = attn.spatial_norm(_hidden_states, temb)
 
-                input_ndim = _hidden_states.ndim
+                    input_ndim = _hidden_states.ndim
 
-                if input_ndim == 4:
-                    batch_size, channel, height, width = _hidden_states.shape
-                    _hidden_states = _hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+                    if input_ndim == 4:
+                        batch_size, channel, height, width = _hidden_states.shape
+                        _hidden_states = _hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-                batch_size, sequence_length, _ = (
-                    _hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states[:,index,:,:].shape
-                )
+                    batch_size, sequence_length, _ = (
+                        _hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states[:,index,:,:].shape
+                    )
 
-                if attention_mask is not None:
-                    attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-                    # scaled_dot_product_attention expects attention_mask shape to be
-                    # (batch, heads, source_length, target_length)
-                    attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+                    if attention_mask is not None:
+                        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+                        # scaled_dot_product_attention expects attention_mask shape to be
+                        # (batch, heads, source_length, target_length)
+                        attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
-                if attn.group_norm is not None:
-                    _hidden_states = attn.group_norm(_hidden_states.transpose(1, 2)).transpose(1, 2)
+                    if attn.group_norm is not None:
+                        _hidden_states = attn.group_norm(_hidden_states.transpose(1, 2)).transpose(1, 2)
 
-                query = attn.to_q(_hidden_states)
+                    query = attn.to_q(_hidden_states)
 
                 _encoder_hidden_states = encoder_hidden_states[:,index,:,:]
                 if attn.norm_cross:
@@ -3289,16 +3291,18 @@ class AttnProcessor2_0:
                 key = attn.to_k(_encoder_hidden_states)
                 value = attn.to_v(_encoder_hidden_states)
 
-                inner_dim = key.shape[-1]
-                head_dim = inner_dim // attn.heads
+                if index == 0:
+                    inner_dim = key.shape[-1]
+                    head_dim = inner_dim // attn.heads
+                    
+                    query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-                query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+                    if attn.norm_q is not None:
+                        query = attn.norm_q(query)
 
                 key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-                if attn.norm_q is not None:
-                    query = attn.norm_q(query)
                 if attn.norm_k is not None:
                     key = attn.norm_k(key)
 
@@ -3311,7 +3315,6 @@ class AttnProcessor2_0:
                 _hidden_states = _hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
                 _hidden_states = _hidden_states.to(query.dtype)
                 
-                print(f'mask={text_masks[index,:,:,:]}')
                 mask_downsample = IPAdapterMaskProcessor.downsample(
                     text_masks[index,:,:,:],
                     batch_size,
@@ -5299,7 +5302,6 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                         )
                         _current_ip_hidden_states = _current_ip_hidden_states.to(query.dtype)
 
-                        print(f'mask={mask[:, i, :, :]}')
                         mask_downsample = IPAdapterMaskProcessor.downsample(
                             mask[:, i, :, :],
                             batch_size,
