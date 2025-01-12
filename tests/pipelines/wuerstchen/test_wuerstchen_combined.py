@@ -232,8 +232,10 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     def test_float16_inference(self):
         super().test_float16_inference()
 
+    @unittest.skip(reason="Test not supported.")
     def test_callback_inputs(self):
         pass
 
+    @unittest.skip(reason="Test not supported.")
     def test_callback_cfg(self):
         pass

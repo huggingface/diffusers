@@ -254,6 +254,36 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 "Attention slicing should not affect the inference results",
             )
 
+    def test_vae_tiling(self, expected_diff_max: float = 0.2):
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe.to("cpu")
+        pipe.set_progress_bar_config(disable=None)
+
+        # Without tiling
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["height"] = inputs["width"] = 128
+        output_without_tiling = pipe(**inputs)[0]
+
+        # With tiling
+        pipe.vae.enable_tiling(
+            tile_sample_min_height=96,
+            tile_sample_min_width=96,
+            tile_sample_stride_height=64,
+            tile_sample_stride_width=64,
+        )
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["height"] = inputs["width"] = 128
+        output_with_tiling = pipe(**inputs)[0]
+
+        self.assertLess(
+            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
+            expected_diff_max,
+            "VAE tiling should not affect the inference results",
+        )
+
     # TODO(aryan): Create a dummy gemma model with smol vocab size
     @unittest.skip(
         "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."

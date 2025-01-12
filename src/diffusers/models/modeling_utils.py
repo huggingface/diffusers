@@ -559,6 +559,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
                 weights. If set to `False`, `safetensors` weights are not loaded.
+            disable_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
+                is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
 
         <Tip>
 
@@ -605,6 +608,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
+        disable_mmap = kwargs.pop("disable_mmap", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -892,7 +896,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
                     else:
                         param_device = torch.device(torch.cuda.current_device())
-                    state_dict = load_state_dict(model_file, variant=variant, dduf_entries=dduf_entries)
+                    state_dict = load_state_dict(
+                        model_file, variant=variant, dduf_entries=dduf_entries, disable_mmap=disable_mmap
+                    )
                     model._convert_deprecated_attention_blocks(state_dict)
 
                     # move the params from meta device to cpu
@@ -988,7 +994,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 model = cls.from_config(config, **unused_kwargs)
 
-                state_dict = load_state_dict(model_file, variant=variant, dduf_entries=dduf_entries)
+                state_dict = load_state_dict(
+                    model_file, variant=variant, dduf_entries=dduf_entries, disable_mmap=disable_mmap
+                )
                 model._convert_deprecated_attention_blocks(state_dict)
 
                 model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(

@@ -136,6 +136,7 @@ def load_state_dict(
     checkpoint_file: Union[str, os.PathLike],
     variant: Optional[str] = None,
     dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    disable_mmap: bool = False,
 ):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
@@ -151,6 +152,8 @@ def load_state_dict(
                 # tensors are loaded on cpu
                 with dduf_entries[checkpoint_file].as_mmap() as mm:
                     return safetensors.torch.load(mm)
+            if disable_mmap:
+                return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
                 return safetensors.torch.load_file(checkpoint_file, device="cpu")
         elif file_extension == GGUF_FILE_EXTENSION:
