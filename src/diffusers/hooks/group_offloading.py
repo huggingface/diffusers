@@ -13,24 +13,15 @@
 # limitations under the License.
 
 import re
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 
+from ..utils import get_logger
 from .hooks import HookRegistry, ModelHook
 
 
-_COMMON_STACK_IDENTIFIERS = {
-    "transformer_blocks",
-    "single_transformer_blocks",
-    "temporal_transformer_blocks",
-    "transformer_layers",
-    "layers",
-    "blocks",
-    "down_blocks",
-    "up_blocks",
-    "mid_blocks",
-}
+logger = get_logger(__name__) # pylint: disable=invalid-name
 
 
 class ModuleGroup:
@@ -129,7 +120,7 @@ class GroupOffloadingHook(ModelHook):
 
 def apply_group_offloading(
     module: torch.nn.Module,
-    offload_group_patterns: Union[str, List[str]] = "diffusers_block",
+    offload_group_patterns: Union[str, List[str]] = "modulelist_or_sequential",
     num_blocks_per_group: Optional[int] = None,
     offload_device: torch.device = torch.device("cpu"),
     onload_device: torch.device = torch.device("cuda"),
@@ -137,90 +128,222 @@ def apply_group_offloading(
     non_blocking: bool = False,
     cuda_stream: bool = False,
 ) -> None:
-    stream = None
-    if cuda_stream:
-        stream = torch.cuda.Stream()
-    if offload_group_patterns == "diffusers_block":
+    # stream = None
+    # if cuda_stream:
+    #     stream = torch.cuda.Stream()
+    if offload_group_patterns == "modulelist_or_sequential":
         if num_blocks_per_group is None:
-            raise ValueError("num_blocks_per_group must be provided when using GroupOffloadingType.DIFFUSERS_BLOCK.")
-        _apply_group_offloading_diffusers_block(
-            module,
-            num_blocks_per_group,
-            offload_device,
-            onload_device,
-            force_offload,
-            non_blocking,
-            stream,
-        )
-    else:
-        _apply_group_offloading_group_patterns(
-            module, offload_group_patterns, offload_device, onload_device, force_offload, non_blocking
-        )
+            raise ValueError(
+                "num_blocks_per_group must be provided when using offload_group_patterns='modulelist_or_sequential'."
+            )
+        # _apply_group_offloading_diffusers_block(
+        #     module,
+        #     num_blocks_per_group,
+        #     offload_device,
+        #     onload_device,
+        #     force_offload,
+        #     non_blocking,
+        #     stream,
+        # )
+        offload_group_patterns = _get_modulelist_or_sequential_group_patterns(module, num_blocks_per_group)
+
+    _apply_group_offloading_group_patterns(
+        module, offload_group_patterns, offload_device, onload_device, force_offload, non_blocking
+    )
 
 
-def _apply_group_offloading_diffusers_block(
+# def _apply_group_offloading_diffusers_block(
+#     module: torch.nn.Module,
+#     num_blocks_per_group: int,
+#     offload_device: torch.device,
+#     onload_device: torch.device,
+#     force_offload: bool,
+#     non_blocking: bool,
+#     stream: Optional[torch.cuda.Stream] = None,
+# ) -> None:
+#     cpu_param_dict = None
+#     if stream is not None:
+#         for param in module.parameters():
+#             param.data = param.data.cpu().pin_memory()
+#         cpu_param_dict = {param: param.data for param in module.parameters()}
+
+#     # Handle device offloading/onloading for unet/transformer stack modules
+#     for stack_identifier in _COMMON_STACK_IDENTIFIERS:
+#         if not hasattr(module, stack_identifier) or not isinstance(
+#             getattr(module, stack_identifier), torch.nn.ModuleList
+#         ):
+#             continue
+
+#         stack = getattr(module, stack_identifier)
+#         num_blocks = len(stack)
+#         module_groups = []
+
+#         for i in range(0, num_blocks, num_blocks_per_group):
+#             blocks = stack[i : i + num_blocks_per_group]
+#             group = ModuleGroup(
+#                 blocks, offload_device, onload_device, offload_leader=blocks[-1], onload_leader=blocks[0]
+#             )
+#             module_groups.append(group)
+
+#         for i, group in enumerate(module_groups):
+#             next_group = module_groups[i + 1] if i + 1 < len(module_groups) and stream is not None else None
+#             should_offload = force_offload or i > 0
+#             _apply_group_offloading(group, should_offload, non_blocking, stream, next_group, cpu_param_dict)
+
+#         if stream is not None:
+#             # Start Host->Device transfer for the first group
+#             with torch.cuda.stream(stream):
+#                 for group_module in module_groups[0].modules:
+#                     group_module.to(onload_device, non_blocking=True)
+#             if len(module_groups) > 1:
+#                 # Assign the first module_group as the next_group for the last module_group
+#                 hook_registry = HookRegistry.check_if_exists_or_initialize(module_groups[-1].onload_leader)
+#                 hook_registry.hooks["group_offloading"].next_group = module_groups[0]
+
+#     # Handle device offloading/onloading for non-stack modules
+#     for name, submodule in module.named_modules():
+#         name_split = name.split(".")
+#         if not isinstance(submodule, torch.nn.Module) or name == "" or len(name_split) > 1:
+#             # We only want the layers that are top-level in the module (encompass all the submodules)
+#             # for enabling offloading.
+#             continue
+#         layer_name = name_split[0]
+#         if layer_name in _COMMON_STACK_IDENTIFIERS:
+#             continue
+#         group = ModuleGroup(
+#             [submodule], offload_device, onload_device, offload_leader=submodule, onload_leader=submodule
+#         )
+#         _apply_group_offloading(group, force_offload, non_blocking)
+
+#     # Always keep parameters and buffers on onload_device
+#     for name, param in module.named_parameters(recurse=False):
+#         if torch.is_tensor(param.data):
+#             param.data = param.data.to(onload_device)
+#     for name, buffer in module.named_buffers(recurse=False):
+#         if torch.is_tensor(buffer.data):
+#             buffer.data = buffer.data.to(onload_device)
+
+
+def _apply_group_offloading_group_patterns(
     module: torch.nn.Module,
-    num_blocks_per_group: int,
+    offload_group_patterns: List[Tuple[str, str, Optional[str]]],
     offload_device: torch.device,
     onload_device: torch.device,
     force_offload: bool,
     non_blocking: bool,
-    stream: Optional[torch.cuda.Stream] = None,
 ) -> None:
-    cpu_param_dict = None
-    if stream is not None:
-        for param in module.parameters():
-            param.data = param.data.cpu().pin_memory()
-        cpu_param_dict = {param: param.data for param in module.parameters()}
+    r"""
+    This function applies offloading to groups of modules based on the provided regex patterns. Each group of modules
+    that match a pattern are offloaded and onloaded together. The order of the patterns in the list is important as it
+    determines the order of execution of the forward pass. If the order is not correct, group offloading may almost
+    certainly fail with device mismatch errors.
 
-    # Handle device offloading/onloading for unet/transformer stack modules
-    for stack_identifier in _COMMON_STACK_IDENTIFIERS:
-        if not hasattr(module, stack_identifier) or not isinstance(
-            getattr(module, stack_identifier), torch.nn.ModuleList
-        ):
+    In the interest of simplicity, this function does not handle complicated cases where one regex pattern matches a
+    module, but another regex pattern matches an internal submodule of that module. This would be a difficult case to
+    handle and require a more complex checker, which is not implemented here. As a general rule of thumb, make sure to
+    provide regex patterns for all models that are at the same level of the computation graph in terms of invocation
+    order. For example, either all leaf modules, or all transformer blocks, etc.
+
+    Note that parameters and buffers are always kept on the onload_device. This is because they are usually small
+    enough to not have any impact on memory usage. If you require support for offloading parameters and buffers, please
+    open an issue at https://github.com/huggingface/diffusers/issues.
+
+    Args:
+        module (`torch.nn.Module`):
+            The module to which group offloading is applied.
+        offload_group_patterns (`List[Tuple[str, str, Optional[str]]]`):
+            A list of tuples that determine groups of modules that are offloaded and onloaded together. Each tuple
+            contains three elements:
+            - A regex pattern that matches the names of the modules in the group.
+            - A regex pattern that matches a single layer that is the offload leader of the group.
+            - An optional regex pattern that matches a single layer that is the onload leader of the group. This can be
+              set to None because it is easier to determine the onload leader based on the forward invocation order,
+              which triggers the call to GroupOffloadingHook.
+        offload_device (`torch.device`):
+            The device to which the group of modules are offloaded. This should typically be the CPU.
+        onload_device (`torch.device`):
+            The device to which the group of modules are onloaded.
+        force_offload (`bool`):
+            If True, all module groups are offloaded to the offload_device. If False, only layers that match
+            `offload_group_patterns` are offloaded to the offload_device.
+        non_blocking (`bool`):
+            If True, offloading and onloading is done asynchronously. This can be useful for overlapping computation
+            and data transfer.
+    """
+
+    per_group_modules = [[] for _ in range(len(offload_group_patterns))]
+    per_group_offload_leaders = [None] * len(offload_group_patterns)
+    per_group_onload_leaders = [None] * len(offload_group_patterns)
+    unmatched_group_modules = []
+
+    group_patterns = [pattern[0] for pattern in offload_group_patterns]
+    offload_leader_patterns = [pattern[1] for pattern in offload_group_patterns]
+    onload_leader_patterns = [pattern[2] for pattern in offload_group_patterns]
+
+    for name, module in module.named_modules():
+        if name.count(".") > 1:
+            # We only want the layers that are top-level in the module (encompass all the other submodules)
+            # for enabling offloading. This method is specifically targeted for diffusers format models,
+            # so we can ignore submodules.
+            # TODO(aryan): This is not the case and is just a workaround to make the benchmark code work
+            # for now. We need to support the arbitrary nesting of modules here.
             continue
+        num_matches = 0
 
-        stack = getattr(module, stack_identifier)
-        num_blocks = len(stack)
-        module_groups = []
+        # Check if the module matches any of the offload group patterns
+        for i, pattern in enumerate(group_patterns):
+            if re.search(pattern, name) is not None:
+                per_group_modules[i].append(module)
+                num_matches += 1
 
-        for i in range(0, num_blocks, num_blocks_per_group):
-            blocks = stack[i : i + num_blocks_per_group]
-            group = ModuleGroup(
-                blocks, offload_device, onload_device, offload_leader=blocks[-1], onload_leader=blocks[0]
+        # Check if the module matches any of the offload leader patterns
+        for i, pattern in enumerate(offload_leader_patterns):
+            if re.search(pattern, name) is not None:
+                if per_group_offload_leaders[i] is not None:
+                    raise ValueError(
+                        f"Module {name} matches multiple offload leader patterns. Please ensure that offload leader patterns are mutually exclusive."
+                    )
+                per_group_offload_leaders[i] = module
+
+        # Check if the module matches any of the onload leader patterns
+        for i, pattern in enumerate(onload_leader_patterns):
+            if pattern is None:
+                continue
+            if re.search(pattern, name) is not None:
+                if per_group_onload_leaders[i] is not None:
+                    raise ValueError(
+                        f"Module {name} matches multiple onload leader patterns. Please ensure that onload leader patterns are mutually exclusive."
+                    )
+                per_group_onload_leaders[i] = module
+
+        if num_matches == 0:
+            unmatched_group_modules.append(module)
+        elif num_matches > 1:
+            raise ValueError(
+                f"Module {name} matches multiple offload group patterns. Please ensure that offloading group patterns are mutually exclusive."
             )
-            module_groups.append(group)
 
-        for i, group in enumerate(module_groups):
-            next_group = module_groups[i + 1] if i + 1 < len(module_groups) and stream is not None else None
-            should_offload = force_offload or i > 0
-            _apply_group_offloading(group, should_offload, non_blocking, stream, next_group, cpu_param_dict)
-
-        if stream is not None:
-            # Start Host->Device transfer for the first group
-            with torch.cuda.stream(stream):
-                for group_module in module_groups[0].modules:
-                    group_module.to(onload_device, non_blocking=True)
-            if len(module_groups) > 1:
-                # Assign the first module_group as the next_group for the last module_group
-                hook_registry = HookRegistry.check_if_exists_or_initialize(module_groups[-1].onload_leader)
-                hook_registry.hooks["group_offloading"].next_group = module_groups[0]
-
-    # Handle device offloading/onloading for non-stack modules
-    for name, submodule in module.named_modules():
-        name_split = name.split(".")
-        if not isinstance(submodule, torch.nn.Module) or name == "" or len(name_split) > 1:
-            # We only want the layers that are top-level in the module (encompass all the submodules)
-            # for enabling offloading.
-            continue
-        layer_name = name_split[0]
-        if layer_name in _COMMON_STACK_IDENTIFIERS:
-            continue
+    # Handle modules that matched patterns
+    for i in range(len(per_group_modules)):
+        if per_group_offload_leaders[i] is None:
+            raise ValueError(
+                f"No offload leader found for group {i}. Please ensure that each group has a single offload leader."
+            )
         group = ModuleGroup(
-            [submodule], offload_device, onload_device, offload_leader=submodule, onload_leader=submodule
+            per_group_modules[i],
+            offload_device,
+            onload_device,
+            offload_leader=per_group_offload_leaders[i],
+            onload_leader=per_group_onload_leaders[i],
         )
         _apply_group_offloading(group, force_offload, non_blocking)
 
+    # Handle modules that did not match patterns
+    for module in unmatched_group_modules:
+        group = ModuleGroup([module], offload_device, onload_device, offload_leader=module, onload_leader=module)
+        _apply_group_offloading(group, force_offload, non_blocking)
+
+    # TODO(aryan): When you add stream support, this may need to be put in an if-branch
     # Always keep parameters and buffers on onload_device
     for name, param in module.named_parameters(recurse=False):
         if torch.is_tensor(param.data):
@@ -228,46 +351,6 @@ def _apply_group_offloading_diffusers_block(
     for name, buffer in module.named_buffers(recurse=False):
         if torch.is_tensor(buffer.data):
             buffer.data = buffer.data.to(onload_device)
-
-
-def _apply_group_offloading_group_patterns(
-    module: torch.nn.Module,
-    offload_group_patterns: List[str],
-    offload_device: torch.device,
-    onload_device: torch.device,
-    force_offload: bool,
-    non_blocking: bool,
-) -> None:
-    per_group_modules = []
-    for i, offload_group_pattern in enumerate(offload_group_patterns):
-        group_modules = []
-        group_module_names = []
-        for name, module in module.named_modules():
-            if re.search(offload_group_pattern, name) is not None:
-                group_modules.append(module)
-                group_module_names.append(name)
-        per_group_modules.append(
-            {
-                "modules": group_modules,
-                "module_names": group_module_names,
-            }
-        )
-
-    # Check if there are any overlapping modules between groups
-    for i, group in enumerate(per_group_modules):
-        for j, other_group in enumerate(per_group_modules):
-            if j <= i:
-                continue
-            if any(module_name in group["module_names"] for module_name in other_group["module_names"]):
-                raise ValueError(
-                    f"Overlapping modules between groups {i} and {j}. Please ensure that offloading group patterns are mutually exclusive."
-                )
-
-    # Apply offloading to each group
-    for group in per_group_modules:
-        # TODO: handle offload leader correctly
-        group = ModuleGroup(group["modules"], offload_device, onload_device, offload_leader=group["modules"][-1])
-        _apply_group_offloading(group, force_offload, non_blocking)
 
 
 def _apply_group_offloading(
@@ -282,3 +365,30 @@ def _apply_group_offloading(
         hook = GroupOffloadingHook(group, offload_on_init, non_blocking, stream, next_group, cpu_param_dict)
         registry = HookRegistry.check_if_exists_or_initialize(module)
         registry.register_hook(hook, "group_offloading")
+
+
+def _get_modulelist_or_sequential_group_patterns(module: torch.nn.Module, num_blocks_per_group: int) -> List[str]:
+    r"""
+    This function generates group patterns for offloading based on the number of blocks per group. Given a module, it
+    will iterate through the submodules and find usages of torch.nn.ModuleList and torch.nn.Sequential. For each group
+    of `num_blocks_per_group` consecutive blocks, it will generate a regex pattern that matches the names of these
+    blocks. The generated patterns can be used to create ModuleGroup objects which are offloaded and onloaded together.
+    """
+    group_patterns = []
+    
+    # We only want the layers that are top-level in the module (encompass all the other submodules)
+    # for enabling offloading. This method is specifically targeted for diffusers format models,
+    # so we can ignore everything but the children of this module.
+    for name, submodule in module.children():
+        if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
+            continue
+        for i in range(0, len(submodule), num_blocks_per_group):
+            num_modules = len(submodule[i : i + num_blocks_per_group])
+            pattern = "|".join([rf"{name}\.{i + j}\b" for j in range(num_modules)])
+            pattern = f"({pattern})"
+            onload_leader_pattern = rf"{name}\.{i}\b"
+            offload_leader_pattern = rf"{name}\.{i + num_modules - 1}\b"
+            group_patterns.append((pattern, offload_leader_pattern, onload_leader_pattern))
+    
+    logger.debug(f"Generated group patterns for apply_groupwise_offloading: {group_patterns}")
+    return group_patterns
