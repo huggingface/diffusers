@@ -1598,7 +1598,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
             ("control_guidance_start", 0.0),
             ("control_guidance_end", 1.0),
             ("controlnet_conditioning_scale", 1.0),
-            ("control_mode", 0),
+            ("control_mode", None),
             ("guess_mode", False),
             ("num_images_per_prompt", 1),
             ("guidance_scale", 5.0),
@@ -1791,8 +1791,9 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         control_type = (
             control_type.reshape(1, -1)
             .to(device, dtype=prompt_embeds.dtype)
-            .repeat(batch_size * num_images_per_prompt * 2, 1)
         )
+        control_type = pipeline.controlnet_guider.prepare_input(control_type, control_type)
+
         with pipeline.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # prepare latents for unet using the guider
@@ -2050,9 +2051,9 @@ class StableDiffusionXLAutoBeforeDenoiseStep(AutoPipelineBlocks):
 
 
 class StableDiffusionXLAutoDenoiseStep(AutoPipelineBlocks):
-    block_classes = [StableDiffusionXLControlNetDenoiseStep, StableDiffusionXLDenoiseStep]
-    block_names = ["controlnet", "unet"]
-    block_trigger_inputs = ["control_image", None]
+    block_classes = [StableDiffusionXLControlNetUnionDenoiseStep, StableDiffusionXLControlNetDenoiseStep, StableDiffusionXLDenoiseStep]
+    block_names = ["controlnet_union", "controlnet", "unet"]
+    block_trigger_inputs = ["control_mode", "control_image", None]
 
 
 class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
