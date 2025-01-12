@@ -1504,7 +1504,12 @@ class StableDiffusionXLControlNetPipeline(
             original_size = original_size or image.shape[-2:]
         target_size = target_size or (height, width)
 
-        add_text_embeds = pooled_prompt_embeds
+        # thesea modified
+        if not isinstance(prompt, list):
+            add_text_embeds = pooled_prompt_embeds
+        else:
+            add_text_embeds_list = pooled_prompt_embeds_list
+
         if self.text_encoder_2 is None:
             text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
         else:
@@ -1534,11 +1539,14 @@ class StableDiffusionXLControlNetPipeline(
             if isinstance(prompt, list): # modified
                 prompt_embeds_list = torch.cat([negative_prompt_embeds_list, prompt_embeds_list], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            if isinstance(prompt, list): # modified
+                add_text_embeds_list = torch.cat([negative_pooled_prompt_embeds_list, add_text_embeds_list], dim=0)
             add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         if isinstance(prompt, list): # modified
             prompt_embeds_list = prompt_embeds_list.to(device)
+            add_text_embeds_list = add_text_embeds_list.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
@@ -1577,7 +1585,8 @@ class StableDiffusionXLControlNetPipeline(
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                # thesea modified
+                added_cond_kwargs = {"text_embeds": add_text_embeds_list if isinstance(prompt, list) else add_text_embeds, "time_ids": add_time_ids}
 
                 # controlnet(s) inference
                 if guess_mode and self.do_classifier_free_guidance:
@@ -1607,7 +1616,7 @@ class StableDiffusionXLControlNetPipeline(
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=image,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
+                    cross_attention_kwargs=self.cross_attention_kwargs, # thesea modified
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
@@ -1646,6 +1655,7 @@ class StableDiffusionXLControlNetPipeline(
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
+                    print(f'callback_on_step_end')
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
