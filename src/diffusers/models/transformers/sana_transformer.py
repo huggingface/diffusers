@@ -86,12 +86,12 @@ class SanaModulatedNorm(nn.Module):
     def __init__(self, dim: int, elementwise_affine: bool = False, eps: float = 1e-6):
         super().__init__()
         self.norm = nn.LayerNorm(dim, elementwise_affine=elementwise_affine, eps=eps)
-    
-    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, scale_shift_table: torch.Tensor) -> torch.Tensor:
+
+    def forward(
+        self, hidden_states: torch.Tensor, temb: torch.Tensor, scale_shift_table: torch.Tensor
+    ) -> torch.Tensor:
         hidden_states = self.norm(hidden_states)
-        shift, scale = (
-            scale_shift_table[None] + temb[:, None].to(scale_shift_table.device)
-        ).chunk(2, dim=1)
+        shift, scale = (scale_shift_table[None] + temb[:, None].to(scale_shift_table.device)).chunk(2, dim=1)
         hidden_states = hidden_states * (1 + scale) + shift
         return hidden_states
 
@@ -235,7 +235,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["SanaTransformerBlock", "PatchEmbed"]
+    _no_split_modules = ["SanaTransformerBlock", "PatchEmbed", "SanaModulatedNorm"]
 
     @register_to_config
     def __init__(

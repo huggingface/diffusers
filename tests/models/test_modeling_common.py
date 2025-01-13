@@ -29,7 +29,7 @@ import numpy as np
 import requests_mock
 import torch
 import torch.nn as nn
-from accelerate.utils.modeling import _get_proper_dtype, dtype_byte_size, compute_module_sizes
+from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
 from huggingface_hub import ModelCard, delete_repo, snapshot_download
 from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
