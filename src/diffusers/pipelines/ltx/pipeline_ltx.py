@@ -769,7 +769,7 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
             if not self.vae.config.timestep_conditioning:
                 timestep = None
             else:
-                noise = torch.randn(latents.shape, generator=generator, device=device, dtype=latents.dtype)
+                noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
                 if not isinstance(decode_timestep, list):
                     decode_timestep = [decode_timestep] * batch_size
                 if decode_noise_scale is None:
