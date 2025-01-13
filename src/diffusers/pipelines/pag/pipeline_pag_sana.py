@@ -30,6 +30,7 @@ from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -43,7 +44,15 @@ from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
 from .pag_utils import PAGMixin
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 if is_bs4_available():
     from bs4 import BeautifulSoup
@@ -162,13 +171,46 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.encoder_block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.encoder_block_out_channels) - 1)
+            if hasattr(self, "vae") and self.vae is not None
+            else 8
+        )
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         self.set_pag_applied_layers(
             pag_applied_layers,
             pag_attn_processors=(PAGCFGSanaLinearAttnProcessor2_0(), PAGIdentitySanaLinearAttnProcessor2_0()),
         )
+
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
 
     def encode_prompt(
         self,
@@ -862,6 +904,9 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if output_type == "latent":
             image = latents

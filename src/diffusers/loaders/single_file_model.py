@@ -25,6 +25,7 @@ from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
+    convert_auraflow_transformer_checkpoint_to_diffusers,
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_flux_transformer_checkpoint_to_diffusers,
@@ -106,6 +107,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_hunyuan_video_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "AuraFlowTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_auraflow_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
 }
 
 
@@ -182,6 +187,9 @@ class FromOriginalModelMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            disable_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
+                is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -229,6 +237,7 @@ class FromOriginalModelMixin:
         torch_dtype = kwargs.pop("torch_dtype", None)
         quantization_config = kwargs.pop("quantization_config", None)
         device = kwargs.pop("device", None)
+        disable_mmap = kwargs.pop("disable_mmap", False)
 
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
@@ -241,6 +250,7 @@ class FromOriginalModelMixin:
                 cache_dir=cache_dir,
                 local_files_only=local_files_only,
                 revision=revision,
+                disable_mmap=disable_mmap,
             )
         if quantization_config is not None:
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)

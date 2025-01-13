@@ -27,11 +27,18 @@ from transformers import (
 
 from ...models import UNet2DConditionModel, UNet2DModel
 from ...schedulers import UnCLIPScheduler
-from ...utils import logging
+from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_proj import UnCLIPTextProjModel
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -399,6 +406,9 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
             super_res_latents = self.super_res_scheduler.step(
                 noise_pred, t, super_res_latents, prev_timestep=prev_timestep, generator=generator
             ).prev_sample
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         image = super_res_latents
 
