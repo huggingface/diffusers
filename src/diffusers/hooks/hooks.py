@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
@@ -137,9 +137,9 @@ class HookRegistry:
         self.hooks[name] = hook
         self._hook_order.append(name)
 
-    def get_hook(self, name: str) -> ModelHook:
+    def get_hook(self, name: str) -> Optional[ModelHook]:
         if name not in self.hooks.keys():
-            raise ValueError(f"Hook with name {name} not found.")
+            raise None
         return self.hooks[name]
 
     def remove_hook(self, name: str) -> None:
