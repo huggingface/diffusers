@@ -796,6 +796,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
                 Input image to be encoded.
             device: (`torch.device`):
                 Torch device.
+
         Returns:
             `torch.Tensor`: The encoded image feature representation.
         """
@@ -816,6 +817,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         do_classifier_free_guidance: bool = True,
     ) -> torch.Tensor:
         """Prepares image embeddings for use in the IP-Adapter.
+
         Either `ip_adapter_image` or `ip_adapter_image_embeds` must be passed.
 
         Args:
