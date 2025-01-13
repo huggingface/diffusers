@@ -399,11 +399,12 @@ class Attention(nn.Module):
             else:
                 try:
                     # Make sure we can run the memory efficient attention
-                    _ = xformers.ops.memory_efficient_attention(
-                        torch.randn((1, 2, 40), device="cuda"),
-                        torch.randn((1, 2, 40), device="cuda"),
-                        torch.randn((1, 2, 40), device="cuda"),
-                    )
+                    dtype = None
+                    if attention_op is not None:
+                        op_fw, op_bw = attention_op
+                        dtype = list(op_fw.SUPPORTED_DTYPES)[0]
+                    q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
+                    _ = xformers.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
                     raise e
 
