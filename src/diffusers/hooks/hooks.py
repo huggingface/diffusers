@@ -134,7 +134,9 @@ class HookRegistry:
                 output = old_forward(*args, **kwargs)
                 return hook.post_forward(module, output)
 
-        self._module_ref.forward = functools.update_wrapper(functools.partial(new_forward, self._module_ref), old_forward)
+        self._module_ref.forward = functools.update_wrapper(
+            functools.partial(new_forward, self._module_ref), old_forward
+        )
 
         self.hooks[name] = hook
         self._hook_order.append(name)
@@ -156,7 +158,7 @@ class HookRegistry:
             hook = self.hooks[hook_name]
             if hook._is_stateful:
                 hook.reset_state(self._module_ref)
-        
+
         if recurse:
             for module in self._module_ref.modules():
                 if hasattr(module, "_diffusers_hook"):

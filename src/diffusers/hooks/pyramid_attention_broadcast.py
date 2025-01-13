@@ -106,7 +106,7 @@ class PyramidAttentionBroadcastState:
     def reset(self):
         self.iteration = 0
         self.cache = None
-    
+
     def __repr__(self):
         cache_repr = ""
         if self.cache is None:
@@ -251,7 +251,7 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
     def skip_callback(module: torch.nn.Module) -> bool:
         hook: PyramidAttentionBroadcastHook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
         pab_state: PyramidAttentionBroadcastState = hook.state
-        
+
         if pab_state.cache is None:
             return False
 
