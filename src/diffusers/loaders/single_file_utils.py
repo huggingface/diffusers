@@ -387,6 +387,7 @@ def load_single_file_checkpoint(
     cache_dir=None,
     local_files_only=None,
     revision=None,
+    disable_mmap=False,
 ):
     if os.path.isfile(pretrained_model_link_or_path):
         pretrained_model_link_or_path = pretrained_model_link_or_path
@@ -404,7 +405,7 @@ def load_single_file_checkpoint(
             revision=revision,
         )
 
-    checkpoint = load_state_dict(pretrained_model_link_or_path)
+    checkpoint = load_state_dict(pretrained_model_link_or_path, disable_mmap=disable_mmap)
 
     # some checkpoints contain the model state dict under a "state_dict" key
     while "state_dict" in checkpoint:
