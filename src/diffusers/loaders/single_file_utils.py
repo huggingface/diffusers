@@ -604,7 +604,6 @@ def infer_diffusers_model_type(checkpoint):
         if any(
             g in checkpoint for g in ["guidance_in.in_layer.bias", "model.diffusion_model.guidance_in.in_layer.bias"]
         ):
-
             if "model.diffusion_model.img_in.weight" in checkpoint:
                 key = "model.diffusion_model.img_in.weight"
             else:
