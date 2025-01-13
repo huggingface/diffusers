@@ -186,6 +186,7 @@ DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
     "inpainting": 512,
     "inpainting_v2": 512,
     "controlnet": 512,
+    "instruct-pix2pix": 512,
     "v2": 768,
     "v1": 512,
 }
