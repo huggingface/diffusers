@@ -185,6 +185,7 @@ pipe.transformer = torch.compile(
 
 pipe.vae.enable_tiling()
 # pipe.enable_model_cpu_offload()
+# pipe.enable_sequential_cpu_offload()
 
 for i in range(2):
     begin = time.time()
@@ -282,6 +283,7 @@ apply_cache_on_pipe(pipe)
 
 pipe.vae.enable_tiling()
 # pipe.enable_model_cpu_offload(gpu_id=dist.get_rank())
+# pipe.enable_sequential_cpu_offload(gpu_id=dist.get_rank())
 
 for i in range(2):
     begin = time.time()
