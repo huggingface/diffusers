@@ -297,7 +297,7 @@ class Attention(nn.Module):
         self.set_processor(processor)
 
     def set_use_xla_flash_attention(
-        self, use_xla_flash_attention: bool, partition_spec: Optional[Tuple[Optional[str], ...]] = None, **kwargs
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Tuple[Optional[str], ...]] = None, is_flux = False,
     ) -> None:
         r"""
         Set whether to use xla flash attention from `torch_xla` or not.
