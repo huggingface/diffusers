@@ -30,6 +30,7 @@ from diffusers import (
     UNet2DConditionModel,
     apply_pyramid_attention_broadcast,
 )
+from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
@@ -38,7 +39,6 @@ from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
-from diffusers.pipelines.pyramid_attention_broadcast_utils import PyramidAttentionBroadcastHook
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
@@ -2298,7 +2298,9 @@ class PyramidAttentionBroadcastTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
 
-        apply_pyramid_attention_broadcast(pipe, self.pab_config)
+        self.pab_config.current_timestep_callback = lambda: pipe._current_timestep
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        apply_pyramid_attention_broadcast(denoiser, self.pab_config)
 
         expected_hooks = 0
         if self.pab_config.spatial_attention_block_skip_range is not None:
@@ -2312,30 +2314,30 @@ class PyramidAttentionBroadcastTesterMixin:
         count = 0
         for module in denoiser.modules():
             if hasattr(module, "_diffusers_hook"):
+                hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                if hook is None:
+                    continue
                 count += 1
                 self.assertTrue(
-                    isinstance(module._diffusers_hook, PyramidAttentionBroadcastHook),
+                    isinstance(hook, PyramidAttentionBroadcastHook),
                     "Hook should be of type PyramidAttentionBroadcastHook.",
                 )
-                self.assertTrue(
-                    hasattr(module, "_pyramid_attention_broadcast_state"),
-                    "PAB state should be initialized when enabled.",
-                )
-                self.assertTrue(
-                    module._pyramid_attention_broadcast_state.cache is None, "Cache should be None at initialization."
-                )
+                self.assertTrue(hook.state.cache is None, "Cache should be None at initialization.")
         self.assertEqual(count, expected_hooks, "Number of hooks should match the expected number.")
 
         # Perform dummy inference step to ensure state is updated
         def pab_state_check_callback(pipe, i, t, kwargs):
             for module in denoiser.modules():
                 if hasattr(module, "_diffusers_hook"):
+                    hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                    if hook is None:
+                        continue
                     self.assertTrue(
-                        module._pyramid_attention_broadcast_state.cache is not None,
+                        hook.state.cache is not None,
                         "Cache should have updated during inference.",
                     )
                     self.assertTrue(
-                        module._pyramid_attention_broadcast_state.iteration == i + 1,
+                        hook.state.iteration == i + 1,
                         "Hook iteration state should have updated during inference.",
                     )
             return {}
@@ -2348,12 +2350,15 @@ class PyramidAttentionBroadcastTesterMixin:
         # After inference, reset_stateful_hooks is called within the pipeline, which should have reset the states
         for module in denoiser.modules():
             if hasattr(module, "_diffusers_hook"):
+                hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                if hook is None:
+                    continue
                 self.assertTrue(
-                    module._pyramid_attention_broadcast_state.cache is None,
+                    hook.state.cache is None,
                     "Cache should be reset to None after inference.",
                 )
                 self.assertTrue(
-                    module._pyramid_attention_broadcast_state.iteration == 0,
+                    hook.state.iteration == 0,
                     "Iteration should be reset to 0 after inference.",
                 )
 
@@ -2374,7 +2379,9 @@ class PyramidAttentionBroadcastTesterMixin:
         original_image_slice = output.flatten()
         original_image_slice = np.concatenate((original_image_slice[:8], original_image_slice[-8:]))
 
-        apply_pyramid_attention_broadcast(pipe, self.pab_config)
+        self.pab_config.current_timestep_callback = lambda: pipe._current_timestep
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        apply_pyramid_attention_broadcast(denoiser, self.pab_config)
 
         inputs = self.get_dummy_inputs(device)
         inputs["num_inference_steps"] = 4
