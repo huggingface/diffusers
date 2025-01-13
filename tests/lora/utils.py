@@ -1932,11 +1932,11 @@ class PeftLoraLoaderMixinTests:
             if "text_encoder" in lora_module:
                 text_encoder = getattr(pipe, lora_module)
                 if lora_module == "text_encoder":
-                    prefix = text_encoder
+                    prefix = "text_encoder"
                 elif lora_module == "text_encoder_2":
                     prefix = "text_encoder_2"
 
-                logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+                logger = logging.get_logger("diffusers.loaders.lora_base")
                 logger.setLevel(logging.INFO)
 
                 with CaptureLogger(logger) as cap_logger:
