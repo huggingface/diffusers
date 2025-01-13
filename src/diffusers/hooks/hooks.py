@@ -147,6 +147,12 @@ class HookRegistry:
         del self.hooks[name]
         self._hook_order.remove(name)
 
+    def reset_stateful_hooks(self):
+        for hook_name in self._hook_order:
+            hook = self.hooks[hook_name]
+            if hook._is_stateful:
+                hook.reset_state(self._module_ref)
+
     @classmethod
     def check_if_exists_or_initialize(cls, module: torch.nn.Module) -> "HookRegistry":
         if not hasattr(module, "_diffusers_hook"):

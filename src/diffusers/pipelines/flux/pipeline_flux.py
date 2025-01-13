@@ -26,10 +26,10 @@ from transformers import (
     T5TokenizerFast,
 )
 
+from ...hooks import HookRegistry
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, FluxTransformer2DModel
-from ...models.hooks import reset_stateful_hooks
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -971,7 +971,7 @@ class FluxPipeline(
 
         # Offload all models
         self.maybe_free_model_hooks()
-        reset_stateful_hooks(self.transformer, recurse=True)
+        HookRegistry.check_if_exists_or_initialize(self.transformer).reset_stateful_hooks()
 
         if not return_dict:
             return (image,)

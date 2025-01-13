@@ -28,6 +28,7 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "hooks": [],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
@@ -77,6 +78,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["hooks"].extend(
         [
+            "HookRegistry",
             "PyramidAttentionBroadcastConfig",
             "apply_pyramid_attention_broadcast",
         ]
@@ -592,7 +594,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .hooks import PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+        from .hooks import HookRegistry, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,

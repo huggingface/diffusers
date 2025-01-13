@@ -20,9 +20,9 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer, LlamaModel, LlamaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...hooks import HookRegistry
 from ...loaders import HunyuanVideoLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
-from ...models.hooks import reset_stateful_hooks
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -692,7 +692,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
         # Offload all models
         self.maybe_free_model_hooks()
-        reset_stateful_hooks(self.transformer, recurse=True)
+        HookRegistry.check_if_exists_or_initialize(self.transformer).reset_stateful_hooks()
 
         if not return_dict:
             return (video,)
