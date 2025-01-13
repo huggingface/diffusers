@@ -316,7 +316,7 @@ class Attention(nn.Module):
             elif is_spmd() and is_torch_xla_version("<", "2.4"):
                 raise "flash attention pallas kernel using SPMD is supported from torch_xla version 2.4"
             else:
-                if len(kwargs) > 0 and kwargs.get("is_flux", None):
+                if is_flux:
                     processor = XLAFluxFlashAttnProcessor2_0(partition_spec)
                 else:
                     processor = XLAFlashAttnProcessor2_0(partition_spec)
