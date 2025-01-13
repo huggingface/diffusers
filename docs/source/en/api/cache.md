@@ -24,5 +24,3 @@ Enable PAB with [`~PyramidAttentionBroadcastConfig`] on any pipeline. For some b
 [[autodoc]] PyramidAttentionBroadcastConfig
 
 [[autodoc]] apply_pyramid_attention_broadcast
-
-[[autodoc]] apply_pyramid_attention_broadcast_on_module
