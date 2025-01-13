@@ -39,9 +39,9 @@ class AnyTextControlNetConditioningEmbedding(nn.Module):
 
     def __init__(
         self,
+        conditioning_embedding_channels: int,
         glyph_channels=1,
         position_channels=1,
-        model_channels=320,
     ):
         super().__init__()
 
@@ -83,7 +83,7 @@ class AnyTextControlNetConditioningEmbedding(nn.Module):
             nn.SiLU(),
         )
 
-        self.fuse_block = nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1)
+        self.fuse_block = nn.Conv2d(256 + 64 + 4, conditioning_embedding_channels, 3, padding=1)
 
         # self.glyph_block.load_state_dict(load_file("glyph_block.safetensors", device=str(self.device)))
         # self.position_block.load_state_dict(load_file("position_block.safetensors", device=str(self.device)))
@@ -177,7 +177,7 @@ class AnyTextControlNetModel(ControlNetModel):
     def __init__(
         self,
         in_channels: int = 4,
-        conditioning_channels: int = 3,
+        conditioning_channels: int = 1,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         down_block_types: Tuple[str, ...] = (
@@ -251,11 +251,12 @@ class AnyTextControlNetModel(ControlNetModel):
 
         # control net conditioning embedding
         # TODO: what happens ControlNetModel's self.controlnet_cond_embedding's memory occupation?
-        self.controlnet_cond_embedding = AnyTextControlNetConditioningEmbedding(
-            conditioning_embedding_channels=block_out_channels[0],
-            block_out_channels=conditioning_embedding_out_channels,
-            conditioning_channels=conditioning_channels,
-        )
+        # self.controlnet_cond_embedding = AnyTextControlNetConditioningEmbedding(
+        #     conditioning_embedding_channels=block_out_channels[0],
+        #     glyph_channels=conditioning_channels,
+        #     position_channels=conditioning_channels,
+        # )
+        self.controlnet_cond_embedding = None
 
     def forward(
         self,
