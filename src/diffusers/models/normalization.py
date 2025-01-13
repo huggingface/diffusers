@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import is_torch_version, is_torch_npu_available
+from ..utils import is_torch_npu_available, is_torch_version
 from .activations import get_activation
 from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
