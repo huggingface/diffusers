@@ -90,7 +90,7 @@ apply_cache_on_pipe(pipe, residual_diff_threshold=0.0)
 
 We pass `residual_diff_threshold=0.0` to `apply_cache_on_pipe` to disable the cache mechanism now, because we will enable it later.
 Here, we only want it to cut the text conditions to avoid OOM errors.
-If you still experience OOM errors, you can try calling `pipe.enable_model_cpu_offload()` or `pipe.enable_sequential_cpu_offload` after calling `apply_cache_on_pipe`.
+If you still experience OOM errors, you can try calling `pipe.enable_model_cpu_offload` or `pipe.enable_sequential_cpu_offload` after calling `apply_cache_on_pipe`.
 
 This is our baseline.
 On one single NVIDIA L20 GPU, we can generate 129 frames with 720p resolution in 30 inference steps in 3675.71 seconds.
@@ -183,6 +183,7 @@ pipe.transformer = torch.compile(
    pipe.transformer, mode="max-autotune-no-cudagraphs",
 )
 
+# Enable memory savings
 pipe.vae.enable_tiling()
 # pipe.enable_model_cpu_offload()
 # pipe.enable_sequential_cpu_offload()
@@ -281,6 +282,7 @@ apply_cache_on_pipe(pipe)
 #    pipe.transformer, mode="max-autotune-no-cudagraphs",
 # )
 
+# Enable memory savings
 pipe.vae.enable_tiling()
 # pipe.enable_model_cpu_offload(gpu_id=dist.get_rank())
 # pipe.enable_sequential_cpu_offload(gpu_id=dist.get_rank())
