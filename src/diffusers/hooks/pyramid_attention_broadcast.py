@@ -106,6 +106,14 @@ class PyramidAttentionBroadcastState:
     def reset(self):
         self.iteration = 0
         self.cache = None
+    
+    def __repr__(self):
+        cache_repr = ""
+        if self.cache is None:
+            cache_repr = "None"
+        else:
+            cache_repr = f"Tensor(shape={self.cache.shape}, dtype={self.cache.dtype})"
+        return f"PyramidAttentionBroadcastState(iteration={self.iteration}, cache={cache_repr})"
 
 
 class PyramidAttentionBroadcastHook(ModelHook):
@@ -120,21 +128,21 @@ class PyramidAttentionBroadcastHook(ModelHook):
 
     def initialize_hook(self, module):
         self.state = PyramidAttentionBroadcastState()
+        return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
-        args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
-
         if self.skip_callback(module):
-            output = module._pyramid_attention_broadcast_state.cache
+            output = self.state.cache
         else:
             output = module._old_forward(*args, **kwargs)
 
         self.state.cache = output
         self.state.iteration += 1
-        return module._diffusers_hook.post_forward(module, output)
+        return output
 
     def reset_state(self, module: torch.nn.Module) -> None:
-        module.state.reset()
+        self.state.reset()
+        return module
 
 
 def apply_pyramid_attention_broadcast(
@@ -168,7 +176,7 @@ def apply_pyramid_attention_broadcast(
     >>> config = PyramidAttentionBroadcastConfig(
     ...     spatial_attention_block_skip_range=2, spatial_attention_timestep_skip_range=(100, 800)
     ... )
-    >>> apply_pyramid_attention_broadcast(pipe, config)
+    >>> apply_pyramid_attention_broadcast(pipe.transformer, config)
     ```
     """
     if config.current_timestep_callback is None:
@@ -192,9 +200,9 @@ def apply_pyramid_attention_broadcast(
         if not isinstance(submodule, _ATTENTION_CLASSES):
             continue
         if isinstance(submodule, Attention):
-            _apply_pyramid_attention_broadcast_on_attention_class(name, module, config)
+            _apply_pyramid_attention_broadcast_on_attention_class(name, submodule, config)
         if isinstance(submodule, MochiAttention):
-            _apply_pyramid_attention_broadcast_on_mochi_attention_class(name, module, config)
+            _apply_pyramid_attention_broadcast_on_mochi_attention_class(name, submodule, config)
 
 
 def _apply_pyramid_attention_broadcast_on_attention_class(
@@ -241,7 +249,9 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
         return False
 
     def skip_callback(module: torch.nn.Module) -> bool:
-        pab_state = module._pyramid_attention_broadcast_state
+        hook: PyramidAttentionBroadcastHook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+        pab_state: PyramidAttentionBroadcastState = hook.state
+        
         if pab_state.cache is None:
             return False
 

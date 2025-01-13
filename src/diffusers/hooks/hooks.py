@@ -121,7 +121,12 @@ class HookRegistry:
         self._module_ref = hook.initialize_hook(self._module_ref)
 
         if hasattr(hook, "new_forward"):
-            new_forward = hook.new_forward
+            rewritten_forward = hook.new_forward
+
+            def new_forward(module, *args, **kwargs):
+                args, kwargs = hook.pre_forward(module, *args, **kwargs)
+                output = rewritten_forward(module, *args, **kwargs)
+                return hook.post_forward(module, output)
         else:
 
             def new_forward(module, *args, **kwargs):
@@ -129,8 +134,7 @@ class HookRegistry:
                 output = old_forward(*args, **kwargs)
                 return hook.post_forward(module, output)
 
-        new_forward = functools.update_wrapper(new_forward, old_forward)
-        self._module_ref.forward = new_forward.__get__(self._module_ref)
+        self._module_ref.forward = functools.update_wrapper(functools.partial(new_forward, self._module_ref), old_forward)
 
         self.hooks[name] = hook
         self._hook_order.append(name)
@@ -147,11 +151,16 @@ class HookRegistry:
         del self.hooks[name]
         self._hook_order.remove(name)
 
-    def reset_stateful_hooks(self):
+    def reset_stateful_hooks(self, recurse: bool = True) -> None:
         for hook_name in self._hook_order:
             hook = self.hooks[hook_name]
             if hook._is_stateful:
                 hook.reset_state(self._module_ref)
+        
+        if recurse:
+            for module in self._module_ref.modules():
+                if hasattr(module, "_diffusers_hook"):
+                    module._diffusers_hook.reset_stateful_hooks(recurse=False)
 
     @classmethod
     def check_if_exists_or_initialize(cls, module: torch.nn.Module) -> "HookRegistry":
