@@ -32,9 +32,9 @@ from diffusers.models import FluxControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    nightly,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
-    slow,
     torch_device,
 )
 from diffusers.utils.torch_utils import randn_tensor
@@ -204,7 +204,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             assert (output_height, output_width) == (expected_height, expected_width)
 
 
-@slow
+@nightly
 @require_big_gpu_with_torch_cuda
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxControlNetPipelineSlowTests(unittest.TestCase):
@@ -241,12 +241,12 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
 
         prompt_embeds = torch.load(
             hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
-        )
+        ).to(torch_device)
         pooled_prompt_embeds = torch.load(
             hf_hub_download(
                 repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
             )
-        )
+        ).to(torch_device)
 
         output = pipe(
             prompt_embeds=prompt_embeds,
