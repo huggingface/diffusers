@@ -16,6 +16,8 @@ env:
   HF_HUB_ENABLE_HF_TRANSFER: 1
   PYTEST_TIMEOUT: 600
   RUN_SLOW: no
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  PYTORCH_MPS_HIGH_WATERMARK_RATIO: 0.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -23,8 +25,46 @@ concurrency:
 
 jobs:
   run_fast_tests_apple_m1:
-    name: Fast PyTorch MPS tests on MacOS
-    runs-on: macos-13-xlarge
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Fast Pipelines MPS tests
+            framework: pytorch_pipelines
+            runner: macos-13-xlarge
+            report: torch_mps_pipelines
+          - name: Fast Models MPS tests
+            framework: pytorch_models
+            runner: macos-13-xlarge
+            report: torch_mps_models
+          - name: Fast Schedulers MPS tests
+            framework: pytorch_schedulers
+            runner: macos-13-xlarge
+            report: torch_mps_schedulers
+          - name: Fast Others MPS tests
+            framework: pytorch_others
+            runner: macos-13-xlarge
+            report: torch_mps_others
+          - name: Fast Single File MPS tests
+            framework: pytorch_single_file
+            runner: macos-13-xlarge
+            report: torch_mps_single_file
+          - name: Fast Lora MPS tests
+            framework: pytorch_lora
+            runner: macos-13-xlarge
+            report: torch_mps_lora
+          - name: Fast Quantization MPS tests
+            framework: pytorch_quantization
+            runner: macos-13-xlarge
+            report: torch_mps_quantization
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: ${{ matrix.config.runner }}
+
+    defaults:
+      run:
+        shell: arch -arch arm64 bash {0}
 
     steps:
     - name: Checkout diffusers
@@ -33,7 +73,6 @@ jobs:
         fetch-depth: 2
 
     - name: Clean checkout
-      shell: arch -arch arm64 bash {0}
       run: |
         git clean -fxd
 
@@ -43,10 +82,12 @@ jobs:
         python-version: 3.9
 
     - name: Install dependencies
-      shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip uv
         ${CONDA_RUN} python -m uv pip install -e ".[quality,test]"
+        ${CONDA_RUN} python -m uv pip install hf_transfer
+        ${CONDA_RUN} python -m uv pip install peft
+        ${CONDA_RUN} python -m uv pip install bitsandbytes
         ${CONDA_RUN} python -m uv pip install torch torchvision torchaudio
         ${CONDA_RUN} python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
         ${CONDA_RUN} python -m uv pip install transformers --upgrade
@@ -56,21 +97,62 @@ jobs:
       run: |
         ${CONDA_RUN} python utils/print_env.py
 
-    - name: Run fast PyTorch tests on M1 (MPS)
-      shell: arch -arch arm64 bash {0}
-      env:
-        HF_HOME: /System/Volumes/Data/mnt/cache
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    - name: Run fast PyTorch Pipeline MPS tests
+      if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
-        ${CONDA_RUN} python -m pytest -n 0 -s -v --make-reports=tests_torch_mps tests/
+        ${CONDA_RUN} python -m pytest -n 0 -s -v -k "not Flax and not Onnx" \
+        --make-reports=tests_${{ matrix.config.report }} \
+          tests/pipelines/
+
+    - name: Run fast PyTorch Models MPS tests
+      if: ${{ matrix.config.framework == 'pytorch_models' }}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 0 -s -v -k "not Flax and not Onnx and not Dependency" \
+        --make-reports=tests_${{ matrix.config.report }} \
+          tests/models/
+
+    - name: Run fast PyTorch Schedulers MPS tests
+      if: ${{ matrix.config.framework == 'pytorch_schedulers' }}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 0 -s -v -k "not Flax and not Onnx and not Dependency" \
+        --make-reports=tests_${{ matrix.config.report }} \
+          tests/schedulers/
+
+    - name: Run fast PyTorch Others MPS tests
+      if: ${{ matrix.config.framework == 'pytorch_others' }}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 0 -s -v \
+        --make-reports=tests_${{ matrix.config.report }} \
+          tests/others/
+
+    - name: Run fast PyTorch Single File MPS tests
+      if: ${{ matrix.config.framework == 'pytorch_single_file' }}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 0 -s -v \
+        --make-reports=tests_${{ matrix.config.report }} \
+          tests/single_file/
+
+    - name: Run fast PyTorch Lora MPS tests
+      if: ${{ matrix.config.framework == 'pytorch_lora' }}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 0 -s -v \
+        --make-reports=tests_${{ matrix.config.report }} \
+          tests/lora/
+
+    - name: Run fast PyTorch Quantization MPS tests
+      if: ${{ matrix.config.framework == 'pytorch_quantization' }}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 0 -s -v \
+        --make-reports=tests_${{ matrix.config.report }} \
+          tests/quantization/
 
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_torch_mps_failures_short.txt
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
-        name: pr_torch_mps_test_reports
+        name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
         path: reports
