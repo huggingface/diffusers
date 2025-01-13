@@ -33,6 +33,7 @@ def _main(index, args, text_pipe, ckpt_id):
     logger.info(f'loading flux from {ckpt_id}')
     flux_pipe = FluxPipeline.from_pretrained(ckpt_id, text_encoder=None, tokenizer=None,
                                             text_encoder_2=None, tokenizer_2=None, torch_dtype=torch.bfloat16).to(device0)
+    flux_pipe.transformer.enable_xla_flash_attention(partition_spec=("data", None, None, None), is_flux=True)
 
     prompt = 'photograph of an electronics chip in the shape of a race car with trillium written on its side'
     width = args.width
