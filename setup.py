@@ -135,6 +135,7 @@ _deps = [
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
     "black",
+    "phonemizer",
 ]
 
 # this is a lookup table with items like:
@@ -227,6 +228,7 @@ extras["test"] = deps_list(
     "scipy",
     "torchvision",
     "transformers",
+    "phonemizer",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
