@@ -611,7 +611,6 @@ def infer_diffusers_model_type(checkpoint):
 
             if checkpoint[key].shape[1] == 384:
                 model_type = "flux-fill"
-
             elif checkpoint[key].shape[1] == 128:
                 model_type = "flux-depth"
             else:
