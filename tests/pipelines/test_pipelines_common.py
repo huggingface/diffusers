@@ -1195,7 +1195,6 @@ class PipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
-            print(batch_size, batched_input)
             output = pipe(**batched_input)
             assert len(output[0]) == batch_size
 

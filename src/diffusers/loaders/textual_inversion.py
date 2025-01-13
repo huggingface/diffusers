@@ -333,7 +333,7 @@ class TextualInversionLoaderMixin:
         from diffusers import StableDiffusionPipeline
         import torch
 
-        model_id = "runwayml/stable-diffusion-v1-5"
+        model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
         pipe.load_textual_inversion("sd-concepts-library/cat-toy")
@@ -352,7 +352,7 @@ class TextualInversionLoaderMixin:
         from diffusers import StableDiffusionPipeline
         import torch
 
-        model_id = "runwayml/stable-diffusion-v1-5"
+        model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
         pipe.load_textual_inversion("./charturnerv2.pt", token="charturnerv2")
@@ -469,7 +469,7 @@ class TextualInversionLoaderMixin:
         from diffusers import AutoPipelineForText2Image
         import torch
 
-        pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
+        pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 
         # Example 1
         pipeline.load_textual_inversion("sd-concepts-library/gta5-artwork")

@@ -9,6 +9,7 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPToken
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils.testing_utils import (
+    nightly,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     slow,
@@ -211,8 +212,19 @@ class FluxPipelineFastTests(
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
 
+    def test_flux_true_cfg(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.pop("generator")
 
-@slow
+        no_true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+        inputs["negative_prompt"] = "bad quality"
+        inputs["true_cfg_scale"] = 2.0
+        true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+        assert not np.allclose(no_true_cfg_out, true_cfg_out)
+
+
+@nightly
 @require_big_gpu_with_torch_cuda
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxPipelineSlowTests(unittest.TestCase):
@@ -230,19 +242,16 @@ class FluxPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
+        generator = torch.Generator(device="cpu").manual_seed(seed)
 
         prompt_embeds = torch.load(
             hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
-        )
+        ).to(torch_device)
         pooled_prompt_embeds = torch.load(
             hf_hub_download(
                 repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
             )
-        )
+        ).to(torch_device)
         return {
             "prompt_embeds": prompt_embeds,
             "pooled_prompt_embeds": pooled_prompt_embeds,
@@ -256,8 +265,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
     def test_flux_inference(self):
         pipe = self.pipeline_class.from_pretrained(
             self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
-        )
-        pipe.enable_model_cpu_offload()
+        ).to(torch_device)
 
         inputs = self.get_inputs(torch_device)
 
