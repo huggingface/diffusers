@@ -2322,7 +2322,7 @@ class FluxAttnProcessor2_0:
             key = apply_rotary_emb(key, image_rotary_emb)
 
         hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2522,9 +2522,9 @@ class FusedFluxAttnProcessor2_0:
 
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
- 
+
         hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -3503,7 +3503,7 @@ class XLAFluxFlashAttnProcessor2_0:
 
         query /= math.sqrt(head_dim)
         hidden_states = flash_attention(query, key, value, causal=False)
-        
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -3523,7 +3523,7 @@ class XLAFluxFlashAttnProcessor2_0:
             return hidden_states, encoder_hidden_states
         else:
             return hidden_states
-        
+
 
 class MochiVaeAttnProcessor2_0:
     r"""
