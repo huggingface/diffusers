@@ -30,6 +30,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
     BaseOutput,
+    deprecate,
     is_bs4_available,
     is_ftfy_available,
     is_torch_xla_available,
@@ -848,7 +849,14 @@ class LattePipeline(DiffusionPipeline):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        if not output_type == "latents":
+        if output_type == "latents":
+            deprecation_message = (
+                "Passing `output_type='latents'` is deprecated. Please pass `output_type='latent'` instead."
+            )
+            deprecate("output_type_latents", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "latent"
+
+        if not output_type == "latent":
             video = self.decode_latents(latents, video_length, decode_chunk_size=14)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
