@@ -59,10 +59,10 @@ Refer to the [Quantization](../../quantization/overview) overview to learn more 
 ```py
 import torch
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, SanaTransformer2DModel, SanaPipeline
-from transformers import BitsAndBytesConfig as BitsAndBytesConfig, AutoModelForCausalLM
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, AutoModel
 
 quant_config = BitsAndBytesConfig(load_in_8bit=True)
-text_encoder_8bit = AutoModelForCausalLM.from_pretrained(
+text_encoder_8bit = AutoModel.from_pretrained(
     "Efficient-Large-Model/Sana_1600M_1024px_diffusers",
     subfolder="text_encoder",
     quantization_config=quant_config,

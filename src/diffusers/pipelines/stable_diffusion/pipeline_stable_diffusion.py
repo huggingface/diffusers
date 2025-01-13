@@ -254,12 +254,15 @@ class StableDiffusionPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        self._is_unet_config_sample_size_int = isinstance(unet.config.sample_size, int)
+        is_unet_version_less_0_9_0 = (
+            unet is not None
+            and hasattr(unet.config, "_diffusers_version")
+            and version.parse(version.parse(unet.config._diffusers_version).base_version) < version.parse("0.9.0.dev0")
+        )
+        self._is_unet_config_sample_size_int = unet is not None and isinstance(unet.config.sample_size, int)
         is_unet_sample_size_less_64 = (
-            hasattr(unet.config, "sample_size")
+            unet is not None
+            and hasattr(unet.config, "sample_size")
             and self._is_unet_config_sample_size_int
             and unet.config.sample_size < 64
         )
@@ -290,7 +293,7 @@ class StableDiffusionPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
