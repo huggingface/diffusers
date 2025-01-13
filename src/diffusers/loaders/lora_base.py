@@ -339,93 +339,93 @@ def _load_lora_into_text_encoder(
     # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
     # then the `state_dict` keys should have `unet_name` and/or `text_encoder_name` as
     # their prefixes.
-    keys = list(state_dict.keys())
     prefix = text_encoder_name if prefix is None else prefix
 
-    # Safe prefix to check with.
-    if any(text_encoder_name in key for key in keys):
-        # Load the layers corresponding to text encoder and make necessary adjustments.
-        text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".")[0] == prefix]
-        text_encoder_lora_state_dict = {
-            k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
-        }
+    # Load the layers corresponding to text encoder and make necessary adjustments.
+    if prefix is not None:
+        state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
-        if len(text_encoder_lora_state_dict) > 0:
-            logger.info(f"Loading {prefix}.")
-            rank = {}
-            text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
+    if len(state_dict) > 0:
+        logger.info(f"Loading {prefix}.")
+        rank = {}
+        state_dict = convert_state_dict_to_diffusers(state_dict)
 
-            # convert state dict
-            text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+        # convert state dict
+        state_dict = convert_state_dict_to_peft(state_dict)
 
-            for name, _ in text_encoder_attn_modules(text_encoder):
-                for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
-                    rank_key = f"{name}.{module}.lora_B.weight"
-                    if rank_key not in text_encoder_lora_state_dict:
-                        continue
-                    rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+        for name, _ in text_encoder_attn_modules(text_encoder):
+            for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
+                rank_key = f"{name}.{module}.lora_B.weight"
+                if rank_key not in state_dict:
+                    continue
+                rank[rank_key] = state_dict[rank_key].shape[1]
 
-            for name, _ in text_encoder_mlp_modules(text_encoder):
-                for module in ("fc1", "fc2"):
-                    rank_key = f"{name}.{module}.lora_B.weight"
-                    if rank_key not in text_encoder_lora_state_dict:
-                        continue
-                    rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+        for name, _ in text_encoder_mlp_modules(text_encoder):
+            for module in ("fc1", "fc2"):
+                rank_key = f"{name}.{module}.lora_B.weight"
+                if rank_key not in state_dict:
+                    continue
+                rank[rank_key] = state_dict[rank_key].shape[1]
 
-            if network_alphas is not None:
-                alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
-                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+        if network_alphas is not None:
+            alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
+            network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+        lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=False)
 
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"]:
-                    if is_peft_version("<", "0.9.0"):
-                        raise ValueError(
-                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<", "0.9.0"):
-                        lora_config_kwargs.pop("use_dora")
+        if "use_dora" in lora_config_kwargs:
+            if lora_config_kwargs["use_dora"]:
+                if is_peft_version("<", "0.9.0"):
+                    raise ValueError(
+                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                    )
+            else:
+                if is_peft_version("<", "0.9.0"):
+                    lora_config_kwargs.pop("use_dora")
 
-            if "lora_bias" in lora_config_kwargs:
-                if lora_config_kwargs["lora_bias"]:
-                    if is_peft_version("<=", "0.13.2"):
-                        raise ValueError(
-                            "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<=", "0.13.2"):
-                        lora_config_kwargs.pop("lora_bias")
+        if "lora_bias" in lora_config_kwargs:
+            if lora_config_kwargs["lora_bias"]:
+                if is_peft_version("<=", "0.13.2"):
+                    raise ValueError(
+                        "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                    )
+            else:
+                if is_peft_version("<=", "0.13.2"):
+                    lora_config_kwargs.pop("lora_bias")
 
-            lora_config = LoraConfig(**lora_config_kwargs)
+        lora_config = LoraConfig(**lora_config_kwargs)
 
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(text_encoder)
+        # adapter_name
+        if adapter_name is None:
+            adapter_name = get_adapter_name(text_encoder)
 
-            is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
+        is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
 
-            # inject LoRA layers and load the state dict
-            # in transformers we automatically check whether the adapter name is already in use or not
-            text_encoder.load_adapter(
-                adapter_name=adapter_name,
-                adapter_state_dict=text_encoder_lora_state_dict,
-                peft_config=lora_config,
-                **peft_kwargs,
-            )
+        # inject LoRA layers and load the state dict
+        # in transformers we automatically check whether the adapter name is already in use or not
+        text_encoder.load_adapter(
+            adapter_name=adapter_name,
+            adapter_state_dict=state_dict,
+            peft_config=lora_config,
+            **peft_kwargs,
+        )
 
-            # scale LoRA layers with `lora_scale`
-            scale_lora_layers(text_encoder, weight=lora_scale)
+        # scale LoRA layers with `lora_scale`
+        scale_lora_layers(text_encoder, weight=lora_scale)
 
-            text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+        text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
 
-            # Offload back.
-            if is_model_cpu_offload:
-                _pipeline.enable_model_cpu_offload()
-            elif is_sequential_cpu_offload:
-                _pipeline.enable_sequential_cpu_offload()
-            # Unsafe code />
+        # Offload back.
+        if is_model_cpu_offload:
+            _pipeline.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            _pipeline.enable_sequential_cpu_offload()
+        # Unsafe code />
+
+    if prefix is not None and not state_dict:
+        logger.info(
+            f"No LoRA keys associated to {text_encoder.__class__.__name__} found with the {prefix=}. Open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new"
+        )
 
 
 def _func_optionally_disable_offloading(_pipeline):
