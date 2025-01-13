@@ -80,7 +80,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> from pipeline_anytext import AnyTextPipeline
-        >>> from text_controlnet import AnyTextControlNetModel
+        >>> from anytext_controlnet import AnyTextControlNetModel
         >>> from diffusers import DDIMScheduler
         >>> from diffusers.utils import load_image
         >>> import torch
