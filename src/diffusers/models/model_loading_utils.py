@@ -136,7 +136,6 @@ def load_state_dict(
     checkpoint_file: Union[str, os.PathLike],
     variant: Optional[str] = None,
     dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
-    disable_mmap: bool = False,
 ):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
@@ -152,8 +151,6 @@ def load_state_dict(
                 # tensors are loaded on cpu
                 with dduf_entries[checkpoint_file].as_mmap() as mm:
                     return safetensors.torch.load(mm)
-            if disable_mmap:
-                return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
                 return safetensors.torch.load_file(checkpoint_file, device="cpu")
         elif file_extension == GGUF_FILE_EXTENSION:
@@ -345,8 +342,14 @@ def _merge_sharded_checkpoints(
     # Load tensors from each unique file
     for file_name in files_to_load:
         part_file_path = os.path.join(sharded_ckpt_cached_folder, file_name)
-        if not os.path.exists(part_file_path) or (dduf_entries and part_file_path not in dduf_entries):
-            raise FileNotFoundError(f"Part file {file_name} not found.")
+        if dduf_entries:
+            # If dduf_entries is provided, check if part_file_path is in it
+            if part_file_path not in dduf_entries:
+                raise FileNotFoundError(f"Part file {file_name} not found.")
+        else:
+            # If dduf_entries is not provided, check if the file exists on disk
+            if not os.path.exists(part_file_path):
+                raise FileNotFoundError(f"Part file {file_name} not found.")
 
         if is_safetensors:
             if dduf_entries:
