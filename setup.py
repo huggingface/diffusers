@@ -227,6 +227,7 @@ extras["test"] = deps_list(
     "scipy",
     "torchvision",
     "transformers",
+    "phonemizer",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
