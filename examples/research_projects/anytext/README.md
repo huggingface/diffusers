@@ -20,12 +20,12 @@ To learn about how to convert the fine-tuned stable diffusion model, see the [Lo
 ```py
 import torch
 from pipeline_anytext import AnyTextPipeline
-from text_controlnet import TextControlNetModel
+from text_controlnet import AnyTextControlNetModel
 from diffusers import DDIMScheduler
 from diffusers.utils import load_image
 
 
-controlnet = TextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
+controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
                                                   variant="fp16")
 pipe = AnyTextPipeline.from_pretrained("tolgacangoz/anytext", controlnet=controlnet,
                                         torch_dtype=torch.float16, variant="fp16")

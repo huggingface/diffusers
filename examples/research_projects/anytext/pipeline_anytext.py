@@ -80,13 +80,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> from pipeline_anytext import AnyTextPipeline
-        >>> from text_controlnet import TextControlNetModel
+        >>> from text_controlnet import AnyTextControlNetModel
         >>> from diffusers import DDIMScheduler
         >>> from diffusers.utils import load_image
         >>> import torch
 
         >>> # load control net and stable diffusion v1-5
-        >>> text_controlnet = TextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
+        >>> text_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
         ...                                                        variant="fp16",)
         >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", controlnet=text_controlnet,
         ...                                          torch_dtype=torch.float16, variant="fp16",
