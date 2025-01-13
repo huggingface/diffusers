@@ -195,9 +195,13 @@ class BetaSchedule:
             else:
                 # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
                 if self.timestep_spacing == "linspace":
-                    timesteps = np.linspace(0, self.num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[
-                        ::-1
-                    ].copy()
+                    # TODO: check this
+                    timesteps = (
+                        np.linspace(0, self.num_train_timesteps - 1, num_inference_steps + 1)
+                        .round()[::-1][:-1]
+                        .copy()
+                        .astype(np.int64)
+                    )
                 elif self.timestep_spacing == "leading":
                     step_ratio = self.num_train_timesteps // num_inference_steps
                     # creates integer timesteps by multiplying by ratio

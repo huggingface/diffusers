@@ -215,7 +215,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin, SamplingMixin):
             alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
             sigma_t = sigma * alpha_t
         else:
-            raise ValueError("..")
+            raise ValueError("Unsupported schedule type.")
 
         return alpha_t, sigma_t
 
@@ -491,7 +491,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin, SamplingMixin):
         else:
             raise NotImplementedError("only support log-rho multistep deis now")
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
+    # TODO: integrate with SamplingMixin
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps

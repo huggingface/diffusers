@@ -24,7 +24,7 @@ class DEISMultistepSchedulerTest(SchedulerCommonTest):
                 "beta_start": 0.0001,
                 "beta_end": 0.02,
                 "beta_schedule": "linear",
-                "final_sigma_type": "sigma_min",
+                "final_sigmas_type": "sigma_min",
             },
             "sigma_schedule_config": {},
             "solver_order": 2,
