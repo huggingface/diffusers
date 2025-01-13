@@ -17,7 +17,7 @@ import torch
 from torch import nn
 
 from diffusers.configuration_utils import register_to_config
-from diffusers.models.controlnet import (
+from diffusers.models.controlnets.controlnet import (
     ControlNetModel,
     ControlNetOutput,
 )
