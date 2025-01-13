@@ -58,11 +58,6 @@ else:
         "StableDiffusionMixin",
         "ImagePipelineOutput",
     ]
-    _import_structure["pyramid_attention_broadcast_utils"] = [
-        "PyramidAttentionBroadcastConfig",
-        "apply_pyramid_attention_broadcast",
-        "apply_pyramid_attention_broadcast_on_module",
-    ]
     _import_structure["deprecated"].extend(
         [
             "PNDMPipeline",
@@ -460,11 +455,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DiffusionPipeline,
             ImagePipelineOutput,
             StableDiffusionMixin,
-        )
-        from .pyramid_attention_broadcast_utils import (
-            PyramidAttentionBroadcastConfig,
-            apply_pyramid_attention_broadcast,
-            apply_pyramid_attention_broadcast_on_module,
         )
 
     try:

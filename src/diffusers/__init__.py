@@ -75,6 +75,12 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
+    _import_structure["hooks"].extend(
+        [
+            "PyramidAttentionBroadcastConfig",
+            "apply_pyramid_attention_broadcast",
+        ]
+    )
     _import_structure["models"].extend(
         [
             "AllegroTransformer3DModel",
@@ -336,7 +342,6 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
-            "PyramidAttentionBroadcastConfig",
             "ReduxImageEncoder",
             "SanaPAGPipeline",
             "SanaPipeline",
@@ -423,8 +428,6 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
-            "apply_pyramid_attention_broadcast",
-            "apply_pyramid_attention_broadcast_on_module",
         ]
     )
 
@@ -589,6 +592,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .hooks import PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -828,7 +832,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
-            PyramidAttentionBroadcastConfig,
             ReduxImageEncoder,
             SanaPAGPipeline,
             SanaPipeline,
@@ -913,8 +916,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-            apply_pyramid_attention_broadcast,
-            apply_pyramid_attention_broadcast_on_module,
         )
 
     try:
