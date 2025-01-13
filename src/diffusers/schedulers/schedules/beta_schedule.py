@@ -133,6 +133,10 @@ class BetaSchedule:
             # FP16 smallest positive subnormal works well here
             self.alphas_cumprod[-1] = 2**-24
 
+        self.alpha_t = torch.sqrt(self.alphas_cumprod)
+        self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
+        self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
+
         self.num_train_timesteps = num_train_timesteps
         self.beta_start = beta_start
         self.beta_end = beta_end

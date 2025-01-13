@@ -18,10 +18,15 @@ class DEISMultistepSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "num_train_timesteps": 1000,
-            "beta_start": 0.0001,
-            "beta_end": 0.02,
-            "beta_schedule": "linear",
+            "schedule_config": {
+                "class_name": "BetaSchedule",
+                "num_train_timesteps": 1000,
+                "beta_start": 0.0001,
+                "beta_end": 0.02,
+                "beta_schedule": "linear",
+                "final_sigma_type": "sigma_min",
+            },
+            "sigma_schedule_config": {},
             "solver_order": 2,
         }
 
@@ -161,7 +166,9 @@ class DEISMultistepSchedulerTest(SchedulerCommonTest):
 
     def test_timesteps(self):
         for timesteps in [25, 50, 100, 999, 1000]:
-            self.check_over_configs(num_train_timesteps=timesteps)
+            scheduler_config = self.get_scheduler_config()
+            scheduler_config["schedule_config"].update({"num_train_timesteps": timesteps})
+            self.check_over_configs(**scheduler_config)
 
     def test_thresholding(self):
         self.check_over_configs(thresholding=False)

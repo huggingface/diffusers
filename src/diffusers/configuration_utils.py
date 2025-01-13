@@ -252,7 +252,9 @@ class ConfigMixin:
             use_karras_sigmas = config.pop("use_karras_sigmas", None)
             use_exponential_sigmas = config.pop("use_exponential_sigmas", None)
             use_beta_sigmas = config.pop("use_beta_sigmas", None)
+            use_flow_sigmas = config.pop("use_flow_sigmas", None)
             prediction_type = config.pop("prediction_type", None)
+            schedule_config = {}
             if use_karras_sigmas:
                 sigma_schedule_config = {"class_name": "KarrasSigmas"}
             elif use_exponential_sigmas:
@@ -263,16 +265,32 @@ class ConfigMixin:
                 sigma_schedule_config = {}
             if "beta_schedule" in config:
                 config.update({"class_name": "BetaSchedule"})
-            elif "shift" in config:
+                from .schedulers.schedules.beta_schedule import BetaSchedule
+
+                expected_kwargs = list(inspect.signature(BetaSchedule.__init__).parameters)[1:-1]
+                for expected_kwarg in expected_kwargs:
+                    if expected_kwarg in config:
+                        schedule_config[expected_kwarg] = config.pop(expected_kwarg)
+            elif "shift" in config or use_flow_sigmas:
                 config.update({"class_name": "FlowMatchSchedule"})
+                from .schedulers.schedules.flow_schedule import FlowMatchSchedule
+
+                expected_kwargs = list(inspect.signature(FlowMatchSchedule.__init__).parameters)[1:-1]
+                for expected_kwarg in expected_kwargs:
+                    if expected_kwarg in config:
+                        schedule_config[expected_kwarg] = config.pop(expected_kwarg)
+            if prediction_type == "flow_prediction":
+                prediction_type = "epsilon"
             if prediction_type:
                 config.update({"prediction_type": prediction_type})
-            config = {
-                "_class_name": _class_name,
-                "_diffusers_version": _diffusers_version,
-                "schedule_config": config,
-                "sigma_schedule_config": sigma_schedule_config,
-            }
+            config.update(
+                {
+                    "_class_name": _class_name,
+                    "_diffusers_version": _diffusers_version,
+                    "schedule_config": schedule_config,
+                    "sigma_schedule_config": sigma_schedule_config,
+                }
+            )
 
         init_dict, unused_kwargs, hidden_dict = cls.extract_init_dict(config, **kwargs)
 
