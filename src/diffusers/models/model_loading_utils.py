@@ -343,11 +343,9 @@ def _merge_sharded_checkpoints(
     for file_name in files_to_load:
         part_file_path = os.path.join(sharded_ckpt_cached_folder, file_name)
         if dduf_entries:
-            # If dduf_entries is provided, check if part_file_path is in it
             if part_file_path not in dduf_entries:
                 raise FileNotFoundError(f"Part file {file_name} not found.")
         else:
-            # If dduf_entries is not provided, check if the file exists on disk
             if not os.path.exists(part_file_path):
                 raise FileNotFoundError(f"Part file {file_name} not found.")
 

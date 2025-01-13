@@ -450,11 +450,9 @@ def _get_checkpoint_shard_files(
     index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
     """
     if dduf_entries:
-            # If dduf_entries is provided, check if part_file_path is in it
         if index_filename not in dduf_entries:
             raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
     else:
-        # If dduf_entries is not provided, check if the file exists on disk
         if not os.path.isfile(index_filename):
             raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 
