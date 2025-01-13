@@ -169,12 +169,15 @@ def apply_pyramid_attention_broadcast(
     ```python
     >>> import torch
     >>> from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+    >>> from diffusers.utils import export_to_video
 
     >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
     >>> pipe.to("cuda")
 
     >>> config = PyramidAttentionBroadcastConfig(
-    ...     spatial_attention_block_skip_range=2, spatial_attention_timestep_skip_range=(100, 800)
+    ...     spatial_attention_block_skip_range=2,
+    ...     spatial_attention_timestep_skip_range=(100, 800),
+    ...     current_timestep_callback=lambda: pipe._current_timestep,
     ... )
     >>> apply_pyramid_attention_broadcast(pipe.transformer, config)
     ```
