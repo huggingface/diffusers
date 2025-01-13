@@ -302,7 +302,7 @@ class PeftAdapterMixin:
                 incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
             except Exception as e:
                 # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
-                if getattr(self, "peft_config", None) is not None:
+                if hasattr(self, "peft_config"):
                     for module in self.modules():
                         if isinstance(module, BaseTunerLayer):
                             active_adapters = module.active_adapters
