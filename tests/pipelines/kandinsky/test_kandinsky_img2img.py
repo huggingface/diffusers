@@ -226,6 +226,8 @@ class KandinskyImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummies = Dummies()
         return dummies.get_dummy_components()
