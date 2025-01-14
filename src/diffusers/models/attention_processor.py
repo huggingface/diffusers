@@ -521,11 +521,6 @@ class Attention(nn.Module):
             processor (`AttnProcessor`):
                 The attention processor to use.
         """
-        # set to use npu flash attention from 'torch_npu' if available
-        if is_torch_npu_available():
-            if isinstance(processor, AttnProcessor2_0):
-                processor = AttnProcessorNPU()
-
         # if current processor is in `self._modules` and if passed `processor` is not, we need to
         # pop `processor` from `self._modules`
         if (
