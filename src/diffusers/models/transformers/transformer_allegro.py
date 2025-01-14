@@ -222,7 +222,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _always_upcast_modules = ["pos_embed", "norm.*", "adaln_single"]
+    _always_upcast_modules = ["pos_embed", "norm", "adaln_single"]
 
     @register_to_config
     def __init__(

@@ -97,7 +97,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
     """
 
     _supports_gradient_checkpointing = False
-    _always_upcast_modules = ["norm.*", "time_embedding"]
+    _always_upcast_modules = ["norm", "time_embedding"]
 
     @register_to_config
     def __init__(

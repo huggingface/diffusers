@@ -353,7 +353,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             >>> # Or, enable layerwise upcasting with custom arguments via the `apply_layerwise_upcasting` function
             >>> apply_layerwise_upcasting(
-            ...     transformer, torch.float8_e4m3fn, torch.bfloat16, skip_modules_pattern=["patch_embed", "norm.*"]
+            ...     transformer, torch.float8_e4m3fn, torch.bfloat16, skip_modules_pattern=["patch_embed", "norm"]
             ... )
             ```
 

@@ -64,7 +64,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
             A small constant added to the denominator in normalization layers to prevent division by zero.
     """
 
-    _always_upcast_modules = ["pos_embed", "norm.*"]
+    _always_upcast_modules = ["pos_embed", "norm"]
     _supports_gradient_checkpointing = True
 
     @register_to_config

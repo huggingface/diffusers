@@ -79,7 +79,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["BasicTransformerBlock", "PatchEmbed"]
-    _always_upcast_modules = ["pos_embed", "norm.*", "adaln_single"]
+    _always_upcast_modules = ["pos_embed", "norm", "adaln_single"]
 
     @register_to_config
     def __init__(

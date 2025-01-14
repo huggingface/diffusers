@@ -221,7 +221,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             overall scale of the model's operations.
     """
 
-    _always_upcast_modules = ["patch_embedder", "norm.*", "ffn_norm.*"]
+    _always_upcast_modules = ["patch_embedder", "norm", "ffn_norm"]
 
     @register_to_config
     def __init__(

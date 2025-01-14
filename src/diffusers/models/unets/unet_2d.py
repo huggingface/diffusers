@@ -90,7 +90,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _always_upcast_modules = ["norm.*"]
+    _always_upcast_modules = ["norm"]
 
     @register_to_config
     def __init__(
