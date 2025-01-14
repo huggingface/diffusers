@@ -20,9 +20,10 @@ import operator as op
 import os
 import sys
 from collections import OrderedDict
+from functools import lru_cache
 from itertools import chain
 from types import ModuleType
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging import version
@@ -363,9 +364,132 @@ if _is_torchao_available:
     except importlib_metadata.PackageNotFoundError:
         _is_torchao_available = False
 
+_ipex_available = importlib.util.find_spec("intel_extension_for_pytorch") is not None
+if _ipex_available:
+    try:
+        _ipex_version = importlib_metadata.version("intel_extension_for_pytorch")
+        logger.debug(f"Successfully import intel_extension_for_pytorch version {_ipex_version}")
+    except importlib_metadata.PackageNotFoundError:
+        _ipex_available = False
+
 
 def is_torch_available():
     return _torch_available
+
+
+def is_torch_cuda_available():
+    if is_torch_available():
+        import torch
+
+        return torch.cuda.is_available()
+    else:
+        return False
+
+
+def is_torch_mps_available(min_version: Optional[str] = None):
+    if is_torch_available():
+        import torch
+
+        if hasattr(torch.backends, "mps"):
+            backend_available = torch.backends.mps.is_available() and torch.backends.mps.is_built()
+            if min_version is not None:
+                flag = version.parse(_torch_version) >= version.parse(min_version)
+                backend_available = backend_available and flag
+            return backend_available
+    return False
+
+
+def is_ipex_available():
+    def get_major_and_minor_from_version(full_version):
+        return str(version.parse(full_version).major) + "." + str(version.parse(full_version).minor)
+
+    if not is_torch_available() or not _ipex_available:
+        return False
+
+    torch_major_and_minor = get_major_and_minor_from_version(_torch_version)
+    ipex_major_and_minor = get_major_and_minor_from_version(_ipex_version)
+    if torch_major_and_minor != ipex_major_and_minor:
+        logger.warning(
+            f"Intel Extension for PyTorch {ipex_major_and_minor} needs to work with PyTorch {ipex_major_and_minor}.*,"
+            f" but PyTorch {_torch_version} is found. Please switch to the matching version and run again."
+        )
+        return False
+    return True
+
+
+@lru_cache
+def is_torch_xpu_available(check_device=False):
+    """
+    Checks if XPU acceleration is available either via `intel_extension_for_pytorch` or via stock PyTorch (>=2.4) and
+    potentially if a XPU is in the environment
+    """
+    if not is_torch_available():
+        return False
+
+    torch_version = version.parse(_torch_version)
+    if is_ipex_available():
+        import intel_extension_for_pytorch  # noqa: F401
+    elif torch_version.major < 2 or (torch_version.major == 2 and torch_version.minor < 4):
+        return False
+
+    import torch
+
+    if check_device:
+        try:
+            # Will raise a RuntimeError if no XPU  is found
+            _ = torch.xpu.device_count()
+            return torch.xpu.is_available()
+        except RuntimeError:
+            return False
+    return hasattr(torch, "xpu") and torch.xpu.is_available()
+
+
+@lru_cache()
+def is_torch_mlu_available(check_device=False):
+    """
+    Checks if `mlu` is available via an `cndev-based` check which won't trigger the drivers and leave mlu
+    uninitialized.
+    """
+    if not _torch_available or importlib.util.find_spec("torch_mlu") is None:
+        return False
+
+    import torch
+    import torch_mlu  # noqa: F401
+
+    pytorch_cndev_based_mlu_check_previous_value = os.environ.get("PYTORCH_CNDEV_BASED_MLU_CHECK")
+    try:
+        os.environ["PYTORCH_CNDEV_BASED_MLU_CHECK"] = str(1)
+        available = torch.mlu.is_available()
+    finally:
+        if pytorch_cndev_based_mlu_check_previous_value:
+            os.environ["PYTORCH_CNDEV_BASED_MLU_CHECK"] = pytorch_cndev_based_mlu_check_previous_value
+        else:
+            os.environ.pop("PYTORCH_CNDEV_BASED_MLU_CHECK", None)
+
+    return available
+
+
+@lru_cache()
+def is_torch_musa_available(check_device=False):
+    "Checks if `torch_musa` is installed and potentially if a MUSA is in the environment"
+    if not _torch_available or importlib.util.find_spec("torch_musa") is None:
+        return False
+
+    import torch
+    import torch_musa  # noqa: F401
+
+    torch_musa_min_version = "0.33.0"
+    if _accelerate_available and version.parse(_accelerate_version) < version.parse(torch_musa_min_version):
+        return False
+
+    if check_device:
+        try:
+            # Will raise a RuntimeError if no MUSA is found
+            _ = torch.musa.device_count()
+            return torch.musa.is_available()
+        except RuntimeError:
+            return False
+    return hasattr(torch, "musa") and torch.musa.is_available()
 
 
 def is_torch_xla_available():
@@ -470,6 +594,15 @@ def is_safetensors_available():
 
 def is_bitsandbytes_available():
     return _bitsandbytes_available
+
+
+def is_bitsandbytes_multi_backend_available() -> bool:
+    if not is_bitsandbytes_available():
+        return False
+
+    import bitsandbytes as bnb
+
+    return "multi_backend" in getattr(bnb, "features", set())
 
 
 def is_google_colab():

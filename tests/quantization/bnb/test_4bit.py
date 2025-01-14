@@ -33,7 +33,7 @@ from diffusers.utils.testing_utils import (
     require_accelerate,
     require_bitsandbytes_version_greater,
     require_torch,
-    require_torch_gpu,
+    require_torch_gpu_if_bnb_not_multi_backend_enabled,
     require_transformers_version_greater,
     slow,
     torch_device,
@@ -85,7 +85,7 @@ if is_bitsandbytes_available():
 @require_bitsandbytes_version_greater("0.43.2")
 @require_accelerate
 @require_torch
-@require_torch_gpu
+@require_torch_gpu_if_bnb_not_multi_backend_enabled
 @slow
 class Base4bitTests(unittest.TestCase):
     # We need to test on relatively large models (aka >1b parameters otherwise the quantiztion may not work as expected)
@@ -123,7 +123,8 @@ class Base4bitTests(unittest.TestCase):
 class BnB4BitBasicTests(Base4bitTests):
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # Models
         self.model_fp16 = SD3Transformer2DModel.from_pretrained(
@@ -143,7 +144,8 @@ class BnB4BitBasicTests(Base4bitTests):
         del self.model_4bit
 
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def test_quantization_num_parameters(self):
         r"""
@@ -213,7 +215,7 @@ class BnB4BitBasicTests(Base4bitTests):
                     self.assertTrue(module.weight.dtype == torch.uint8)
 
         # test if inference works.
-        with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.no_grad() and torch.autocast(torch_device, dtype=torch.float16):
             input_dict_for_transformer = self.get_dummy_inputs()
             model_inputs = {
                 k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
@@ -254,15 +256,16 @@ class BnB4BitBasicTests(Base4bitTests):
         self.assertEqual(self.model_4bit.device.type, "cpu")
         self.assertAlmostEqual(self.model_4bit.get_memory_footprint(), mem_before)
 
-        # Move back to CUDA device
-        for device in [0, "cuda", "cuda:0", "call()"]:
-            if device == "call()":
-                self.model_4bit.cuda(0)
-            else:
-                self.model_4bit.to(device)
-            self.assertEqual(self.model_4bit.device, torch.device(0))
-            self.assertAlmostEqual(self.model_4bit.get_memory_footprint(), mem_before)
-            self.model_4bit.to("cpu")
+        if torch.cuda.is_available():
+            # Move back to CUDA device
+            for device in [0, "cuda", "cuda:0", "call()"]:
+                if device == "call()":
+                    self.model_4bit.cuda(0)
+                else:
+                    self.model_4bit.to(device)
+                self.assertEqual(self.model_4bit.device, torch.device(0))
+                self.assertAlmostEqual(self.model_4bit.get_memory_footprint(), mem_before)
+                self.model_4bit.to("cpu")
 
     def test_device_and_dtype_assignment(self):
         r"""
@@ -274,10 +277,6 @@ class BnB4BitBasicTests(Base4bitTests):
             self.model_4bit.to(torch.float16)
 
         with self.assertRaises(ValueError):
-            # Tries with a `device` and `dtype`
-            self.model_4bit.to(device="cuda:0", dtype=torch.float16)
-
-        with self.assertRaises(ValueError):
             # Tries with a cast
             self.model_4bit.float()
 
@@ -286,7 +285,7 @@ class BnB4BitBasicTests(Base4bitTests):
             self.model_4bit.half()
 
         # This should work
-        self.model_4bit.to("cuda")
+        self.model_4bit.to(torch.device(torch_device))
 
         # Test if we did not break anything
         self.model_fp16 = self.model_fp16.to(dtype=torch.float32, device=torch_device)
@@ -309,8 +308,9 @@ class BnB4BitBasicTests(Base4bitTests):
         # Check this does not throw an error
         _ = self.model_fp16.float()
 
-        # Check that this does not throw an error
-        _ = self.model_fp16.cuda()
+        if torch.cuda.is_available():
+            # Check that this does not throw an error
+            _ = self.model_fp16.cuda()
 
     def test_bnb_4bit_wrong_config(self):
         r"""
@@ -353,7 +353,8 @@ class BnB4BitBasicTests(Base4bitTests):
 class BnB4BitTrainingTests(Base4bitTests):
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -387,7 +388,7 @@ class BnB4BitTrainingTests(Base4bitTests):
         model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
 
         # Step 4: Check if the gradient is not None
-        with torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.autocast(torch_device, dtype=torch.float16):
             out = self.model_4bit(**model_inputs)[0]
             out.norm().backward()
 
@@ -401,7 +402,8 @@ class BnB4BitTrainingTests(Base4bitTests):
 class SlowBnb4BitTests(Base4bitTests):
     def setUp(self) -> None:
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -420,7 +422,8 @@ class SlowBnb4BitTests(Base4bitTests):
         del self.pipeline_4bit
 
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def test_quality(self):
         output = self.pipeline_4bit(
@@ -513,13 +516,14 @@ class SlowBnb4BitTests(Base4bitTests):
             quantization_config=text_encoder_3_nf4_config,
             torch_dtype=torch.float16,
         )
-        # CUDA device placement works.
-        pipeline_4bit = DiffusionPipeline.from_pretrained(
-            self.model_name,
-            transformer=transformer_4bit,
-            text_encoder_3=text_encoder_3_4bit,
-            torch_dtype=torch.float16,
-        ).to("cuda")
+        if torch.cuda.is_available():
+            # CUDA device placement works.
+            pipeline_4bit = DiffusionPipeline.from_pretrained(
+                self.model_name,
+                transformer=transformer_4bit,
+                text_encoder_3=text_encoder_3_4bit,
+                torch_dtype=torch.float16,
+            ).to("cuda")
 
         # Check if inference works.
         _ = pipeline_4bit("table", max_sequence_length=20, num_inference_steps=2)
@@ -531,7 +535,8 @@ class SlowBnb4BitTests(Base4bitTests):
 class SlowBnb4BitFluxTests(Base4bitTests):
     def setUp(self) -> None:
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         model_id = "hf-internal-testing/flux.1-dev-nf4-pkg"
         t5_4bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
@@ -548,7 +553,8 @@ class SlowBnb4BitFluxTests(Base4bitTests):
         del self.pipeline_4bit
 
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def test_quality(self):
         # keep the resolution and max tokens to a lower number for faster execution.
@@ -573,7 +579,8 @@ class SlowBnb4BitFluxTests(Base4bitTests):
 class BaseBnb4BitSerializationTests(Base4bitTests):
     def tearDown(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def test_serialization(self, quant_type="nf4", double_quant=True, safe_serialization=True):
         r"""

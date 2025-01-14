@@ -30,6 +30,7 @@ from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
     is_bitsandbytes_available,
+    is_bitsandbytes_multi_backend_available,
     is_compel_available,
     is_flax_available,
     is_gguf_available,
@@ -40,6 +41,7 @@ from .import_utils import (
     is_timm_available,
     is_torch_available,
     is_torch_version,
+    is_torch_xpu_available,
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
@@ -196,6 +198,17 @@ _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
 _run_compile_tests = parse_flag_from_env("RUN_COMPILE", default=False)
 
 
+def get_device_count():
+    import torch
+
+    if is_torch_xpu_available():
+        num_devices = torch.xpu.device_count()
+    else:
+        num_devices = torch.cuda.device_count()
+
+    return num_devices
+
+
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
     """Creates a random float32 tensor"""
     if rng is None:
@@ -294,9 +307,9 @@ def require_torch_multi_gpu(test_case):
     if not is_torch_available():
         return unittest.skip("test requires PyTorch")(test_case)
 
-    import torch
+    device_count = get_device_count()
 
-    return unittest.skipUnless(torch.cuda.device_count() > 1, "test requires multiple GPUs")(test_case)
+    return unittest.skipUnless(device_count > 1, "test requires multiple GPUs")(test_case)
 
 
 def require_torch_accelerator_with_fp16(test_case):
@@ -339,6 +352,38 @@ def require_torch_accelerator_with_training(test_case):
         is_torch_available() and backend_supports_training(torch_device),
         "test requires accelerator with training support",
     )(test_case)
+
+
+def require_torch_gpu_if_bnb_not_multi_backend_enabled(test_case):
+    """
+    Decorator marking a test that requires a GPU if bitsandbytes multi-backend feature is not enabled.
+    """
+    if is_bitsandbytes_available() and is_bitsandbytes_multi_backend_available():
+        return test_case
+    return require_torch_gpu(test_case)
+
+
+def skip_if_not_implemented(test_func):
+    @functools.wraps(test_func)
+    def wrapper(*args, **kwargs):
+        try:
+            return test_func(*args, **kwargs)
+        except NotImplementedError as e:
+            raise unittest.SkipTest(f"Test skipped due to NotImplementedError: {e}")
+
+    return wrapper
+
+
+def apply_skip_if_not_implemented(cls):
+    """
+    Class decorator to apply @skip_if_not_implemented to all test methods.
+    """
+    for attr_name in dir(cls):
+        if attr_name.startswith("test_"):
+            attr = getattr(cls, attr_name)
+            if callable(attr):
+                setattr(cls, attr_name, skip_if_not_implemented(attr))
+    return cls
 
 
 def skip_mps(test_case):

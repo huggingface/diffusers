@@ -14,6 +14,8 @@
 
 
 import os
+from functools import lru_cache
+from typing import FrozenSet
 
 from packaging import version
 
@@ -63,6 +65,7 @@ from .import_utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_available,
+    is_bitsandbytes_multi_backend_available,
     is_bitsandbytes_version,
     is_bs4_available,
     is_flax_available,
@@ -73,6 +76,7 @@ from .import_utils import (
     is_hf_hub_version,
     is_inflect_available,
     is_invisible_watermark_available,
+    is_ipex_available,
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,
@@ -87,10 +91,15 @@ from .import_utils import (
     is_tensorboard_available,
     is_timm_available,
     is_torch_available,
+    is_torch_cuda_available,
+    is_torch_mlu_available,
+    is_torch_mps_available,
+    is_torch_musa_available,
     is_torch_npu_available,
     is_torch_version,
     is_torch_xla_available,
     is_torch_xla_version,
+    is_torch_xpu_available,
     is_torchao_available,
     is_torchsde_available,
     is_torchvision_available,
@@ -139,3 +148,31 @@ def check_min_version(min_version):
             error_message = f"This example requires a minimum version of {min_version},"
         error_message += f" but the version found is {__version__}.\n"
         raise ImportError(error_message)
+
+
+@lru_cache()
+def get_available_devices() -> FrozenSet[str]:
+    """
+    Returns a frozenset of devices available for the current PyTorch installation.
+    """
+    devices = {"cpu"}  # `cpu` is always supported as a device in PyTorch
+
+    if is_torch_cuda_available():
+        devices.add("cuda")
+
+    if is_torch_mps_available():
+        devices.add("mps")
+
+    if is_torch_xpu_available():
+        devices.add("xpu")
+
+    if is_torch_npu_available():
+        devices.add("npu")
+
+    if is_torch_mlu_available():
+        devices.add("mlu")
+
+    if is_torch_musa_available():
+        devices.add("musa")
+
+    return frozenset(devices)
