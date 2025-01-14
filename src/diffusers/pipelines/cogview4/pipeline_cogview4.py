@@ -28,7 +28,6 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import CogView4PipelineOutput
 
-
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
 
@@ -37,7 +36,6 @@ else:
     XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -180,7 +178,7 @@ class CogView4Pipeline(DiffusionPipeline):
 
         text_inputs = self.tokenizer(
             prompt,
-            padding="max_length",
+            padding="longest",  # not use max length
             max_length=max_sequence_length,
             truncation=True,
             add_special_tokens=True,
@@ -188,19 +186,26 @@ class CogView4Pipeline(DiffusionPipeline):
         )
         text_input_ids = text_inputs.input_ids
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
             removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because `max_sequence_length` is set to "
                 f" {max_sequence_length} tokens: {removed_text}"
             )
+        current_length = text_input_ids.shape[1]
+        pad_length = (16 - (current_length % 16)) % 16
+        if pad_length > 0:
+            pad_ids = torch.full(
+                (text_input_ids.shape[0], pad_length),
+                fill_value=151329,  # <|endoftext|> of glm-4
+                dtype=text_input_ids.dtype,
+                device=text_input_ids.device,
+            )
+            text_input_ids = torch.cat([pad_ids, text_input_ids], dim=1)
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device))[0]
+        prompt_embeds = self.text_encoder.model.embed_tokens(text_input_ids)[0]
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        _, seq_len, _ = prompt_embeds.shape
+        seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         return prompt_embeds
@@ -208,11 +213,12 @@ class CogView4Pipeline(DiffusionPipeline):
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 224,
+        max_sequence_length: int = 1024,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -222,6 +228,10 @@ class CogView4Pipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 Whether to use classifier free guidance or not.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -233,7 +243,7 @@ class CogView4Pipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            max_sequence_length (`int`, defaults to `224`):
+            max_sequence_length (`int`, defaults to `1024`):
                 Maximum sequence length in encoded prompt. Can be set to other values but may lead to poorer results.
             device: (`torch.device`, *optional*):
                 torch device
@@ -249,7 +259,7 @@ class CogView4Pipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds = self._get_t5_prompt_embeds(
+            prompt_embeds = self._get_glm_embeds(
                 prompt=prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -258,7 +268,13 @@ class CogView4Pipeline(DiffusionPipeline):
             )
 
         if do_classifier_free_guidance and negative_prompt is None:
-            negative_prompt_embeds = prompt_embeds.new_zeros(prompt_embeds.shape)
+            negative_prompt_embeds = self._get_glm_embeds(
+                prompt="",
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                device=device,
+                dtype=dtype,
+            )
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
@@ -275,14 +291,13 @@ class CogView4Pipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds = self._get_t5_prompt_embeds(
+            negative_prompt_embeds = self._get_glm_embeds(
                 prompt=negative_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
             )
-
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
@@ -422,7 +437,7 @@ class CogView4Pipeline(DiffusionPipeline):
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        CogView4Pipeline: int = 224,
+        max_sequence_length: int = 1024,
     ) -> Union[CogView4PipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -543,7 +558,6 @@ class CogView4Pipeline(DiffusionPipeline):
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-
         # 3. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
