@@ -36,7 +36,7 @@ jobs:
 
       - name: Check out PR branch
         uses: actions/checkout@v3
-          env: 
+        env: 
           HEADREPOFULLNAME: ${{ steps.pr_info.outputs.headRepoFullName }}
           HEADREF: ${{ steps.pr_info.outputs.headRef }}
         with:
@@ -48,10 +48,14 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Debug
+        env: 
+          HEADREPOFULLNAME: ${{ steps.pr_info.outputs.headRepoFullName }}
+          HEADREF: ${{ steps.pr_info.outputs.headRef }}
+          PRNUMBER: ${{ steps.pr_info.outputs.prNumber }}
         run: |
-          echo "PR Number: ${{ steps.pr_info.outputs.prNumber }}"
-          echo "Head Ref: ${{ steps.pr_info.outputs.headRef }}"
-          echo "Head Repo Full Name: ${{ steps.pr_info.outputs.headRepoFullName }}"
+          echo "PR number: $PRNUMBER"
+          echo "Head Ref: $HEADREF"
+          echo "Head Repo Full Name: $HEADREPOFULLNAME"
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -67,27 +71,30 @@ jobs:
 
       - name: Commit and push changes
         id: commit_and_push
+        env: 
+          HEADREPOFULLNAME: ${{ steps.pr_info.outputs.headRepoFullName }}
+          HEADREF: ${{ steps.pr_info.outputs.headRef }}
+          PRNUMBER: ${{ steps.pr_info.outputs.prNumber }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Configure git with the Actions bot user
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Make sure your 'origin' remote is set to the contributor's fork
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ steps.pr_info.outputs.headRepoFullName }}.git"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ steps.commit_and_push.env.HEADREPOFULLNAME }}.git"
 
           # If there are changes after running style/quality, commit them
           if [ -n "$(git status --porcelain)" ]; then
             git add .
             git commit -m "Apply style fixes"
             # Push to the original contributor's forked branch
-            git push origin HEAD:${{ steps.pr_info.outputs.headRef }}
+            git push origin HEAD:${{ steps.commit_and_push.env.HEADREF }}
             echo "changes_pushed=true" >> $GITHUB_OUTPUT
           else
             echo "No changes to commit."
             echo "changes_pushed=false" >> $GITHUB_OUTPUT
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Comment on PR with workflow run link
         if: steps.commit_and_push.outputs.changes_pushed == 'true'
