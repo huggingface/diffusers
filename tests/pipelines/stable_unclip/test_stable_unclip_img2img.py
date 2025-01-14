@@ -51,6 +51,8 @@ class StableUnCLIPImg2ImgPipelineFastTests(
     )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
     image_latents_params = frozenset([])
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         embedder_hidden_size = 32
         embedder_projection_dim = embedder_hidden_size
