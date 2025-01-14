@@ -1982,9 +1982,19 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 out_features = state_dict[lora_B_weight_name].shape[0]
 
                 # This means there's no need for an expansion in the params, so we simply skip.
-                if tuple(module_weight.shape) == (out_features, in_features):
+                module_weight_shape = module_weight.shape
+                expansion_shape = (out_features, in_features)
+                quantization_config = getattr(transformer, "quantization_config", None)
+                if quantization_config and quantization_config.quant_method == "bitsandbytes":
+                    if quantization_config.load_in_4bit:
+                        expansion_shape = torch.Size(expansion_shape).numel()
+                        expansion_shape = ((expansion_shape + 1) // 2, 1)
+
+                if tuple(module_weight_shape) == expansion_shape:
                     continue
 
+                # TODO (sayakpaul): We still need to consider if the module we're expanding is
+                # quantized and handle it accordingly if that is the case.
                 module_out_features, module_in_features = module_weight.shape
                 debug_message = ""
                 if in_features > module_in_features:
@@ -2080,13 +2090,22 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             base_weight_param = transformer_state_dict[base_param_name]
             lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
 
-            if base_weight_param.shape[1] > lora_A_param.shape[1]:
+            # TODO (sayakpaul): Handle the cases when we actually need to expand.
+            base_out_feature_shape = base_weight_param.shape[1]
+            lora_A_out_feature_shape = lora_A_param.shape[1]
+            quantization_config = getattr(transformer, "quantization_config", None)
+            if quantization_config and quantization_config.quant_method == "bitsandbytes":
+                if quantization_config.load_in_4bit:
+                    lora_A_out_feature_shape = lora_A_param.shape.numel()
+                    lora_A_out_feature_shape = ((lora_A_out_feature_shape + 1) // 2, 1)[1]
+
+            if base_out_feature_shape > lora_A_out_feature_shape:
                 shape = (lora_A_param.shape[0], base_weight_param.shape[1])
                 expanded_state_dict_weight = torch.zeros(shape, device=base_weight_param.device)
                 expanded_state_dict_weight[:, : lora_A_param.shape[1]].copy_(lora_A_param)
                 lora_state_dict[f"{prefix}{k}.lora_A.weight"] = expanded_state_dict_weight
                 expanded_module_names.add(k)
-            elif base_weight_param.shape[1] < lora_A_param.shape[1]:
+            elif lora_A_out_feature_shape < lora_A_out_feature_shape:
                 raise NotImplementedError(
                     f"This LoRA param ({k}.lora_A.weight) has an incompatible shape {lora_A_param.shape}. Please open an issue to file for a feature request - https://github.com/huggingface/diffusers/issues/new."
                 )

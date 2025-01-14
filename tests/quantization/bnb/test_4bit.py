@@ -20,6 +20,7 @@ import unittest
 import numpy as np
 import pytest
 import safetensors.torch
+from huggingface_hub import hf_hub_download
 
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
 from diffusers.utils import is_accelerate_version, logging
@@ -32,6 +33,7 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate,
     require_bitsandbytes_version_greater,
+    require_peft_version_greater,
     require_torch,
     require_torch_gpu,
     require_transformers_version_greater,
@@ -564,6 +566,28 @@ class SlowBnb4BitFluxTests(Base4bitTests):
 
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.0583, 0.0586, 0.0632, 0.0815, 0.0813, 0.0947, 0.1040, 0.1145, 0.1265])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3)
+
+    @require_peft_version_greater("0.14.0")
+    def test_lora_loading_works(self):
+        self.pipeline_4bit.load_lora_weights(
+            hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
+        )
+        self.pipeline_4bit.set_adapters("hyper-sd", adapter_weights=0.125)
+
+        output = self.pipeline_4bit(
+            prompt=self.prompt,
+            height=256,
+            width=256,
+            max_sequence_length=64,
+            output_type="np",
+            num_inference_steps=8,
+            generator=torch.Generator().manual_seed(42),
+        ).images
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.5347, 0.5342, 0.5283, 0.5093, 0.4988, 0.5093, 0.5044, 0.5015, 0.4946])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3)
