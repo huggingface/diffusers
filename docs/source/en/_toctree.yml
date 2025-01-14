@@ -179,10 +179,8 @@
     title: TGATE
   - local: optimization/xdit
     title: xDiT
-  - local: optimization/para_attn_flux
-    title: Fast FLUX Inference with ParaAttention
-  - local: optimization/para_attn_hunyuan_video
-    title: Fast HunyuanVideo Inference with ParaAttention
+  - local: optimization/para_attn
+    title: ParaAttention
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax

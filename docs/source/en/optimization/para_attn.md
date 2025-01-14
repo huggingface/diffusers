@@ -1,0 +1,518 @@
+# ParaAttention
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/flux-performance.png">
+</div>
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/hunyuan-video-performance.png">
+</div>
+
+## Introduction
+
+Large image and video generation models, such as [FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev) and [HunyuanVideo](https://huggingface.co/tencent/HunyuanVideo), can be an inference challenge for real-time applications and deployment because of their size.
+
+[ParaAttention](https://github.com/chengzeyi/ParaAttention) is a library that implements **context parallelism** and **first block cache**, and can be combined with other techniques (torch.compile, fp8 dynamic quantization), to accelerate inference.
+
+This guide will show you how to apply ParaAttention to FLUX.1-dev and HunyuanVideo on NVIDIA L20 GPUs with only PCIe support.
+
+> [!TIP]
+> For even faster inference with context parallelism, try using NVIDIA A100 or H100 GPUs (if available) with NVLink support, especially when there is a large number of GPUs.
+
+## Baseline Performance
+
+Our baseline performance is measured on a single NVIDIA L20 GPU, with normal FP16/BF16 precision, For FLUX.1-dev, we don't apply any optimization, and for HunyuanVideo, we only apply the patch `apply_cache_on_pipe(pipe, residual_diff_threshold=0.0)` to make it run without a square `attn_mask` to avoid OOM errors.
+
+For FLUX.1-dev, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 26.36 seconds.
+
+For HunyuanVideo, we can generate 129 frames with 720p resolution in 30 inference steps in 3675.71 seconds.
+
+### First Block Cache
+
+By caching the output of the transformer blocks in the transformer model and resuing them in the next inference steps, we can reduce the computation cost and make the inference faster.
+However, it is hard to decide when to reuse the cache to ensure the quality of the generated image or video.
+Recently, [TeaCache](https://github.com/ali-vilab/TeaCache) suggests that we can use the timestep embedding to approximate the difference among model outputs.
+And [AdaCache](https://adacache-dit.github.io) also shows that caching can contribute grant significant inference speedups without sacrificing the generation quality, across multiple image and video DiT baselines.
+However, TeaCache is still a bit complex as it needs a rescaling strategy to ensure the accuracy of the cache.
+In ParaAttention, we find that we can directly use **the residual difference of the first transformer block output** to approximate the difference among model outputs.
+When the difference is small enough, we can reuse the residual difference of previous inference steps, meaning that we in fact skip this denoising step.
+
+This has been proved to be effective in our experiments and we can achieve an 2.0x speedup on FLUX.1-dev and HunyuanVideo inference with very good quality.
+
+<figure>
+    <img src="https://huggingface.co/datasets/chengzeyi/documentation-images/resolve/main/diffusers/para-attn/ada-cache.png" alt="Cache in Diffusion Transformer" />
+    <figcaption>How AdaCache works, First Block Cache is a variant of it</figcaption>
+</figure>
+
+<hfoptions id="first-block-cache">
+<hfoption id="FLUX-1.dev">
+
+To apply first block cache on FLUX.1-dev, we can call `apply_cache_on_pipe` with `residual_diff_threshold=0.08`, which is the default value for FLUX models.
+
+```python
+import time
+import torch
+from diffusers import FluxPipeline
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
+
+apply_cache_on_pipe(pipe, residual_diff_threshold=0.08)
+
+# Enable memory savings
+# pipe.enable_model_cpu_offload()
+# pipe.enable_sequential_cpu_offload()
+
+begin = time.time()
+image = pipe(
+    "A cat holding a sign that says hello world",
+    num_inference_steps=28,
+).images[0]
+end = time.time()
+print(f"Time: {end - begin:.2f}s")
+
+print("Saving image to flux.png")
+image.save("flux.png")
+```
+
+| Optimizations | Original | FBCache rdt=0.06 | FBCache rdt=0.08 | FBCache rdt=0.10 | FBCache rdt=0.12 |
+| - | - | - | - | - | - |
+| Preview | ![Original](https://huggingface.co/datasets/chengzeyi/documentation-images/resolve/main/diffusers/para-attn/flux-original.png) | ![FBCache rdt=0.06](https://huggingface.co/datasets/chengzeyi/documentation-images/resolve/main/diffusers/para-attn/flux-fbc-0.06.png) | ![FBCache rdt=0.08](https://huggingface.co/datasets/chengzeyi/documentation-images/resolve/main/diffusers/para-attn/flux-fbc-0.08.png) | ![FBCache rdt=0.10](https://huggingface.co/datasets/chengzeyi/documentation-images/resolve/main/diffusers/para-attn/flux-fbc-0.10.png) | ![FBCache rdt=0.12](https://huggingface.co/datasets/chengzeyi/documentation-images/resolve/main/diffusers/para-attn/flux-fbc-0.12.png) |
+| Wall Time (s) | 26.36 | 21.83 | 17.01 | 16.00 | 13.78 |
+
+We observe that the first block cache is very effective in speeding up the inference, and maintaining nearly no quality loss in the generated image.
+Now, on one single NVIDIA L20 GPU, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 17.01 seconds. This is a 1.55x speedup compared to the baseline.
+
+</hfoption>
+<hfoption id="HunyuanVideo">
+
+To apply first block cache on HunyuanVideo, we can call `apply_cache_on_pipe` with `residual_diff_threshold=0.06`, which is the default value for HunyuanVideo.
+
+```python
+import time
+import torch
+from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+from diffusers.utils import export_to_video
+
+model_id = "tencent/HunyuanVideo"
+transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16,
+    revision="refs/pr/18",
+)
+pipe = HunyuanVideoPipeline.from_pretrained(
+    model_id,
+    transformer=transformer,
+    torch_dtype=torch.float16,
+    revision="refs/pr/18",
+).to("cuda")
+
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
+
+apply_cache_on_pipe(pipe, residual_diff_threshold=0.6)
+
+pipe.vae.enable_tiling()
+
+begin = time.time()
+output = pipe(
+    prompt="A cat walks on the grass, realistic",
+    height=720,
+    width=1280,
+    num_frames=129,
+    num_inference_steps=30,
+).frames[0]
+end = time.time()
+print(f"Time: {end - begin:.2f}s")
+
+print("Saving video to hunyuan_video.mp4")
+export_to_video(output, "hunyuan_video.mp4", fps=15)
+```
+
+#### HunyuanVideo without FBCache
+
+<video controls>
+  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/hunyuan-video-original.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
+#### HunyuanVideo with FBCache
+
+<video controls>
+  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/hunyuan-video-fbc.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
+We observe that the first block cache is very effective in speeding up the inference, and maintaining nearly no quality loss in the generated video.
+Now, on one single NVIDIA L20 GPU, we can generate 129 frames with 720p resolution in 30 inference steps in 2271.06 seconds. This is a 1.62x speedup compared to the baseline.
+
+</hfoption>
+</hfoptions>
+
+### FP8 Quantization
+
+To further speed up the inference and reduce memory usage, we can quantize the model into FP8 with dynamic quantization.
+We must quantize both the activation and weight of the transformer model to utilize the 8-bit **Tensor Cores** on NVIDIA GPUs.
+Here, we use  `float8_weight_only` and `float8_dynamic_activation_float8_weight`to quantize the text encoder and transformer model respectively.
+The default quantization method is per tensor quantization. If your GPU supports row-wise quantization, you can also try it for better accuracy.
+[diffusers-torchao](https://github.com/sayakpaul/diffusers-torchao) provides a really good tutorial on how to quantize models in `diffusers` and achieve a good speedup.
+Here, we simply install the latest `torchao` that is capable of quantizing FLUX.1-dev and HunyuanVideo.
+If you are not familiar with `torchao` quantization, you can refer to this [documentation](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md).
+
+```bash
+pip3 install -U torch torchao
+```
+
+We also need to pass the model to `torch.compile` to gain actual speedup.
+`torch.compile` with `mode="max-autotune-no-cudagraphs"` or `mode="max-autotune"` can help us to achieve the best performance by generating and selecting the best kernel for the model inference.
+The compilation process could take a long time, but it is worth it.
+If you are not familiar with `torch.compile`, you can refer to the [official tutorial](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html).
+In this example, we only quantize the transformer model, but you can also quantize the text encoder to reduce more memory usage.
+We also need to notice that the actually compilation process is done on the first time the model is called, so we need to warm up the model to measure the speedup correctly.
+
+**Note**: we find that dynamic quantization can significantly change the distribution of the model output, so we need to change the `residual_diff_threshold` to a larger value to make it take effect.
+
+<hfoptions id="fp8-quantization">
+<hfoption id="FLUX-1.dev">
+
+```python
+import time
+import torch
+from diffusers import FluxPipeline
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
+
+apply_cache_on_pipe(
+    pipe,
+    residual_diff_threshold=0.12,  # Use a larger value to make the cache take effect
+)
+
+from torchao.quantization import quantize_, float8_dynamic_activation_float8_weight, float8_weight_only
+
+quantize_(pipe.text_encoder, float8_weight_only())
+quantize_(pipe.transformer, float8_dynamic_activation_float8_weight())
+pipe.transformer = torch.compile(
+   pipe.transformer, mode="max-autotune-no-cudagraphs",
+)
+
+# Enable memory savings
+# pipe.enable_model_cpu_offload()
+# pipe.enable_sequential_cpu_offload()
+
+for i in range(2):
+    begin = time.time()
+    image = pipe(
+        "A cat holding a sign that says hello world",
+        num_inference_steps=28,
+    ).images[0]
+    end = time.time()
+    if i == 0:
+        print(f"Warm up time: {end - begin:.2f}s")
+    else:
+        print(f"Time: {end - begin:.2f}s")
+
+print("Saving image to flux.png")
+image.save("flux.png")
+```
+
+We can see that the quantization and compilation process can further speed up the inference.
+Now, on one single NVIDIA L20 GPU, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 7.56s, which is a 3.48x speedup compared to the baseline.
+
+</hfoption>
+<hfoption id="HunyuanVideo">
+
+```python
+import time
+import torch
+from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+from diffusers.utils import export_to_video
+
+model_id = "tencent/HunyuanVideo"
+transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16,
+    revision="refs/pr/18",
+)
+pipe = HunyuanVideoPipeline.from_pretrained(
+    model_id,
+    transformer=transformer,
+    torch_dtype=torch.float16,
+    revision="refs/pr/18",
+).to("cuda")
+
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
+
+apply_cache_on_pipe(pipe)
+
+from torchao.quantization import quantize_, float8_dynamic_activation_float8_weight, float8_weight_only
+
+quantize_(pipe.text_encoder, float8_weight_only())
+quantize_(pipe.transformer, float8_dynamic_activation_float8_weight())
+pipe.transformer = torch.compile(
+   pipe.transformer, mode="max-autotune-no-cudagraphs",
+)
+
+# Enable memory savings
+pipe.vae.enable_tiling()
+# pipe.enable_model_cpu_offload()
+# pipe.enable_sequential_cpu_offload()
+
+for i in range(2):
+    begin = time.time()
+    output = pipe(
+        prompt="A cat walks on the grass, realistic",
+        height=720,
+        width=1280,
+        num_frames=129,
+        num_inference_steps=1 if i == 0 else 30,
+    ).frames[0]
+    end = time.time()
+    if i == 0:
+        print(f"Warm up time: {end - begin:.2f}s")
+    else:
+        print(f"Time: {end - begin:.2f}s")
+
+print("Saving video to hunyuan_video.mp4")
+export_to_video(output, "hunyuan_video.mp4", fps=15)
+```
+
+The NVIDIA L20 GPU only has 48GB memory and could face OOM errors after compiling the model and not calling `enable_model_cpu_offload`,
+because the HunyuanVideo has very large activation tensors when running with high resolution and large number of frames.
+So here we skip measuring the speedup with quantization and compilation on one single NVIDIA L20 GPU and choose to use context parallelism to release the memory pressure.
+If you want to run HunyuanVideo with `torch.compile` on GPUs with less than 80GB memory, you can try reducing the resolution and the number of frames to avoid OOM errors.
+
+Due to the fact that large video generation models usually have performance bottleneck on the attention computation rather than the fully connected layers, we don't observe a significant speedup with quantization and compilation.
+However, models like `FLUX.1-dev` can benefit a lot from quantization and compilation, it is suggested to try it for these models.
+
+</hfoption>
+</hfoptions>
+
+### Context Parallelism
+
+A lot faster than before, right? But we are not satisfied with the speedup we have achieved so far.
+If we want to accelerate the inference further, we can use context parallelism to parallelize the inference.
+Libraries like [xDit](https://github.com/xdit-project/xDiT) and our [ParaAttention](https://github.com/chengzeyi/ParaAttention) provide ways to scale up the inference with multiple GPUs.
+In ParaAttention, we design our API in a compositional way so that we can combine context parallelism with first block cache and dynamic quantization all together.
+We provide very detailed instructions and examples of how to scale up the inference with multiple GPUs in our ParaAttention repository.
+Users can easily launch the inference with multiple GPUs by calling `torchrun`.
+If there is a need to make the inference process persistent and serviceable, it is suggested to use `torch.multiprocessing` to write your own inference processor, which can eliminate the overhead of launching the process and loading and recompiling the model.
+
+<hfoptions id="context-parallelism">
+<hfoption id="FLUX-1.dev">
+
+Below is our ultimate code to achieve a much faster FLUX.1-dev inference:
+
+```python
+import time
+import torch
+import torch.distributed as dist
+from diffusers import FluxPipeline
+
+dist.init_process_group()
+
+torch.cuda.set_device(dist.get_rank())
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+from para_attn.context_parallel import init_context_parallel_mesh
+from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
+from para_attn.parallel_vae.diffusers_adapters import parallelize_vae
+
+mesh = init_context_parallel_mesh(
+    pipe.device.type,
+    max_ring_dim_size=2,
+)
+parallelize_pipe(
+    pipe,
+    mesh=mesh,
+)
+parallelize_vae(pipe.vae, mesh=mesh._flatten())
+
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
+
+apply_cache_on_pipe(
+    pipe,
+    residual_diff_threshold=0.12,  # Use a larger value to make the cache take effect
+)
+
+from torchao.quantization import quantize_, float8_dynamic_activation_float8_weight, float8_weight_only
+
+quantize_(pipe.text_encoder, float8_weight_only())
+quantize_(pipe.transformer, float8_dynamic_activation_float8_weight())
+torch._inductor.config.reorder_for_compute_comm_overlap = True
+pipe.transformer = torch.compile(
+   pipe.transformer, mode="max-autotune-no-cudagraphs",
+)
+
+# Enable memory savings
+# pipe.enable_model_cpu_offload(gpu_id=dist.get_rank())
+# pipe.enable_sequential_cpu_offload(gpu_id=dist.get_rank())
+
+for i in range(2):
+    begin = time.time()
+    image = pipe(
+        "A cat holding a sign that says hello world",
+        num_inference_steps=28,
+        output_type="pil" if dist.get_rank() == 0 else "pt",
+    ).images[0]
+    end = time.time()
+    if dist.get_rank() == 0:
+        if i == 0:
+            print(f"Warm up time: {end - begin:.2f}s")
+        else:
+            print(f"Time: {end - begin:.2f}s")
+
+if dist.get_rank() == 0:
+    print("Saving image to flux.png")
+    image.save("flux.png")
+
+dist.destroy_process_group()
+```
+
+We save the above code to `run_flux.py` and run it with `torchrun`:
+
+```bash
+# Use --nproc_per_node to specify the number of GPUs
+torchrun --nproc_per_node=2 run_flux.py
+```
+
+With 2 NVIDIA L20 GPUs, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 8.20 seconds, which is a 3.21x speedup compared to the baseline.
+And with 4 NVIDIA L20 GPUs, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 3.90 seconds, which is a 6.75x speedup compared to the baseline.
+
+</hfoption>
+<hfoption id="HunyuanVideo">
+
+Below is our ultimate code to achieve a much faster HunyuanVideo inference:
+
+```python
+import time
+import torch
+import torch.distributed as dist
+from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+from diffusers.utils import export_to_video
+
+dist.init_process_group()
+
+torch.cuda.set_device(dist.get_rank())
+
+model_id = "tencent/HunyuanVideo"
+transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16,
+    revision="refs/pr/18",
+)
+pipe = HunyuanVideoPipeline.from_pretrained(
+    model_id,
+    transformer=transformer,
+    torch_dtype=torch.float16,
+    revision="refs/pr/18",
+).to("cuda")
+
+from para_attn.context_parallel import init_context_parallel_mesh
+from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
+from para_attn.parallel_vae.diffusers_adapters import parallelize_vae
+
+mesh = init_context_parallel_mesh(
+    pipe.device.type,
+)
+parallelize_pipe(
+    pipe,
+    mesh=mesh,
+)
+parallelize_vae(pipe.vae, mesh=mesh._flatten())
+
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
+
+apply_cache_on_pipe(pipe)
+
+# from torchao.quantization import quantize_, float8_dynamic_activation_float8_weight, float8_weight_only
+#
+# torch._inductor.config.reorder_for_compute_comm_overlap = True
+#
+# quantize_(pipe.text_encoder, float8_weight_only())
+# quantize_(pipe.transformer, float8_dynamic_activation_float8_weight())
+# pipe.transformer = torch.compile(
+#    pipe.transformer, mode="max-autotune-no-cudagraphs",
+# )
+
+# Enable memory savings
+pipe.vae.enable_tiling()
+# pipe.enable_model_cpu_offload(gpu_id=dist.get_rank())
+# pipe.enable_sequential_cpu_offload(gpu_id=dist.get_rank())
+
+for i in range(2):
+    begin = time.time()
+    output = pipe(
+        prompt="A cat walks on the grass, realistic",
+        height=720,
+        width=1280,
+        num_frames=129,
+        num_inference_steps=1 if i == 0 else 30,
+        output_type="pil" if dist.get_rank() == 0 else "pt",
+    ).frames[0]
+    end = time.time()
+    if dist.get_rank() == 0:
+        if i == 0:
+            print(f"Warm up time: {end - begin:.2f}s")
+        else:
+            print(f"Time: {end - begin:.2f}s")
+
+if dist.get_rank() == 0:
+    print("Saving video to hunyuan_video.mp4")
+    export_to_video(output, "hunyuan_video.mp4", fps=15)
+
+dist.destroy_process_group()
+```
+
+We save the above code to `run_hunyuan_video.py` and run it with `torchrun`:
+
+```bash
+# Use --nproc_per_node to specify the number of GPUs
+torchrun --nproc_per_node=8 run_hunyuan_video.py
+```
+
+With 8 NVIDIA L20 GPUs, we can generate 129 frames with 720p resolution in 30 inference steps in 649.23 seconds. This is a 5.66x speedup compared to the baseline!
+
+</hfoption>
+</hfoptions>
+
+### Conclusion of Inference Optimization with ParaAttention
+
+<hfoptions id="conclusion">
+<hfoption id="FLUX-1.dev">
+
+| GPU Type | Number of GPUs | Optimizations | Wall Time (s) | Speedup |
+| - | - | - | - | - |
+| NVIDIA L20 | 1 | Baseline | 26.36 | 1.00x |
+| NVIDIA L20 | 1 | FBCache (rdt=0.08) | 17.01 | 1.55x |
+| NVIDIA L20 | 1 | FP8 DQ | 13.40 | 1.96x |
+| NVIDIA L20 | 1 | FBCache (rdt=0.12) + FP8 DQ | 7.56 | 3.48x |
+| NVIDIA L20 | 2 | FBCache (rdt=0.12) + FP8 DQ + CP | 4.92 | 5.35x |
+| NVIDIA L20 | 4 | FBCache (rdt=0.12) + FP8 DQ + CP | 3.90 | 6.75x |
+
+</hfoption>
+<hfoption id="HunyuanVideo">
+
+| GPU Type | Number of GPUs | Optimizations | Wall Time (s) | Speedup |
+| - | - | - | - | - |
+| NVIDIA L20 | 1 | Baseline | 3675.71 | 1.00x |
+| NVIDIA L20 | 1 | FBCache | 2271.06 | 1.62x |
+| NVIDIA L20 | 2 | FBCache + CP | 1132.90 | 3.24x |
+| NVIDIA L20 | 4 | FBCache + CP | 718.15 | 5.12x |
+| NVIDIA L20 | 8 | FBCache + CP | 649.23 | 5.66x |
+
+</hfoption>
+</hfoptions>
