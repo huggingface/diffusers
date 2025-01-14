@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union, Tuple
 
 import numpy as np
 import PIL.Image
@@ -629,8 +629,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
 
 # resizing utils
-# TODO: clean up later
-def _resize_with_antialiasing(input, size, interpolation="bicubic", align_corners=True):
+def _resize_with_antialiasing(input: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     h, w = input.shape[-2:]
     factors = (h / size[0], w / size[1])
 
@@ -644,18 +643,18 @@ def _resize_with_antialiasing(input, size, interpolation="bicubic", align_corner
     # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
     # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
     # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
-    ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
+    kernel_size = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
     # Make sure it is odd
-    if (ks[0] % 2) == 0:
-        ks = ks[0] + 1, ks[1]
+    if kernel_size[0] % 2 == 0:
+        kernel_size = kernel_size[0] + 1, kernel_size[1]
 
-    if (ks[1] % 2) == 0:
-        ks = ks[0], ks[1] + 1
+    if kernel_size[1] % 2 == 0:
+        kernel_size = kernel_size[0], kernel_size[1] + 1
 
-    input = _gaussian_blur2d(input, ks, sigmas)
+    input = _gaussian_blur2d(input, kernel_size, sigmas)
 
-    output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
+    output = torch.nn.functional.interpolate(input, size=size, mode="bicubic", align_corners=True)
     return output
 
 
