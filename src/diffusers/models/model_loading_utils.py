@@ -20,7 +20,7 @@ import os
 from array import array
 from collections import OrderedDict
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Iterator, List, Optional, Tuple, Union
 
 import safetensors
 import torch
@@ -185,6 +185,7 @@ def load_model_dict_into_meta(
     model_name_or_path: Optional[str] = None,
     hf_quantizer=None,
     keep_in_fp32_modules=None,
+    named_buffers: Optional[Iterator[Tuple[str, torch.Tensor]]] = None,
 ) -> List[str]:
     if device is not None and not isinstance(device, (str, torch.device)):
         raise ValueError(f"Expected device to have type `str` or `torch.device`, but got {type(device)=}.")
@@ -246,7 +247,10 @@ def load_model_dict_into_meta(
             else:
                 set_module_tensor_to_device(model, param_name, device, value=param)
 
-    for param_name, param in model.named_buffers():
+    if named_buffers is None:
+        return unexpected_keys
+
+    for param_name, param in named_buffers:
         if is_quantized and (
             hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
         ):
