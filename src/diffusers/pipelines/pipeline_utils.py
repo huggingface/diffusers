@@ -28,13 +28,7 @@ import numpy as np
 import PIL.Image
 import requests
 import torch
-from huggingface_hub import (
-    ModelCard,
-    create_repo,
-    hf_hub_download,
-    model_info,
-    snapshot_download,
-)
+from huggingface_hub import ModelCard, create_repo, hf_hub_download, model_info, snapshot_download
 from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
 from requests.exceptions import HTTPError
@@ -42,6 +36,8 @@ from tqdm.auto import tqdm
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..loaders.single_file import FromSingleFileMixin
+from ..loaders.single_file_utils import get_keyword_types, load_single_file_checkpoint
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
@@ -130,7 +126,7 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
-class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+class DiffusionPipeline(ConfigMixin, PushToHubMixin, FromSingleFileMixin):
     r"""
     Base class for all pipelines.
 
@@ -652,6 +648,27 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
         >>> pipeline.scheduler = scheduler
         ```
+        Examples_2:
+
+        ```py
+        >>> from diffusers import StableDiffusionPipeline
+
+        >>> # Download pipeline from huggingface.co and cache.
+        >>> pipeline = StableDiffusionPipeline.from_single_file(
+        ...     "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors"
+        ... )
+
+        >>> # Download pipeline from local file
+        >>> # file is downloaded under ./v1-5-pruned-emaonly.ckpt
+        >>> pipeline = StableDiffusionPipeline.from_single_file("./v1-5-pruned-emaonly.ckpt")
+
+        >>> # Enable float16 and move to GPU
+        >>> pipeline = StableDiffusionPipeline.from_single_file(
+        ...     "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
+        ...     torch_dtype=torch.float16,
+        ... )
+        >>> pipeline.to("cuda")
+        ```
         """
         # Copy the kwargs to re-use during loading connected pipeline.
         kwargs_copied = kwargs.copy()
@@ -721,6 +738,37 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
+
+        # Retrieve information about the path or repo ID
+        hf_model_status = get_keyword_types(pretrained_model_name_or_path)
+
+        # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
+        load_method_name = hf_model_status["loading_method"]
+
+        if load_method_name is None:
+            # Raise an error if the path is invalid
+            raise ValueError(f"Invalid path or URL: {pretrained_model_name_or_path}")
+
+        # Load the pipeline from a single file
+        elif load_method_name == "from_single_file":
+            # The arguments for the __init__ method of `DiffusionPipeline` are keyword arguments, so they cannot be loaded from `from_single_file`
+            if cls.__name__ == "DiffusionPipeline":
+                # import it here to avoid circular import
+                from .stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
+
+                checkpoint = load_single_file_checkpoint(
+                    pretrained_model_name_or_path,
+                    force_download=force_download,
+                    proxies=proxies,
+                    token=token,
+                    cache_dir=cache_dir,
+                    local_files_only=local_files_only,
+                    revision=revision,
+                )
+
+                return download_from_original_stable_diffusion_ckpt(checkpoint, **kwargs)
+            else:
+                return cls.from_single_file(pretrained_model_name_or_path, **kwargs)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -1395,8 +1443,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if load_components_from_hub and not trust_remote_code:
                 raise ValueError(
-                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k,v in custom_components.items()])} which must be executed to correctly "
-                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k,v in custom_components.items()])}.\n"
+                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k, v in custom_components.items()])} which must be executed to correctly "
+                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k, v in custom_components.items()])}.\n"
                     f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
                 )
 
