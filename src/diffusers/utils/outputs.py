@@ -71,7 +71,7 @@ class BaseOutput(OrderedDict):
                     cls,
                     torch.utils._pytree._dict_flatten,
                     lambda values, context: cls(**torch.utils._pytree._dict_unflatten(values, context)),
-                    serialized_type_name=f"{cls.__module__}.{cls.__name__}"
+                    serialized_type_name=f"{cls.__module__}.{cls.__name__}",
                 )
 
     def __post_init__(self) -> None:
