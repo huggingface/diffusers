@@ -367,7 +367,7 @@ transformer_8bit = FluxTransformer2DModel.from_pretrained(
 
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    text_encoder=text_encoder_8bit,
+    text_encoder_2=text_encoder_8bit,
     transformer=transformer_8bit,
     torch_dtype=torch.float16,
     device_map="balanced",
