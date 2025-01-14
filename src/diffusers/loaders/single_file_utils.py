@@ -186,6 +186,7 @@ DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
     "inpainting": 512,
     "inpainting_v2": 512,
     "controlnet": 512,
+    "instruct-pix2pix": 512,
     "v2": 768,
     "v1": 512,
 }
@@ -387,6 +388,7 @@ def load_single_file_checkpoint(
     cache_dir=None,
     local_files_only=None,
     revision=None,
+    disable_mmap=False,
 ):
     if os.path.isfile(pretrained_model_link_or_path):
         pretrained_model_link_or_path = pretrained_model_link_or_path
@@ -404,7 +406,7 @@ def load_single_file_checkpoint(
             revision=revision,
         )
 
-    checkpoint = load_state_dict(pretrained_model_link_or_path)
+    checkpoint = load_state_dict(pretrained_model_link_or_path, disable_mmap=disable_mmap)
 
     # some checkpoints contain the model state dict under a "state_dict" key
     while "state_dict" in checkpoint:
@@ -604,10 +606,14 @@ def infer_diffusers_model_type(checkpoint):
         if any(
             g in checkpoint for g in ["guidance_in.in_layer.bias", "model.diffusion_model.guidance_in.in_layer.bias"]
         ):
-            if checkpoint["img_in.weight"].shape[1] == 384:
-                model_type = "flux-fill"
+            if "model.diffusion_model.img_in.weight" in checkpoint:
+                key = "model.diffusion_model.img_in.weight"
+            else:
+                key = "img_in.weight"
 
-            elif checkpoint["img_in.weight"].shape[1] == 128:
+            if checkpoint[key].shape[1] == 384:
+                model_type = "flux-fill"
+            elif checkpoint[key].shape[1] == 128:
                 model_type = "flux-depth"
             else:
                 model_type = "flux-dev"
