@@ -16,6 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
+import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -918,10 +919,9 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             try:
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             except torch.cuda.OutOfMemoryError as e:
-                print("Warning: Ran out of memory when regular VAE decoding, retrying with tiled VAE decoding.")
-                self.vae.enable_tiling(tile_sample_min_width=1024, tile_sample_min_height=1024)
-                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-                self.vae.disable_tiling()
+                warnings.warn(f"{e}. \n"
+                              f"Try to use VAE tiling for large images. For example: \n"
+                              f"pipe.vae.enable_tiling(tile_sample_min_width=512, tile_sample_min_height=512)")
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
 
