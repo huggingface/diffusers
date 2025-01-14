@@ -64,9 +64,20 @@ jobs:
         run: |
           pip install .[quality]
 
+          - name: Download Makefile from main branch
+          run: |
+            curl -o main_Makefile https://raw.githubusercontent.com/huggingface/diffusers/main/Makefile
+        
+      - name: Compare Makefiles
+        run: |
+          if ! diff -q main_Makefile Makefile; then
+            echo "Error: The Makefile has changed. Please ensure it matches the main branch."
+            exit 1
+          fi
+          echo "No changes in Makefile. Proceeding..."
+
       - name: Run make style and make quality
         run: |
-          # Should we be comparing the Makefile to check for any differences with `diffusers` main?
           make style && make quality
 
       - name: Commit and push changes
