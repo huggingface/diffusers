@@ -370,6 +370,8 @@
       title: CogVideoX
     - local: api/pipelines/cogview3
       title: CogView3
+    - local: api/pipelines/cogview4
+      title: CogView4
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet

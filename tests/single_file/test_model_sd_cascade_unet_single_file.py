@@ -60,9 +60,9 @@ class StableCascadeUNetSingleFileTest(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between single file loading and pretrained loading"
+            )
 
     def test_single_file_components_stage_b_lite(self):
         model_single_file = StableCascadeUNet.from_single_file(
@@ -77,9 +77,9 @@ class StableCascadeUNetSingleFileTest(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between single file loading and pretrained loading"
+            )
 
     def test_single_file_components_stage_c(self):
         model_single_file = StableCascadeUNet.from_single_file(
@@ -94,9 +94,9 @@ class StableCascadeUNetSingleFileTest(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between single file loading and pretrained loading"
+            )
 
     def test_single_file_components_stage_c_lite(self):
         model_single_file = StableCascadeUNet.from_single_file(
@@ -111,6 +111,6 @@ class StableCascadeUNetSingleFileTest(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between single file loading and pretrained loading"
+            )

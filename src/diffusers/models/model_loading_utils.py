@@ -173,7 +173,7 @@ def load_state_dict(
                     ) from e
         except (UnicodeDecodeError, ValueError):
             raise OSError(
-                f"Unable to load weights from checkpoint file for '{checkpoint_file}' " f"at '{checkpoint_file}'. "
+                f"Unable to load weights from checkpoint file for '{checkpoint_file}' at '{checkpoint_file}'. "
             )
 
 

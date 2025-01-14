@@ -576,9 +576,9 @@ class StableDiffusionXLInpaintPipelineFastTests(
             inputs_1 = {**inputs, **{"denoising_end": split_1, "output_type": "latent"}}
             latents = pipe_1(**inputs_1).images[0]
 
-            assert (
-                expected_steps_1 == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps_1 == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
             inputs_2 = {
                 **inputs,
@@ -592,9 +592,9 @@ class StableDiffusionXLInpaintPipelineFastTests(
             pipe_3(**inputs_3).images[0]
 
             assert expected_steps_3 == done_steps[len(expected_steps_1) + len(expected_steps_2) :]
-            assert (
-                expected_steps == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
         for steps in [7, 11, 20]:
             for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):

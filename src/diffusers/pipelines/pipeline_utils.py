@@ -1395,8 +1395,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if load_components_from_hub and not trust_remote_code:
                 raise ValueError(
-                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k,v in custom_components.items()])} which must be executed to correctly "
-                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k,v in custom_components.items()])}.\n"
+                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k, v in custom_components.items()])} which must be executed to correctly "
+                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k, v in custom_components.items()])}.\n"
                     f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
                 )
 

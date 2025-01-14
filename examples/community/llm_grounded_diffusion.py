@@ -1120,7 +1120,7 @@ class LLMGroundedDiffusionPipeline(
 
             if verbose:
                 logger.info(
-                    f"time index {index}, loss: {loss.item()/loss_scale:.3f} (de-scaled with scale {loss_scale:.1f}), loss threshold: {loss_threshold:.3f}"
+                    f"time index {index}, loss: {loss.item() / loss_scale:.3f} (de-scaled with scale {loss_scale:.1f}), loss threshold: {loss_threshold:.3f}"
                 )
 
             try:
@@ -1184,7 +1184,7 @@ class LLMGroundedDiffusionPipeline(
 
                     if verbose:
                         logger.info(
-                            f"time index {index}, loss: {loss.item()/loss_scale:.3f}, loss threshold: {loss_threshold:.3f}, iteration: {iteration}"
+                            f"time index {index}, loss: {loss.item() / loss_scale:.3f}, loss threshold: {loss_threshold:.3f}, iteration: {iteration}"
                         )
 
             finally:
