@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import (
@@ -829,6 +829,10 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         return self._guidance_scale > 1
 
     @property
+    def joint_attention_kwargs(self):
+        return self._joint_attention_kwargs
+
+    @property
     def num_timesteps(self):
         return self._num_timesteps
 
@@ -945,6 +949,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         ip_adapter_image_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -1055,6 +1060,10 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_3.StableDiffusion3PipelineOutput`] instead of
                 a plain tuple.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -1102,6 +1111,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
+        self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -1292,6 +1302,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
 
