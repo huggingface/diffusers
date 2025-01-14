@@ -59,6 +59,8 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
     # No `output_type`.
     required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         scheduler = DDIMScheduler(

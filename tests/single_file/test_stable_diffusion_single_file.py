@@ -132,6 +132,7 @@ class StableDiffusionInstructPix2PixPipelineSingleFileSlowTests(unittest.TestCas
         "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/refs/heads/main/configs/generate.yaml"
     )
     repo_id = "timbrooks/instruct-pix2pix"
+    single_file_kwargs = {"extract_ema": True}
 
     def setUp(self):
         super().setUp()
