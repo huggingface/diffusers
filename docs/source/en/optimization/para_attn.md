@@ -173,7 +173,8 @@ If you are not familiar with `torch.compile`, you can refer to the [official tut
 In this example, we only quantize the transformer model, but you can also quantize the text encoder to reduce more memory usage.
 We also need to notice that the actually compilation process is done on the first time the model is called, so we need to warm up the model to measure the speedup correctly.
 
-**Note**: we find that dynamic quantization can significantly change the distribution of the model output, so we need to change the `residual_diff_threshold` to a larger value to make it take effect.
+> [!TIP]
+> We find that dynamic quantization can significantly change the distribution of the model output, so we need to change the `residual_diff_threshold` to a larger value to make it take effect.
 
 <hfoptions id="fp8-quantization">
 <hfoption id="FLUX-1.dev">
