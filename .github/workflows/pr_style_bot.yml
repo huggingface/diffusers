@@ -36,10 +36,13 @@ jobs:
 
       - name: Check out PR branch
         uses: actions/checkout@v3
+          env: 
+          HEADREPOFULLNAME: ${{ steps.pr_info.outputs.headRepoFullName }}
+          HEADREF: ${{ steps.pr_info.outputs.headRef }}
         with:
           # Instead of checking out the base repo, use the contributor's repo name
-          repository: ${{ steps.pr_info.outputs.headRepoFullName }}
-          ref: ${{ steps.pr_info.outputs.headRef }}
+          repository: $HEADREPOFULLNAME
+          ref: $HEADREF
           # You may need fetch-depth: 0 for being able to push
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
