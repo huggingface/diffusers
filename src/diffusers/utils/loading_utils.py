@@ -154,7 +154,6 @@ def get_submodule_by_name(root_module, module_path: str):
     current = root_module
     parts = module_path.split(".")
     for part in parts:
-        # If part is integer-like and the current module supports indexing, convert to int
         if part.isdigit():
             idx = int(part)
             current = current[idx]  # e.g., for nn.ModuleList or nn.Sequential
