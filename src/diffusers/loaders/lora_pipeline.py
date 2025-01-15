@@ -21,6 +21,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..utils import (
     USE_PEFT_BACKEND,
     deprecate,
+    get_submodule_by_name,
     is_peft_available,
     is_peft_version,
     is_torch_version,
@@ -1981,16 +1982,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 in_features = state_dict[lora_A_weight_name].shape[1]
                 out_features = state_dict[lora_B_weight_name].shape[0]
 
-                # This means there's no need for an expansion in the params, so we simply skip.
-                module_weight_shape = module_weight.shape
-                expansion_shape = (out_features, in_features)
-                quantization_config = getattr(transformer, "quantization_config", None)
-                if quantization_config and quantization_config.quant_method == "bitsandbytes":
-                    if quantization_config.load_in_4bit:
-                        expansion_shape = torch.Size(expansion_shape).numel()
-                        expansion_shape = ((expansion_shape + 1) // 2, 1)
+                # Model maybe loaded with different quantization schemes which may flatten the params.
+                # `bitsandbytes`, for example, flatten the weights when using 4bit.
+                module_weight_shape = cls._calculate_module_shape(model=transformer, base_module=module)
 
-                if tuple(module_weight_shape) == expansion_shape:
+                # This means there's no need for an expansion in the params, so we simply skip.
+                if tuple(module_weight_shape) == (out_features, in_features):
                     continue
 
                 # TODO (sayakpaul): We still need to consider if the module we're expanding is
@@ -2090,22 +2087,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             base_weight_param = transformer_state_dict[base_param_name]
             lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
 
-            # TODO (sayakpaul): Handle the cases when we actually need to expand.
-            base_out_feature_shape = base_weight_param.shape[1]
-            lora_A_out_feature_shape = lora_A_param.shape[1]
-            quantization_config = getattr(transformer, "quantization_config", None)
-            if quantization_config and quantization_config.quant_method == "bitsandbytes":
-                if quantization_config.load_in_4bit:
-                    lora_A_out_feature_shape = lora_A_param.shape.numel()
-                    lora_A_out_feature_shape = ((lora_A_out_feature_shape + 1) // 2, 1)[1]
+            # TODO (sayakpaul): Handle the cases when we actually need to expand when using quantization.
+            base_module_shape = cls._calculate_module_shape(model=transformer, base_weight_param_name=base_param_name)
 
-            if base_out_feature_shape > lora_A_out_feature_shape:
+            if base_module_shape[1] > lora_A_param.shape[1]:
                 shape = (lora_A_param.shape[0], base_weight_param.shape[1])
                 expanded_state_dict_weight = torch.zeros(shape, device=base_weight_param.device)
                 expanded_state_dict_weight[:, : lora_A_param.shape[1]].copy_(lora_A_param)
                 lora_state_dict[f"{prefix}{k}.lora_A.weight"] = expanded_state_dict_weight
                 expanded_module_names.add(k)
-            elif lora_A_out_feature_shape < lora_A_out_feature_shape:
+            elif base_module_shape[1] < lora_A_param.shape[1]:
                 raise NotImplementedError(
                     f"This LoRA param ({k}.lora_A.weight) has an incompatible shape {lora_A_param.shape}. Please open an issue to file for a feature request - https://github.com/huggingface/diffusers/issues/new."
                 )
@@ -2116,6 +2107,28 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             )
 
         return lora_state_dict
+
+    @staticmethod
+    def _calculate_module_shape(
+        model: "torch.nn.Module",
+        base_module: "torch.nn.Linear" = None,
+        base_weight_param_name: str = None,
+    ) -> "torch.Size":
+        def _get_weight_shape(weight: torch.Tensor):
+            return weight.quant_state.shape if weight.__class__.__name__ == "Params4bit" else weight.shape
+
+        if base_module is not None:
+            return _get_weight_shape(base_module.weight)
+        elif base_weight_param_name is not None:
+            module_path = (
+                base_weight_param_name.rsplit(".weight", 1)[0]
+                if base_weight_param_name.endswith(".weight")
+                else base_weight_param_name
+            )
+            submodule = get_submodule_by_name(model, module_path)
+            return _get_weight_shape(submodule.weight)
+
+        raise ValueError("Either `base_module` or `base_weight_param_name` must be provided.")
 
 
 # The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
