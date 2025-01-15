@@ -22,7 +22,6 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...hooks import HookRegistry
 from ...image_processor import PipelineImageInput
 from ...loaders import CogVideoXLoraLoaderMixin
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
@@ -892,7 +891,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
         # Offload all models
         self.maybe_free_model_hooks()
-        HookRegistry.check_if_exists_or_initialize(self.transformer).reset_stateful_hooks()
 
         if not return_dict:
             return (video,)

@@ -24,7 +24,6 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...hooks import HookRegistry
 from ...models import AllegroTransformer3DModel, AutoencoderKLAllegro
 from ...models.embeddings import get_3d_rotary_pos_embed_allegro
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -948,7 +947,6 @@ class AllegroPipeline(DiffusionPipeline):
 
         # Offload all models
         self.maybe_free_model_hooks()
-        HookRegistry.check_if_exists_or_initialize(self.transformer).reset_stateful_hooks()
 
         if not return_dict:
             return (video,)

@@ -44,6 +44,7 @@ from tqdm.auto import tqdm
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..hooks import HookRegistry
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
@@ -1138,6 +1139,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         is a no-op. Make sure to add this function to the end of the `__call__` function of your pipeline so that it
         functions correctly when applying enable_model_cpu_offload.
         """
+        for name, component in self.components.items():
+            if name in ("transformer", "unet"):
+                HookRegistry.check_if_exists_or_initialize(component).reset_stateful_hooks(recurse=True)
+
         if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
             # `enable_model_cpu_offload` has not be called, so silently do nothing
             return

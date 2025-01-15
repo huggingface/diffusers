@@ -24,7 +24,6 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...hooks import HookRegistry
 from ...models import AutoencoderKL, LatteTransformer3DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import KarrasDiffusionSchedulers
@@ -869,7 +868,6 @@ class LattePipeline(DiffusionPipeline):
 
         # Offload all models
         self.maybe_free_model_hooks()
-        HookRegistry.check_if_exists_or_initialize(self.transformer).reset_stateful_hooks()
 
         if not return_dict:
             return (video,)

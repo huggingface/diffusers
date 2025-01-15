@@ -20,7 +20,6 @@ import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...hooks import HookRegistry
 from ...loaders import Mochi1LoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo, MochiTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -734,7 +733,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
         # Offload all models
         self.maybe_free_model_hooks()
-        HookRegistry.check_if_exists_or_initialize(self.transformer).reset_stateful_hooks()
 
         if not return_dict:
             return (video,)
