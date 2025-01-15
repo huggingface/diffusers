@@ -383,7 +383,7 @@ Inference speed is reduced to 8.20 seconds compared to the baseline, or 3.21x fa
 </hfoption>
 <hfoption id="HunyuanVideo">
 
-Below is our ultimate code to achieve a much faster HunyuanVideo inference:
+The code sample below combines First Block Cache, fp8 dynamic quantization, torch.compile, and Context Parallelism for the fastest inference speed.
 
 ```python
 import time
