@@ -14,6 +14,8 @@
 
 import gc
 import inspect
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -24,7 +26,9 @@ from diffusers import AllegroPipeline, AllegroTransformer3DModel, AutoencoderKLA
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
+    require_hf_hub_version_greater,
     require_torch_accelerator,
+    require_transformers_version_greater,
     slow,
     torch_device,
 )
@@ -296,6 +300,35 @@ class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_save_load_dduf(self):
+        # reimplement because it needs `enable_tiling()` on the loaded pipe.
+        from huggingface_hub import export_folder_as_dduf
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device="cpu")
+        inputs.pop("generator")
+        inputs["generator"] = torch.manual_seed(0)
+
+        pipeline_out = pipe(**inputs)[0].cpu()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
+            pipe.save_pretrained(tmpdir, safe_serialization=True)
+            export_folder_as_dduf(dduf_filename, folder_path=tmpdir)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
+
+        loaded_pipe.vae.enable_tiling()
+        inputs["generator"] = torch.manual_seed(0)
+        loaded_pipeline_out = loaded_pipe(**inputs)[0].cpu()
+
+        assert np.allclose(pipeline_out, loaded_pipeline_out)
 
 
 @slow

@@ -29,7 +29,9 @@ from diffusers.utils.testing_utils import (
     backend_reset_peak_memory_stats,
     load_numpy,
     require_accelerator,
+    require_hf_hub_version_greater,
     require_torch_accelerator,
+    require_transformers_version_greater,
     skip_mps,
     slow,
     torch_device,
@@ -91,6 +93,11 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
     )
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
 
 
 @slow
