@@ -88,16 +88,16 @@ class PyramidAttentionBroadcastConfig:
     def __repr__(self) -> str:
         return (
             f"PyramidAttentionBroadcastConfig("
-            f"  spatial_attention_block_skip_range={self.spatial_attention_block_skip_range}, "
-            f"  temporal_attention_block_skip_range={self.temporal_attention_block_skip_range}, "
-            f"  cross_attention_block_skip_range={self.cross_attention_block_skip_range}, "
-            f"  spatial_attention_timestep_skip_range={self.spatial_attention_timestep_skip_range}, "
-            f"  temporal_attention_timestep_skip_range={self.temporal_attention_timestep_skip_range}, "
-            f"  cross_attention_timestep_skip_range={self.cross_attention_timestep_skip_range}, "
-            f"  spatial_attention_block_identifiers={self.spatial_attention_block_identifiers}, "
-            f"  temporal_attention_block_identifiers={self.temporal_attention_block_identifiers}, "
-            f"  cross_attention_block_identifiers={self.cross_attention_block_identifiers}, "
-            f"  current_timestep_callback={self.current_timestep_callback}"
+            f"  spatial_attention_block_skip_range={self.spatial_attention_block_skip_range},\n"
+            f"  temporal_attention_block_skip_range={self.temporal_attention_block_skip_range},\n"
+            f"  cross_attention_block_skip_range={self.cross_attention_block_skip_range},\n"
+            f"  spatial_attention_timestep_skip_range={self.spatial_attention_timestep_skip_range},\n"
+            f"  temporal_attention_timestep_skip_range={self.temporal_attention_timestep_skip_range},\n"
+            f"  cross_attention_timestep_skip_range={self.cross_attention_timestep_skip_range},\n"
+            f"  spatial_attention_block_identifiers={self.spatial_attention_block_identifiers},\n"
+            f"  temporal_attention_block_identifiers={self.temporal_attention_block_identifiers},\n"
+            f"  cross_attention_block_identifiers={self.cross_attention_block_identifiers},\n"
+            f"  current_timestep_callback={self.current_timestep_callback}\n"
             ")"
         )
 

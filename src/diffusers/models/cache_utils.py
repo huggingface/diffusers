@@ -21,6 +21,13 @@ CacheConfig = Union[PyramidAttentionBroadcastConfig]
 
 
 class CacheMixin:
+    r"""
+    A class for enable/disabling caching techniques on diffusion models.
+
+    Supported caching techniques:
+      - [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588)
+    """
+
     _cache_config: CacheConfig = None
 
     @property
@@ -29,7 +36,7 @@ class CacheMixin:
 
     def enable_cache(self, config: CacheConfig) -> None:
         if isinstance(config, PyramidAttentionBroadcastConfig):
-            apply_pyramid_attention_broadcast(self.model, config)
+            apply_pyramid_attention_broadcast(self, config)
         else:
             raise ValueError(f"Cache config {type(config)} is not supported.")
 
