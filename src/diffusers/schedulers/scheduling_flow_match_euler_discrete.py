@@ -299,7 +299,8 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
-
+        
+        schedule_timesteps = torch.round(schedule_timesteps).long()
         indices = (schedule_timesteps == timestep).nonzero()
 
         # The sigma index that is taken for the **very** first `step`
