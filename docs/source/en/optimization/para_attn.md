@@ -19,7 +19,7 @@ FLUX.1-dev is able to generate a 1024x1024 resolution image in 28 steps in 26.36
 > [!TIP]
 > For even faster inference with context parallelism, try using NVIDIA A100 or H100 GPUs (if available) with NVLink support, especially when there is a large number of GPUs.
 
-### First Block Cache
+## First Block Cache
 
 Caching the output of the transformers blocks in the model and reusing them in the next inference steps reduces the computation cost and makes inference faster.
 
