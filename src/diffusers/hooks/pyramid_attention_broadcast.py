@@ -221,8 +221,7 @@ def apply_pyramid_attention_broadcast(
             # cannot be applied to this layer. For custom layers, users can extend this functionality and implement
             # their own PAB logic similar to `_apply_pyramid_attention_broadcast_on_attention_class`.
             continue
-        if isinstance(submodule, (Attention, MochiAttention)):
-            _apply_pyramid_attention_broadcast_on_attention_class(name, submodule, config)
+        _apply_pyramid_attention_broadcast_on_attention_class(name, submodule, config)
 
 
 def _apply_pyramid_attention_broadcast_on_attention_class(
