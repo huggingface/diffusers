@@ -378,8 +378,7 @@ We save the above code to `run_flux.py` and run it with `torchrun`:
 torchrun --nproc_per_node=2 run_flux.py
 ```
 
-With 2 NVIDIA L20 GPUs, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 8.20 seconds, which is a 3.21x speedup compared to the baseline.
-And with 4 NVIDIA L20 GPUs, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 3.90 seconds, which is a 6.75x speedup compared to the baseline.
+Inference speed is reduced to 8.20 seconds compared to the baseline, or 3.21x faster, with 2 NVIDIA L20 GPUs. On 4 L20s, inference speed is 3.90 seconds, or 6.75x faster.
 
 </hfoption>
 <hfoption id="HunyuanVideo">
