@@ -35,7 +35,7 @@ This achieves a 2x speedup on FLUX.1-dev and HunyuanVideo inference with very go
 <hfoptions id="first-block-cache">
 <hfoption id="FLUX-1.dev">
 
-To apply first block cache on FLUX.1-dev, we can call `apply_cache_on_pipe` with `residual_diff_threshold=0.08`, which is the default value for FLUX models.
+To apply first block cache on FLUX.1-dev, call `apply_cache_on_pipe` as shown below. 0.08 is the default residual difference value for FLUX models.
 
 ```python
 import time
