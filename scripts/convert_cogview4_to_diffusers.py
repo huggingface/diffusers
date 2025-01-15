@@ -31,10 +31,9 @@ import torch
 from accelerate import init_empty_weights
 from transformers import PreTrainedTokenizerFast, GlmForCausalLM
 
-from diffusers import AutoencoderKL, CogVideoXDDIMScheduler, CogView4Pipeline, CogView3PlusTransformer2DModel
+from diffusers import AutoencoderKL, CogView4DDIMScheduler, CogView4Pipeline, CogView3PlusTransformer2DModel
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 from diffusers.utils.import_utils import is_accelerate_available
-
 
 CTX = init_empty_weights if is_accelerate_available() else nullcontext
 
@@ -170,16 +169,16 @@ def main(args):
             args.transformer_checkpoint_path
         )
         transformer = CogView3PlusTransformer2DModel(
-            patch_size = 2,
-            in_channels = 16,
-            num_layers = 28,
-            attention_head_dim= 128,
-            num_attention_heads = 32,
-            out_channels = 16,
-            text_embed_dim= 4096,
-            time_embed_dim = 512,
-            condition_dim= 256,
-            pos_embed_max_size = 128,
+            patch_size=2,
+            in_channels=16,
+            num_layers=28,
+            attention_head_dim=128,
+            num_attention_heads=32,
+            out_channels=16,
+            text_embed_dim=4096,
+            time_embed_dim=512,
+            condition_dim=256,
+            pos_embed_max_size=128,
         )
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
         if dtype is not None:
@@ -210,16 +209,20 @@ def main(args):
         if dtype is not None:
             vae = vae.to(dtype=dtype)
 
-    text_encoder_id = 'THUDM/glm-4-9b-hf'
+    text_encoder_id = "THUDM/glm-4-9b-hf"
     tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
-    text_encoder = GlmForCausalLM.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir, torch_dtype=torch.bfloat16 if dtype=="bf16" else torch.float32)
+    text_encoder = GlmForCausalLM.from_pretrained(
+        text_encoder_id,
+        cache_dir=args.text_encoder_cache_dir,
+        torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
+    )
     # Apparently, the conversion does not work anymore without this :shrug:
     for param in text_encoder.parameters():
         param.data = param.data.contiguous()
 
-    scheduler = CogVideoXDDIMScheduler.from_config(
+    scheduler = CogView4DDIMScheduler.from_config(
         {
-            "snr_shift_scale": 4.0,
+            "shift_scale": 1.0,
             "beta_end": 0.012,
             "beta_schedule": "scaled_linear",
             "beta_start": 0.00085,

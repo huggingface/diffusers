@@ -23,7 +23,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, CogView3PlusTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
-from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
+from ...schedulers import CogView4DDIMScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import CogView4PipelineOutput
@@ -151,7 +151,7 @@ class CogView4Pipeline(DiffusionPipeline):
         text_encoder: GlmModel,
         vae: AutoencoderKL,
         transformer: CogView3PlusTransformer2DModel,
-        scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
+        scheduler: CogView4DDIMScheduler,
     ):
         super().__init__()
 
@@ -318,7 +318,6 @@ class CogView4Pipeline(DiffusionPipeline):
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
-
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
@@ -517,8 +516,8 @@ class CogView4Pipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.cogview3.pipeline_CogView4.CogView3PipelineOutput`] or `tuple`:
-            [`~pipelines.cogview3.pipeline_CogView4.CogView3PipelineOutput`] if `return_dict` is True, otherwise a
+            [`~pipelines.cogview4.pipeline_CogView4.CogView3PipelineOutput`] or `tuple`:
+            [`~pipelines.cogview4.pipeline_CogView4.CogView3PipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
@@ -640,15 +639,13 @@ class CogView4Pipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                if not isinstance(self.scheduler, CogVideoXDPMScheduler):
+                if not isinstance(self.scheduler, CogView4DDIMScheduler):
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
                 else:
                     latents, old_pred_original_sample = self.scheduler.step(
-                        noise_pred,
-                        old_pred_original_sample,
-                        t,
-                        timesteps[i - 1] if i > 0 else None,
-                        latents,
+                        model_output=noise_pred,
+                        timestep=t,
+                        sample=latents,
                         **extra_step_kwargs,
                         return_dict=False,
                     )
