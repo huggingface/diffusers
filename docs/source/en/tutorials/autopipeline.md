@@ -68,7 +68,7 @@ Notice how the [dreamlike-art/dreamlike-photoreal-2.0](https://hf.co/dreamlike-a
 
 ```py
 pipe_img2img = AutoPipelineForImage2Image.from_pipe(pipe_txt2img).to("cuda")
-image = pipeline(prompt, image=init_image, generator=generator).images[0]
+image = pipe_img2img(prompt, image=init_image, generator=generator).images[0]
 image
 ```
 
