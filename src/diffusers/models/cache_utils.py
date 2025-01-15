@@ -32,17 +32,20 @@ class CacheMixin:
             apply_pyramid_attention_broadcast(self.model, config)
         else:
             raise ValueError(f"Cache config {type(config)} is not supported.")
+
         self._cache_config = config
 
     def disable_cache(self) -> None:
         if self._cache_config is None:
             raise ValueError("Caching techniques have not been enabled.")
+
         if isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry = HookRegistry.check_if_exists_or_initialize(self)
             registry.remove_hook("pyramid_attention_broadcast")
         else:
             raise ValueError(f"Cache config {type(self._cache_config)} is not supported.")
+
         self._cache_config = None
 
-    def reset_stateful_cache(self, recurse: bool = True) -> None:
+    def _reset_stateful_cache(self, recurse: bool = True) -> None:
         HookRegistry.check_if_exists_or_initialize(self).reset_stateful_hooks(recurse=recurse)

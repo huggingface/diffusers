@@ -85,6 +85,22 @@ class PyramidAttentionBroadcastConfig:
     # TODO(aryan): add PAB for MLP layers (very limited speedup from testing with original codebase
     # so not added for now)
 
+    def __repr__(self) -> str:
+        return (
+            f"PyramidAttentionBroadcastConfig("
+            f"  spatial_attention_block_skip_range={self.spatial_attention_block_skip_range}, "
+            f"  temporal_attention_block_skip_range={self.temporal_attention_block_skip_range}, "
+            f"  cross_attention_block_skip_range={self.cross_attention_block_skip_range}, "
+            f"  spatial_attention_timestep_skip_range={self.spatial_attention_timestep_skip_range}, "
+            f"  temporal_attention_timestep_skip_range={self.temporal_attention_timestep_skip_range}, "
+            f"  cross_attention_timestep_skip_range={self.cross_attention_timestep_skip_range}, "
+            f"  spatial_attention_block_identifiers={self.spatial_attention_block_identifiers}, "
+            f"  temporal_attention_block_identifiers={self.temporal_attention_block_identifiers}, "
+            f"  cross_attention_block_identifiers={self.cross_attention_block_identifiers}, "
+            f"  current_timestep_callback={self.current_timestep_callback}"
+            ")"
+        )
+
 
 class PyramidAttentionBroadcastState:
     r"""
