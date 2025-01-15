@@ -201,11 +201,12 @@ def apply_pyramid_attention_broadcast(
 
     for name, submodule in module.named_modules():
         if not isinstance(submodule, _ATTENTION_CLASSES):
+            # PAB has been implemented specific to Diffusers' Attention classes. However, this does not mean that PAB
+            # cannot be applied to this layer. For custom layers, users can extend this functionality and implement
+            # their own PAB logic similar to `_apply_pyramid_attention_broadcast_on_attention_class`.
             continue
-        if isinstance(submodule, Attention):
+        if isinstance(submodule, (Attention, MochiAttention)):
             _apply_pyramid_attention_broadcast_on_attention_class(name, submodule, config)
-        if isinstance(submodule, MochiAttention):
-            _apply_pyramid_attention_broadcast_on_mochi_attention_class(name, submodule, config)
 
 
 def _apply_pyramid_attention_broadcast_on_attention_class(
@@ -246,8 +247,7 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
             f'Unable to apply Pyramid Attention Broadcast to the selected layer: "{name}" because it does '
             f"not match any of the required criteria for spatial, temporal or cross attention layers. Note, "
             f"however, that this layer may still be valid for applying PAB. Please specify the correct "
-            f"block identifiers in the configuration or use the specialized `apply_pyramid_attention_broadcast_on_module` "
-            f"function to apply PAB to this layer."
+            f"block identifiers in the configuration."
         )
         return False
 
@@ -270,13 +270,6 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
     logger.debug(f"Enabling Pyramid Attention Broadcast ({block_type}) in layer: {name}")
     _apply_pyramid_attention_broadcast(module, skip_callback)
     return True
-
-
-def _apply_pyramid_attention_broadcast_on_mochi_attention_class(
-    name: str, module: MochiAttention, config: PyramidAttentionBroadcastConfig
-) -> bool:
-    # The same logic as Attention class works here, so just use that for now
-    return _apply_pyramid_attention_broadcast_on_attention_class(name, module, config)
 
 
 def _apply_pyramid_attention_broadcast(
