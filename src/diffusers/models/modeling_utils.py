@@ -370,23 +370,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 If `True`, the weight casting operations are non-blocking.
         """
 
+        user_provided_patterns = True
         if skip_modules_pattern is None:
             skip_modules_pattern = []
+            user_provided_patterns = False
         if self._keep_in_fp32_modules is not None:
             skip_modules_pattern.extend(self._keep_in_fp32_modules)
         if self._always_upcast_modules is not None:
             skip_modules_pattern.extend(self._always_upcast_modules)
         skip_modules_pattern = tuple(set(skip_modules_pattern))
 
-        if skip_modules_classes is None:
-            skip_modules_classes = ()
-        if is_peft_available():
+        if is_peft_available() and not user_provided_patterns:
             # By default, we want to skip all peft layers because they have a very low memory footprint.
             # If users want to apply layerwise upcasting on peft layers as well, they can utilize the
             # `~diffusers.hooks.layerwise_upcasting.apply_layerwise_upcasting` function which provides
             # them with more flexibility and control.
-            if "lora" not in skip_modules_pattern:
-                skip_modules_pattern += ("lora",)
+
+            from peft.tuners.loha.layer import LoHaLayer
+            from peft.tuners.lokr.layer import LoKrLayer
+            from peft.tuners.lora.layer import LoraLayer
+
+            for layer in (LoHaLayer, LoKrLayer, LoraLayer):
+                skip_modules_pattern += tuple(layer.adapter_layer_names)
 
         if compute_dtype is None:
             logger.info("`compute_dtype` not provided when enabling layerwise upcasting. Using dtype of the model.")
