@@ -402,7 +402,7 @@ class Attention(nn.Module):
                     dtype = None
                     if attention_op is not None:
                         op_fw, op_bw = attention_op
-                        dtype = list(op_fw.SUPPORTED_DTYPES)[0]
+                        dtype, *_ = op_fw.SUPPORTED_DTYPES
                     q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
                     _ = xformers.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
