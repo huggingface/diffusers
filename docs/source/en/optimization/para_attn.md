@@ -12,9 +12,10 @@ Large image and video generation models, such as [FLUX.1-dev](https://huggingfac
 
 [ParaAttention](https://github.com/chengzeyi/ParaAttention) is a library that implements **context parallelism** and **first block cache**, and can be combined with other techniques (torch.compile, fp8 dynamic quantization), to accelerate inference.
 
-This guide will show you how to apply ParaAttention to FLUX.1-dev and HunyuanVideo on NVIDIA L20 GPUs in fp16/bf16 precision with only PCIe support. No optimizations are applied, except for HunyuanVideo to avoid out-of-memory errors.
+This guide will show you how to apply ParaAttention to FLUX.1-dev and HunyuanVideo on NVIDIA L20 GPUs.
+No optimizations are applied for our baseline benchmark, except for HunyuanVideo to avoid out-of-memory errors.
 
-FLUX.1-dev is able to generate a 1024x1024 resolution image in 28 steps in 26.36 seconds. HunyuanVideo is able to generate 129 frames at 720p resolution in 30 steps in 3675.71 seconds.
+Our baseline benchmark shows that FLUX.1-dev is able to generate a 1024x1024 resolution image in 28 steps in 26.36 seconds, and HunyuanVideo is able to generate 129 frames at 720p resolution in 30 steps in 3675.71 seconds.
 
 > [!TIP]
 > For even faster inference with context parallelism, try using NVIDIA A100 or H100 GPUs (if available) with NVLink support, especially when there is a large number of GPUs.
@@ -299,7 +300,7 @@ If there is a need to make the inference process persistent and serviceable, it 
 <hfoptions id="context-parallelism">
 <hfoption id="FLUX-1.dev">
 
-Below is our ultimate code to achieve a much faster FLUX.1-dev inference:
+The code sample below combines First Block Cache, fp8 dynamic quantization, torch.compile, and Context Parallelism for the fastest inference speed.
 
 ```python
 import time
@@ -383,7 +384,7 @@ Inference speed is reduced to 8.20 seconds compared to the baseline, or 3.21x fa
 </hfoption>
 <hfoption id="HunyuanVideo">
 
-The code sample below combines First Block Cache, fp8 dynamic quantization, torch.compile, and Context Parallelism for the fastest inference speed.
+The code sample below combines First Block Cache and Context Parallelism for the fastest inference speed.
 
 ```python
 import time
