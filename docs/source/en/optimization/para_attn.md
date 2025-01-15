@@ -478,7 +478,7 @@ Inference speed is reduced to 649.23 seconds compared to the baseline, or 5.66x 
 </hfoption>
 </hfoptions>
 
-### Conclusion of Inference Optimization with ParaAttention
+## Benchmarks
 
 <hfoptions id="conclusion">
 <hfoption id="FLUX-1.dev">
