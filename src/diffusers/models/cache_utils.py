@@ -25,7 +25,7 @@ class CacheMixin:
     A class for enable/disabling caching techniques on diffusion models.
 
     Supported caching techniques:
-      - [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588)
+        - [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588)
     """
 
     _cache_config: CacheConfig = None
@@ -35,6 +35,32 @@ class CacheMixin:
         return self._cache_config is not None
 
     def enable_cache(self, config: CacheConfig) -> None:
+        r"""
+        Enable caching techniques on the model.
+
+        Args:
+            config (`Union[PyramidAttentionBroadcastConfig]`):
+                The configuration for applying the caching technique. Currently supported caching techniques are:
+                    - `PyramidAttentionBroadcastConfig`
+
+        Example:
+
+        ```python
+        >>> import torch
+        >>> from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig
+
+        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+        >>> pipe.to("cuda")
+
+        >>> config = PyramidAttentionBroadcastConfig(
+        ...     spatial_attention_block_skip_range=2,
+        ...     spatial_attention_timestep_skip_range=(100, 800),
+        ...     current_timestep_callback=lambda: pipe.current_timestep,
+        ... )
+        >>> pipe.transformer.enable_cache(config)
+        ```
+        """
+
         if isinstance(config, PyramidAttentionBroadcastConfig):
             apply_pyramid_attention_broadcast(self, config)
         else:

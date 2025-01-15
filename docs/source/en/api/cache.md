@@ -19,6 +19,29 @@ Pyramid Attention Broadcast (PAB) is a method that speeds up inference in diffus
 
 Enable PAB with [`~PyramidAttentionBroadcastConfig`] on any pipeline. For some benchmarks, refer to [this](https://github.com/huggingface/diffusers/pull/9562) pull request.
 
+```python
+import torch
+from diffusers import CogVideoXPipeline, PyramidAttentionBroadcastConfig
+
+pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+# Increasing the value of `spatial_attention_timestep_skip_range[0]` or decreasing the value of
+# `spatial_attention_timestep_skip_range[1]` will decrease the interval in which pyramid attention
+# broadcast is active, leader to slower inference speeds. However, large intervals can lead to
+# poorer quality of generated videos.
+config = PyramidAttentionBroadcastConfig(
+    spatial_attention_block_skip_range=2,
+    spatial_attention_timestep_skip_range=(100, 800),
+    current_timestep_callback=lambda: pipe.current_timestep,
+)
+pipe.transformer.enable_cache(config)
+```
+
+### CacheMixin
+
+[[autodoc]] CacheMixin
+
 ### PyramidAttentionBroadcastConfig
 
 [[autodoc]] PyramidAttentionBroadcastConfig
