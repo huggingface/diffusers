@@ -53,6 +53,14 @@ class LayerwiseUpcastingHook(ModelHook):
         module.to(dtype=self.storage_dtype, non_blocking=self.non_blocking)
         return module
 
+    def deinitalize_hook(self, module: torch.nn.Module):
+        raise NotImplementedError(
+            "LayerwiseUpcastingHook does not support deinitalization. A model once enabled with layerwise upcasting will "
+            "have casted its weights to a lower precision dtype for storage. Casting this back to the original dtype "
+            "will lead to precision loss, which might have an impact on the model's generation quality. The model should "
+            "be re-initialized and loaded in the original dtype."
+        )
+
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
         module.to(dtype=self.compute_dtype, non_blocking=self.non_blocking)
         return args, kwargs
