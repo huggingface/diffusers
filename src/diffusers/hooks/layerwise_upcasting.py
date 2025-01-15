@@ -67,13 +67,31 @@ def apply_layerwise_upcasting(
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
     skip_modules_pattern: Optional[Tuple[str]] = _DEFAULT_SKIP_MODULES_PATTERN,
-    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module]]] = [],
+    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module]]] = None,
     non_blocking: bool = False,
     _prefix: str = "",
 ) -> None:
     r"""
     Applies layerwise upcasting to a given module. The module expected here is a Diffusers ModelMixin but it can be any
     nn.Module using diffusers layers or pytorch primitives.
+
+    Example:
+
+    ```python
+    >>> import torch
+    >>> from diffusers import CogVideoXPipeline, apply_layerwise_upcasting
+
+    >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+    >>> pipe.to("cuda")
+
+    >>> apply_layerwise_upcasting(
+    ...     pipe.transformer,
+    ...     storage_dtype=torch.float8_e4m3fn,
+    ...     compute_dtype=torch.bfloat16,
+    ...     skip_modules_pattern=["patch_embed", "norm"],
+    ...     non_blocking=True,
+    ... )
+    ```
 
     Args:
         module (`torch.nn.Module`):
@@ -85,7 +103,7 @@ def apply_layerwise_upcasting(
             The dtype to cast the module to during the forward pass for computation.
         skip_modules_pattern (`Tuple[str]`, defaults to `["pos_embed", "patch_embed", "norm"]`):
             A list of patterns to match the names of the modules to skip during the layerwise upcasting process.
-        skip_modules_classes (`Tuple[Type[torch.nn.Module]]`, defaults to `[]`):
+        skip_modules_classes (`Tuple[Type[torch.nn.Module]]`, defaults to `None`):
             A list of module classes to skip during the layerwise upcasting process.
         non_blocking (`bool`, defaults to `False`):
             If `True`, the weight casting operations are non-blocking.
