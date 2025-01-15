@@ -473,7 +473,7 @@ Save to `run_hunyuan_video.py` and launch it with [torchrun](https://pytorch.org
 torchrun --nproc_per_node=8 run_hunyuan_video.py
 ```
 
-With 8 NVIDIA L20 GPUs, we can generate 129 frames with 720p resolution in 30 inference steps in 649.23 seconds. This is a 5.66x speedup compared to the baseline!
+Inference speed is reduced to 649.23 seconds compared to the baseline, or 5.66x faster, with 8 NVIDIA L20 GPUs.
 
 </hfoption>
 </hfoptions>
