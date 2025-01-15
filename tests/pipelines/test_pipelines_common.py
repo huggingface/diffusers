@@ -28,7 +28,6 @@ from diffusers import (
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
-    apply_pyramid_attention_broadcast,
 )
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
@@ -2337,7 +2336,7 @@ class PyramidAttentionBroadcastTesterMixin:
 
         self.pab_config.current_timestep_callback = lambda: pipe._current_timestep
         denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
-        apply_pyramid_attention_broadcast(denoiser, self.pab_config)
+        denoiser.enable_cache(self.pab_config)
 
         expected_hooks = 0
         if self.pab_config.spatial_attention_block_skip_range is not None:
@@ -2410,15 +2409,17 @@ class PyramidAttentionBroadcastTesterMixin:
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
+        # Run inference without PAB
         inputs = self.get_dummy_inputs(device)
         inputs["num_inference_steps"] = 4
         output = pipe(**inputs)[0]
         original_image_slice = output.flatten()
         original_image_slice = np.concatenate((original_image_slice[:8], original_image_slice[-8:]))
 
+        # Run inference with PAB enabled
         self.pab_config.current_timestep_callback = lambda: pipe._current_timestep
         denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
-        apply_pyramid_attention_broadcast(denoiser, self.pab_config)
+        denoiser.enable_cache(self.pab_config)
 
         inputs = self.get_dummy_inputs(device)
         inputs["num_inference_steps"] = 4
@@ -2426,9 +2427,21 @@ class PyramidAttentionBroadcastTesterMixin:
         image_slice_pab_enabled = output.flatten()
         image_slice_pab_enabled = np.concatenate((image_slice_pab_enabled[:8], image_slice_pab_enabled[-8:]))
 
+        # Run inference with PAB disabled
+        denoiser.disable_cache()
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        image_slice_pab_disabled = output.flatten()
+        image_slice_pab_disabled = np.concatenate((image_slice_pab_disabled[:8], image_slice_pab_disabled[-8:]))
+
         assert np.allclose(
             original_image_slice, image_slice_pab_enabled, atol=expected_atol
         ), "PAB outputs should not differ much in specified timestep range."
+        assert np.allclose(
+            original_image_slice, image_slice_pab_disabled, atol=1e-4
+        ), "Outputs from normal inference and after disabling cache should not differ."
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

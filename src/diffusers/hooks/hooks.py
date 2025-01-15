@@ -152,7 +152,7 @@ class HookRegistry:
             self._module_ref = hook.deinitalize_hook(self._module_ref)
             del self.hooks[name]
             self._hook_order.remove(name)
-        
+
         if recurse:
             for module_name, module in self._module_ref.named_modules():
                 if module_name == "":
