@@ -300,15 +300,17 @@ class PeftAdapterMixin:
             try:
                 inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
                 incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
-            except RuntimeError as e:
-                for module in self.modules():
-                    if isinstance(module, BaseTunerLayer):
-                        active_adapters = module.active_adapters
-                        for active_adapter in active_adapters:
-                            if adapter_name in active_adapter:
-                                module.delete_adapter(adapter_name)
+            except Exception as e:
+                # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
+                if hasattr(self, "peft_config"):
+                    for module in self.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            active_adapters = module.active_adapters
+                            for active_adapter in active_adapters:
+                                if adapter_name in active_adapter:
+                                    module.delete_adapter(adapter_name)
 
-                self.peft_config.pop(adapter_name)
+                    self.peft_config.pop(adapter_name)
                 logger.error(f"Loading {adapter_name} was unsucessful with the following error: \n{e}")
                 raise
 

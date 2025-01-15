@@ -20,10 +20,11 @@ import os
 from array import array
 from collections import OrderedDict
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import safetensors
 import torch
+from huggingface_hub import DDUFEntry
 from huggingface_hub.utils import EntryNotFoundError
 
 from ..utils import (
@@ -132,7 +133,10 @@ def _fetch_remapped_cls_from_config(config, old_class):
 
 
 def load_state_dict(
-    checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, disable_mmap: bool = False
+    checkpoint_file: Union[str, os.PathLike],
+    variant: Optional[str] = None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    disable_mmap: bool = False,
 ):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
@@ -144,6 +148,10 @@ def load_state_dict(
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
+            if dduf_entries:
+                # tensors are loaded on cpu
+                with dduf_entries[checkpoint_file].as_mmap() as mm:
+                    return safetensors.torch.load(mm)
             if disable_mmap:
                 return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
@@ -284,6 +292,7 @@ def _fetch_index_file(
     revision,
     user_agent,
     commit_hash,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     if is_local:
         index_file = Path(
@@ -309,8 +318,10 @@ def _fetch_index_file(
                 subfolder=None,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
+                dduf_entries=dduf_entries,
             )
-            index_file = Path(index_file)
+            if not dduf_entries:
+                index_file = Path(index_file)
         except (EntryNotFoundError, EnvironmentError):
             index_file = None
 
@@ -319,7 +330,9 @@ def _fetch_index_file(
 
 # Adapted from
 # https://github.com/bghira/SimpleTuner/blob/cea2457ab063f6dedb9e697830ae68a96be90641/helpers/training/save_hooks.py#L64
-def _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata):
+def _merge_sharded_checkpoints(
+    sharded_ckpt_cached_folder, sharded_metadata, dduf_entries: Optional[Dict[str, DDUFEntry]] = None
+):
     weight_map = sharded_metadata.get("weight_map", None)
     if weight_map is None:
         raise KeyError("'weight_map' key not found in the shard index file.")
@@ -332,14 +345,23 @@ def _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata):
     # Load tensors from each unique file
     for file_name in files_to_load:
         part_file_path = os.path.join(sharded_ckpt_cached_folder, file_name)
-        if not os.path.exists(part_file_path):
-            raise FileNotFoundError(f"Part file {file_name} not found.")
+        if dduf_entries:
+            if part_file_path not in dduf_entries:
+                raise FileNotFoundError(f"Part file {file_name} not found.")
+        else:
+            if not os.path.exists(part_file_path):
+                raise FileNotFoundError(f"Part file {file_name} not found.")
 
         if is_safetensors:
-            with safetensors.safe_open(part_file_path, framework="pt", device="cpu") as f:
-                for tensor_key in f.keys():
-                    if tensor_key in weight_map:
-                        merged_state_dict[tensor_key] = f.get_tensor(tensor_key)
+            if dduf_entries:
+                with dduf_entries[part_file_path].as_mmap() as mm:
+                    tensors = safetensors.torch.load(mm)
+                    merged_state_dict.update(tensors)
+            else:
+                with safetensors.safe_open(part_file_path, framework="pt", device="cpu") as f:
+                    for tensor_key in f.keys():
+                        if tensor_key in weight_map:
+                            merged_state_dict[tensor_key] = f.get_tensor(tensor_key)
         else:
             merged_state_dict.update(torch.load(part_file_path, weights_only=True, map_location="cpu"))
 
@@ -360,6 +382,7 @@ def _fetch_index_file_legacy(
     revision,
     user_agent,
     commit_hash,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     if is_local:
         index_file = Path(
@@ -400,6 +423,7 @@ def _fetch_index_file_legacy(
                     subfolder=None,
                     user_agent=user_agent,
                     commit_hash=commit_hash,
+                    dduf_entries=dduf_entries,
                 )
                 index_file = Path(index_file)
                 deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
