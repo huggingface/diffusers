@@ -41,7 +41,7 @@ class CacheMixin:
         Args:
             config (`Union[PyramidAttentionBroadcastConfig]`):
                 The configuration for applying the caching technique. Currently supported caching techniques are:
-                    - `PyramidAttentionBroadcastConfig`
+                    - [`~hooks.PyramidAttentionBroadcastConfig`]
 
         Example:
 
@@ -74,7 +74,7 @@ class CacheMixin:
 
         if isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry = HookRegistry.check_if_exists_or_initialize(self)
-            registry.remove_hook("pyramid_attention_broadcast")
+            registry.remove_hook("pyramid_attention_broadcast", recurse=True)
         else:
             raise ValueError(f"Cache config {type(self._cache_config)} is not supported.")
 

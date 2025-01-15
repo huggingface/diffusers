@@ -146,12 +146,19 @@ class HookRegistry:
             return None
         return self.hooks[name]
 
-    def remove_hook(self, name: str) -> None:
-        if name not in self.hooks.keys():
-            raise ValueError(f"Hook with name {name} not found.")
-        self.hooks[name].deinitalize_hook(self._module_ref)
-        del self.hooks[name]
-        self._hook_order.remove(name)
+    def remove_hook(self, name: str, recurse: bool = True) -> None:
+        if name in self.hooks.keys():
+            hook = self.hooks[name]
+            self._module_ref = hook.deinitalize_hook(self._module_ref)
+            del self.hooks[name]
+            self._hook_order.remove(name)
+        
+        if recurse:
+            for module_name, module in self._module_ref.named_modules():
+                if module_name == "":
+                    continue
+                if hasattr(module, "_diffusers_hook"):
+                    module._diffusers_hook.remove_hook(name, recurse=False)
 
     def reset_stateful_hooks(self, recurse: bool = True) -> None:
         for hook_name in self._hook_order:
@@ -160,7 +167,9 @@ class HookRegistry:
                 hook.reset_state(self._module_ref)
 
         if recurse:
-            for module in self._module_ref.modules():
+            for module_name, module in self._module_ref.named_modules():
+                if module_name == "":
+                    continue
                 if hasattr(module, "_diffusers_hook"):
                     module._diffusers_hook.reset_stateful_hooks(recurse=False)
 
