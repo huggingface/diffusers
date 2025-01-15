@@ -478,6 +478,18 @@ def require_bitsandbytes_version_greater(bnb_version):
     return decorator
 
 
+def require_hf_hub_version_greater(hf_hub_version):
+    def decorator(test_case):
+        correct_hf_hub_version = version.parse(
+            version.parse(importlib.metadata.version("huggingface_hub")).base_version
+        ) > version.parse(hf_hub_version)
+        return unittest.skipUnless(
+            correct_hf_hub_version, f"Test requires huggingface_hub with the version greater than {hf_hub_version}."
+        )(test_case)
+
+    return decorator
+
+
 def require_gguf_version_greater_or_equal(gguf_version):
     def decorator(test_case):
         correct_gguf_version = is_gguf_available() and version.parse(
