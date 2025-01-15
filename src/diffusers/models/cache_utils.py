@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union
-
-from ..hooks import HookRegistry, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
-
-
-CacheConfig = Union[PyramidAttentionBroadcastConfig]
-
 
 class CacheMixin:
     r"""
@@ -28,13 +21,13 @@ class CacheMixin:
         - [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588)
     """
 
-    _cache_config: CacheConfig = None
+    _cache_config = None
 
     @property
     def is_cache_enabled(self) -> bool:
         return self._cache_config is not None
 
-    def enable_cache(self, config: CacheConfig) -> None:
+    def enable_cache(self, config) -> None:
         r"""
         Enable caching techniques on the model.
 
@@ -61,6 +54,8 @@ class CacheMixin:
         ```
         """
 
+        from ..hooks import PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+
         if isinstance(config, PyramidAttentionBroadcastConfig):
             apply_pyramid_attention_broadcast(self, config)
         else:
@@ -69,6 +64,8 @@ class CacheMixin:
         self._cache_config = config
 
     def disable_cache(self) -> None:
+        from ..hooks import HookRegistry, PyramidAttentionBroadcastConfig
+
         if self._cache_config is None:
             raise ValueError("Caching techniques have not been enabled.")
 
@@ -81,4 +78,6 @@ class CacheMixin:
         self._cache_config = None
 
     def _reset_stateful_cache(self, recurse: bool = True) -> None:
+        from ..hooks import HookRegistry
+
         HookRegistry.check_if_exists_or_initialize(self).reset_stateful_hooks(recurse=recurse)
