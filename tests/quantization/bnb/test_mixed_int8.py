@@ -512,7 +512,7 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         self.assertTrue(max_diff < 1e-3)
 
     @require_peft_version_greater("0.14.0")
-    def test_lora_loading_works(self):
+    def test_lora_loading(self):
         self.pipeline_8bit.load_lora_weights(
             hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
         )
