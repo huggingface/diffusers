@@ -21,15 +21,11 @@ FLUX.1-dev is able to generate a 1024x1024 resolution image in 28 steps in 26.36
 
 ### First Block Cache
 
-By caching the output of the transformer blocks in the transformer model and resuing them in the next inference steps, we can reduce the computation cost and make the inference faster.
-However, it is hard to decide when to reuse the cache to ensure the quality of the generated image or video.
-Recently, [TeaCache](https://github.com/ali-vilab/TeaCache) suggests that we can use the timestep embedding to approximate the difference among model outputs.
-And [AdaCache](https://adacache-dit.github.io) also shows that caching can contribute grant significant inference speedups without sacrificing the generation quality, across multiple image and video DiT baselines.
-However, TeaCache is still a bit complex as it needs a rescaling strategy to ensure the accuracy of the cache.
-In ParaAttention, we find that we can directly use **the residual difference of the first transformer block output** to approximate the difference among model outputs.
-When the difference is small enough, we can reuse the residual difference of previous inference steps, meaning that we in fact skip this denoising step.
+Caching the output of the transformers blocks in the model and reusing them in the next inference steps reduces the computation cost and makes inference faster.
 
-This has been proved to be effective in our experiments and we can achieve an 2.0x speedup on FLUX.1-dev and HunyuanVideo inference with very good quality.
+However, it is hard to decide when to reuse the cache to ensure quality generated images or videos. ParaAttention directly uses the **residual difference of the first transformer block output** to approximate the difference among model outputs. When the difference is small enough, the residual difference of previous inference steps is reused. In other words, the denoising step is skipped.
+
+This achieves a 2x speedup on FLUX.1-dev and HunyuanVideo inference with very good quality.
 
 <figure>
     <img src="https://huggingface.co/datasets/chengzeyi/documentation-images/resolve/main/diffusers/para-attn/ada-cache.png" alt="Cache in Diffusion Transformer" />
