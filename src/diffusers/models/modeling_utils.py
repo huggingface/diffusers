@@ -913,6 +913,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
+                    named_buffers = model.named_buffers()
+
                     unexpected_keys = load_model_dict_into_meta(
                         model,
                         state_dict,
@@ -921,6 +923,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         model_name_or_path=pretrained_model_name_or_path,
                         hf_quantizer=hf_quantizer,
                         keep_in_fp32_modules=keep_in_fp32_modules,
+                        named_buffers=named_buffers,
                     )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
