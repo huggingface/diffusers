@@ -371,7 +371,7 @@ if dist.get_rank() == 0:
 dist.destroy_process_group()
 ```
 
-We save the above code to `run_flux.py` and run it with `torchrun`:
+Save to `run_flux.py` and launch it with [torchrun](https://pytorch.org/docs/stable/elastic/run.html).
 
 ```bash
 # Use --nproc_per_node to specify the number of GPUs
