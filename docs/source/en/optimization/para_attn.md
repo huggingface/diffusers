@@ -274,13 +274,9 @@ print("Saving video to hunyuan_video.mp4")
 export_to_video(output, "hunyuan_video.mp4", fps=15)
 ```
 
-The NVIDIA L20 GPU only has 48GB memory and could face OOM errors after compiling the model and not calling `enable_model_cpu_offload`,
-because the HunyuanVideo has very large activation tensors when running with high resolution and large number of frames.
-So here we skip measuring the speedup with quantization and compilation on one single NVIDIA L20 GPU and choose to use context parallelism to release the memory pressure.
-If you want to run HunyuanVideo with `torch.compile` on GPUs with less than 80GB memory, you can try reducing the resolution and the number of frames to avoid OOM errors.
+A NVIDIA L20 GPU only has 48GB memory and could face out-of-memory (OOM) errors after compilation and if `enable_model_cpu_offload` isn't called because HunyuanVideo has very large activation tensors when running with high resolution and large number of frames. For GPUs with less than 80GB of memory, you can try reducing the resolution and number of frames to avoid OOM errors.
 
-Due to the fact that large video generation models usually have performance bottleneck on the attention computation rather than the fully connected layers, we don't observe a significant speedup with quantization and compilation.
-However, models like `FLUX.1-dev` can benefit a lot from quantization and compilation, it is suggested to try it for these models.
+Large video generation models are usually bottlenecked by the attention computations rather than the fully connected layers. These models don't significantly benefit from quantization and torch.compile.
 
 </hfoption>
 </hfoptions>
