@@ -135,8 +135,7 @@ export_to_video(output, "hunyuan_video.mp4", fps=15)
 
 <small> HunyuanVideo with FBCache </small>
 
-We observe that the first block cache is very effective in speeding up the inference, and maintaining nearly no quality loss in the generated video.
-Now, on one single NVIDIA L20 GPU, we can generate 129 frames with 720p resolution in 30 inference steps in 2271.06 seconds. This is a 1.62x speedup compared to the baseline.
+First Block Cache reduced the inference speed to 2271.06 seconds compared to the baseline, or 1.62x faster, while maintaining nearly zero quality loss.
 
 </hfoption>
 </hfoptions>
