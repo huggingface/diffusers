@@ -66,6 +66,7 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         "super_res_num_inference_steps",
     ]
     test_xformers_attention = False
+    supports_dduf = False
 
     @property
     def text_embedder_hidden_size(self):
