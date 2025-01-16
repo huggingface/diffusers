@@ -33,6 +33,7 @@ class ModelHook:
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when a model is initialized.
+
         Args:
             module (`torch.nn.Module`):
                 The module attached to this hook.
@@ -42,6 +43,7 @@ class ModelHook:
     def deinitalize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when a model is deinitalized.
+
         Args:
             module (`torch.nn.Module`):
                 The module attached to this hook.
@@ -53,6 +55,7 @@ class ModelHook:
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
         r"""
         Hook that is executed just before the forward method of the model.
+
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass will be executed just after this event.
@@ -69,6 +72,7 @@ class ModelHook:
     def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
         r"""
         Hook that is executed just after the forward method of the model.
+
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass been executed just before this event.
@@ -82,6 +86,7 @@ class ModelHook:
     def detach_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when the hook is detached from a module.
+
         Args:
             module (`torch.nn.Module`):
                 The module detached from this hook.
