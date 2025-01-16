@@ -140,7 +140,7 @@ First Block Cache reduced the inference speed to 2271.06 seconds compared to the
 </hfoption>
 </hfoptions>
 
-### FP8 Quantization
+## fp8 quantization
 
 fp8 with dynamic quantization further speeds up inference and reduces memory usage. Both the activations and weights must be quantized in order to use the 8-bit [NVIDIA Tensor Cores](https://www.nvidia.com/en-us/data-center/tensor-cores/).
 
