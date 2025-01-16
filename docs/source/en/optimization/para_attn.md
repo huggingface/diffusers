@@ -212,8 +212,7 @@ print("Saving image to flux.png")
 image.save("flux.png")
 ```
 
-We can see that the quantization and compilation process can further speed up the inference.
-Now, on one single NVIDIA L20 GPU, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 7.56s, which is a 3.48x speedup compared to the baseline.
+fp8 dynamic quantization and torch.compile reduced the inference speed to 7.56 seconds compared to the baseline, or 3.48x faster.
 
 </hfoption>
 <hfoption id="HunyuanVideo">
