@@ -154,12 +154,9 @@ If you are not familiar with `torchao` quantization, you can refer to this [docu
 pip3 install -U torch torchao
 ```
 
-We also need to pass the model to `torch.compile` to gain actual speedup.
-`torch.compile` with `mode="max-autotune-no-cudagraphs"` or `mode="max-autotune"` can help us to achieve the best performance by generating and selecting the best kernel for the model inference.
-The compilation process could take a long time, but it is worth it.
-If you are not familiar with `torch.compile`, you can refer to the [official tutorial](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html).
-In this example, we only quantize the transformer model, but you can also quantize the text encoder to reduce more memory usage.
-We also need to notice that the actually compilation process is done on the first time the model is called, so we need to warm up the model to measure the speedup correctly.
+[torch.compile](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) with `mode="max-autotune-no-cudagraphs"` or `mode="max-autotune"` selects the best kernel for performance. Compilation can take a long time if it's the first time the model is called, but it is worth it once the model has been compiled.
+
+This example only quantizes the transformer model, but you can also quantize the text encoder to reduce memory usage even more.
 
 > [!TIP]
 > Dynamic quantization can significantly change the distribution of the model output, so you need to change the `residual_diff_threshold` to a larger value for it to take effect.
