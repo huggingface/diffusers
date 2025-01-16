@@ -142,13 +142,13 @@ First Block Cache reduced the inference speed to 2271.06 seconds compared to the
 
 ### FP8 Quantization
 
-To further speed up the inference and reduce memory usage, we can quantize the model into FP8 with dynamic quantization.
-We must quantize both the activation and weight of the transformer model to utilize the 8-bit **Tensor Cores** on NVIDIA GPUs.
-Here, we use  `float8_weight_only` and `float8_dynamic_activation_float8_weight`to quantize the text encoder and transformer model respectively.
-The default quantization method is per tensor quantization. If your GPU supports row-wise quantization, you can also try it for better accuracy.
-[diffusers-torchao](https://github.com/sayakpaul/diffusers-torchao) provides a really good tutorial on how to quantize models in `diffusers` and achieve a good speedup.
-Here, we simply install the latest `torchao` that is capable of quantizing FLUX.1-dev and HunyuanVideo.
-If you are not familiar with `torchao` quantization, you can refer to this [documentation](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md).
+fp8 with dynamic quantization further speeds up inference and reduces memory usage. Both the activations and weights must be quantized in order to use the 8-bit [NVIDIA Tensor Cores](https://www.nvidia.com/en-us/data-center/tensor-cores/).
+
+Use `float8_weight_only` and `float8_dynamic_activation_float8_weight` to quantize the text encoder and transformer model.
+
+The default quantization method is per tensor quantization, but if your GPU supports row-wise quantization, you can also try it for better accuracy.
+
+Install [torchao](https://github.com/pytorch/ao/tree/main) with the command below.
 
 ```bash
 pip3 install -U torch torchao
