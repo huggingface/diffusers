@@ -909,7 +909,14 @@ class UNet2DConditionLoadersMixin:
             )
             image_projection_layers.append(image_projection_layer)
 
-        self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers)
+        # diffuser original
+        #self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers)
+
+        # thesea modified
+        self.encoder_hid_proj =  MultiIPAdapterImageProjection.float().eval()
+        self.encoder_hid_proj = self.encoder_hid_proj.to_empty(device=self.device)
+        #self.encoder_hid_proj.load_state_dict(image_projection_layers, map_location=self.device)
+
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
         self.to(dtype=self.dtype, device=self.device)
