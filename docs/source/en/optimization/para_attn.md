@@ -78,7 +78,7 @@ First Block Cache reduced the inference speed to 17.01 seconds compared to the b
 </hfoption>
 <hfoption id="HunyuanVideo">
 
-To apply first block cache on HunyuanVideo, we can call `apply_cache_on_pipe` with `residual_diff_threshold=0.06`, which is the default value for HunyuanVideo.
+To apply First Block Cache on HunyuanVideo, `apply_cache_on_pipe` as shown below. 0.06 is the default residual difference value for HunyuanVideo models.
 
 ```python
 import time
