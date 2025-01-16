@@ -73,8 +73,7 @@ image.save("flux.png")
 | Preview | ![Original](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/flux-original.png) | ![FBCache rdt=0.06](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/flux-fbc-0.06.png) | ![FBCache rdt=0.08](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/flux-fbc-0.08.png) | ![FBCache rdt=0.10](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/flux-fbc-0.10.png) | ![FBCache rdt=0.12](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/flux-fbc-0.12.png) |
 | Wall Time (s) | 26.36 | 21.83 | 17.01 | 16.00 | 13.78 |
 
-We observe that the first block cache is very effective in speeding up the inference, and maintaining nearly no quality loss in the generated image.
-Now, on one single NVIDIA L20 GPU, we can generate 1 image with 1024x1024 resolution in 28 inference steps in 17.01 seconds. This is a 1.55x speedup compared to the baseline.
+First Block Cache reduced the inference speed to 17.01 seconds compared to the baseline, or 1.55x faster, while maintaining nearly zero quality loss.
 
 </hfoption>
 <hfoption id="HunyuanVideo">
