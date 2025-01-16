@@ -17,10 +17,17 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from ...utils import logging
+from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -145,6 +152,9 @@ class DanceDiffusionPipeline(DiffusionPipeline):
 
             # 2. compute previous audio sample: x_t -> t_t-1
             audio = self.scheduler.step(model_output, t, audio).prev_sample
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         audio = audio.clamp(-1, 1).float().cpu().numpy()
 

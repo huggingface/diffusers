@@ -29,10 +29,12 @@ import PIL.Image
 import requests
 import torch
 from huggingface_hub import (
+    DDUFEntry,
     ModelCard,
     create_repo,
     hf_hub_download,
     model_info,
+    read_dduf_file,
     snapshot_download,
 )
 from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
@@ -72,6 +74,7 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
+    _download_dduf_file,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
@@ -79,6 +82,7 @@ from .pipeline_loading_utils import (
     _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
+    _maybe_raise_error_for_incorrect_transformers,
     _maybe_raise_warning_for_inpainting,
     _resolve_custom_pipeline_and_cls,
     _unwrap_model,
@@ -218,6 +222,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
+
             kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
@@ -411,6 +416,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
+
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` to remove the existing device map from the pipeline."
+            )
+
         if device and torch.device(device).type == "cuda":
             if pipeline_is_sequentially_offloaded and not pipeline_has_bnb:
                 raise ValueError(
@@ -421,12 +433,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 raise ValueError(
                     "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
                 )
-
-        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
-        if is_pipeline_device_mapped:
-            raise ValueError(
-                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
-            )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
@@ -516,7 +522,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -530,6 +536,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
+                    - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
@@ -624,6 +631,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
+            dduf_file(`str`, *optional*):
+                Load weights from the specified dduf file.
 
         <Tip>
 
@@ -643,7 +652,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 
         >>> # Use a different scheduler
         >>> from diffusers import LMSDiscreteScheduler
@@ -673,6 +682,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         offload_state_dict = kwargs.pop("offload_state_dict", False)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
+        dduf_file = kwargs.pop("dduf_file", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
@@ -721,6 +731,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        if dduf_file:
+            if custom_pipeline:
+                raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
+            if load_connected_pipeline:
+                raise NotImplementedError("Connected pipelines are not supported with DDUF at the moment.")
+
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
@@ -743,6 +759,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
+                dduf_file=dduf_file,
                 load_connected_pipeline=load_connected_pipeline,
                 **kwargs,
             )
@@ -764,7 +781,17 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
             logger.warning(warn_msg)
 
-        config_dict = cls.load_config(cached_folder)
+        dduf_entries = None
+        if dduf_file:
+            dduf_file_path = os.path.join(cached_folder, dduf_file)
+            dduf_entries = read_dduf_file(dduf_file_path)
+            # The reader contains already all the files needed, no need to check it again
+            cached_folder = ""
+
+        config_dict = cls.load_config(cached_folder, dduf_entries=dduf_entries)
+
+        if dduf_file:
+            _maybe_raise_error_for_incorrect_transformers(config_dict)
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -942,6 +969,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
+                    dduf_entries=dduf_entries,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -1255,6 +1283,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
+            dduf_file(`str`, *optional*):
+                Load weights from the specified DDUF file.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
@@ -1295,6 +1325,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
+        dduf_file: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
+
+        if dduf_file:
+            if custom_pipeline:
+                raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
+            if load_connected_pipeline:
+                raise NotImplementedError("Connected pipelines are not supported with DDUF at the moment.")
+            return _download_dduf_file(
+                pretrained_model_name=pretrained_model_name,
+                dduf_file=dduf_file,
+                pipeline_class_name=cls.__name__,
+                cache_dir=cache_dir,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+            )
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1374,7 +1421,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
-
             allow_patterns += [
                 SCHEDULER_CONFIG_NAME,
                 CONFIG_NAME,
@@ -1470,7 +1516,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 user_agent=user_agent,
             )
 
-            # retrieve pipeline class from local file
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
             cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
 
@@ -1555,7 +1600,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ...     StableDiffusionInpaintPipeline,
         ... )
 
-        >>> text2img = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> text2img = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
         >>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
         ```
@@ -1688,7 +1733,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> from diffusers import StableDiffusionPipeline
 
         >>> pipe = StableDiffusionPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5",
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
         ...     torch_dtype=torch.float16,
         ...     use_safetensors=True,
         ... )
@@ -1735,7 +1780,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```py
         >>> from diffusers import StableDiffusionPipeline, StableDiffusionSAGPipeline
 
-        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> new_pipe = StableDiffusionSAGPipeline.from_pipe(pipe)
         ```
         """

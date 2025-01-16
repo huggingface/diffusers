@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
+    DDUFEntry,
     ModelCard,
     ModelCardData,
     create_repo,
@@ -291,9 +292,26 @@ def _get_model_file(
     user_agent: Optional[Union[Dict, str]] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-    if os.path.isfile(pretrained_model_name_or_path):
+
+    if dduf_entries:
+        if subfolder is not None:
+            raise ValueError(
+                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
+                "Please check the DDUF structure"
+            )
+        model_file = (
+            weights_name
+            if pretrained_model_name_or_path == ""
+            else "/".join([pretrained_model_name_or_path, weights_name])
+        )
+        if model_file in dduf_entries:
+            return model_file
+        else:
+            raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
+    elif os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
@@ -419,6 +437,7 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     """
     For a given model:
@@ -430,11 +449,18 @@ def _get_checkpoint_shard_files(
     For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
     index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
     """
-    if not os.path.isfile(index_filename):
-        raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+    if dduf_entries:
+        if index_filename not in dduf_entries:
+            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+    else:
+        if not os.path.isfile(index_filename):
+            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 
-    with open(index_filename, "r") as f:
-        index = json.loads(f.read())
+    if dduf_entries:
+        index = json.loads(dduf_entries[index_filename].read_text())
+    else:
+        with open(index_filename, "r") as f:
+            index = json.loads(f.read())
 
     original_shard_filenames = sorted(set(index["weight_map"].values()))
     sharded_metadata = index["metadata"]
@@ -447,6 +473,8 @@ def _get_checkpoint_shard_files(
         _check_if_shards_exist_locally(
             pretrained_model_name_or_path, subfolder=subfolder, original_shard_filenames=original_shard_filenames
         )
+        return shards_path, sharded_metadata
+    elif dduf_entries:
         return shards_path, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub

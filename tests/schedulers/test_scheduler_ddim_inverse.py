@@ -1,3 +1,5 @@
+import unittest
+
 import torch
 
 from diffusers import DDIMInverseScheduler
@@ -95,6 +97,7 @@ class DDIMInverseSchedulerTest(SchedulerCommonTest):
         for t, num_inference_steps in zip([1, 10, 50], [10, 50, 500]):
             self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
 
+    @unittest.skip("Test not supported.")
     def test_add_noise_device(self):
         pass
 
