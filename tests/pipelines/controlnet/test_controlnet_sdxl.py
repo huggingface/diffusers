@@ -487,6 +487,8 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -691,6 +693,8 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
