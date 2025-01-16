@@ -179,6 +179,8 @@
     title: TGATE
   - local: optimization/xdit
     title: xDiT
+  - local: optimization/para_attn
+    title: ParaAttention
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
