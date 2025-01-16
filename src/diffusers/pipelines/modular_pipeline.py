@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from tqdm.auto import tqdm
+import re
 
 from ..configuration_utils import ConfigMixin
 from ..utils import (
@@ -100,6 +101,249 @@ class PipelineState:
             f")"
         )
 
+@dataclass
+class InputParam:
+    name: str
+    default: Any = None
+    required: bool = False
+    description: str = ""
+    type_hint: Any = Any
+
+    def __repr__(self):
+        return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
+
+@dataclass 
+class OutputParam:
+    name: str
+    description: str = ""
+    type_hint: Any = Any
+
+    def __repr__(self):
+        return f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
+
+def format_inputs_short(inputs):
+    """
+    Format input parameters into a string representation, with required params first followed by optional ones.
+    
+    Args:
+        inputs: List of input parameters with 'required' and 'name' attributes, and 'default' for optional params
+        
+    Returns:
+        str: Formatted string of input parameters
+    """
+    required_inputs = [param for param in inputs if param.required]
+    optional_inputs = [param for param in inputs if not param.required]
+    
+    required_str = ", ".join(param.name for param in required_inputs)
+    optional_str = ", ".join(f"{param.name}={param.default}" for param in optional_inputs)
+    
+    inputs_str = required_str
+    if optional_str:
+        inputs_str = f"{inputs_str}, {optional_str}" if required_str else optional_str
+        
+    return inputs_str
+
+
+def format_intermediates_short(block) -> str:
+    """
+    Formats intermediate inputs and outputs of a block into a string representation.
+    
+    Args:
+        block: Pipeline block with potential intermediates
+    
+    Returns:
+        str: Formatted string like "input1, Required(input2) -> output1, output2"
+    """
+    # Handle inputs
+    input_parts = []
+    if hasattr(block, "intermediates_inputs"):
+        for inp in block.intermediates_inputs:
+            parts = []
+            # Check if input is required
+            if hasattr(block, "required_intermediates_inputs") and inp.name in block.required_intermediates_inputs:
+                parts.append("Required")
+            
+            # Get base name or modified name
+            name = inp.name
+            if hasattr(block, "intermediates_outputs") and name in {out.name for out in block.intermediates_outputs}:
+                name = f"*{name}"
+            
+            # Combine Required() wrapper with possibly starred name
+            if parts:
+                input_parts.append(f"Required({name})")
+            else:
+                input_parts.append(name)
+    
+    # Handle outputs
+    output_parts = []
+    if hasattr(block, "intermediates_outputs"):
+        outputs = [out.name for out in block.intermediates_outputs]
+        if hasattr(block, "intermediates_inputs"):
+            # Only show new outputs if we have inputs
+            inputs_set = {inp.name for inp in block.intermediates_inputs}
+            outputs = [out for out in outputs if out not in inputs_set]
+        output_parts.extend(outputs)
+    
+    # Combine with arrow notation if both inputs and outputs exist
+    if input_parts and output_parts:
+        return f"{', '.join(input_parts)} -> {', '.join(output_parts)}"
+    elif input_parts:
+        return ', '.join(input_parts)
+    elif output_parts:
+        return ', '.join(output_parts)
+    return ""
+
+
+def format_input_params(input_params: List[InputParam], indent_level: int = 4, max_line_length: int = 115) -> str:
+    """Format a list of InputParam objects into a readable string representation.
+
+    Args:
+        input_params: List of InputParam objects to format
+        indent_level: Number of spaces to indent each parameter line (default: 4)
+        max_line_length: Maximum length for each line before wrapping (default: 115)
+
+    Returns:
+        A formatted string representing all input parameters
+    """
+    if not input_params:
+        return ""
+        
+    base_indent = " " * indent_level
+    param_indent = " " * (indent_level + 4)
+    desc_indent = " " * (indent_level + 8)
+    formatted_params = []
+    
+    def get_type_str(type_hint):
+        if hasattr(type_hint, "__origin__") and type_hint.__origin__ is Union:
+            types = [t.__name__ if hasattr(t, "__name__") else str(t) for t in type_hint.__args__]
+            return f"Union[{', '.join(types)}]"
+        return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
+    
+    def wrap_text(text: str, indent: str, max_length: int) -> str:
+        """Wrap text while preserving markdown links and maintaining indentation."""
+        words = text.split()
+        lines = []
+        current_line = []
+        current_length = 0
+
+        for word in words:
+            # Calculate word length including space
+            word_length = len(word) + (1 if current_line else 0)
+            
+            # Check if adding this word would exceed the max length
+            if current_line and current_length + word_length > max_length:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+                current_length = len(word)
+            else:
+                current_line.append(word)
+                current_length += word_length
+        
+        if current_line:
+            lines.append(" ".join(current_line))
+            
+        # Join lines with proper indentation
+        return f"\n{indent}".join(lines)
+    
+    # Add the "Args:" header
+    formatted_params.append(f"{base_indent}Args:")
+    
+    for param in input_params:
+        # Format parameter name and type
+        type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
+        param_str = f"{param_indent}{param.name} (`{type_str}`"
+        
+        # Add optional tag and default value if parameter is optional
+        if not param.required:
+            param_str += ", *optional*"
+            if param.default is not None:
+                param_str += f", defaults to {param.default}"
+        param_str += "):"
+            
+        # Add description on a new line with additional indentation and wrapping
+        if param.description:
+            desc = re.sub(
+                r'\[(.*?)\]\((https?://[^\s\)]+)\)',
+                r'[\1](\2)',
+                param.description
+            )
+            wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
+            param_str += f"\n{desc_indent}{wrapped_desc}"
+            
+        formatted_params.append(param_str)
+    
+    return "\n\n".join(formatted_params)
+
+
+def format_output_params(output_params: List[OutputParam], indent_level: int = 4, max_line_length: int = 115) -> str:
+    """Format a list of OutputParam objects into a readable string representation.
+
+    Args:
+        output_params: List of OutputParam objects to format
+        indent_level: Number of spaces to indent each parameter line (default: 4)
+        max_line_length: Maximum length for each line before wrapping (default: 115)
+
+    Returns:
+        A formatted string representing all output parameters
+    """
+    if not output_params:
+        return ""
+        
+    base_indent = " " * indent_level
+    param_indent = " " * (indent_level + 4)
+    desc_indent = " " * (indent_level + 8)
+    formatted_params = []
+    
+    def get_type_str(type_hint):
+        if hasattr(type_hint, "__origin__") and type_hint.__origin__ is Union:
+            types = [t.__name__ if hasattr(t, "__name__") else str(t) for t in type_hint.__args__]
+            return f"Union[{', '.join(types)}]"
+        return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
+    
+    def wrap_text(text: str, indent: str, max_length: int) -> str:
+        """Wrap text while preserving markdown links and maintaining indentation."""
+        words = text.split()
+        lines = []
+        current_line = []
+        current_length = 0
+
+        for word in words:
+            word_length = len(word) + (1 if current_line else 0)
+            
+            if current_line and current_length + word_length > max_length:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+                current_length = len(word)
+            else:
+                current_line.append(word)
+                current_length += word_length
+        
+        if current_line:
+            lines.append(" ".join(current_line))
+            
+        return f"\n{indent}".join(lines)
+    
+    # Add the "Returns:" header
+    formatted_params.append(f"{base_indent}Returns:")
+    
+    for param in output_params:
+        # Format parameter name and type
+        type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
+        param_str = f"{param_indent}{param.name} (`{type_str}`):"
+            
+        # Add description on a new line with additional indentation and wrapping
+        if param.description:
+            desc = re.sub(
+                r'\[(.*?)\]\((https?://[^\s\)]+)\)',
+                r'[\1](\2)',
+                param.description
+            )
+            wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
+            param_str += f"\n{desc_indent}{wrapped_desc}"
+            
+        formatted_params.append(param_str)
+    
+    return "\n\n".join(formatted_params)
 
 class PipelineBlock:
     # YiYi Notes: do we need this?
@@ -109,17 +353,32 @@ class PipelineBlock:
     model_name = None
 
     @property
-    def inputs(self) -> Tuple[Tuple[str, Any], ...]:
-        # (input_name, default_value)
-        return ()
-
-    @property
-    def intermediates_inputs(self) -> List[str]:
+    def inputs(self) -> List[InputParam]:
         return []
 
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediates_inputs(self) -> List[InputParam]:
         return []
+
+    @property
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return []
+
+    @property
+    def required_inputs(self) -> List[str]:
+        input_names = []
+        for input_param in self.inputs:
+            if input_param.required:
+                input_names.append(input_param.name)
+        return input_names
+
+    @property
+    def required_intermediates_inputs(self) -> List[str]:
+        input_names = []
+        for input_param in self.intermediates_inputs:
+            if input_param.required:
+                input_names.append(input_param.name)
+        return input_names
 
     def __init__(self):
         self.components: Dict[str, Any] = {}
@@ -161,19 +420,12 @@ class PipelineBlock:
         )
 
         # Inputs section
-        inputs = "inputs: " + ", ".join(
-            f"{name}={default}" if default is not None else name 
-            for name, default in self.inputs
-        )
+        inputs_str = format_inputs_short(self.inputs)
+        inputs = "Inputs:\n    " + inputs_str
 
         # Intermediates section
-        input_set = set(self.intermediates_inputs)
-        output_set = set(self.intermediates_outputs)
-        
-        modified_inputs = [f"{item}*" for item in self.intermediates_inputs]
-        new_outputs = [item for item in self.intermediates_outputs if item not in input_set]
-        
-        intermediates = f"intermediates: {', '.join(modified_inputs)} -> {', '.join(new_outputs)}"
+        intermediates_str = format_intermediates_short(self)
+        intermediates = f"Intermediates:\n    {intermediates_str}"
 
         return (
             f"{class_name}(\n"
@@ -185,35 +437,91 @@ class PipelineBlock:
             f")"
         )
 
+    def get_doc_string(self):
+        """
+        Generates a formatted documentation string describing the pipeline block's parameters and structure.
+        
+        Returns:
+            str: A formatted string containing information about call parameters, intermediate inputs/outputs,
+                and final intermediate outputs.
+        """
+        output = "Call Parameters:\n"
+        output += "------------------------\n"
+        output += format_input_params(self.inputs, indent_level=2)
 
-def combine_inputs(*named_input_lists: List[Tuple[str, List[Tuple[str, Any]]]]) -> List[Tuple[str, Any]]:
+        output += "\n\nIntermediate inputs:\n"
+        output += "--------------------------\n"
+        output += format_input_params(self.intermediates_inputs, indent_level=2)
+
+        if hasattr(self, "intermediates_outputs"):
+            output += "\n\nIntermediate outputs:\n"
+            output += "--------------------------\n"
+            output += format_output_params(self.intermediates_outputs, indent_level=2)
+
+        if hasattr(self, "final_intermediates_outputs"):
+            output += "\nFinal intermediate outputs:\n"
+            output += "--------------------------\n"
+            output += format_output_params(self.final_intermediates_outputs, indent_level=2)
+
+        return output
+
+
+
+def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
     """
-    Combines multiple lists of (name, default_value) tuples from different blocks. For duplicate inputs, updates only if 
-    current value is None and new value is not None. Warns if multiple non-None default values exist for the same input.
+    Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if 
+    current default value is None and new default value is not None. Warns if multiple non-None default values 
+    exist for the same input.
 
     Args:
-        named_input_lists: List of tuples containing (block_name, input_list) pairs
+        named_input_lists: List of tuples containing (block_name, input_param_list) pairs
+    
+    Returns:
+        List[InputParam]: Combined list of unique InputParam objects
     """
-    combined_dict = {}
-    value_sources = {}
+    combined_dict = {}  # name -> InputParam
+    value_sources = {}  # name -> block_name
     
     for block_name, inputs in named_input_lists:
-        for name, value in inputs:
-            if name in combined_dict:
-                current_value = combined_dict[name]
-                if current_value is not None and value is not None and current_value != value:
+        for input_param in inputs:
+            if input_param.name in combined_dict:
+                current_param = combined_dict[input_param.name]
+                if (current_param.default is not None and 
+                    input_param.default is not None and 
+                    current_param.default != input_param.default):
                     warnings.warn(
-                        f"Multiple different default values found for input '{name}': "
-                        f"{current_value} (from block '{value_sources[name]}') and "
-                        f"{value} (from block '{block_name}'). Using {current_value}."
+                        f"Multiple different default values found for input '{input_param.name}': "
+                        f"{current_param.default} (from block '{value_sources[input_param.name]}') and "
+                        f"{input_param.default} (from block '{block_name}'). Using {current_param.default}."
                     )
-                if current_value is None and value is not None:
-                    combined_dict[name] = value
-                    value_sources[name] = block_name
+                if current_param.default is None and input_param.default is not None:
+                    combined_dict[input_param.name] = input_param
+                    value_sources[input_param.name] = block_name
             else:
-                combined_dict[name] = value
-                value_sources[name] = block_name
-    return list(combined_dict.items())
+                combined_dict[input_param.name] = input_param
+                value_sources[input_param.name] = block_name
+    
+    return list(combined_dict.values())
+
+def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) -> List[OutputParam]:
+    """
+    Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs,
+    keeps the first occurrence of each output name.
+
+    Args:
+        named_output_lists: List of tuples containing (block_name, output_param_list) pairs
+    
+    Returns:
+        List[OutputParam]: Combined list of unique OutputParam objects
+    """
+    combined_dict = {}  # name -> OutputParam
+    
+    for block_name, outputs in named_output_lists:
+        for output_param in outputs:
+            if output_param.name not in combined_dict:
+                combined_dict[output_param.name] = output_param
+    
+    return list(combined_dict.values())
 
 
 class AutoPipelineBlocks:
@@ -308,17 +616,61 @@ class AutoPipelineBlocks:
         return configs
 
     @property
+    def required_inputs(self) -> List[str]:
+        first_block = next(iter(self.blocks.values()))
+        required_by_all = set(getattr(first_block, "required_inputs", set()))
+
+        # Intersect with required inputs from all other blocks
+        for block in list(self.blocks.values())[1:]:
+            block_required = set(getattr(block, "required_inputs", set()))
+            required_by_all.intersection_update(block_required)
+
+        return list(required_by_all)
+
+    @property
+    def required_intermediates_inputs(self) -> List[str]:
+        first_block = next(iter(self.blocks.values()))
+        required_by_all = set(getattr(first_block, "required_intermediates_inputs", set()))
+
+        # Intersect with required inputs from all other blocks
+        for block in list(self.blocks.values())[1:]:
+            block_required = set(getattr(block, "required_intermediates_inputs", set()))
+            required_by_all.intersection_update(block_required)
+
+        return list(required_by_all)
+
+
+    # YiYi TODO: add test for this
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         named_inputs = [(name, block.inputs) for name, block in self.blocks.items()]
-        return combine_inputs(*named_inputs)
+        combined_inputs = combine_inputs(*named_inputs)
+        # mark Required inputs only if that input is required by all the blocks
+        for input_param in combined_inputs:
+            if input_param.name in self.required_inputs:
+                input_param.required = True
+            else:
+                input_param.required = False
+        return combined_inputs
+
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return list(set().union(*(block.intermediates_inputs for block in self.blocks.values())))
+        named_inputs = [(name, block.intermediates_inputs) for name, block in self.blocks.items()]
+        combined_inputs = combine_inputs(*named_inputs)
+        # mark Required inputs only if that input is required by all the blocks
+        for input_param in combined_inputs:
+            if input_param.name in self.required_intermediates_inputs:
+                input_param.required = True
+            else:
+                input_param.required = False
+        return combined_inputs
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return list(set().union(*(block.intermediates_outputs for block in self.blocks.values())))
+        named_outputs = [(name, block.intermediates_outputs) for name, block in self.blocks.items()]
+        combined_outputs = combine_outputs(*named_outputs)
+        return combined_outputs
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -417,24 +769,11 @@ class AutoPipelineBlocks:
 
             sections.append(f"    Block: {block.__class__.__name__}")
             
-            if hasattr(block, "inputs"):
-                inputs_str = ", ".join(
-                    name if default is None else f"{name}={default}"
-                    for name, default in block.inputs
-                )
-                if inputs_str:
-                    sections.append(f"      inputs: {inputs_str}")
+            inputs_str = format_inputs_short(block.inputs)
+            sections.append(f"      inputs:\n        {inputs_str}")
 
-            if hasattr(block, "intermediates_inputs") or hasattr(block, "intermediates_outputs"):
-                intermediates_str = ""
-                if hasattr(block, "intermediates_inputs"):
-                    intermediates_str += f"{', '.join(block.intermediates_inputs)}"
-                if hasattr(block, "intermediates_outputs"):
-                    if intermediates_str:
-                        intermediates_str += " -> "
-                    intermediates_str += f"{', '.join(block.intermediates_outputs)}"
-                if intermediates_str:
-                    sections.append(f"      intermediates: {intermediates_str}")
+            intermediates_str = f"      intermediates:\n        {format_intermediates_short(block)}"
+            sections.append(intermediates_str)
             
             sections.append("") 
 
@@ -445,6 +784,33 @@ class AutoPipelineBlocks:
             f")"
         )
 
+    def get_doc_string(self):
+        """
+        Generates a formatted documentation string describing the pipeline block's parameters and structure.
+        
+        Returns:
+            str: A formatted string containing information about call parameters, intermediate inputs/outputs,
+                and final intermediate outputs.
+        """
+        output = "Call Parameters:\n"
+        output += "------------------------\n"
+        output += format_input_params(self.inputs, indent_level=2)
+
+        output += "\n\nIntermediate inputs:\n"
+        output += "--------------------------\n"
+        output += format_input_params(self.intermediates_inputs, indent_level=2)
+
+        if hasattr(self, "intermediates_outputs"):
+            output += "\n\nIntermediate outputs:\n"
+            output += "--------------------------\n"
+            output += format_output_params(self.intermediates_outputs, indent_level=2)
+
+        if hasattr(self, "final_intermediates_outputs"):
+            output += "\nFinal intermediate outputs:\n"
+            output += "--------------------------\n"
+            output += format_output_params(self.final_intermediates_outputs, indent_level=2)
+
+        return output
 
 class SequentialPipelineBlocks:
     """
@@ -528,27 +894,59 @@ class SequentialPipelineBlocks:
         return configs
 
     @property
+    def required_inputs(self) -> List[str]:
+        # Get the first block from the dictionary
+        first_block = next(iter(self.blocks.values()))
+        required_by_any = set(getattr(first_block, "required_inputs", set()))
+
+        # Union with required inputs from all other blocks
+        for block in list(self.blocks.values())[1:]:
+            block_required = set(getattr(block, "required_inputs", set()))
+            required_by_any.update(block_required)
+        
+        return list(required_by_any)
+    
+    @property
+    def required_intermediates_inputs(self) -> List[str]:
+        required_intermediates_inputs = []
+        for input_param in self.intermediates_inputs:
+            if input_param.required:
+                required_intermediates_inputs.append(input_param.name)
+        return required_intermediates_inputs
+
+    # YiYi TODO: add test for this
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         named_inputs = [(name, block.inputs) for name, block in self.blocks.items()]
-        return combine_inputs(*named_inputs)
+        combined_inputs = combine_inputs(*named_inputs)
+        # mark Required inputs only if that input is required any of the blocks
+        for input_param in combined_inputs:
+            if input_param.name in self.required_inputs:
+                input_param.required = True
+            else:
+                input_param.required = False
+        return combined_inputs
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        inputs = set()
+        inputs = []
         outputs = set()
 
         # Go through all blocks in order
         for block in self.blocks.values():
             # Add inputs that aren't in outputs yet
-            inputs.update(input_name for input_name in block.intermediates_inputs if input_name not in outputs)
+            inputs.extend(input_name for input_name in block.intermediates_inputs if input_name.name not in outputs)
             # Add this block's outputs
-            outputs.update(block.intermediates_outputs)
+            block_intermediates_outputs = [out.name for out in block.intermediates_outputs]
+            outputs.update(block_intermediates_outputs)
 
-        return list(inputs)
+        return inputs
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return list(set().union(*(block.intermediates_outputs for block in self.blocks.values())))
+        named_outputs = [(name, block.intermediates_outputs) for name, block in self.blocks.items()]
+        combined_outputs = combine_outputs(*named_outputs)
+        return combined_outputs
     
     @property
     def final_intermediates_outputs(self) -> List[str]:
@@ -710,44 +1108,28 @@ class SequentialPipelineBlocks:
         for i, (name, block) in enumerate(self.blocks.items()):
             blocks_str += f"    {i}. {name} ({block.__class__.__name__})\n"
 
-            if hasattr(block, "inputs"):
-                inputs_str = ", ".join(
-                    name if default is None else f"{name}={default}"
-                    for name, default in block.inputs
-                )
-                blocks_str += f"       inputs: {inputs_str}\n"
+            inputs_str = format_inputs_short(block.inputs)
 
-            if hasattr(block, "intermediates_inputs") or hasattr(block, "intermediates_outputs"):
-                intermediates_str = ""
-                if hasattr(block, "intermediates_inputs"):
-                    inputs_set = set(block.intermediates_inputs)
-                    intermediates_str += ", ".join(f"*{inp}" if inp in (getattr(block, "intermediates_outputs", set())) else inp 
-                                                for inp in block.intermediates_inputs)
+            blocks_str += f"       inputs: {inputs_str}\n"
 
-                if hasattr(block, "intermediates_outputs"):
-                    if intermediates_str:
-                        intermediates_str += " -> "
-                    outputs_set = set(block.intermediates_outputs)
-                    new_outputs = outputs_set - inputs_set if hasattr(block, "intermediates_inputs") else outputs_set
-                    intermediates_str += ", ".join(new_outputs)
+            intermediates_str = format_intermediates_short(block)
 
-                if intermediates_str:
-                    blocks_str += f"       intermediates: {intermediates_str}\n"
+            if intermediates_str:
+                blocks_str += f"       intermediates: {intermediates_str}\n"
             blocks_str += "\n"
-        
-        inputs_str = "  inputs:\n    " + ", ".join(
-            f"{name}={default}" if default is not None else f"{name}"
-            for name, default in self.inputs
-        )
- 
-        modified_inputs = [f"*{inp}" if inp in self.intermediates_outputs else inp for inp in self.intermediates_inputs]
-        new_outputs = [out for out in self.intermediates_outputs if out not in self.intermediates_inputs]
 
+        inputs_str = format_inputs_short(self.inputs)
+        inputs_str = "  Inputs:\n    " + inputs_str
+        final_intermediates_outputs = [out.name for out in self.final_intermediates_outputs]
+        
+        intermediates_str_short = format_intermediates_short(self)
+        intermediates_input_str = intermediates_str_short.split('->')[0].strip()  # "Required(latents), crops_coords"
+        intermediates_output_str = intermediates_str_short.split('->')[1].strip()
         intermediates_str = (
             "\n  Intermediates:\n"
-            f"      - inputs: {', '.join(modified_inputs)}\n"
-            f"      - outputs: {', '.join(new_outputs)}\n"
-            f"      - final outputs: {', '.join(self.final_intermediates_outputs)}"
+            f"      - inputs: {intermediates_input_str}\n"
+            f"      - outputs: {intermediates_output_str}\n"
+            f"      - final outputs: {', '.join(final_intermediates_outputs)}"
         )
 
         return (
@@ -761,6 +1143,33 @@ class SequentialPipelineBlocks:
             f")"
         )
 
+    def get_doc_string(self):
+        """
+        Generates a formatted documentation string describing the pipeline block's parameters and structure.
+        
+        Returns:
+            str: A formatted string containing information about call parameters, intermediate inputs/outputs,
+                and final intermediate outputs.
+        """
+        output = "Call Parameters:\n"
+        output += "------------------------\n"
+        output += format_input_params(self.inputs, indent_level=2)
+
+        output += "\n\nIntermediate inputs:\n"
+        output += "--------------------------\n"
+        output += format_input_params(self.intermediates_inputs, indent_level=2)
+
+        if hasattr(self, "intermediates_outputs"):
+            output += "\n\nIntermediate outputs:\n"
+            output += "--------------------------\n"
+            output += format_output_params(self.intermediates_outputs, indent_level=2)
+
+        if hasattr(self, "final_intermediates_outputs"):
+            output += "\nFinal intermediate outputs:\n"
+            output += "--------------------------\n"
+            output += format_output_params(self.final_intermediates_outputs, indent_level=2)
+
+        return output
 
 class ModularPipeline(ConfigMixin):
     """
@@ -894,16 +1303,17 @@ class ModularPipeline(ConfigMixin):
         # Add inputs to state, using defaults if not provided in the kwargs or the state
         # if same input already in the state, will override it if provided in the kwargs
 
+        intermediates_inputs = [inp.name for inp in self.pipeline_block.intermediates_inputs]
         for name, default in default_params.items():
             if name in input_params:
-                if name not in self.pipeline_block.intermediates_inputs:
+                if name not in intermediates_inputs:
                     state.add_input(name, input_params.pop(name))
                 else:
                     state.add_input(name, input_params[name])
             elif name not in state.inputs:
                 state.add_input(name, default)
 
-        for name in self.pipeline_block.intermediates_inputs:
+        for name in intermediates_inputs:
             if name in input_params:
                 state.add_intermediate(name, input_params.pop(name))
 
@@ -973,8 +1383,8 @@ class ModularPipeline(ConfigMixin):
     @property
     def default_call_parameters(self) -> Dict[str, Any]:
         params = {}
-        for name, default in self.pipeline_block.inputs:
-            params[name] = default
+        for input_param in self.pipeline_block.inputs:
+            params[input_param.name] = input_param.default
         return params
 
     def __repr__(self):
@@ -1026,28 +1436,8 @@ class ModularPipeline(ConfigMixin):
             output += f"{name}: {config!r}\n"
         output += "\n"
 
-        # List the default call parameters
-        output += "Call Parameters:\n"
-        output += "------------------------\n"
-        for name, default in self.default_call_parameters.items():
-            output += f"{name}: {default!r}\n"
-
-        output += "\nIntermediate inputs:\n"
-        output += "--------------------------\n"
-        for name in self.pipeline_block.intermediates_inputs:
-            output += f"{name}: \n"
-
-
-        if hasattr(block, "intermediates_outputs"):
-            output += "\nIntermediate outputs:\n"
-            output += "--------------------------\n"
-            output += f"{', '.join(block.intermediates_outputs)}\n\n"
-
-        # Add final intermediate outputs section at the bottom
-        if hasattr(block, "final_intermediates_outputs"):
-            output += "Final intermediate outputs:\n"
-            output += "--------------------------\n"
-            output += f"{', '.join(block.final_intermediates_outputs)}\n"
+        # List the call parameters
+        output += self.pipeline_block.get_doc_string()
 
         return output
 

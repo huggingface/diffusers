@@ -38,6 +38,8 @@ from ..modular_pipeline import (
     ModularPipeline,
     PipelineBlock,
     PipelineState,
+    InputParam,
+    OutputParam,
     SequentialPipelineBlocks,
 )
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
@@ -128,18 +130,22 @@ class StableDiffusionXLInputStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> List[InputParam]:
         return [
-            ("prompt", None),
+            InputParam(
+                name="prompt",
+                description="The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds` instead.",
+                type_hint=Union[str, List[str]],
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["prompt_embeds"]
+        return [InputParam("prompt_embeds")]
     
     @property
     def intermediates_outputs(self) -> List[str]:
-        return ["batch_size"]
+        return [OutputParam("batch_size")]
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -164,30 +170,63 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> List[InputParam]:
         return [
-            ("prompt", None),
-            ("prompt_2", None),
-            ("negative_prompt", None),
-            ("negative_prompt_2", None),
-            ("cross_attention_kwargs", None),
-            ("num_images_per_prompt", 1),
-            ("guidance_scale", 5.0),
-            ("clip_skip", None),
+            InputParam(
+                name="prompt",
+                type_hint=Union[str, List[str]],
+                description="The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds` instead.",
+            ),
+            InputParam(
+                name="prompt_2",
+                type_hint=Union[str, List[str]],
+                description="The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is used in both text-encoders",
+            ),
+            InputParam(
+                name="negative_prompt",
+                type_hint=Union[str, List[str]],
+                description="The prompt or prompts not to guide the image generation. If not defined, one has to pass `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).",
+            ),
+            InputParam(
+                name="negative_prompt_2",
+                type_hint=Union[str, List[str]],
+                description="The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders",
+            ),
+            InputParam(
+                name="cross_attention_kwargs",
+                type_hint=Optional[dict],
+                description="A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under `self.processor` in [diffusers.models.attention_processor]",
+            ),
+            InputParam(
+                name="num_images_per_prompt",
+                type_hint=int,
+                default=1,
+                description="The number of images to generate per prompt.",
+            ),
+            InputParam(
+                name="guidance_scale",
+                type_hint=float,
+                default=5.0,
+                description="Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598). `guidance_scale` is defined as `w` of equation 2. of [Imagen Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`, usually at the expense of lower image quality.",
+            ),
+            InputParam(
+                name="clip_skip",
+                type_hint=Optional[int],
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["prompt_embeds", "negative_prompt_embeds", "pooled_prompt_embeds", "negative_pooled_prompt_embeds"]
+        return [InputParam("prompt_embeds"), InputParam("negative_prompt_embeds"), InputParam("pooled_prompt_embeds"), InputParam("negative_pooled_prompt_embeds")]
     
     @property
     def intermediates_outputs(self) -> List[str]:
         return [
-            "prompt_embeds",
-            "negative_prompt_embeds",
-            "pooled_prompt_embeds",
-            "negative_pooled_prompt_embeds",
-            "dtype",
+            OutputParam("prompt_embeds"),
+            OutputParam("negative_prompt_embeds"),
+            OutputParam("pooled_prompt_embeds"),
+            OutputParam("negative_pooled_prompt_embeds"),
+            OutputParam("dtype"),
         ]
 
     def __init__(self):
@@ -328,22 +367,25 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> List[InputParam]:
         return [
-            ("image", None),
-            ("generator", None),
-            ("height", None),
-            ("width", None),
-            ("num_images_per_prompt", 1),
+            InputParam(name="image", required=True),
+            InputParam(name="generator"),
+            InputParam(name="height"),
+            InputParam(name="width"),
+            InputParam(name="num_images_per_prompt", default=1),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "dtype", "preprocess_kwargs"]
+        return [
+            InputParam("batch_size", description="batch size for generated image_latents, if not provided, same number of images as input"), 
+            InputParam("dtype"), 
+            InputParam("preprocess_kwargs")]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return ["image_latents"]
+        return [OutputParam("image_latents")]
 
     def __init__(self):
         super().__init__()
@@ -414,24 +456,24 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> List[InputParam]:
         return [
-            ("num_inference_steps", 50),
-            ("timesteps", None),
-            ("sigmas", None),
-            ("denoising_end", None),
-            ("strength", 0.3),
-            ("denoising_start", None),
-            ("num_images_per_prompt", 1),
+            InputParam("num_inference_steps", default=50),
+            InputParam("timesteps"),
+            InputParam("sigmas"),
+            InputParam("denoising_end"),
+            InputParam("strength", default=0.3),
+            InputParam("denoising_start"),
+            InputParam("num_images_per_prompt", default=1),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["batch_size"]
+        return [InputParam("batch_size", required=True)]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return ["timesteps", "num_inference_steps", "latent_timestep"]
+        return [OutputParam("timesteps"), OutputParam("num_inference_steps"), OutputParam("latent_timestep")]
 
     def __init__(self):
         super().__init__()
@@ -491,17 +533,17 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> List[InputParam]:
         return [
-            ("num_inference_steps", 50),
-            ("timesteps", None),
-            ("sigmas", None),
-            ("denoising_end", None),
+            InputParam("num_inference_steps", default=50),
+            InputParam("timesteps"),
+            InputParam("sigmas"),
+            InputParam("denoising_end"),
         ]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["timesteps", "num_inference_steps"]
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("timesteps"), OutputParam("num_inference_steps")]
 
     def __init__(self):
         super().__init__()
@@ -541,24 +583,24 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> List[InputParam]:
         return [
-            ("height", None),
-            ("width", None),
-            ("generator", None),
-            ("num_images_per_prompt", 1),
-            ("image", None),
-            ("mask_image", None),
-            ("padding_mask_crop", None),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam("generator"),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("image", required=True),
+            InputParam("mask_image", required=True),
+            InputParam("padding_mask_crop"),
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "dtype"]
+    def intermediates_inputs(self) -> List[InputParam]:
+        return [InputParam("batch_size"), InputParam("dtype")]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["image_latents", "mask", "masked_image_latents", "crops_coords"]
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("image_latents"), OutputParam("mask"), OutputParam("masked_image_latents"), OutputParam("crops_coords")]
 
     def __init__(self):
         super().__init__()
@@ -648,20 +690,26 @@ class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("generator", None),
-            ("latents", None),
-            ("num_images_per_prompt", 1),
-            ("denoising_start", None),
-            ("strength", 0.9999),
+            InputParam("generator"),
+            InputParam("latents"),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("denoising_start"),
+            InputParam("strength", default=0.9999),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "dtype", "latent_timestep", "image_latents", "mask", "masked_image_latents"]
+        return [
+            InputParam("batch_size", required=True), 
+            InputParam("latent_timestep", required=True), 
+            InputParam("image_latents", required=True), 
+            InputParam("mask", required=True), 
+            InputParam("masked_image_latents"), # only for inpainting-specific unet
+            InputParam("dtype")]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return ["latents", "mask", "masked_image_latents", "noise"]
+        return [OutputParam("latents"), OutputParam("mask"), OutputParam("masked_image_latents"), OutputParam("noise")]
 
     def __init__(self):
         super().__init__()
@@ -750,19 +798,23 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("generator", None),
-            ("latents", None),
-            ("num_images_per_prompt", 1),
-            ("denoising_start", None),
+            InputParam("generator"),
+            InputParam("latents"),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("denoising_start"),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "dtype", "latent_timestep", "image_latents"]
+        return [
+            InputParam("latent_timestep", required=True), 
+            InputParam("image_latents", required=True), 
+            InputParam("batch_size"), 
+            InputParam("dtype")]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["latents"]
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("latents")]
 
     def __init__(self):
         super().__init__()
@@ -785,6 +837,8 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
 
         if dtype is None:
             dtype = pipeline.vae.dtype
+        if batch_size is None:
+            batch_size = image_latents.shape[0]
 
         device = pipeline._execution_device
         add_noise = True if denoising_start is None else False
@@ -812,20 +866,20 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("height", None),
-            ("width", None),
-            ("generator", None),
-            ("latents", None),
-            ("num_images_per_prompt", 1),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam("generator"),
+            InputParam("latents"),
+            InputParam("num_images_per_prompt", default=1),
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "dtype"]
+    def intermediates_inputs(self) -> List[InputParam]:
+        return [InputParam("batch_size", required=True), InputParam("dtype")]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["latents"]
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("latents")]
 
     def __init__(self):
         super().__init__()
@@ -888,25 +942,25 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("original_size", None),
-            ("target_size", None),
-            ("negative_original_size", None),
-            ("negative_target_size", None),
-            ("crops_coords_top_left", (0, 0)),
-            ("negative_crops_coords_top_left", (0, 0)),
-            ("num_images_per_prompt", 1),
-            ("guidance_scale", 5.0),
-            ("aesthetic_score", 6.0),
-            ("negative_aesthetic_score", 2.0),
+            InputParam("original_size"),
+            InputParam("target_size"),
+            InputParam("negative_original_size"),
+            InputParam("negative_target_size"),
+            InputParam("crops_coords_top_left", default=(0, 0)),
+            InputParam("negative_crops_coords_top_left", default=(0, 0)),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("guidance_scale", default=5.0),
+            InputParam("aesthetic_score", default=6.0),
+            InputParam("negative_aesthetic_score", default=2.0),
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["latents", "batch_size", "pooled_prompt_embeds"]
+    def intermediates_inputs(self) -> List[InputParam]:
+        return [InputParam("latents", required=True), InputParam("pooled_prompt_embeds", required=True)]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("add_time_ids"), OutputParam("negative_add_time_ids"), OutputParam("timestep_cond")]
 
     def __init__(self):
         super().__init__()
@@ -928,10 +982,11 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
         negative_aesthetic_score = state.get_input("negative_aesthetic_score")
 
         latents = state.get_intermediate("latents")
-        batch_size = state.get_intermediate("batch_size")
         pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
 
         device = pipeline._execution_device
+
+        batch_size = latents.shape[0]
 
         if hasattr(pipeline, "vae") and pipeline.vae is not None:
             vae_scale_factor = 2 ** (len(pipeline.vae.config.block_out_channels) - 1)
@@ -994,23 +1049,23 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("original_size", None),
-            ("target_size", None),
-            ("negative_original_size", None),
-            ("negative_target_size", None),
-            ("crops_coords_top_left", (0, 0)),
-            ("negative_crops_coords_top_left", (0, 0)),
-            ("num_images_per_prompt", 1),
-            ("guidance_scale", 5.0),
+            InputParam("original_size"),
+            InputParam("target_size"),
+            InputParam("negative_original_size"),
+            InputParam("negative_target_size"),
+            InputParam("crops_coords_top_left", default=(0, 0)),
+            InputParam("negative_crops_coords_top_left", default=(0, 0)),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("guidance_scale", default=5.0),
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["latents", "batch_size", "pooled_prompt_embeds"]
+    def intermediates_inputs(self) -> List[InputParam]:
+        return [InputParam("latents", required=True), InputParam("pooled_prompt_embeds", required=True)]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("add_time_ids"), OutputParam("negative_add_time_ids"), OutputParam("timestep_cond")]
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -1025,10 +1080,11 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
         device = state.get_input("device")
 
         latents = state.get_intermediate("latents")
-        batch_size = state.get_intermediate("batch_size")
         pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
 
         device = pipeline._execution_device
+
+        batch_size = latents.shape[0]
 
         height, width = latents.shape[-2:]
         height = height * pipeline.vae_scale_factor
@@ -1088,36 +1144,36 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("guidance_scale", 5.0),
-            ("guidance_rescale", 0.0),
-            ("cross_attention_kwargs", None),
-            ("generator", None),
-            ("eta", 0.0),
-            ("guider_kwargs", None),
+            InputParam("guidance_scale", default=5.0),
+            InputParam("guidance_rescale", default=0.0),
+            InputParam("cross_attention_kwargs", default=None),
+            InputParam("generator", default=None),
+            InputParam("eta", default=0.0),
+            InputParam("guider_kwargs", default=None),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            "latents",
-            "timesteps",
-            "num_inference_steps",
-            "pooled_prompt_embeds",
-            "negative_pooled_prompt_embeds",
-            "add_time_ids",
-            "negative_add_time_ids",
-            "timestep_cond",
-            "prompt_embeds",
-            "negative_prompt_embeds",
-            "mask", # inpainting
-            "masked_image_latents", # inpainting
-            "noise", # inpainting
-            "image_latents", # inpainting
+            InputParam("latents", required=True),
+            InputParam("timesteps", required=True),
+            InputParam("num_inference_steps", required=True),
+            InputParam("pooled_prompt_embeds", required=True),
+            InputParam("negative_pooled_prompt_embeds", required=True),
+            InputParam("add_time_ids", required=True),
+            InputParam("negative_add_time_ids", required=True),
+            InputParam("prompt_embeds", required=True),
+            InputParam("negative_prompt_embeds", required=True),
+            InputParam("timestep_cond"), # LCM 
+            InputParam("mask"), # inpainting
+            InputParam("masked_image_latents"), # inpainting
+            InputParam("noise"), # inpainting
+            InputParam("image_latents"), # inpainting
         ]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["latents"]
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("latents")]
 
     def __init__(self):
         super().__init__()
@@ -1143,8 +1199,10 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
         add_time_ids = state.get_intermediate("add_time_ids")
         negative_add_time_ids = state.get_intermediate("negative_add_time_ids")
 
-        timestep_cond = state.get_intermediate("timestep_cond")
         latents = state.get_intermediate("latents")
+
+        #LCM
+        timestep_cond = state.get_intermediate("timestep_cond")
 
         # inpainting
         mask = state.get_intermediate("mask")
@@ -1272,44 +1330,43 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("control_image", None),
-            ("control_guidance_start", 0.0),
-            ("control_guidance_end", 1.0),
-            ("controlnet_conditioning_scale", 1.0),
-            ("guess_mode", False),
-            ("num_images_per_prompt", 1),
-            ("guidance_scale", 5.0),
-            ("guidance_rescale", 0.0),
-            ("cross_attention_kwargs", None),
-            ("generator", None),
-            ("eta", 0.0),
-            ("guider_kwargs", None),
+            InputParam("control_image", required=True),
+            InputParam("control_guidance_start", default=0.0),
+            InputParam("control_guidance_end", default=1.0),
+            InputParam("controlnet_conditioning_scale", default=1.0),
+            InputParam("guess_mode", default=False),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("guidance_scale", default=5.0),
+            InputParam("guidance_rescale", default=0.0),
+            InputParam("cross_attention_kwargs", default=None),
+            InputParam("generator", default=None),
+            InputParam("eta", default=0.0),
+            InputParam("guider_kwargs", default=None),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            "latents",
-            "batch_size",
-            "timesteps",
-            "num_inference_steps",
-            "prompt_embeds",
-            "negative_prompt_embeds",
-            "add_time_ids",
-            "negative_add_time_ids",
-            "pooled_prompt_embeds",
-            "negative_pooled_prompt_embeds",
-            "timestep_cond",
-            "mask",
-            "masked_image_latents",
-            "noise",
-            "image_latents",
-            "crops_coords",
+            InputParam("latents", required=True),
+            InputParam("timesteps", required=True),
+            InputParam("num_inference_steps", required=True),
+            InputParam("prompt_embeds", required=True),
+            InputParam("negative_prompt_embeds", required=True),
+            InputParam("add_time_ids", required=True),
+            InputParam("negative_add_time_ids", required=True),
+            InputParam("pooled_prompt_embeds", required=True),
+            InputParam("negative_pooled_prompt_embeds", required=True),
+            InputParam("timestep_cond"), # LCM 
+            InputParam("mask"), # inpainting
+            InputParam("masked_image_latents"), # inpainting
+            InputParam("noise"), # inpainting
+            InputParam("image_latents"), # inpainting
+            InputParam("crops_coords"), # inpainting
         ]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["latents"]
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("latents")]
 
     def __init__(self):
         super().__init__()
@@ -1337,7 +1394,6 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         controlnet_conditioning_scale = state.get_input("controlnet_conditioning_scale")
         guess_mode = state.get_input("guess_mode")
 
-        batch_size = state.get_intermediate("batch_size")
         latents = state.get_intermediate("latents")
         timesteps = state.get_intermediate("timesteps")
         num_inference_steps = state.get_intermediate("num_inference_steps")
@@ -1376,6 +1432,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
 
 
         device = pipeline._execution_device
+        batch_size = latents.shape[0]
 
         height, width = latents.shape[-2:]
         height = height * pipeline.vae_scale_factor
@@ -1594,44 +1651,44 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("control_image", None),
-            ("control_guidance_start", 0.0),
-            ("control_guidance_end", 1.0),
-            ("controlnet_conditioning_scale", 1.0),
-            ("control_mode", None),
-            ("guess_mode", False),
-            ("num_images_per_prompt", 1),
-            ("guidance_scale", 5.0),
-            ("guidance_rescale", 0.0),
-            ("cross_attention_kwargs", None),
-            ("generator", None),
-            ("eta", 0.0),
-            ("guider_kwargs", None),
+            (InputParam("control_image", required=True)),
+            (InputParam("control_guidance_start", default=0.0)),
+            (InputParam("control_guidance_end", default=1.0)),
+            (InputParam("controlnet_conditioning_scale", default=1.0)),
+            (InputParam("control_mode", required=True)),
+            (InputParam("guess_mode", default=False)),
+            (InputParam("num_images_per_prompt", default=1)),
+            (InputParam("guidance_scale", default=5.0)),
+            (InputParam("guidance_rescale", default=0.0)),
+            (InputParam("cross_attention_kwargs")),
+            (InputParam("generator")),
+            (InputParam("eta", default=0.0)),
+            (InputParam("guider_kwargs")),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            "latents",
-            "batch_size",
-            "timesteps",
-            "num_inference_steps",
-            "prompt_embeds",
-            "negative_prompt_embeds",
-            "add_time_ids",
-            "negative_add_time_ids",
-            "pooled_prompt_embeds",
-            "negative_pooled_prompt_embeds",
-            "timestep_cond",
-            "mask",
-            "noise",
-            "image_latents",
-            "crops_coords",
+            InputParam("latents", required=True),
+            InputParam("timesteps", required=True),
+            InputParam("num_inference_steps", required=True),
+            InputParam("prompt_embeds", required=True),
+            InputParam("negative_prompt_embeds", required=True),
+            InputParam("add_time_ids", required=True),
+            InputParam("negative_add_time_ids", required=True),
+            InputParam("pooled_prompt_embeds", required=True),
+            InputParam("negative_pooled_prompt_embeds", required=True),
+            InputParam("timestep_cond"), # LCM 
+            InputParam("mask"), # inpainting
+            InputParam("masked_image_latents"), # inpainting
+            InputParam("noise"), # inpainting
+            InputParam("image_latents"), # inpainting
+            InputParam("crops_coords"), # inpainting
         ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return ["latents"]
+        return [OutputParam("latents")]
 
     def __init__(self):
         super().__init__()
@@ -1660,7 +1717,6 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         control_mode = state.get_input("control_mode")
         guess_mode = state.get_input("guess_mode")
 
-        batch_size = state.get_intermediate("batch_size")
         latents = state.get_intermediate("latents")
         timesteps = state.get_intermediate("timesteps")
         num_inference_steps = state.get_intermediate("num_inference_steps")
@@ -1681,7 +1737,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         crops_coords = state.get_intermediate("crops_coords")
 
         device = pipeline._execution_device
-
+        batch_size = latents.shape[0]
         height, width = latents.shape[-2:]
         height = height * pipeline.vae_scale_factor
         width = width * pipeline.vae_scale_factor
@@ -1882,17 +1938,17 @@ class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("output_type", "pil"),
-            ("return_dict", True),
+            (InputParam("output_type", default="pil")),
+            (InputParam("return_dict", default=True)),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["latents"]
+        return [InputParam("latents", required=True)]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return ["images"]
+        return [OutputParam("images")]
 
     def __init__(self):
         super().__init__()
@@ -1961,18 +2017,18 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("image", None),
-            ("mask_image", None),
-            ("padding_mask_crop", None),
+            (InputParam("image", required=True)),
+            (InputParam("mask_image", required=True)),
+            (InputParam("padding_mask_crop", default=None)),
         ]
     
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["crops_coords", "images"]
+        return [InputParam("images", required=True), InputParam("crops_coords")]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return ["images"]
+        return [OutputParam("images")]
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1995,11 +2051,15 @@ class StableDiffusionXLOutputStep(PipelineBlock):
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-        return [("return_dict", True)] 
+        return [(InputParam("return_dict", default=True))] 
 
     @property
+    def intermediates_inputs(self) -> List[str]:
+        return [InputParam("images", required=True)]
+    
+    @property
     def intermediates_outputs(self) -> List[str]:
-        return ["images"]
+        return [OutputParam("images")]
     
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
