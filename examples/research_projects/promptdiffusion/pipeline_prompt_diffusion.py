@@ -663,8 +663,7 @@ class PromptDiffusionPipeline(
                     self.check_image(image, prompt, prompt_embeds)
         else:
             raise ValueError(
-                f"You have passed a list of images of length {len(image_pair)}."
-                f"Make sure the list size equals to two."
+                f"You have passed a list of images of length {len(image_pair)}.Make sure the list size equals to two."
             )
 
         # Check `controlnet_conditioning_scale`

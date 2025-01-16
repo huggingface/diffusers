@@ -40,9 +40,9 @@ class MotionAdapterSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between pretrained loading and single file loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )
 
     def test_single_file_components_version_v1_5_2(self):
         ckpt_path = "https://huggingface.co/guoyww/animatediff/blob/main/mm_sd_v15_v2.ckpt"
@@ -55,9 +55,9 @@ class MotionAdapterSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between pretrained loading and single file loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )
 
     def test_single_file_components_version_v1_5_3(self):
         ckpt_path = "https://huggingface.co/guoyww/animatediff/blob/main/v3_sd15_mm.ckpt"
@@ -70,9 +70,9 @@ class MotionAdapterSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between pretrained loading and single file loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )
 
     def test_single_file_components_version_sdxl_beta(self):
         ckpt_path = "https://huggingface.co/guoyww/animatediff/blob/main/mm_sdxl_v10_beta.ckpt"
@@ -85,6 +85,6 @@ class MotionAdapterSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between pretrained loading and single file loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )

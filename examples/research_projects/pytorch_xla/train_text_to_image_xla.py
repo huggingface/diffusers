@@ -173,7 +173,7 @@ class TrainSD:
         if not dataloader_exception:
             xm.wait_device_ops()
             total_time = time.time() - last_time
-            print(f"Average step time: {total_time/(self.args.max_train_steps-measure_start_step)}")
+            print(f"Average step time: {total_time / (self.args.max_train_steps - measure_start_step)}")
         else:
             print("dataloader exception happen, skip result")
             return
@@ -622,7 +622,7 @@ def main(args):
     num_devices_per_host = num_devices // num_hosts
     if xm.is_master_ordinal():
         print("***** Running training *****")
-        print(f"Instantaneous batch size per device = {args.train_batch_size // num_devices_per_host }")
+        print(f"Instantaneous batch size per device = {args.train_batch_size // num_devices_per_host}")
         print(
             f"Total train batch size (w. parallel, distributed & accumulation) = {args.train_batch_size * num_hosts}"
         )

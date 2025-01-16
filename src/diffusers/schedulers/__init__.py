@@ -44,6 +44,7 @@ else:
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
     _import_structure["scheduling_ddim_cogvideox"] = ["CogVideoXDDIMScheduler"]
+    _import_structure["scheduling_ddim_cogview4"] = ["CogView4DDIMScheduler"]
     _import_structure["scheduling_ddim_inverse"] = ["DDIMInverseScheduler"]
     _import_structure["scheduling_ddim_parallel"] = ["DDIMParallelScheduler"]
     _import_structure["scheduling_ddpm"] = ["DDPMScheduler"]
@@ -144,6 +145,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
         from .scheduling_ddim import DDIMScheduler
         from .scheduling_ddim_cogvideox import CogVideoXDDIMScheduler
+        from .scheduling_ddim_cogview4 import CogView4DDIMScheduler
         from .scheduling_ddim_inverse import DDIMInverseScheduler
         from .scheduling_ddim_parallel import DDIMParallelScheduler
         from .scheduling_ddpm import DDPMScheduler

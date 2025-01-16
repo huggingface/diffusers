@@ -277,9 +277,9 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             download_requests = [r.method for r in m.request_history]
-            assert (
-                download_requests.count("HEAD") == 3
-            ), "3 HEAD requests one for config, one for model, and one for shard index file."
+            assert download_requests.count("HEAD") == 3, (
+                "3 HEAD requests one for config, one for model, and one for shard index file."
+            )
             assert download_requests.count("GET") == 2, "2 GET requests one for config, one for model"
 
             with requests_mock.mock(real_http=True) as m:
@@ -291,9 +291,9 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             cache_requests = [r.method for r in m.request_history]
-            assert (
-                "HEAD" == cache_requests[0] and len(cache_requests) == 2
-            ), "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
+            assert "HEAD" == cache_requests[0] and len(cache_requests) == 2, (
+                "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
+            )
 
     def test_weight_overwrite(self):
         with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
