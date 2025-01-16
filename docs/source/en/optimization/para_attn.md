@@ -285,15 +285,14 @@ However, models like `FLUX.1-dev` can benefit a lot from quantization and compil
 </hfoption>
 </hfoptions>
 
-### Context Parallelism
+## Context Parallelism
 
-A lot faster than before, right? But we are not satisfied with the speedup we have achieved so far.
-If we want to accelerate the inference further, we can use context parallelism to parallelize the inference.
-Libraries like [xDit](https://github.com/xdit-project/xDiT) and our [ParaAttention](https://github.com/chengzeyi/ParaAttention) provide ways to scale up the inference with multiple GPUs.
-In ParaAttention, we design our API in a compositional way so that we can combine context parallelism with first block cache and dynamic quantization all together.
-We provide very detailed instructions and examples of how to scale up the inference with multiple GPUs in our ParaAttention repository.
-Users can easily launch the inference with multiple GPUs by calling `torchrun`.
-If there is a need to make the inference process persistent and serviceable, it is suggested to use `torch.multiprocessing` to write your own inference processor, which can eliminate the overhead of launching the process and loading and recompiling the model.
+Context Parallelism parallelizes inference and scales with multiple GPUs. The ParaAttention compositional design allows you to combine Context Parallelism with First Block Cache and dynamic quantization.
+
+> [!TIP]
+> Refer to the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main) repository for detailed instructions and examples of how to scale inference with multiple GPUs.
+
+If the inference process needs to be persistent and serviceable, it is suggested to use [torch.multiprocessing](https://pytorch.org/docs/stable/multiprocessing.html) to write your own inference processor. This can eliminate the overhead of launching the process and loading and recompiling the model.
 
 <hfoptions id="context-parallelism">
 <hfoption id="FLUX-1.dev">
