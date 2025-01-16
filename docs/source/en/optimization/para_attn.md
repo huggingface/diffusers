@@ -121,19 +121,19 @@ print("Saving video to hunyuan_video.mp4")
 export_to_video(output, "hunyuan_video.mp4", fps=15)
 ```
 
-#### HunyuanVideo without FBCache
-
 <video controls>
   <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/hunyuan-video-original.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
-#### HunyuanVideo with FBCache
+<small> HunyuanVideo without FBCache </small>
 
 <video controls>
   <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/hunyuan-video-fbc.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
+
+<small> HunyuanVideo with FBCache </small>
 
 We observe that the first block cache is very effective in speeding up the inference, and maintaining nearly no quality loss in the generated video.
 Now, on one single NVIDIA L20 GPU, we can generate 129 frames with 720p resolution in 30 inference steps in 2271.06 seconds. This is a 1.62x speedup compared to the baseline.
