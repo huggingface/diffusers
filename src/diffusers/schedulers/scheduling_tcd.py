@@ -245,7 +245,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int32))
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
         self.custom_timesteps = False
 
         self._step_index = None
@@ -467,7 +467,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
                         f" unexpected results when using this timestep schedule."
                     )
 
-            timesteps = np.array(timesteps, dtype=np.int32)
+            timesteps = np.array(timesteps, dtype=np.int64)
             self.num_inference_steps = len(timesteps)
             self.custom_timesteps = True
 
@@ -514,7 +514,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
             tcd_origin_timesteps = tcd_origin_timesteps[::-1].copy()
             # Select (approximately) evenly spaced indices from tcd_origin_timesteps.
             inference_indices = np.linspace(0, len(tcd_origin_timesteps), num=num_inference_steps, endpoint=False)
-            inference_indices = np.floor(inference_indices).astype(np.int32)
+            inference_indices = np.floor(inference_indices).astype(np.int64)
             timesteps = tcd_origin_timesteps[inference_indices]
 
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.long)
