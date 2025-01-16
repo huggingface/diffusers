@@ -116,6 +116,8 @@ class GroupOffloadingHook(ModelHook):
                 if self.group.buffers is not None:
                     for buffer in self.group.buffers:
                         buffer.data = buffer.data.to(self.group.onload_device, non_blocking=self.non_blocking)
+                if self.onload_self:
+                    torch.cuda.synchronize()
 
     def offload_(self, module: torch.nn.Module) -> None:
         if self.group.offload_leader == module:
@@ -388,7 +390,8 @@ def _apply_group_offloading_group_patterns(
         if not any(name.startswith(unmatched_name) for unmatched_name, _ in unmatched_group_modules):
             buffers.append(buffer)
 
-    unmatched_modules = [module for _, module in unmatched_group_modules]
+    ignore_blocks = ["transformer_blocks", "single_transformer_blocks", "temporal_transformer_blocks", "blocks"]
+    unmatched_modules = [module for name, module in unmatched_group_modules if name not in ignore_blocks]
     unmatched_group = ModuleGroup(
         unmatched_modules,
         offload_device,
