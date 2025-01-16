@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ..utils.logging import get_logger
+
+
+logger = get_logger(__name__)  # pylint: disable=invalid-name
+
 
 class CacheMixin:
     r"""
@@ -67,7 +72,8 @@ class CacheMixin:
         from ..hooks import HookRegistry, PyramidAttentionBroadcastConfig
 
         if self._cache_config is None:
-            raise ValueError("Caching techniques have not been enabled.")
+            logger.warning("Caching techniques have not been enabled, so there's nothing to disable.")
+            return
 
         if isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry = HookRegistry.check_if_exists_or_initialize(self)

@@ -137,20 +137,34 @@ class PyramidAttentionBroadcastHook(ModelHook):
 
     _is_stateful = True
 
-    def __init__(self, skip_callback: Callable[[torch.nn.Module], bool]) -> None:
+    def __init__(
+        self, timestep_skip_range: Tuple[int, int], block_skip_range: int, current_timestep_callback: Callable[[], int]
+    ) -> None:
         super().__init__()
 
-        self.skip_callback = skip_callback
+        self.timestep_skip_range = timestep_skip_range
+        self.block_skip_range = block_skip_range
+        self.current_timestep_callback = current_timestep_callback
 
     def initialize_hook(self, module):
         self.state = PyramidAttentionBroadcastState()
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
-        if self.skip_callback(module):
-            output = self.state.cache
-        else:
+        is_within_timestep_range = (
+            self.timestep_skip_range[0] < self.current_timestep_callback() < self.timestep_skip_range[1]
+        )
+        should_compute_attention = (
+            self.state.cache is None
+            or self.state.iteration == 0
+            or not is_within_timestep_range
+            or self.state.iteration % self.block_skip_range == 0
+        )
+
+        if should_compute_attention:
             output = module._old_forward(*args, **kwargs)
+        else:
+            output = self.state.cache
 
         self.state.cache = output
         self.state.iteration += 1
@@ -266,30 +280,18 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
         )
         return False
 
-    def skip_callback(module: torch.nn.Module) -> bool:
-        hook: PyramidAttentionBroadcastHook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
-        pab_state: PyramidAttentionBroadcastState = hook.state
-
-        if pab_state.cache is None:
-            return False
-
-        is_within_timestep_range = timestep_skip_range[0] < config.current_timestep_callback() < timestep_skip_range[1]
-        if not is_within_timestep_range:
-            # We are still not in the phase of inference where skipping attention is possible without minimal quality
-            # loss, as described in the paper. So, the attention computation cannot be skipped
-            return False
-
-        should_compute_attention = pab_state.iteration > 0 and pab_state.iteration % block_skip_range == 0
-        return not should_compute_attention
-
     logger.debug(f"Enabling Pyramid Attention Broadcast ({block_type}) in layer: {name}")
-    _apply_pyramid_attention_broadcast(module, skip_callback)
+    _apply_pyramid_attention_broadcast_hook(
+        module, timestep_skip_range, block_skip_range, config.current_timestep_callback
+    )
     return True
 
 
-def _apply_pyramid_attention_broadcast(
+def _apply_pyramid_attention_broadcast_hook(
     module: Union[Attention, MochiAttention],
-    skip_callback: Callable[[torch.nn.Module], bool],
+    timestep_skip_range: Tuple[int, int],
+    block_skip_range: int,
+    current_timestep_callback: Callable[[], int],
 ):
     r"""
     Apply [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588) to a given torch.nn.Module.
@@ -297,13 +299,16 @@ def _apply_pyramid_attention_broadcast(
     Args:
         module (`torch.nn.Module`):
             The module to apply Pyramid Attention Broadcast to.
-        skip_callback (`Callable[[nn.Module], bool]`):
-            A callback function that determines whether the attention computation should be skipped or not. The
-            callback function should return a boolean value, where `True` indicates that the attention computation
-            should be skipped, and `False` indicates that the attention computation should not be skipped. The callback
-            function will receive a torch.nn.Module containing a `_pyramid_attention_broadcast_state` attribute that
-            can should be used to retrieve and update the state of PAB for the given module.
+        timestep_skip_range (`Tuple[int, int]`):
+            The range of timesteps to skip in the attention layer. The attention computations will be conditionally
+            skipped if the current timestep is within the specified range.
+        block_skip_range (`int`):
+            The number of times a specific attention broadcast is skipped before computing the attention states to
+            re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e., old
+            attention states will be re-used) before computing the new attention states again.
+        current_timestep_callback (`Callable[[], int]`):
+            A callback function that returns the current inference timestep.
     """
     registry = HookRegistry.check_if_exists_or_initialize(module)
-    hook = PyramidAttentionBroadcastHook(skip_callback)
+    hook = PyramidAttentionBroadcastHook(timestep_skip_range, block_skip_range, current_timestep_callback)
     registry.register_hook(hook, "pyramid_attention_broadcast")

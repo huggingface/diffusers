@@ -1143,8 +1143,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Make sure to add this function to the end of the `__call__` function of your pipeline so that it functions
         correctly when applying `enable_model_cpu_offload`.
         """
-        for name, component in self.components.items():
-            if name in ("transformer", "unet") and hasattr(component, "_reset_stateful_cache"):
+        for component in self.components.values():
+            if hasattr(component, "_reset_stateful_cache"):
                 component._reset_stateful_cache()
 
         if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
