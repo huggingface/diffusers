@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Union # thesea modified for safty checker
 
 import numpy as np
 import PIL.Image
@@ -21,6 +21,7 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
+    # thesea modified for safty checker
     nsfw_content_detected: Optional[List[bool]]
 
 
@@ -41,4 +42,5 @@ if is_flax_available():
         """
 
         images: np.ndarray
+        # thesea modified for safty checker
         nsfw_content_detected: Optional[List[bool]]
