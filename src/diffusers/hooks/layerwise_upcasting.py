@@ -77,7 +77,6 @@ def apply_layerwise_upcasting(
     skip_modules_pattern: Union[str, Tuple[str, ...]] = "default",
     skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
     non_blocking: bool = False,
-    _prefix: str = "",
 ) -> None:
     r"""
     Applies layerwise upcasting to a given module. The module expected here is a Diffusers ModelMixin but it can be any
@@ -97,7 +96,7 @@ def apply_layerwise_upcasting(
     ...     transformer,
     ...     storage_dtype=torch.float8_e4m3fn,
     ...     compute_dtype=torch.bfloat16,
-    ...     skip_modules_pattern=["patch_embed", "norm"],
+    ...     skip_modules_pattern=["patch_embed", "norm", "proj_out"],
     ...     non_blocking=True,
     ... )
     ```
@@ -112,7 +111,9 @@ def apply_layerwise_upcasting(
             The dtype to cast the module to during the forward pass for computation.
         skip_modules_pattern (`Tuple[str, ...]`, defaults to `"default"`):
             A list of patterns to match the names of the modules to skip during the layerwise upcasting process. If set
-            to `"default"`, the default patterns are used.
+            to `"default"`, the default patterns are used. If set to `None`, no modules are skipped. If set to `None`
+            alongside `skip_modules_classes` being `None`, the layerwise upcasting is applied directly to the module
+            instead of its internal submodules.
         skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, defaults to `None`):
             A list of module classes to skip during the layerwise upcasting process.
         non_blocking (`bool`, defaults to `False`):
@@ -125,6 +126,25 @@ def apply_layerwise_upcasting(
         apply_layerwise_upcasting_hook(module, storage_dtype, compute_dtype, non_blocking)
         return
 
+    _apply_layerwise_upcasting(
+        module,
+        storage_dtype,
+        compute_dtype,
+        skip_modules_pattern,
+        skip_modules_classes,
+        non_blocking,
+    )
+
+
+def _apply_layerwise_upcasting(
+    module: torch.nn.Module,
+    storage_dtype: torch.dtype,
+    compute_dtype: torch.dtype,
+    skip_modules_pattern: Optional[Tuple[str, ...]] = None,
+    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+    non_blocking: bool = False,
+    _prefix: str = "",
+) -> None:
     should_skip = (skip_modules_classes is not None and isinstance(module, skip_modules_classes)) or (
         skip_modules_pattern is not None and any(re.search(pattern, _prefix) for pattern in skip_modules_pattern)
     )
@@ -139,7 +159,7 @@ def apply_layerwise_upcasting(
 
     for name, submodule in module.named_children():
         layer_name = f"{_prefix}.{name}" if _prefix else name
-        apply_layerwise_upcasting(
+        _apply_layerwise_upcasting(
             submodule,
             storage_dtype,
             compute_dtype,

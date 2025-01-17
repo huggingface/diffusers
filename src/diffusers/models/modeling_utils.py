@@ -347,13 +347,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         By default, most models in diffusers set the `_always_upcast_modules` attribute to ignore patch embedding,
         positional embedding and normalization layers. This is because these layers are most likely precision-critical
         for quality. If you wish to change this behavior, you can set the `_always_upcast_modules` attribute to `None`,
-        or call [`~apply_layerwise_upcasting`] with custom arguments.
+        or call [`~hooks.layerwise_upcasting.apply_layerwise_upcasting`] with custom arguments.
 
         Example:
             Using [`~models.ModelMixin.enable_layerwise_upcasting`]:
 
             ```python
-            >>> from diffusers import CogVideoXTransformer3DModel, apply_layerwise_upcasting
+            >>> from diffusers import CogVideoXTransformer3DModel
 
             >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
             ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
@@ -361,11 +361,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             >>> # Enable layerwise upcasting via the model, which ignores certain modules by default
             >>> transformer.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
-
-            >>> # Or, enable layerwise upcasting with custom arguments via the `apply_layerwise_upcasting` function
-            >>> apply_layerwise_upcasting(
-            ...     transformer, torch.float8_e4m3fn, torch.bfloat16, skip_modules_pattern=["patch_embed", "norm"]
-            ... )
             ```
 
         Args:
@@ -374,7 +369,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             compute_dtype (`torch.dtype`):
                 The dtype to which the model weights should be cast during the forward pass.
             skip_modules_pattern (`Tuple[str, ...]`, *optional*):
-                A list of patterns to match the names of the modules to skip during the layerwise upcasting process.
+                A list of patterns to match the names of the modules to skip during the layerwise upcasting process. If
+                set to `None`, default skip patterns are used to ignore certain internal layers of modules and PEFT
+                layers.
             skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
                 A list of module classes to skip during the layerwise upcasting process.
             non_blocking (`bool`, *optional*, defaults to `False`):
