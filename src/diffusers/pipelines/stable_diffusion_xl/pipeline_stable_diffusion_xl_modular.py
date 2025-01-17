@@ -299,66 +299,51 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        # Get inputs
-        prompt = state.get_input("prompt")
-        prompt_2 = state.get_input("prompt_2")
-        negative_prompt = state.get_input("negative_prompt")
-        negative_prompt_2 = state.get_input("negative_prompt_2")
-        cross_attention_kwargs = state.get_input("cross_attention_kwargs")
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
-        guidance_scale = state.get_input("guidance_scale")
-        clip_skip = state.get_input("clip_skip")
+        # Get inputs and intermediates
+        data = self.get_block_state(state)
 
-        prompt_embeds = state.get_intermediate("prompt_embeds")
-        negative_prompt_embeds = state.get_intermediate("negative_prompt_embeds")
-        pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
-        negative_pooled_prompt_embeds = state.get_intermediate("negative_pooled_prompt_embeds")
-
-        do_classifier_free_guidance = guidance_scale > 1.0
-        device = pipeline._execution_device
+        data.do_classifier_free_guidance = data.guidance_scale > 1.0
+        data.device = pipeline._execution_device
 
         self.check_inputs(
             pipeline,
-            prompt,
-            prompt_2,
-            negative_prompt,
-            negative_prompt_2,
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
+            data.prompt,
+            data.prompt_2,
+            data.negative_prompt,
+            data.negative_prompt_2,
+            data.prompt_embeds,
+            data.negative_prompt_embeds,
+            data.pooled_prompt_embeds,
+            data.negative_pooled_prompt_embeds,
         )
 
         # Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        data.text_encoder_lora_scale = (
+            data.cross_attention_kwargs.get("scale", None) if data.cross_attention_kwargs is not None else None
         )
         (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
+            data.prompt_embeds,
+            data.negative_prompt_embeds,
+            data.pooled_prompt_embeds,
+            data.negative_pooled_prompt_embeds,
         ) = pipeline.encode_prompt(
-            prompt,
-            prompt_2,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
-            negative_prompt_2,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
-            clip_skip=clip_skip,
+            data.prompt,
+            data.prompt_2,
+            data.device,
+            data.num_images_per_prompt,
+            data.do_classifier_free_guidance,
+            data.negative_prompt,
+            data.negative_prompt_2,
+            prompt_embeds=data.prompt_embeds,
+            negative_prompt_embeds=data.negative_prompt_embeds,
+            pooled_prompt_embeds=data.pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=data.negative_pooled_prompt_embeds,
+            lora_scale=data.text_encoder_lora_scale,
+            clip_skip=data.clip_skip,
         )
+        data.dtype = data.prompt_embeds.dtype
         # Add outputs
-        state.add_intermediate("prompt_embeds", prompt_embeds)
-        state.add_intermediate("negative_prompt_embeds", negative_prompt_embeds)
-        state.add_intermediate("pooled_prompt_embeds", pooled_prompt_embeds)
-        state.add_intermediate("negative_pooled_prompt_embeds", negative_pooled_prompt_embeds)
-        state.add_intermediate("dtype", prompt_embeds.dtype)
+        self.add_block_state(state, data)
         return pipeline, state
 
 
@@ -394,59 +379,48 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
-        generator = state.get_input("generator")
-
-        height = state.get_input("height")
-        width = state.get_input("width")
-        image = state.get_input("image")
-
-        preprocess_kwargs = state.get_intermediate("preprocess_kwargs") or {}
-        batch_size = state.get_intermediate("batch_size")
-        dtype = state.get_intermediate("dtype")
-
-        device = pipeline._execution_device
-        if dtype is None:
-            dtype = pipeline.vae.dtype
+        data = self.get_block_state(state)
+        data.preprocess_kwargs = data.preprocess_kwargs or {}
+        data.device = pipeline._execution_device
+        data.dtype = data.dtype if data.dtype is not None else pipeline.vae.dtype
         
 
-        image = pipeline.image_processor.preprocess(image, height=height, width=width, **preprocess_kwargs)
-        image = image.to(device=device, dtype=dtype)
+        data.image = pipeline.image_processor.preprocess(data.image, height=data.height, width=data.width, **data.preprocess_kwargs)
+        data.image = data.image.to(device=data.device, dtype=data.dtype)
 
-        if batch_size is None:
-            batch_size = image.shape[0]
+        data.batch_size = data.batch_size if data.batch_size is not None else data.image.shape[0]
         
-        batch_size = batch_size * num_images_per_prompt
+        data.batch_size = data.batch_size * data.num_images_per_prompt
 
         # if generator is a list, make sure the length of it matches the length of images (both should be batch_size)
-        if isinstance(generator, list) and len(generator) != batch_size:
+        if isinstance(data.generator, list) and len(data.generator) != data.batch_size:
             raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                f"You have passed a list of generators of length {len(data.generator)}, but requested an effective batch"
+                f" size of {data.batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        elif isinstance(generator, list):
-            if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
-                image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
-            elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
+        elif isinstance(data.generator, list):
+            if data.image.shape[0] < data.batch_size and data.batch_size % data.image.shape[0] == 0:
+                data.image = torch.cat([data.image] * (data.batch_size // data.image.shape[0]), dim=0)
+            elif data.image.shape[0] < data.batch_size and data.batch_size % data.image.shape[0] != 0:
                 raise ValueError(
-                    f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
+                    f"Cannot duplicate `image` of batch size {data.image.shape[0]} to effective batch_size {data.batch_size} "
                 )
 
-        image_latents = pipeline._encode_vae_image(image=image, generator=generator)
+        data.image_latents = pipeline._encode_vae_image(image=data.image, generator=data.generator)
         
-        if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
+        if data.batch_size > data.image_latents.shape[0] and data.batch_size % data.image_latents.shape[0] == 0:
             # expand latents for batch_size
-            additional_image_per_prompt = batch_size // image_latents.shape[0]
-            image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
+            data.additional_image_per_prompt = data.batch_size // data.image_latents.shape[0]
+            data.image_latents = torch.cat([data.image_latents] * additional_image_per_prompt, dim=0)
+        elif data.batch_size > data.image_latents.shape[0] and data.batch_size % data.image_latents.shape[0] != 0:
             raise ValueError(
-                f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
+                f"Cannot duplicate `image` of batch size {data.image_latents.shape[0]} to {data.batch_size} text prompts."
             )
         else:
-            image_latents = torch.cat([image_latents], dim=0)
+            data.image_latents = torch.cat([data.image_latents], dim=0)
         
-        state.add_intermediate("image_latents", image_latents)
+        self.add_block_state(state, data)
 
         return pipeline, state
 
@@ -481,49 +455,36 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        num_inference_steps = state.get_input("num_inference_steps")
-        timesteps = state.get_input("timesteps")
-        sigmas = state.get_input("sigmas")
-        denoising_end = state.get_input("denoising_end")
+        data = self.get_block_state(state)
 
-        # image to image only
-        strength = state.get_input("strength")
-        denoising_start = state.get_input("denoising_start")
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
+        data.device = pipeline._execution_device
 
-        # image to image only
-        batch_size = state.get_intermediate("batch_size")
-
-        device = pipeline._execution_device
-
-        timesteps, num_inference_steps = retrieve_timesteps(
-            pipeline.scheduler, num_inference_steps, device, timesteps, sigmas
+        data.timesteps, data.num_inference_steps = retrieve_timesteps(
+            pipeline.scheduler, data.num_inference_steps, data.device, data.timesteps, data.sigmas
         )
 
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
 
-        timesteps, num_inference_steps = pipeline.get_timesteps(
-            num_inference_steps,
-            strength,
-            device,
-            denoising_start=denoising_start if denoising_value_valid(denoising_start) else None,
+        data.timesteps, data.num_inference_steps = pipeline.get_timesteps(
+            data.num_inference_steps,
+            data.strength,
+            data.device,
+            denoising_start=data.denoising_start if denoising_value_valid(data.denoising_start) else None,
         )
-        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        data.latent_timestep = data.timesteps[:1].repeat(data.batch_size * data.num_images_per_prompt)
 
-        if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
-            discrete_timestep_cutoff = int(
+        if data.denoising_end is not None and isinstance(data.denoising_end, float) and data.denoising_end > 0 and data.denoising_end < 1:
+            data.discrete_timestep_cutoff = int(
                 round(
                     pipeline.scheduler.config.num_train_timesteps
-                    - (denoising_end * pipeline.scheduler.config.num_train_timesteps)
+                    - (data.denoising_end * pipeline.scheduler.config.num_train_timesteps)
                 )
             )
-            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
-            timesteps = timesteps[:num_inference_steps]
+            data.num_inference_steps = len(list(filter(lambda ts: ts >= data.discrete_timestep_cutoff, data.timesteps)))
+            data.timesteps = data.timesteps[:data.num_inference_steps]
 
-        state.add_intermediate("timesteps", timesteps)
-        state.add_intermediate("num_inference_steps", num_inference_steps)
-        state.add_intermediate("latent_timestep", latent_timestep)
+        self.add_block_state(state, data)
 
         return pipeline, state
 
@@ -551,30 +512,25 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        num_inference_steps = state.get_input("num_inference_steps")
-        timesteps = state.get_input("timesteps")
-        sigmas = state.get_input("sigmas")
-        denoising_end = state.get_input("denoising_end")
+        data = self.get_block_state(state)
 
-        device = pipeline._execution_device
+        data.device = pipeline._execution_device
 
-        timesteps, num_inference_steps = retrieve_timesteps(
-            pipeline.scheduler, num_inference_steps, device, timesteps, sigmas
+        data.timesteps, data.num_inference_steps = retrieve_timesteps(
+            pipeline.scheduler, data.num_inference_steps, data.device, data.timesteps, data.sigmas
         )
 
-        if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
-            discrete_timestep_cutoff = int(
+        if data.denoising_end is not None and isinstance(data.denoising_end, float) and data.denoising_end > 0 and data.denoising_end < 1:
+            data.discrete_timestep_cutoff = int(
                 round(
                     pipeline.scheduler.config.num_train_timesteps
-                    - (denoising_end * pipeline.scheduler.config.num_train_timesteps)
+                    - (data.denoising_end * pipeline.scheduler.config.num_train_timesteps)
                 )
             )
-            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
-            timesteps = timesteps[:num_inference_steps]
+            data.num_inference_steps = len(list(filter(lambda ts: ts >= data.discrete_timestep_cutoff, data.timesteps)))
+            data.timesteps = data.timesteps[:data.num_inference_steps]
 
-        state.add_intermediate("timesteps", timesteps)
-        state.add_intermediate("num_inference_steps", num_inference_steps)
-
+        self.add_block_state(state, data)
         return pipeline, state
 
 
@@ -611,73 +567,55 @@ class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
 
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
-        # YiYi TODO: we don't put generator back to state but it actually gets used and updated
-        # it is ok but think about how we can handle mutable inputs better in PipelineState so user would be aware
-        generator = state.get_input("generator")
+        data = self.get_block_state(state)
 
-        height = state.get_input("height")
-        width = state.get_input("width")
-        # inpaint only
-        image = state.get_input("image")
-        padding_mask_crop = state.get_input("padding_mask_crop")
-        mask_image = state.get_input("mask_image")
+        data.dtype = data.dtype if data.dtype is not None else pipeline.vae.dtype
+        data.device = pipeline._execution_device
 
-        batch_size = state.get_intermediate("batch_size")
-        dtype = state.get_intermediate("dtype")
-
-        if dtype is None:
-            dtype = pipeline.vae.dtype
-        device = pipeline._execution_device
-
-        if padding_mask_crop is not None:
-            crops_coords = pipeline.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
-            resize_mode = "fill"
+        if data.padding_mask_crop is not None:
+            data.crops_coords = pipeline.mask_processor.get_crop_region(data.mask_image, data.width, data.height, pad=data.padding_mask_crop)
+            data.resize_mode = "fill"
         else:
-            crops_coords = None
-            resize_mode = "default"
+            data.crops_coords = None
+            data.resize_mode = "default"
         
-        image = pipeline.image_processor.preprocess(image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode)
-        image = image.to(dtype=torch.float32)
+        data.image = pipeline.image_processor.preprocess(data.image, height=data.height, width=data.width, crops_coords=data.crops_coords, resize_mode=data.resize_mode)
+        data.image = data.image.to(dtype=torch.float32)
 
-        mask = pipeline.mask_processor.preprocess(mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords)
-        masked_image = image * (mask < 0.5)
+        data.mask = pipeline.mask_processor.preprocess(data.mask_image, height=data.height, width=data.width, resize_mode=data.resize_mode, crops_coords=data.crops_coords)
+        data.masked_image = data.image * (data.mask < 0.5)
 
-        if batch_size is None:
-            batch_size = image.shape[0]
+        data.batch_size = data.batch_size if data.batch_size is not None else data.image.shape[0]
         
-        batch_size = batch_size * num_images_per_prompt
-        image = image.to(device=device, dtype=dtype)
-        image_latents = pipeline._encode_vae_image(image=image, generator=generator)
+        data.batch_size = data.batch_size * data.num_images_per_prompt
+        data.image = data.image.to(device=data.device, dtype=data.dtype)
+        data.image_latents = pipeline._encode_vae_image(image=data.image, generator=data.generator)
         
-        if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
+        if data.batch_size > data.image_latents.shape[0] and data.batch_size % data.image_latents.shape[0] == 0:
             # expand latents for batch_size
-            additional_image_per_prompt = batch_size // image_latents.shape[0]
-            image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
+            data.additional_image_per_prompt = data.batch_size // data.image_latents.shape[0]
+            data.image_latents = torch.cat([data.image_latents] * data.additional_image_per_prompt, dim=0)
+        elif data.batch_size > data.image_latents.shape[0] and data.batch_size % data.image_latents.shape[0] != 0:
             raise ValueError(
-                f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
+                f"Cannot duplicate `image` of batch size {data.image_latents.shape[0]} to {data.batch_size} text prompts."
             )
         else:
-            image_latents = torch.cat([image_latents], dim=0)
+            data.image_latents = torch.cat([data.image_latents], dim=0)
 
 
         # 7. Prepare mask latent variables
-        mask, masked_image_latents = pipeline.prepare_mask_latents(
-            mask,
-            masked_image,
-            batch_size,
-            height,
-            width,
-            dtype,
-            device,
-            generator,
+        data.mask, data.masked_image_latents = pipeline.prepare_mask_latents(
+            data.mask,
+            data.masked_image,
+            data.batch_size,
+            data.height,
+            data.width,
+            data.dtype,
+            data.device,
+            data.generator,
         )
 
-        state.add_intermediate("mask", mask)
-        state.add_intermediate("masked_image_latents", masked_image_latents)
-        state.add_intermediate("image_latents", image_latents)
-        state.add_intermediate("crops_coords", crops_coords)
+        self.add_block_state(state, data)
 
 
         return pipeline, state
@@ -2060,6 +1998,10 @@ class StableDiffusionXLOutputStep(PipelineBlock):
     @property
     def intermediates_outputs(self) -> List[str]:
         return [OutputParam("images")]
+    
+    @property
+    def outputs(self) -> List[Tuple[str, Any]]:
+        return [(OutputParam("images"))]
     
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:

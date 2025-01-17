@@ -18,6 +18,8 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple, Union
 
+from types import SimpleNamespace
+
 import torch
 from tqdm.auto import tqdm
 import re
@@ -144,7 +146,7 @@ def format_inputs_short(inputs):
     return inputs_str
 
 
-def format_intermediates_short(block) -> str:
+def format_intermediates_short(intermediates_inputs: List[InputParam], required_intermediates_inputs: List[str], intermediates_outputs: List[OutputParam]) -> str:
     """
     Formats intermediate inputs and outputs of a block into a string representation.
     
@@ -156,33 +158,31 @@ def format_intermediates_short(block) -> str:
     """
     # Handle inputs
     input_parts = []
-    if hasattr(block, "intermediates_inputs"):
-        for inp in block.intermediates_inputs:
-            parts = []
-            # Check if input is required
-            if hasattr(block, "required_intermediates_inputs") and inp.name in block.required_intermediates_inputs:
-                parts.append("Required")
-            
-            # Get base name or modified name
-            name = inp.name
-            if hasattr(block, "intermediates_outputs") and name in {out.name for out in block.intermediates_outputs}:
-                name = f"*{name}"
-            
-            # Combine Required() wrapper with possibly starred name
-            if parts:
-                input_parts.append(f"Required({name})")
-            else:
-                input_parts.append(name)
+
+    for inp in intermediates_inputs:
+        parts = []
+        # Check if input is required
+        if inp.name in required_intermediates_inputs:
+            parts.append("Required")
+        
+        # Get base name or modified name
+        name = inp.name
+        if name in {out.name for out in intermediates_outputs}:
+            name = f"*{name}"
+        
+        # Combine Required() wrapper with possibly starred name
+        if parts:
+            input_parts.append(f"Required({name})")
+        else:
+            input_parts.append(name)
     
     # Handle outputs
     output_parts = []
-    if hasattr(block, "intermediates_outputs"):
-        outputs = [out.name for out in block.intermediates_outputs]
-        if hasattr(block, "intermediates_inputs"):
-            # Only show new outputs if we have inputs
-            inputs_set = {inp.name for inp in block.intermediates_inputs}
-            outputs = [out for out in outputs if out not in inputs_set]
-        output_parts.extend(outputs)
+    outputs = [out.name for out in intermediates_outputs]
+    # Only show new outputs if we have inputs
+    inputs_set = {inp.name for inp in intermediates_inputs}
+    outputs = [out for out in outputs if out not in inputs_set]
+    output_parts.extend(outputs)
     
     # Combine with arrow notation if both inputs and outputs exist
     if input_parts and output_parts:
@@ -363,6 +363,10 @@ class PipelineBlock:
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
         return []
+    
+    @property
+    def outputs(self) -> List[OutputParam]:
+        return []
 
     @property
     def required_inputs(self) -> List[str]:
@@ -424,7 +428,7 @@ class PipelineBlock:
         inputs = "Inputs:\n    " + inputs_str
 
         # Intermediates section
-        intermediates_str = format_intermediates_short(self)
+        intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
         intermediates = f"Intermediates:\n    {intermediates_str}"
 
         return (
@@ -465,6 +469,36 @@ class PipelineBlock:
 
         return output
 
+    def get_block_state(self, state: PipelineState) -> dict:
+        """Get all inputs and intermediates in one dictionary"""
+        data = {}
+        
+        # Check inputs
+        for input_param in self.inputs:
+            value = state.get_input(input_param.name)
+            if input_param.required and value is None:
+                raise ValueError(f"Required input '{input_param.name}' is missing")
+            data[input_param.name] = value
+
+        # Check intermediates
+        for input_param in self.intermediates_inputs:
+            value = state.get_intermediate(input_param.name)
+            if input_param.required and value is None:
+                raise ValueError(f"Required intermediate input '{input_param.name}' is missing")
+            data[input_param.name] = value
+
+        return SimpleNamespace(**data)
+    
+    def add_block_state(self, state: PipelineState, block_state: SimpleNamespace):
+        for output_param in self.intermediates_outputs:
+            if not hasattr(block_state, output_param.name):
+                raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")
+            state.add_intermediate(output_param.name, getattr(block_state, output_param.name))
+        
+        for output_param in self.outputs:
+            if not hasattr(block_state, output_param.name):
+                raise ValueError(f"Output '{output_param.name}' is missing in block state")
+            state.add_output(output_param.name, getattr(block_state, output_param.name))
 
 
 def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
@@ -772,7 +806,7 @@ class AutoPipelineBlocks:
             inputs_str = format_inputs_short(block.inputs)
             sections.append(f"      inputs:\n        {inputs_str}")
 
-            intermediates_str = f"      intermediates:\n        {format_intermediates_short(block)}"
+            intermediates_str = f"      intermediates:\n        {format_intermediates_short(block.intermediates_inputs, block.required_intermediates_inputs, block.intermediates_outputs)}"
             sections.append(intermediates_str)
             
             sections.append("") 
@@ -1112,7 +1146,7 @@ class SequentialPipelineBlocks:
 
             blocks_str += f"       inputs: {inputs_str}\n"
 
-            intermediates_str = format_intermediates_short(block)
+            intermediates_str = format_intermediates_short(block.intermediates_inputs, block.required_intermediates_inputs, block.intermediates_outputs)
 
             if intermediates_str:
                 blocks_str += f"       intermediates: {intermediates_str}\n"
@@ -1122,7 +1156,7 @@ class SequentialPipelineBlocks:
         inputs_str = "  Inputs:\n    " + inputs_str
         final_intermediates_outputs = [out.name for out in self.final_intermediates_outputs]
         
-        intermediates_str_short = format_intermediates_short(self)
+        intermediates_str_short = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
         intermediates_input_str = intermediates_str_short.split('->')[0].strip()  # "Required(latents), crops_coords"
         intermediates_output_str = intermediates_str_short.split('->')[1].strip()
         intermediates_str = (
