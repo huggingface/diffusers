@@ -933,7 +933,7 @@ class FluxFillPipeline(
             )
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        # 4. Prepare latent variables
+        # 5. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         latents, noise, image_latents, latent_image_ids = self.prepare_latents(
             init_image,
