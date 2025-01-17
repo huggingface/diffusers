@@ -1517,7 +1517,7 @@ class TextImageProjection(nn.Module):
 
         return torch.cat([image_text_embeds, text_embeds], dim=1)
 
-
+# thesea modified for human element model
 class ImageProjectionCustomized(nn.Module):
     def __init__(
         self,
