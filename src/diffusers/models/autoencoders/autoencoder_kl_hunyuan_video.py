@@ -786,7 +786,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         self.use_tiling = False
 
         # When decoding temporally long video latents, the memory requirement is very high. By decoding latent frames
-        # at a fixed frame batch size (based on `self.num_latent_frames_batch_sizes`), the memory requirement can be lowered.
+        # at a fixed frame batch size (based on `self.tile_sample_min_num_frames`), the memory requirement can be lowered.
         self.use_framewise_encoding = True
         self.use_framewise_decoding = True
 
