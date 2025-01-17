@@ -305,6 +305,10 @@ image = control_pipe(
 image.save("output.png")
 ```
 
+## Note about `unload_lora_weights()` when using Flux LoRAs
+
+When unloading the Control LoRA weights, call `pipe.unload_lora_weights(reset_to_overwritten_params=True)` to reset the `pipe.transformer` completely back to its original form. The resultant pipeline can then be used with methods like [`DiffusionPipeline.from_pipe`]. More details about this argument are available in [this PR](https://github.com/huggingface/diffusers/pull/10397).
+
 ## Running FP16 inference
 
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
@@ -332,6 +336,46 @@ out = pipe(
     max_sequence_length=256,
 ).images[0]
 out.save("image.png")
+```
+
+## Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`FluxPipeline`] for inference with bitsandbytes.
+
+```py
+import torch
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, FluxTransformer2DModel, FluxPipeline
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
+
+quant_config = BitsAndBytesConfig(load_in_8bit=True)
+text_encoder_8bit = T5EncoderModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="text_encoder_2",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_8bit = FluxTransformer2DModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+pipeline = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    text_encoder_2=text_encoder_8bit,
+    transformer=transformer_8bit,
+    torch_dtype=torch.float16,
+    device_map="balanced",
+)
+
+prompt = "a tiny astronaut hatching from an egg on the moon"
+image = pipeline(prompt, guidance_scale=3.5, height=768, width=1360, num_inference_steps=50).images[0]
+image.save("flux.png")
 ```
 
 ## Single File Loading for the `FluxTransformer2DModel`

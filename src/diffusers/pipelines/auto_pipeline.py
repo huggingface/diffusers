@@ -68,6 +68,7 @@ from .lumina import LuminaText2ImgPipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
+    SanaPAGPipeline,
     StableDiffusion3PAGImg2ImgPipeline,
     StableDiffusion3PAGPipeline,
     StableDiffusionControlNetPAGInpaintPipeline,
@@ -82,6 +83,7 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .sana import SanaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
@@ -121,6 +123,8 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("lcm", LatentConsistencyModelPipeline),
         ("pixart-alpha", PixArtAlphaPipeline),
         ("pixart-sigma", PixArtSigmaPipeline),
+        ("sana", SanaPipeline),
+        ("sana-pag", SanaPAGPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGPipeline),
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGPipeline),
@@ -293,7 +297,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -385,7 +389,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         ```py
         >>> from diffusers import AutoPipelineForText2Image
 
-        >>> pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt).images[0]
         ```
         """
@@ -448,7 +452,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 
         >>> pipe_i2i = AutoPipelineForImage2Image.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", requires_safety_checker=False
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", requires_safety_checker=False
         ... )
 
         >>> pipe_t2i = AutoPipelineForText2Image.from_pipe(pipe_i2i)
@@ -528,7 +532,9 @@ class AutoPipelineForText2Image(ConfigMixin):
             if k not in text_2_image_kwargs
         }
 
-        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(text_2_image_kwargs.keys())
+        missing_modules = (
+            set(expected_modules) - set(text_2_image_cls._optional_components) - set(text_2_image_kwargs.keys())
+        )
 
         if len(missing_modules) > 0:
             raise ValueError(
@@ -587,7 +593,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -679,7 +685,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         ```py
         >>> from diffusers import AutoPipelineForImage2Image
 
-        >>> pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = AutoPipelineForImage2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt, image).images[0]
         ```
         """
@@ -754,7 +760,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 
         >>> pipe_t2i = AutoPipelineForText2Image.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", requires_safety_checker=False
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", requires_safety_checker=False
         ... )
 
         >>> pipe_i2i = AutoPipelineForImage2Image.from_pipe(pipe_t2i)
@@ -838,7 +844,9 @@ class AutoPipelineForImage2Image(ConfigMixin):
             if k not in image_2_image_kwargs
         }
 
-        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(image_2_image_kwargs.keys())
+        missing_modules = (
+            set(expected_modules) - set(image_2_image_cls._optional_components) - set(image_2_image_kwargs.keys())
+        )
 
         if len(missing_modules) > 0:
             raise ValueError(
@@ -896,7 +904,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -988,7 +996,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         ```py
         >>> from diffusers import AutoPipelineForInpainting
 
-        >>> pipeline = AutoPipelineForInpainting.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt, image=init_image, mask_image=mask_image).images[0]
         ```
         """
@@ -1141,7 +1149,9 @@ class AutoPipelineForInpainting(ConfigMixin):
             if k not in inpainting_kwargs
         }
 
-        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(inpainting_kwargs.keys())
+        missing_modules = (
+            set(expected_modules) - set(inpainting_cls._optional_components) - set(inpainting_kwargs.keys())
+        )
 
         if len(missing_modules) > 0:
             raise ValueError(

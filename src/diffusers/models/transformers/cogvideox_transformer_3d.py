@@ -120,8 +120,10 @@ class CogVideoXBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
+        attention_kwargs = attention_kwargs or {}
 
         # norm & modulate
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
@@ -133,6 +135,7 @@ class CogVideoXBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            **attention_kwargs,
         )
 
         hidden_states = hidden_states + gate_msa * attn_hidden_states
@@ -210,6 +213,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["CogVideoXBlock", "CogVideoXPatchEmbed"]
 
     @register_to_config
     def __init__(
@@ -497,6 +501,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     encoder_hidden_states,
                     emb,
                     image_rotary_emb,
+                    attention_kwargs,
                     **ckpt_kwargs,
                 )
             else:
@@ -505,6 +510,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     temb=emb,
                     image_rotary_emb=image_rotary_emb,
+                    attention_kwargs=attention_kwargs,
                 )
 
         if not self.config.use_rotary_positional_embeddings:

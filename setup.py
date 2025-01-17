@@ -101,7 +101,7 @@ _deps = [
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.23.2",
+    "huggingface-hub>=0.27.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -135,6 +135,7 @@ _deps = [
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
     "black",
+    "phonemizer",
 ]
 
 # this is a lookup table with items like:
@@ -227,6 +228,7 @@ extras["test"] = deps_list(
     "scipy",
     "torchvision",
     "transformers",
+    "phonemizer",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 

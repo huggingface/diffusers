@@ -48,7 +48,7 @@
   - local: using-diffusers/inpaint
     title: Inpainting
   - local: using-diffusers/text-img2vid
-    title: Text or image-to-video
+    title: Video generation
   - local: using-diffusers/depth2img
     title: Depth-to-image
   title: Generative tasks
@@ -181,6 +181,8 @@
     title: TGATE
   - local: optimization/xdit
     title: xDiT
+  - local: optimization/para_attn
+    title: ParaAttention
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
