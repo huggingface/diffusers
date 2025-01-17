@@ -189,10 +189,6 @@ In the above example, layerwise upcasting is enabled on the transformer componen
 
 However, you gain more control and flexibility by directly utilizing the [`~hooks.layerwise_upcasting.apply_layerwise_upcasting`] function instead of [`~ModelMixin.enable_layerwise_upcasting`].
 
-[[autodoc]] ModelMixin.enable_layerwise_upcasting
-
-[[autodoc]] hooks.layerwise_upcasting.apply_layerwise_upcasting
-
 ## Channels-last memory format
 
 The channels-last memory format is an alternative way of ordering NCHW tensors in memory to preserve dimension ordering. Channels-last tensors are ordered in such a way that the channels become the densest dimension (storing images pixel-per-pixel). Since not all operators currently support the channels-last format, it may result in worst performance but you should still try and see if it works for your model.
