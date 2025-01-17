@@ -71,7 +71,7 @@ class VQModel(ModelMixin, ConfigMixin):
             Type of normalization layer to use. Can be one of `"group"` or `"spatial"`.
     """
 
-    _always_upcast_modules = ["VectorQuantizer"]
+    _always_upcast_modules = ["quantize"]
 
     @register_to_config
     def __init__(
