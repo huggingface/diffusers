@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import re
-from typing import Optional, Tuple, Type
+from typing import Optional, Tuple, Type, Union
 
 import torch
 
@@ -25,13 +25,13 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # fmt: off
-_SUPPORTED_PYTORCH_LAYERS = (
+SUPPORTED_PYTORCH_LAYERS = (
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
     torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
     torch.nn.Linear,
 )
 
-_DEFAULT_SKIP_MODULES_PATTERN = ("pos_embed", "patch_embed", "norm")
+DEFAULT_SKIP_MODULES_PATTERN = ("pos_embed", "patch_embed", "norm", "^proj_in$", "^proj_out$")
 # fmt: on
 
 
@@ -74,8 +74,8 @@ def apply_layerwise_upcasting(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: Optional[Tuple[str]] = _DEFAULT_SKIP_MODULES_PATTERN,
-    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module]]] = None,
+    skip_modules_pattern: Union[str, Tuple[str, ...]] = "default",
+    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
     non_blocking: bool = False,
     _prefix: str = "",
 ) -> None:
@@ -87,13 +87,14 @@ def apply_layerwise_upcasting(
 
     ```python
     >>> import torch
-    >>> from diffusers import CogVideoXPipeline, apply_layerwise_upcasting
+    >>> from diffusers import CogVideoXTransformer3DModel
 
-    >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
-    >>> pipe.to("cuda")
+    >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
+    ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+    ... )
 
     >>> apply_layerwise_upcasting(
-    ...     pipe.transformer,
+    ...     transformer,
     ...     storage_dtype=torch.float8_e4m3fn,
     ...     compute_dtype=torch.bfloat16,
     ...     skip_modules_pattern=["patch_embed", "norm"],
@@ -109,13 +110,17 @@ def apply_layerwise_upcasting(
             The dtype to cast the module to before/after the forward pass for storage.
         compute_dtype (`torch.dtype`):
             The dtype to cast the module to during the forward pass for computation.
-        skip_modules_pattern (`Tuple[str]`, defaults to `["pos_embed", "patch_embed", "norm"]`):
-            A list of patterns to match the names of the modules to skip during the layerwise upcasting process.
-        skip_modules_classes (`Tuple[Type[torch.nn.Module]]`, defaults to `None`):
+        skip_modules_pattern (`Tuple[str, ...]`, defaults to `"default"`):
+            A list of patterns to match the names of the modules to skip during the layerwise upcasting process. If set
+            to `"default"`, the default patterns are used.
+        skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, defaults to `None`):
             A list of module classes to skip during the layerwise upcasting process.
         non_blocking (`bool`, defaults to `False`):
             If `True`, the weight casting operations are non-blocking.
     """
+    if skip_modules_pattern == "default":
+        skip_modules_pattern = DEFAULT_SKIP_MODULES_PATTERN
+
     if skip_modules_classes is None and skip_modules_pattern is None:
         apply_layerwise_upcasting_hook(module, storage_dtype, compute_dtype, non_blocking)
         return
@@ -127,7 +132,7 @@ def apply_layerwise_upcasting(
         logger.debug(f'Skipping layerwise upcasting for layer "{_prefix}"')
         return
 
-    if isinstance(module, _SUPPORTED_PYTORCH_LAYERS):
+    if isinstance(module, SUPPORTED_PYTORCH_LAYERS):
         logger.debug(f'Applying layerwise upcasting to layer "{_prefix}"')
         apply_layerwise_upcasting_hook(module, storage_dtype, compute_dtype, non_blocking)
         return

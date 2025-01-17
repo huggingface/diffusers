@@ -166,12 +166,18 @@ Typically, inference on most models is done with `torch.float16` or `torch.bfloa
 
 ```python
 import torch
-from diffusers import CogVideoXPipeline
+from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel
 from diffusers.utils import export_to_video
 
-pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+model_id = "THUDM/CogVideoX-5b"
+
+# Load the model in bfloat16 and enable layerwise upcasting
+transformer = CogVideoXTransformer3DModel.from_pretrained(model_id, subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+
+# Load the pipeline
+pipe = CogVideoXPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
-pipe.transformer.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
 
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "

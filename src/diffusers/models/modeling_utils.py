@@ -104,6 +104,17 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     """
     Returns the first found floating dtype in parameters if there is one, otherwise returns the last dtype it found.
     """
+    # 1. Check if we have attached any dtype modifying hooks (eg. layerwise upcasting)
+    if isinstance(parameter, nn.Module):
+        for name, submodule in parameter.named_modules():
+            if not hasattr(submodule, "_diffusers_hook"):
+                continue
+            registry = submodule._diffusers_hook
+            hook = registry.get_hook("layerwise_upcasting")
+            if hook is not None:
+                return hook.compute_dtype
+
+    # 2. If no dtype modifying hooks are attached, return the dtype of the first floating point parameter/buffer
     last_dtype = None
     for param in parameter.parameters():
         last_dtype = param.dtype
@@ -321,8 +332,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self,
         storage_dtype: torch.dtype = torch.float8_e4m3fn,
         compute_dtype: Optional[torch.dtype] = None,
-        skip_modules_pattern: Optional[List[str]] = None,
-        skip_modules_classes: Optional[List[Type[torch.nn.Module]]] = None,
+        skip_modules_pattern: Optional[Tuple[str, ...]] = None,
+        skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
         non_blocking: bool = False,
     ) -> None:
         r"""
@@ -362,9 +373,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The dtype to which the model should be cast for storage.
             compute_dtype (`torch.dtype`):
                 The dtype to which the model weights should be cast during the forward pass.
-            skip_modules_pattern (`List[str]`, *optional*):
+            skip_modules_pattern (`Tuple[str, ...]`, *optional*):
                 A list of patterns to match the names of the modules to skip during the layerwise upcasting process.
-            skip_modules_classes (`List[Type[torch.nn.Module]]`, *optional*):
+            skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
                 A list of module classes to skip during the layerwise upcasting process.
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
@@ -372,12 +383,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         user_provided_patterns = True
         if skip_modules_pattern is None:
-            skip_modules_pattern = []
+            from ..hooks.layerwise_upcasting import DEFAULT_SKIP_MODULES_PATTERN
+
+            skip_modules_pattern = DEFAULT_SKIP_MODULES_PATTERN
             user_provided_patterns = False
         if self._keep_in_fp32_modules is not None:
-            skip_modules_pattern.extend(self._keep_in_fp32_modules)
+            skip_modules_pattern += tuple(self._keep_in_fp32_modules)
         if self._always_upcast_modules is not None:
-            skip_modules_pattern.extend(self._always_upcast_modules)
+            skip_modules_pattern += tuple(self._always_upcast_modules)
         skip_modules_pattern = tuple(set(skip_modules_pattern))
 
         if is_peft_available() and not user_provided_patterns:
