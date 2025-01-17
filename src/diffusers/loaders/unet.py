@@ -777,8 +777,11 @@ class UNet2DConditionLoadersMixin:
                         updated_state_dict[diffusers_name] = value
 
         if not low_cpu_mem_usage:
+            print(f'not low_cpu_mem_usage')
             if state_dict is not None:
                 image_projection.load_state_dict(updated_state_dict, strict=True)
+            else:
+                image_projection = image_projection.to_empty(device=self.device)
         else:
             load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
 
