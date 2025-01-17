@@ -952,7 +952,6 @@ class FluxFillPipeline(
         if masked_image_latents is not None:
             masked_image_latents = masked_image_latents.to(latents.device)
         else:
-            # image = self.image_processor.preprocess(image, height=height, width=width)
             mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
 
             masked_image = init_image * (1 - mask_image)
