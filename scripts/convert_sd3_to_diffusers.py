@@ -7,7 +7,7 @@ from accelerate import init_empty_weights
 
 from diffusers import AutoencoderKL, SD3Transformer2DModel
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
-from diffusers.models.modeling_utils import load_state_dict_into_meta_model
+from diffusers.models.modeling_utils import load_state_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -319,7 +319,7 @@ def main(args):
             dual_attention_layers=attn2_layers,
         )
     if is_accelerate_available():
-        load_state_dict_into_meta_model(transformer, converted_transformer_state_dict)
+        load_state_dict_into_meta(transformer, converted_transformer_state_dict)
     else:
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
 
@@ -339,7 +339,7 @@ def main(args):
             )
         converted_vae_state_dict = convert_ldm_vae_checkpoint(original_ckpt, vae.config)
         if is_accelerate_available():
-            load_state_dict_into_meta_model(vae, converted_vae_state_dict)
+            load_state_dict_into_meta(vae, converted_vae_state_dict)
         else:
             vae.load_state_dict(converted_vae_state_dict, strict=True)
 

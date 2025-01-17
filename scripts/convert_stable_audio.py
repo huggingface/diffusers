@@ -18,7 +18,7 @@ from diffusers import (
     StableAudioPipeline,
     StableAudioProjectionModel,
 )
-from diffusers.models.modeling_utils import load_state_dict_into_meta_model
+from diffusers.models.modeling_utils import load_state_dict_into_meta
 from diffusers.utils import is_accelerate_available
 
 
@@ -221,7 +221,7 @@ with ctx():
         ],  # assume `seconds_start` and `seconds_total` have the same min / max values.
     )
 if is_accelerate_available():
-    load_state_dict_into_meta_model(projection_model, projection_model_state_dict)
+    load_state_dict_into_meta(projection_model, projection_model_state_dict)
 else:
     projection_model.load_state_dict(projection_model_state_dict)
 
@@ -242,7 +242,7 @@ with ctx():
         cross_attention_input_dim=model_config["cond_token_dim"],
     )
 if is_accelerate_available():
-    load_state_dict_into_meta_model(model, model_state_dict)
+    load_state_dict_into_meta(model, model_state_dict)
 else:
     model.load_state_dict(model_state_dict)
 
@@ -260,7 +260,7 @@ with ctx():
     )
 
 if is_accelerate_available():
-    load_state_dict_into_meta_model(autoencoder, autoencoder_state_dict)
+    load_state_dict_into_meta(autoencoder, autoencoder_state_dict)
 else:
     autoencoder.load_state_dict(autoencoder_state_dict)
 

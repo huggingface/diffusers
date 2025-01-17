@@ -20,7 +20,7 @@ from diffusers import (
 )
 from diffusers.loaders.single_file_utils import convert_stable_cascade_unet_single_file_to_diffusers
 from diffusers.models import StableCascadeUNet
-from diffusers.models.modeling_utils import load_state_dict_into_meta_model
+from diffusers.models.modeling_utils import load_state_dict_into_meta
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils import is_accelerate_available
 
@@ -133,7 +133,7 @@ if not args.skip_stage_c:
         )
 
     if is_accelerate_available():
-        load_state_dict_into_meta_model(prior_model, prior_state_dict)
+        load_state_dict_into_meta(prior_model, prior_state_dict)
     else:
         prior_model.load_state_dict(prior_state_dict)
 
@@ -189,7 +189,7 @@ if not args.skip_stage_b:
         )
 
     if is_accelerate_available():
-        load_state_dict_into_meta_model(decoder, decoder_state_dict)
+        load_state_dict_into_meta(decoder, decoder_state_dict)
     else:
         decoder.load_state_dict(decoder_state_dict)
 

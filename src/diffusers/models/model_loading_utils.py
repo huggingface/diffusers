@@ -201,7 +201,7 @@ def load_state_dict(
             )
 
 
-def load_state_dict_into_meta_model(
+def load_state_dict_into_meta(
     model,
     state_dict: OrderedDict,
     dtype: Optional[Union[str, torch.dtype]] = None,

@@ -65,7 +65,7 @@ from .model_loading_utils import (
     _fetch_index_file_legacy,
     _load_state_dict_into_model,
     load_state_dict,
-    load_state_dict_into_meta_model,
+    load_state_dict_into_meta,
 )
 
 
@@ -1244,7 +1244,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
             if low_cpu_mem_usage:
-                new_error_msgs, offload_index, state_dict_index = load_state_dict_into_meta_model(
+                new_error_msgs, offload_index, state_dict_index = load_state_dict_into_meta(
                     model,
                     state_dict,
                     device_map=device_map,

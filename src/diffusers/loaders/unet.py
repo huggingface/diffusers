@@ -30,7 +30,7 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import load_state_dict, load_state_dict_into_meta_model
+from ..models.modeling_utils import load_state_dict, load_state_dict_into_meta
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -753,7 +753,7 @@ class UNet2DConditionLoadersMixin:
         if not low_cpu_mem_usage:
             image_projection.load_state_dict(updated_state_dict, strict=True)
         else:
-            load_state_dict_into_meta_model(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
+            load_state_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
 
         return image_projection
 
@@ -846,7 +846,7 @@ class UNet2DConditionLoadersMixin:
                 else:
                     device = next(iter(value_dict.values())).device
                     dtype = next(iter(value_dict.values())).dtype
-                    load_state_dict_into_meta_model(attn_procs[name], value_dict, device=device, dtype=dtype)
+                    load_state_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
 
                 key_id += 2
 
