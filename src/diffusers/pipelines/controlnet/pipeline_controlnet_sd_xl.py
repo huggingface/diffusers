@@ -68,7 +68,7 @@ if is_invisible_watermark_available():
 
 
 from .multicontrolnet import MultiControlNetModel
-from .safety_checker import StableDiffusionSafetyChecker
+from .safety_checker import StableDiffusionSafetyChecker # # thesea modified for safty checker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -631,6 +631,7 @@ class StableDiffusionXLControlNetPipeline(
 
         return ip_adapter_image_embeds
 
+    # thesea modified for safty checker
     def run_safety_checker(self, image, device, dtype):
         image_original = copy.deepcopy(image)
         if self.safety_checker is None:
@@ -1634,6 +1635,7 @@ class StableDiffusionXLControlNetPipeline(
                 latents = latents / self.vae.config.scaling_factor
 
             image = self.vae.decode(latents, return_dict=False)[0]
+            # thesea modified for safty checker
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
             # cast back to fp16 if needed
             if needs_upcasting:
@@ -1647,6 +1649,7 @@ class StableDiffusionXLControlNetPipeline(
             if self.watermark is not None:
                 image = self.watermark.apply_watermark(image)
 
+            # thesea modified for safty checker
             if has_nsfw_concept is None:
                 do_denormalize = [True] * image.shape[0]
             else:
