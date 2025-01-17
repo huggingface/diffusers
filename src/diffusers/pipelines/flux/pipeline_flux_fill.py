@@ -901,7 +901,7 @@ class FluxFillPipeline(
             lora_scale=lora_scale,
         )
 
-        # 6. Prepare timesteps
+        # 4. Prepare timesteps
         sigmas = (
             np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
             if sigmas is None
