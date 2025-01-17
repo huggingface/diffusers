@@ -52,7 +52,7 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
-    _import_structure["embeddings"] = ["ImageProjection", "ImageProjectionCustomized"]
+    _import_structure["embeddings"] = ["ImageProjection", "ImageProjectionCustomized"] # thesea modified for human element model
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
@@ -131,6 +131,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SparseControlNetModel,
             UNetControlNetXSModel,
         )
+
+        from .embeddings import ImageProjection, ImageProjectionCustomized # thesea modified for human element model
 
         from .embeddings import ImageProjection, ImageProjectionCustomized
         from .modeling_utils import ModelMixin

@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..models.embeddings import (
-    ImageProjectionCustomized,
+    ImageProjectionCustomized, # thesea modified for human element model
     ImageProjection,
     IPAdapterFaceIDImageProjection,
     IPAdapterFaceIDPlusImageProjection,
@@ -565,6 +565,7 @@ class UNet2DConditionLoadersMixin:
         image_projection = None
         init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
 
+        # thesea modified for human element model
         if state_dict is None:
             # IP-Adapter-Customized
             num_image_text_embeds = 1 # fixed
@@ -577,20 +578,7 @@ class UNet2DConditionLoadersMixin:
                     image_embed_dim=clip_embeddings_dim,
                     num_image_text_embeds=num_image_text_embeds,
                 )
-
-        elif "proj.weight" in state_dict:
-            # IP-Adapter
-            num_image_text_embeds = 4
-            clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
-            cross_attention_dim = state_dict["proj.weight"].shape[0] // 4
-
-            with init_context():
-                image_projection = ImageProjectionCustomized(
-                    cross_attention_dim=cross_attention_dim,
-                    image_embed_dim=clip_embeddings_dim,
-                    num_image_text_embeds=num_image_text_embeds,
-                )
-
+        # thesea modified for human element model
         else:
             if "proj.weight" in state_dict:
                 # IP-Adapter
@@ -779,7 +767,7 @@ class UNet2DConditionLoadersMixin:
                         updated_state_dict[diffusers_name] = value
 
         if not low_cpu_mem_usage:
-            print(f'not low_cpu_mem_usage')
+            # thesea modified for human element model
             if state_dict is not None:
                 image_projection.load_state_dict(updated_state_dict, strict=True)
             else:
@@ -844,6 +832,7 @@ class UNet2DConditionLoadersMixin:
                     )
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
+                    # thesea modified for human element model
                     if state_dict["image_proj"] is None:
                         num_image_text_embeds += [1]
                     else:   
