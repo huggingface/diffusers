@@ -493,7 +493,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         model.is_8bit_serializable = self.is_serializable
         return model
 
-    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer._process_model_before_weight_loading
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer._process_model_before_weight_loading with 4bit->8bit
     def _process_model_before_weight_loading(
         self,
         model: "ModelMixin",
