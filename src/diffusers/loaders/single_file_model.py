@@ -362,6 +362,7 @@ class FromOriginalModelMixin:
 
         if is_accelerate_available():
             param_device = torch.device(device) if device else torch.device("cpu")
+            named_buffers = model.named_buffers()
             unexpected_keys = load_model_dict_into_meta(
                 model,
                 diffusers_format_checkpoint,
@@ -369,6 +370,7 @@ class FromOriginalModelMixin:
                 device=param_device,
                 hf_quantizer=hf_quantizer,
                 keep_in_fp32_modules=keep_in_fp32_modules,
+                named_buffers=named_buffers,
             )
 
         else:
