@@ -943,7 +943,7 @@ class FluxFillPipeline(
             latents,
         )
 
-        # 5. Prepare mask and masked image latents
+        # 6. Prepare mask and masked image latents
         if masked_image_latents is not None:
             masked_image_latents = masked_image_latents.to(latents.device)
         else:
