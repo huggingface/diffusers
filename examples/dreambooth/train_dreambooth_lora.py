@@ -177,7 +177,8 @@ def log_validation(
             )
 
     del pipeline
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     if hasattr(torch, "xpu") and torch.xpu.is_available():
         torch.xpu.empty_cache()
 
@@ -1089,7 +1090,8 @@ def main(args):
         tokenizer = None
 
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         if hasattr(torch, "xpu") and torch.xpu.is_available():
             torch.xpu.empty_cache()
     else:
