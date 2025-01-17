@@ -2334,7 +2334,7 @@ class PyramidAttentionBroadcastTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
 
-        self.pab_config.current_timestep_callback = lambda: pipe._current_timestep
+        self.pab_config.current_timestep_callback = lambda: pipe.current_timestep
         denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
         denoiser.enable_cache(self.pab_config)
 
@@ -2417,7 +2417,7 @@ class PyramidAttentionBroadcastTesterMixin:
         original_image_slice = np.concatenate((original_image_slice[:8], original_image_slice[-8:]))
 
         # Run inference with PAB enabled
-        self.pab_config.current_timestep_callback = lambda: pipe._current_timestep
+        self.pab_config.current_timestep_callback = lambda: pipe.current_timestep
         denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
         denoiser.enable_cache(self.pab_config)
 
