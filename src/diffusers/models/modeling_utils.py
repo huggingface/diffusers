@@ -84,6 +84,13 @@ if is_accelerate_available():
 
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
     try:
+        if hasattr(parameter, "_diffusers_hook"):
+            for submodule in parameter.modules():
+                if hasattr(submodule, "_diffusers_hook"):
+                    registry = parameter._diffusers_hook
+                    hook = registry.get_hook("group_offloading")
+                    return hook.group.onload_device
+
         parameters_and_buffers = itertools.chain(parameter.parameters(), parameter.buffers())
         return next(parameters_and_buffers).device
     except StopIteration:

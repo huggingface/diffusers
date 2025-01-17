@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import functools
+import gc
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -48,8 +49,6 @@ class ModelHook:
             module (`torch.nn.Module`):
                 The module attached to this hook.
         """
-        module.forward = module._old_forward
-        del module._old_forward
         return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
@@ -99,6 +98,13 @@ class ModelHook:
         return module
 
 
+class FunctionReference:
+    def __init__(self) -> None:
+        self.pre_forward = None
+        self.post_forward = None
+        self.old_forward = None
+
+
 class HookRegistry:
     def __init__(self, module_ref: torch.nn.Module) -> None:
         super().__init__()
@@ -107,39 +113,50 @@ class HookRegistry:
 
         self._module_ref = module_ref
         self._hook_order = []
+        self._fn_refs = []
 
     def register_hook(self, hook: ModelHook, name: str) -> None:
         if name in self.hooks.keys():
             logger.warning(f"Hook with name {name} already exists, replacing it.")
 
-        if hasattr(self._module_ref, "_old_forward"):
-            old_forward = self._module_ref._old_forward
-        else:
-            old_forward = self._module_ref.forward
-            self._module_ref._old_forward = self._module_ref.forward
+        forward = self._module_ref.forward
+
+        fn_ref = FunctionReference()
+        fn_ref.pre_forward = hook.pre_forward
+        fn_ref.post_forward = hook.post_forward
+        fn_ref.old_forward = forward
 
         self._module_ref = hook.initialize_hook(self._module_ref)
 
-        if hasattr(hook, "new_forward"):
-            rewritten_forward = hook.new_forward
-
+        def create_new_forward(function_reference: FunctionReference):
             def new_forward(module, *args, **kwargs):
-                args, kwargs = hook.pre_forward(module, *args, **kwargs)
-                output = rewritten_forward(module, *args, **kwargs)
-                return hook.post_forward(module, output)
-        else:
+                args, kwargs = function_reference.pre_forward(module, *args, **kwargs)
+                output = function_reference.old_forward(*args, **kwargs)
+                return function_reference.post_forward(module, output)
 
-            def new_forward(module, *args, **kwargs):
-                args, kwargs = hook.pre_forward(module, *args, **kwargs)
-                output = old_forward(*args, **kwargs)
-                return hook.post_forward(module, output)
+            return new_forward
 
-        self._module_ref.forward = functools.update_wrapper(
-            functools.partial(new_forward, self._module_ref), old_forward
-        )
+        # if hasattr(hook, "new_forward"):
+        #     fn_ref.old_forward = hook.new_forward
+
+        #     def new_forward(module, *args, **kwargs):
+        #         args, kwargs = hook.pre_forward(module, *args, **kwargs)
+        #         output = rewritten_forward(module, *args, **kwargs)
+        #         return hook.post_forward(module, output)
+        # else:
+
+        #     def new_forward(module, *args, **kwargs):
+        #         args, kwargs = hook.pre_forward(module, *args, **kwargs)
+        #         output = forward(*args, **kwargs)
+        #         return hook.post_forward(module, output)
+
+        new_forward = create_new_forward(fn_ref)
+        new_forward = functools.update_wrapper(functools.partial(new_forward, self._module_ref), forward)
+        self._module_ref.forward = new_forward
 
         self.hooks[name] = hook
         self._hook_order.append(name)
+        self._fn_refs.append(fn_ref)
 
     def get_hook(self, name: str) -> Optional[ModelHook]:
         if name not in self.hooks.keys():
@@ -147,11 +164,23 @@ class HookRegistry:
         return self.hooks[name]
 
     def remove_hook(self, name: str, recurse: bool = True) -> None:
+        num_hooks = len(self._hook_order)
         if name in self.hooks.keys():
             hook = self.hooks[name]
+            index = self._hook_order.index(name)
+
+            fn_ref = self._fn_refs[index]
+
+            if index == num_hooks - 1:
+                self._module_ref.forward = fn_ref.old_forward
+            else:
+                next_fn_ref = self._fn_refs[index + 1]
+                next_fn_ref.old_forward = fn_ref.old_forward
+
             self._module_ref = hook.deinitalize_hook(self._module_ref)
             del self.hooks[name]
-            self._hook_order.remove(name)
+            self._hook_order.pop(index)
+            self._fn_refs.pop(index)
 
         if recurse:
             for module_name, module in self._module_ref.named_modules():
@@ -160,8 +189,10 @@ class HookRegistry:
                 if hasattr(module, "_diffusers_hook"):
                     module._diffusers_hook.remove_hook(name, recurse=False)
 
+        gc.collect()
+
     def reset_stateful_hooks(self, recurse: bool = True) -> None:
-        for hook_name in self._hook_order:
+        for hook_name in reversed(self._hook_order):
             hook = self.hooks[hook_name]
             if hook._is_stateful:
                 hook.reset_state(self._module_ref)
@@ -180,9 +211,11 @@ class HookRegistry:
         return module._diffusers_hook
 
     def __repr__(self) -> str:
+        num_hooks = len(self._hook_order)
         hook_repr = ""
         for i, hook_name in enumerate(self._hook_order):
-            hook_repr += f"  ({i}) {hook_name} - ({self.hooks[hook_name].__class__.__name__})"
+            hook_invocation_index = num_hooks - i - 1
+            hook_repr += f"  ({hook_invocation_index}) {hook_name} - ({self.hooks[hook_name].__class__.__name__})"
             if i < len(self._hook_order) - 1:
                 hook_repr += "\n"
         return f"HookRegistry(\n{hook_repr}\n)"
