@@ -185,12 +185,12 @@ class ModelUtilsTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
 
-    def test_accelerate_loading_error_message(self):
-        with self.assertRaises(ValueError) as error_context:
+    def test_missing_key_loading_warning_message(self):
+        with self.assertLogs("diffusers.models.modeling_utils", level="WARNING") as logs:
             UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")
 
         # make sure that error message states what keys are missing
-        assert "conv_out.bias" in str(error_context.exception)
+        assert "conv_out.bias" in " ".join(logs.output)
 
     @parameterized.expand(
         [

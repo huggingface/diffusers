@@ -13,15 +13,11 @@
 # limitations under the License.
 import importlib
 import inspect
-import re
-from contextlib import nullcontext
 from typing import Optional
 
-import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, logging
+from ..utils import deprecate, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
@@ -47,12 +43,6 @@ from .single_file_utils import (
 
 
 logger = logging.get_logger(__name__)
-
-
-if is_accelerate_available():
-    from accelerate import init_empty_weights
-
-    from ..models.modeling_utils import load_model_dict_into_meta
 
 
 SINGLE_FILE_LOADABLE_CLASSES = {
@@ -234,9 +224,6 @@ class FromOriginalModelMixin:
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
         config_revision = kwargs.pop("config_revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
-        quantization_config = kwargs.pop("quantization_config", None)
-        device = kwargs.pop("device", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
@@ -252,12 +239,6 @@ class FromOriginalModelMixin:
                 revision=revision,
                 disable_mmap=disable_mmap,
             )
-        if quantization_config is not None:
-            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
-            hf_quantizer.validate_environment()
-
-        else:
-            hf_quantizer = None
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
@@ -336,62 +317,9 @@ class FromOriginalModelMixin:
                 f"Failed to load {mapping_class_name}. Weights for this component appear to be missing in the checkpoint."
             )
 
-        ctx = init_empty_weights if is_accelerate_available() else nullcontext
-        with ctx():
-            model = cls.from_config(diffusers_model_config)
-
-        # Check if `_keep_in_fp32_modules` is not None
-        use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
-            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
+        return cls.from_pretrained(
+            pretrained_model_name_or_path=None,
+            state_dict=diffusers_format_checkpoint,
+            config=diffusers_model_config,
+            **kwargs,
         )
-        if use_keep_in_fp32_modules:
-            keep_in_fp32_modules = cls._keep_in_fp32_modules
-            if not isinstance(keep_in_fp32_modules, list):
-                keep_in_fp32_modules = [keep_in_fp32_modules]
-
-        else:
-            keep_in_fp32_modules = []
-
-        if hf_quantizer is not None:
-            hf_quantizer.preprocess_model(
-                model=model,
-                device_map=None,
-                state_dict=diffusers_format_checkpoint,
-                keep_in_fp32_modules=keep_in_fp32_modules,
-            )
-
-        if is_accelerate_available():
-            param_device = torch.device(device) if device else torch.device("cpu")
-            named_buffers = model.named_buffers()
-            unexpected_keys = load_model_dict_into_meta(
-                model,
-                diffusers_format_checkpoint,
-                dtype=torch_dtype,
-                device=param_device,
-                hf_quantizer=hf_quantizer,
-                keep_in_fp32_modules=keep_in_fp32_modules,
-                named_buffers=named_buffers,
-            )
-
-        else:
-            _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
-
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
-        if hf_quantizer is not None:
-            hf_quantizer.postprocess_model(model)
-            model.hf_quantizer = hf_quantizer
-
-        if torch_dtype is not None and hf_quantizer is None:
-            model.to(torch_dtype)
-
-        model.eval()
-
-        return model

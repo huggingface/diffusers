@@ -411,22 +411,6 @@ def _get_model_file(
             ) from e
 
 
-# Adapted from
-# https://github.com/huggingface/transformers/blob/1360801a69c0b169e3efdbb0cd05d9a0e72bfb70/src/transformers/utils/hub.py#L976
-# Differences are in parallelization of shard downloads and checking if shards are present.
-
-
-def _check_if_shards_exist_locally(local_dir, subfolder, original_shard_filenames):
-    shards_path = os.path.join(local_dir, subfolder)
-    shard_filenames = [os.path.join(shards_path, f) for f in original_shard_filenames]
-    for shard_file in shard_filenames:
-        if not os.path.exists(shard_file):
-            raise ValueError(
-                f"{shards_path} does not appear to have a file named {shard_file} which is "
-                "required according to the checkpoint index."
-            )
-
-
 def _get_checkpoint_shard_files(
     pretrained_model_name_or_path,
     index_filename,
@@ -469,13 +453,22 @@ def _get_checkpoint_shard_files(
     shards_path = os.path.join(pretrained_model_name_or_path, subfolder)
 
     # First, let's deal with local folder.
-    if os.path.isdir(pretrained_model_name_or_path):
-        _check_if_shards_exist_locally(
-            pretrained_model_name_or_path, subfolder=subfolder, original_shard_filenames=original_shard_filenames
-        )
-        return shards_path, sharded_metadata
-    elif dduf_entries:
-        return shards_path, sharded_metadata
+    if os.path.isdir(pretrained_model_name_or_path) or dduf_entries:
+        shard_filenames = [os.path.join(shards_path, f) for f in original_shard_filenames]
+        for shard_file in shard_filenames:
+            if dduf_entries:
+                if shard_file not in dduf_entries:
+                    raise FileNotFoundError(
+                        f"{shards_path} does not appear to have a file named {shard_file} which is "
+                        "required according to the checkpoint index."
+                    )
+            else:
+                if not os.path.exists(shard_file):
+                    raise FileNotFoundError(
+                        f"{shards_path} does not appear to have a file named {shard_file} which is "
+                        "required according to the checkpoint index."
+                    )
+        return shard_filenames, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     allow_patterns = original_shard_filenames
@@ -517,7 +510,9 @@ def _get_checkpoint_shard_files(
             " again after checking your internet connection."
         ) from e
 
-    return cached_folder, sharded_metadata
+    cached_filenames = [os.path.join(cached_folder, f) for f in original_shard_filenames]
+
+    return cached_filenames, sharded_metadata
 
 
 def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
