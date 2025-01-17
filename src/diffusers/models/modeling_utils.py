@@ -241,14 +241,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.set_use_npu_flash_attention(False)
 
     def set_use_xla_flash_attention(
-        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None, **kwargs
     ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
         # gets the message
         def fn_recursive_set_flash_attention(module: torch.nn.Module):
             if hasattr(module, "set_use_xla_flash_attention"):
-                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec)
+                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, **kwargs)
 
             for child in module.children():
                 fn_recursive_set_flash_attention(child)
@@ -257,11 +257,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_flash_attention(module)
 
-    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None):
+    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None, **kwargs):
         r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
-        self.set_use_xla_flash_attention(True, partition_spec)
+        self.set_use_xla_flash_attention(True, partition_spec, **kwargs)
 
     def disable_xla_flash_attention(self):
         r"""
@@ -1010,6 +1010,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
+                    named_buffers = model.named_buffers()
+
                     unexpected_keys = load_model_dict_into_meta(
                         model,
                         state_dict,
@@ -1018,6 +1020,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         model_name_or_path=pretrained_model_name_or_path,
                         hf_quantizer=hf_quantizer,
                         keep_in_fp32_modules=keep_in_fp32_modules,
+                        named_buffers=named_buffers,
                     )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
