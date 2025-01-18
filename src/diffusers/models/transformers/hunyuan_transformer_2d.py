@@ -278,7 +278,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         )
 
         self.text_embedding_padding = nn.Parameter(
-            torch.randn(text_len + text_len_t5, cross_attention_dim, dtype=torch.float32)
+            torch.randn(text_len + text_len_t5, cross_attention_dim)
         )
 
         self.pos_embed = PatchEmbed(
