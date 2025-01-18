@@ -1726,3 +1726,4 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
         # thesea modified for safety checker output
         return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected = has_nsfw_concept)
+
