@@ -1,0 +1,16 @@
+accelerate>=0.16.0
+bitsandbytes
+datasets
+diffusers
+huggingface_hub
+lpips
+numpy
+packaging
+Pillow
+taming_transformers
+torch
+torchvision
+tqdm
+transformers
+wandb
+xformers
