@@ -17,7 +17,7 @@ from ..models.embeddings import (
     ImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import load_state_dict_into_meta
+from ..models.modeling_utils import load_model_dict_into_meta
 from ..utils import (
     is_accelerate_available,
     is_torch_version,
@@ -82,7 +82,7 @@ class FluxTransformer2DLoadersMixin:
         if not low_cpu_mem_usage:
             image_projection.load_state_dict(updated_state_dict, strict=True)
         else:
-            load_state_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
+            load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
 
         return image_projection
 
@@ -153,7 +153,7 @@ class FluxTransformer2DLoadersMixin:
                 else:
                     device = self.device
                     dtype = self.dtype
-                    load_state_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
+                    load_model_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
 
                 key_id += 1
 

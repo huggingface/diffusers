@@ -18,7 +18,7 @@ from diffusers import (
     SanaPipeline,
     SanaTransformer2DModel,
 )
-from diffusers.models.modeling_utils import load_state_dict_into_meta
+from diffusers.models.modeling_utils import load_model_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -189,7 +189,7 @@ def main(args):
         )
 
     if is_accelerate_available():
-        load_state_dict_into_meta(transformer, converted_state_dict)
+        load_model_dict_into_meta(transformer, converted_state_dict)
     else:
         transformer.load_state_dict(converted_state_dict, strict=True, assign=True)
 

@@ -15,7 +15,7 @@ from typing import Dict
 
 from ..models.attention_processor import SD3IPAdapterJointAttnProcessor2_0
 from ..models.embeddings import IPAdapterTimeImageProjection
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict_into_meta
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 
 
 class SD3Transformer2DLoadersMixin:
@@ -59,7 +59,7 @@ class SD3Transformer2DLoadersMixin:
             if not low_cpu_mem_usage:
                 attn_procs[name].load_state_dict(layer_state_dict[idx], strict=True)
             else:
-                load_state_dict_into_meta(
+                load_model_dict_into_meta(
                     attn_procs[name], layer_state_dict[idx], device=self.device, dtype=self.dtype
                 )
 
@@ -86,4 +86,4 @@ class SD3Transformer2DLoadersMixin:
         if not low_cpu_mem_usage:
             self.image_proj.load_state_dict(state_dict["image_proj"], strict=True)
         else:
-            load_state_dict_into_meta(self.image_proj, state_dict["image_proj"], device=self.device, dtype=self.dtype)
+            load_model_dict_into_meta(self.image_proj, state_dict["image_proj"], device=self.device, dtype=self.dtype)

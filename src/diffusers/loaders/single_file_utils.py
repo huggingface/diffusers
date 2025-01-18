@@ -53,7 +53,7 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
 
-    from ..models.modeling_utils import load_state_dict_into_meta
+    from ..models.modeling_utils import load_model_dict_into_meta
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -1588,7 +1588,7 @@ def create_diffusers_clip_model_from_ldm(
         raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
 
     if is_accelerate_available():
-        load_state_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
     else:
         model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
@@ -2047,7 +2047,7 @@ def create_diffusers_t5_model_from_checkpoint(
     diffusers_format_checkpoint = convert_sd3_t5_checkpoint_to_diffusers(checkpoint)
 
     if is_accelerate_available():
-        load_state_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
     else:
         model.load_state_dict(diffusers_format_checkpoint)
 
