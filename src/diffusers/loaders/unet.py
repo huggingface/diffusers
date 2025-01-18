@@ -30,7 +30,7 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import load_state_dict, load_model_dict_into_meta
+from ..models.modeling_utils import load_model_dict_into_meta, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,

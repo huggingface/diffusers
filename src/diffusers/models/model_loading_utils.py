@@ -307,25 +307,6 @@ def load_model_dict_into_meta(
     return error_msgs, offload_index, state_dict_index
 
 
-def load_model_dict_into_meta(
-    model,
-    state_dict: OrderedDict,
-    dtype: Optional[Union[str, torch.dtype]] = None,
-    model_name_or_path: Optional[str] = None,
-    hf_quantizer=None,
-    keep_in_fp32_modules=None,
-    device_map=None,
-    unexpected_keys=None,
-    is_safetensors=None,
-    offload_folder=None,
-    offload_index=None,
-    state_dict_index=None,
-    state_dict_folder=None,
-) -> List[str]:
-    error_msgs = []
-    return error_msgs, offload_index, state_dict_index
-
-
 def _load_state_dict_into_model(
     model_to_load, state_dict: OrderedDict, assign_to_params_buffers: bool = False
 ) -> List[str]:

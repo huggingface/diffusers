@@ -64,8 +64,8 @@ from .model_loading_utils import (
     _fetch_index_file,
     _fetch_index_file_legacy,
     _load_state_dict_into_model,
-    load_state_dict,
     load_model_dict_into_meta,
+    load_state_dict,
 )
 
 
@@ -1033,6 +1033,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             dtype=torch_dtype,
             hf_quantizer=hf_quantizer,
             keep_in_fp32_modules=keep_in_fp32_modules,
+            dduf_entries=dduf_entries,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1156,6 +1157,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         device_map=None,
         offload_state_dict=None,
         offload_folder=None,
+        dduf_entries=None,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1209,7 +1211,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if len(resolved_archive_file) > 1:
             resolved_archive_file = logging.tqdm(resolved_archive_file, desc="Loading checkpoint shards")
         for shard_file in resolved_archive_file:
-            state_dict = load_state_dict(shard_file)
+            state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
             model._fix_state_dict_keys_on_load(state_dict)
 
             def _find_mismatched_keys(
