@@ -61,6 +61,7 @@ from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutpu
 if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
+from .safety_checker import StableDiffusionSafetyChecker # # thesea modified for safty checker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -223,7 +224,9 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         "text_encoder_2",
         "feature_extractor",
         "image_encoder",
+        "safety_checker", 
     ]
+    _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
@@ -244,11 +247,13 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         unet: UNet2DConditionModel,
         controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
+        safety_checker: StableDiffusionSafetyChecker,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
+        requires_safety_checker: bool = False,
     ):
         super().__init__()
 
@@ -264,6 +269,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             unet=unet,
             controlnet=controlnet,
             scheduler=scheduler,
+            safety_checker=safety_checker,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
@@ -279,7 +285,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         else:
             self.watermark = None
 
-        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
+        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt, requires_safety_checker=requires_safety_checker)
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
