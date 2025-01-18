@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -33,61 +33,10 @@ from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def reshape_tensor(x, heads):
-    """
-    Reshapes the input tensor for multi-head attention.
-
-    Args:
-        x (torch.Tensor): The input tensor with shape (batch_size, length, width).
-        heads (int): The number of attention heads.
-
-    Returns:
-        torch.Tensor: The reshaped tensor, with shape (batch_size, heads, length, width).
-    """
-    bs, length, width = x.shape
-    x = x.view(bs, length, heads, -1)
-    x = x.transpose(1, 2)
-    x = x.reshape(bs, heads, length, -1)
-    return x
-
-
-def ConsisIDFeedForward(dim, mult=4):
-    """
-    Creates a consistent ID feedforward block consisting of layer normalization, two linear layers, and a GELU
-    activation.
-
-    Args:
-        dim (int): The input dimension of the tensor.
-        mult (int, optional): Multiplier for the inner dimension. Default is 4.
-
-    Returns:
-        nn.Sequential: A sequence of layers comprising LayerNorm, Linear layers, and GELU.
-    """
-    inner_dim = int(dim * mult)
-    return nn.Sequential(
-        nn.LayerNorm(dim),
-        nn.Linear(dim, inner_dim, bias=False),
-        nn.GELU(),
-        nn.Linear(inner_dim, dim, bias=False),
-    )
-
-
 class PerceiverAttention(nn.Module):
-    """
-    Implements the Perceiver attention mechanism with multi-head attention.
-
-    This layer takes two inputs: 'x' (image features) and 'latents' (latent features), applying multi-head attention to
-    both and producing an output tensor with the same dimension as the input tensor 'x'.
-
-    Args:
-        dim (int): The input dimension.
-        dim_head (int, optional): The dimension of each attention head. Default is 64.
-        heads (int, optional): The number of attention heads. Default is 8.
-        kv_dim (int, optional): The key-value dimension. If None, `dim` is used for both keys and values.
-    """
-
-    def __init__(self, *, dim, dim_head=64, heads=8, kv_dim=None):
+    def __init__(self, dim: int, dim_head: int = 64, heads: int = 8, kv_dim: Optional[int] = None):
         super().__init__()
+
         self.scale = dim_head**-0.5
         self.dim_head = dim_head
         self.heads = heads
@@ -100,74 +49,49 @@ class PerceiverAttention(nn.Module):
         self.to_kv = nn.Linear(dim if kv_dim is None else kv_dim, inner_dim * 2, bias=False)
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
-    def forward(self, x, latents):
-        """
-        Forward pass for Perceiver attention.
-
-        Args:
-            x (torch.Tensor): Image features tensor with shape (batch_size, num_pixels, D).
-            latents (torch.Tensor): Latent features tensor with shape (batch_size, num_latents, D).
-
-        Returns:
-            torch.Tensor: Output tensor after applying attention and transformation.
-        """
+    def forward(self, image_embeds: torch.Tensor, latents: torch.Tensor) -> torch.Tensor:
         # Apply normalization
-        x = self.norm1(x)
+        image_embeds = self.norm1(image_embeds)
         latents = self.norm2(latents)
 
-        b, seq_len, _ = latents.shape  # Get batch size and sequence length
+        batch_size, seq_len, _ = latents.shape  # Get batch size and sequence length
 
         # Compute query, key, and value matrices
-        q = self.to_q(latents)
-        kv_input = torch.cat((x, latents), dim=-2)
-        k, v = self.to_kv(kv_input).chunk(2, dim=-1)
+        query = self.to_q(latents)
+        kv_input = torch.cat((image_embeds, latents), dim=-2)
+        key, value = self.to_kv(kv_input).chunk(2, dim=-1)
 
         # Reshape the tensors for multi-head attention
-        q = reshape_tensor(q, self.heads)
-        k = reshape_tensor(k, self.heads)
-        v = reshape_tensor(v, self.heads)
+        query = query.reshape(query.size(0), -1, self.heads, self.dim_head).transpose(1, 2)
+        key = key.reshape(key.size(0), -1, self.heads, self.dim_head).transpose(1, 2)
+        value = value.reshape(value.size(0), -1, self.heads, self.dim_head).transpose(1, 2)
 
         # attention
         scale = 1 / math.sqrt(math.sqrt(self.dim_head))
-        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
+        weight = (query * scale) @ (key * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
-        out = weight @ v
+        output = weight @ value
 
         # Reshape and return the final output
-        out = out.permute(0, 2, 1, 3).reshape(b, seq_len, -1)
+        output = output.permute(0, 2, 1, 3).reshape(batch_size, seq_len, -1)
 
-        return self.to_out(out)
+        return self.to_out(output)
 
 
 class LocalFacialExtractor(nn.Module):
     def __init__(
         self,
-        id_dim=1280,
-        vit_dim=1024,
-        depth=10,
-        dim_head=64,
-        heads=16,
-        num_id_token=5,
-        num_queries=32,
-        output_dim=2048,
-        ff_mult=4,
-        num_scale=5,
+        id_dim: int = 1280,
+        vit_dim: int = 1024,
+        depth: int = 10,
+        dim_head: int = 64,
+        heads: int = 16,
+        num_id_token: int = 5,
+        num_queries: int = 32,
+        output_dim: int = 2048,
+        ff_mult: int = 4,
+        num_scale: int = 5,
     ):
-        """
-        Initializes the LocalFacialExtractor class.
-
-        Parameters:
-        - id_dim (int): The dimensionality of id features.
-        - vit_dim (int): The dimensionality of vit features.
-        - depth (int): Total number of PerceiverAttention and ConsisIDFeedForward layers.
-        - dim_head (int): Dimensionality of each attention head.
-        - heads (int): Number of attention heads.
-        - num_id_token (int): Number of tokens used for identity features.
-        - num_queries (int): Number of query tokens for the latent representation.
-        - output_dim (int): Output dimension after projection.
-        - ff_mult (int): Multiplier for the feed-forward network hidden dimension.
-        - num_scale (int): The number of different scales visual feature.
-        """
         super().__init__()
 
         # Storing identity token and query information
@@ -191,7 +115,12 @@ class LocalFacialExtractor(nn.Module):
                 nn.ModuleList(
                     [
                         PerceiverAttention(dim=vit_dim, dim_head=dim_head, heads=heads),  # Perceiver Attention layer
-                        ConsisIDFeedForward(dim=vit_dim, mult=ff_mult),  # ConsisIDFeedForward layer
+                        nn.Sequential(
+                            nn.LayerNorm(vit_dim),
+                            nn.Linear(vit_dim, vit_dim * ff_mult, bias=False),
+                            nn.GELU(),
+                            nn.Linear(vit_dim * ff_mult, vit_dim, bias=False),
+                        ),  # ConsisIDFeedForward layer
                     ]
                 )
             )
@@ -223,32 +152,21 @@ class LocalFacialExtractor(nn.Module):
             nn.Linear(vit_dim, vit_dim * num_id_token),
         )
 
-    def forward(self, x, y):
-        """
-        Forward pass for LocalFacialExtractor.
-
-        Parameters:
-        - x (Tensor): The input identity embedding tensor of shape (batch_size, id_dim).
-        - y (list of Tensor): A list of 5 visual feature tensors each of shape (batch_size, vit_dim).
-
-        Returns:
-        - Tensor: The extracted latent features of shape (batch_size, num_queries, output_dim).
-        """
-
+    def forward(self, id_embeds: torch.Tensor, vit_hidden_states: List[torch.Tensor]) -> torch.Tensor:
         # Repeat latent queries for the batch size
-        latents = self.latents.repeat(x.size(0), 1, 1)
+        latents = self.latents.repeat(id_embeds.size(0), 1, 1)
 
         # Map the identity embedding to tokens
-        x = self.id_embedding_mapping(x)
-        x = x.reshape(-1, self.num_id_token, self.vit_dim)
+        id_embeds = self.id_embedding_mapping(id_embeds)
+        id_embeds = id_embeds.reshape(-1, self.num_id_token, self.vit_dim)
 
         # Concatenate identity tokens with the latent queries
-        latents = torch.cat((latents, x), dim=1)
+        latents = torch.cat((latents, id_embeds), dim=1)
 
         # Process each of the num_scale visual feature inputs
         for i in range(self.num_scale):
-            vit_feature = getattr(self, f"mapping_{i}")(y[i])
-            ctx_feature = torch.cat((x, vit_feature), dim=1)
+            vit_feature = getattr(self, f"mapping_{i}")(vit_hidden_states[i])
+            ctx_feature = torch.cat((id_embeds, vit_feature), dim=1)
 
             # Pass through the PerceiverAttention and ConsisIDFeedForward layers
             for attn, ff in self.layers[i * self.depth : (i + 1) * self.depth]:
@@ -263,26 +181,9 @@ class LocalFacialExtractor(nn.Module):
 
 
 class PerceiverCrossAttention(nn.Module):
-    """
-
-    Args:
-        dim (int): Dimension of the input latent and output. Default is 3072.
-        dim_head (int): Dimension of each attention head. Default is 128.
-        heads (int): Number of attention heads. Default is 16.
-        kv_dim (int): Dimension of the key/value input, allowing flexible cross-attention. Default is 2048.
-
-    Attributes:
-        scale (float): Scaling factor used in dot-product attention for numerical stability.
-        norm1 (nn.LayerNorm): Layer normalization applied to the input image features.
-        norm2 (nn.LayerNorm): Layer normalization applied to the latent features.
-        to_q (nn.Linear): Linear layer for projecting the latent features into queries.
-        to_kv (nn.Linear): Linear layer for projecting the input features into keys and values.
-        to_out (nn.Linear): Linear layer for outputting the final result after attention.
-
-    """
-
-    def __init__(self, *, dim=3072, dim_head=128, heads=16, kv_dim=2048):
+    def __init__(self, dim: int = 3072, dim_head: int = 128, heads: int = 16, kv_dim: int = 2048):
         super().__init__()
+
         self.scale = dim_head**-0.5
         self.dim_head = dim_head
         self.heads = heads
@@ -297,47 +198,32 @@ class PerceiverCrossAttention(nn.Module):
         self.to_kv = nn.Linear(dim if kv_dim is None else kv_dim, inner_dim * 2, bias=False)
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
-    def forward(self, x, latents):
-        """
-
-        Args:
-            x (torch.Tensor): Input image features with shape (batch_size, n1, D), where:
-                - batch_size (b): Number of samples in the batch.
-                - n1: Sequence length (e.g., number of patches or tokens).
-                - D: Feature dimension.
-
-            latents (torch.Tensor): Latent feature representations with shape (batch_size, n2, D), where:
-                - n2: Number of latent elements.
-
-        Returns:
-            torch.Tensor: Attention-modulated features with shape (batch_size, n2, D).
-
-        """
+    def forward(self, image_embeds: torch.Tensor, hidden_states: torch.Tensor) -> torch.Tensor:
         # Apply layer normalization to the input image and latent features
-        x = self.norm1(x)
-        latents = self.norm2(latents)
+        image_embeds = self.norm1(image_embeds)
+        hidden_states = self.norm2(hidden_states)
 
-        b, seq_len, _ = latents.shape
+        batch_size, seq_len, _ = hidden_states.shape
 
         # Compute queries, keys, and values
-        q = self.to_q(latents)
-        k, v = self.to_kv(x).chunk(2, dim=-1)
+        query = self.to_q(hidden_states)
+        key, value = self.to_kv(image_embeds).chunk(2, dim=-1)
 
         # Reshape tensors to split into attention heads
-        q = reshape_tensor(q, self.heads)
-        k = reshape_tensor(k, self.heads)
-        v = reshape_tensor(v, self.heads)
+        query = query.reshape(query.size(0), -1, self.heads, self.dim_head).transpose(1, 2)
+        key = key.reshape(key.size(0), -1, self.heads, self.dim_head).transpose(1, 2)
+        value = value.reshape(value.size(0), -1, self.heads, self.dim_head).transpose(1, 2)
 
         # Compute attention weights
         scale = 1 / math.sqrt(math.sqrt(self.dim_head))
-        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable scaling than post-division
+        weight = (query * scale) @ (key * scale).transpose(-2, -1)  # More stable scaling than post-division
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
 
         # Compute the output via weighted combination of values
-        out = weight @ v
+        out = weight @ value
 
         # Reshape and permute to prepare for final linear transformation
-        out = out.permute(0, 2, 1, 3).reshape(b, seq_len, -1)
+        out = out.permute(0, 2, 1, 3).reshape(batch_size, seq_len, -1)
 
         return self.to_out(out)
 
@@ -680,8 +566,6 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
-        self.gradient_checkpointing = False
-
         self.is_train_face = is_train_face
         self.is_kps = is_kps
 
@@ -709,12 +593,12 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             # face modules
             self._init_face_inputs()
 
+        self.gradient_checkpointing = False
+
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
 
     def _init_face_inputs(self):
-        device = self.device
-        weight_dtype = self.dtype
         self.local_facial_extractor = LocalFacialExtractor(
             id_dim=self.LFE_id_dim,
             vit_dim=self.LFE_vit_dim,
@@ -727,7 +611,6 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             ff_mult=self.LFE_ff_mult,
             num_scale=self.LFE_num_scale,
         )
-        self.local_facial_extractor.to(device, dtype=weight_dtype)
         self.perceiver_cross_attention = nn.ModuleList(
             [
                 PerceiverCrossAttention(
@@ -735,7 +618,7 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     dim_head=self.cross_attn_dim_head,
                     heads=self.cross_attn_num_heads,
                     kv_dim=self.cross_attn_kv_dim,
-                ).to(device, dtype=weight_dtype)
+                )
                 for _ in range(self.num_cross_attn)
             ]
         )
@@ -828,8 +711,8 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
 
         # fuse clip and insightface
+        valid_face_emb = None
         if self.is_train_face:
-            assert id_cond is not None and id_vit_hidden is not None
             id_cond = id_cond.to(device=hidden_states.device, dtype=hidden_states.dtype)
             id_vit_hidden = [
                 tensor.to(device=hidden_states.device, dtype=hidden_states.dtype) for tensor in id_vit_hidden

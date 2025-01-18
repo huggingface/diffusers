@@ -20,8 +20,8 @@ specific language governing permissions and limitations under the License.
 This guide will walk you through using ConsisID for use cases.
 
 ## Load Model Checkpoints
-Model weights may be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~DiffusionPipeline.from_pretrained`] method.
 
+Model weights may be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~DiffusionPipeline.from_pretrained`] method.
 
 ```python
 # !pip install consisid_eva_clip insightface facexlib
@@ -42,6 +42,7 @@ pipe.to("cuda")
 ```
 
 ## Identity-Preserving Text-to-Video
+
 For identity-preserving text-to-video, pass a text prompt and an image contain clear face (e.g., preferably half-body or full-body). By default, ConsisID generates a 720x480 video for the best results.
 
 ```python
