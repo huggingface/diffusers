@@ -318,10 +318,8 @@ class CogView4DDIMScheduler(SchedulerMixin, ConfigMixin):
         # Generate timesteps according to the specified spacing method
         if self.config.timestep_spacing == "linspace":
             timesteps = (
-                np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps)
-                .round()[::-1]
-                .copy()
-                .astype(np.int64)
+                np.linspace(self.config.num_train_timesteps, 1, num_inference_steps)
+                .astype(np.int64)  # Only for CogView4
             )
         elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
@@ -338,28 +336,6 @@ class CogView4DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # Convert the numpy array of timesteps into a PyTorch tensor
         self.timesteps = torch.from_numpy(timesteps).to(device)
-
-        # ===== change for cogview4 ====
-        # The new dynamic shifting code starts here.
-
-        # Convert integer timesteps to float for further manipulation
-        times_float = self.timesteps.float() / float(self.config.num_train_timesteps)
-
-        # Apply the shift_scale factor
-        times_float = self.config.shift_scale * times_float
-
-        # Convert the shifted floats back to integer indices for timesteps
-        new_timesteps = (times_float * self.config.num_train_timesteps).round().long().clamp_min(0)
-
-        # Ensure the timesteps are in descending order and unique
-        new_timesteps = new_timesteps.unique().flip(0)
-        if len(new_timesteps) == 0:
-            # If all values somehow got collapsed, fallback to a single timestep
-            new_timesteps = torch.zeros(1, dtype=torch.long, device=device)
-
-        # Overwrite the original timesteps with our newly shifted timesteps
-        self.timesteps = new_timesteps
-        # =====
 
     def step(
         self,

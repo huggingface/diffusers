@@ -231,7 +231,7 @@ def main(args):
             "prediction_type": "v_prediction",
             "rescale_betas_zero_snr": True,
             "set_alpha_to_one": True,
-            "timestep_spacing": "trailing",
+            "timestep_spacing": "linspace",
         }
     )
 
