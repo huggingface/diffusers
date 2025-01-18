@@ -1665,4 +1665,5 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         if not return_dict:
             return (image,)
 
-        return StableDiffusionXLPipelineOutput(images=image)
+        # thesea modified for safety checker output
+        return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected = [False]*len(image))
