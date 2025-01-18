@@ -61,7 +61,8 @@ from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutpu
 if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
-from .safety_checker import StableDiffusionSafetyChecker # # thesea modified for safty checker
+from .safety_checker import StableDiffusionSafetyChecker # thesea modified for safty checker
+
 
 from ...utils import is_torch_xla_available
 
@@ -72,6 +73,7 @@ if is_torch_xla_available():
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
