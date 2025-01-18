@@ -1662,8 +1662,9 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         # Offload all models
         self.maybe_free_model_hooks()
 
+        has_nsfw_concept = [False]*len(image)
         if not return_dict:
-            return (image,)
+            return (image,has_nsfw_concept)
 
         # thesea modified for safety checker output
-        return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected = [False]*len(image))
+        return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected = has_nsfw_concept)
