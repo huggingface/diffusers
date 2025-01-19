@@ -27,7 +27,6 @@ from huggingface_hub.constants import HF_HUB_OFFLINE
 from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
-    StateDictType,
     _get_model_file,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
@@ -51,6 +50,7 @@ from ..utils import (
 if is_transformers_available():
     from transformers import PreTrainedModel
 
+    from ..models.lora import text_encoder_attn_modules, text_encoder_mlp_modules
 
 if is_peft_available():
     from peft.tuners.tuners_utils import BaseTunerLayer
@@ -356,13 +356,21 @@ def _load_lora_into_text_encoder(
             text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
             # convert state dict
-            text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict, original_type=StateDictType.DIFFUSERS)
+            text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
 
-            for name, module in text_encoder.named_modules():
-                if "lora_A" not in name and "lora_B" not in name and isinstance(module, (nn.Linear, nn.Conv2d)):
-                    rank_key = f"{name.removesuffix(".base_layer")}.lora_B.weight"
-                    if rank_key in text_encoder_lora_state_dict:
-                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+            for name, _ in text_encoder_attn_modules(text_encoder):
+                for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
+                    rank_key = f"{name}.{module}.lora_B.weight"
+                    if rank_key not in text_encoder_lora_state_dict:
+                        continue
+                    rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+
+            for name, _ in text_encoder_mlp_modules(text_encoder):
+                for module in ("fc1", "fc2"):
+                    rank_key = f"{name}.{module}.lora_B.weight"
+                    if rank_key not in text_encoder_lora_state_dict:
+                        continue
+                    rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
             if network_alphas is not None:
                 alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
