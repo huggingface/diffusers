@@ -25,9 +25,17 @@ from .hooks import HookRegistry, ModelHook
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# fmt: off
 _GROUP_OFFLOADING = "group_offloading"
 _LAYER_EXECUTION_TRACKER = "layer_execution_tracker"
 _LAZY_PREFETCH_GROUP_OFFLOADING = "lazy_prefetch_group_offloading"
+
+_SUPPORTED_PYTORCH_LAYERS = (
+    torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
+    torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
+    torch.nn.Linear,
+)
+# fmt: on
 
 
 class ModuleGroup:
@@ -61,6 +69,7 @@ class ModuleGroup:
             raise ValueError("cpu_param_dict must be provided when using stream for data transfer.")
 
     def onload_(self):
+        r"""Onloads the group of modules to the onload_device."""
         context = nullcontext() if self.stream is None else torch.cuda.stream(self.stream)
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -77,6 +86,7 @@ class ModuleGroup:
                     buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
 
     def offload_(self):
+        r"""Offloads the group of modules to the offload_device."""
         if self.stream is not None:
             for group_module in self.modules:
                 for param in group_module.parameters():
@@ -90,10 +100,6 @@ class ModuleGroup:
             if self.buffers is not None:
                 for buffer in self.buffers:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
-
-            # TODO: do we need to sync here because of GPU->CPU transfer?
-            if self.non_blocking and self.offload_device.type == "cpu":
-                torch.cpu.synchronize()
 
 
 class GroupOffloadingHook(ModelHook):
@@ -122,13 +128,20 @@ class GroupOffloadingHook(ModelHook):
         return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
+        # If there wasn't an onload_leader assigned, we assume that the submodule that first called its forward
+        # method is the onload_leader of the group.
         if self.group.onload_leader is None:
             self.group.onload_leader = module
+
+        # If the current module is the onload_leader of the group, we onload the group if it is supposed
+        # to onload itself. In the case of using prefetching with streams, we onload the next group if
+        # it is not supposed to onload itself.
         if self.group.onload_leader == module:
             if self.group.onload_self:
                 self.group.onload_()
             if self.next_group is not None and not self.next_group.onload_self:
                 self.next_group.onload_()
+
         args = send_to_device(args, self.group.onload_device, non_blocking=self.group.non_blocking)
         kwargs = send_to_device(kwargs, self.group.onload_device, non_blocking=self.group.non_blocking)
         return args, kwargs
@@ -140,6 +153,13 @@ class GroupOffloadingHook(ModelHook):
 
 
 class LazyPrefetchGroupOffloadingHook(ModelHook):
+    r"""
+    A hook, used in conjuction with GroupOffloadingHook, that applies lazy prefetching to groups of torch.nn.Module.
+    This hook is used to determine the order in which the layers are executed during the forward pass. Once the layer
+    invocation order is known, assignments of the next_group attribute for prefetching can be made, which allows
+    prefetching groups in the correct order.
+    """
+
     _is_stateful = False
 
     def __init__(self):
@@ -147,6 +167,9 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         self._layer_execution_tracker_module_names = set()
 
     def initialize_hook(self, module):
+        # To every submodule that contains a group offloading hook (at this point, no prefetching is enabled for any
+        # of the groups), we add a layer execution tracker hook that will be used to determine the order in which the
+        # layers are executed during the forward pass.
         for name, submodule in module.named_modules():
             if name == "" or not hasattr(submodule, "_diffusers_hook"):
                 continue
@@ -170,10 +193,16 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         return module
 
     def post_forward(self, module, output):
+        # At this point, for the current modules' submodules, we know the execution order of the layers. We can now
+        # remove the layer execution tracker hooks and apply prefetching by setting the next_group attribute for each
+        # group offloading hook.
         num_executed = len(self.execution_order)
         execution_order_module_names = {name for name, _ in self.execution_order}
 
-        # Check if the two sets are equal
+        # It may be possible that some layers were not executed during the forward pass. This can happen if the layer
+        # is not used in the forward pass, or if the layer is not executed due to some other reason. In such cases, we
+        # may not be able to apply prefetching in the correct order, which can lead to device-mismatch related errors
+        # if the missing layers end up being executed in the future.
         if execution_order_module_names != self._layer_execution_tracker_module_names:
             unexecuted_layers = list(self._layer_execution_tracker_module_names - execution_order_module_names)
             logger.warning(
@@ -183,14 +212,17 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
                 f"{unexecuted_layers=}"
             )
 
-        base_module_registry = HookRegistry.check_if_exists_or_initialize(module)
-        registries = [HookRegistry.check_if_exists_or_initialize(submodule) for _, submodule in self.execution_order]
+        # Remove the layer execution tracker hooks from the submodules
+        base_module_registry = module._diffusers_hook
+        registries = [submodule._diffusers_hook for _, submodule in self.execution_order]
 
         for i in range(num_executed):
             registries[i].remove_hook(_LAYER_EXECUTION_TRACKER)
 
+        # Remove the current lazy prefetch group offloading hook so that it doesn't interfere with the next forward pass
         base_module_registry.remove_hook(_LAZY_PREFETCH_GROUP_OFFLOADING)
 
+        # Apply lazy prefetching by setting required attributes
         group_offloading_hooks = [registry.get_hook(_GROUP_OFFLOADING) for registry in registries]
         if num_executed > 0:
             base_module_group_offloading_hook = base_module_registry.get_hook(_GROUP_OFFLOADING)
@@ -208,6 +240,11 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
 
 
 class LayerExecutionTrackerHook(ModelHook):
+    r"""
+    A hook that tracks the order in which the layers are executed during the forward pass by calling back to the
+    LazyPrefetchGroupOffloadingHook to update the execution order.
+    """
+
     _is_stateful = False
 
     def __init__(self, execution_order_update_callback):
@@ -258,7 +295,8 @@ def _apply_group_offloading_block_level(
     stream: Optional[torch.cuda.Stream] = None,
 ) -> None:
     r"""
-    This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks.
+    This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
+    the "leaf_level" offloading, which is more fine-grained, this offloading is done at the top-level blocks.
 
     Args:
         module (`torch.nn.Module`):
@@ -278,12 +316,14 @@ def _apply_group_offloading_block_level(
             for overlapping computation and data transfer.
     """
 
+    # Create a pinned CPU parameter dict for async data transfer if streams are to be used
     cpu_param_dict = None
     if stream is not None:
         for param in module.parameters():
             param.data = param.data.cpu().pin_memory()
         cpu_param_dict = {param: param.data for param in module.parameters()}
 
+    # Create module groups for ModuleList and Sequential blocks
     unmatched_modules = []
     matched_module_groups = []
     for name, submodule in module.named_children():
@@ -305,6 +345,7 @@ def _apply_group_offloading_block_level(
             )
             matched_module_groups.append(group)
 
+    # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):
         next_group = (
             matched_module_groups[i + 1] if i + 1 < len(matched_module_groups) and stream is not None else None
@@ -314,6 +355,9 @@ def _apply_group_offloading_block_level(
         for group_module in group.modules:
             _apply_group_offloading_hook(group_module, group, should_offload, next_group)
 
+    # Parameters and Buffers of the top-level module need to be offloaded/onloaded separately
+    # when the forward pass of this module is called. This is because the top-level module is not
+    # part of any group (as doing so would lead to no VRAM savings).
     parameters = []
     for name, parameter in module.named_parameters(recurse=False):
         if not any(name.startswith(unmatched_name) for unmatched_name, _ in unmatched_modules):
@@ -324,6 +368,8 @@ def _apply_group_offloading_block_level(
         if not any(name.startswith(unmatched_name) for unmatched_name, _ in unmatched_modules):
             buffers.append(buffer)
 
+    # Create a group for the unmatched submodules of the top-level module so that they are on the correct
+    # device when the forward pass is called.
     unmatched_modules = [unmatched_module for _, unmatched_module in unmatched_modules]
     unmatched_group = ModuleGroup(
         modules=unmatched_modules,
@@ -350,7 +396,10 @@ def _apply_group_offloading_leaf_level(
     stream: Optional[torch.cuda.Stream] = None,
 ) -> None:
     r"""
-    This function applies offloading to groups of leaf modules in a torch.nn.Module.
+    This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
+    requirements. However, it can be slower compared to other offloading methods due to the excessive number of device
+    synchronizations. When using devices that support streams to overlap data transfer and computation, this method can
+    reduce memory usage without any performance degradation.
 
     Args:
         module (`torch.nn.Module`):
@@ -370,14 +419,16 @@ def _apply_group_offloading_leaf_level(
             for overlapping computation and data transfer.
     """
 
+    # Create a pinned CPU parameter dict for async data transfer if streams are to be used
     cpu_param_dict = None
     if stream is not None:
         for param in module.parameters():
             param.data = param.data.cpu().pin_memory()
         cpu_param_dict = {param: param.data for param in module.parameters()}
 
-    for submodule in module.modules():
-        if len(list(submodule.children())) != 0:
+    # Create module groups for leaf modules and apply group offloading hooks
+    for name, submodule in module.named_modules():
+        if not isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
             continue
         group = ModuleGroup(
             modules=[submodule],
@@ -392,11 +443,13 @@ def _apply_group_offloading_leaf_level(
         )
         _apply_group_offloading_hook(submodule, group, True, None)
 
+    # Parameters and Buffers at all non-leaf levels need to be offloaded/onloaded separately when the forward pass
+    # of the module is called
     parameters = []
     buffers = []
 
     def gather_non_module_parameters_and_buffers(m: torch.nn.Module):
-        if len(list(m.children())) == 0:
+        if isinstance(m, _SUPPORTED_PYTORCH_LAYERS):
             return
         for parameter in m.parameters(recurse=False):
             parameters.append(parameter)
@@ -420,6 +473,9 @@ def _apply_group_offloading_leaf_level(
         onload_self=True,
     )
 
+    # When using streams, we need to know the layer execution order for applying prefetching (to overlap data transfer
+    # and computation). Since we don't know the order beforehand, we apply a lazy prefetching hook that will find the
+    # execution order and apply prefetching in the correct order.
     if stream is None:
         _apply_group_offloading_hook(module, unmatched_group, force_offload, None)
     else:

@@ -159,9 +159,7 @@ class HookRegistry:
         self._fn_refs.append(fn_ref)
 
     def get_hook(self, name: str) -> Optional[ModelHook]:
-        if name not in self.hooks.keys():
-            return None
-        return self.hooks[name]
+        return self.hooks.get(name, None)
 
     def remove_hook(self, name: str, recurse: bool = True) -> None:
         num_hooks = len(self._hook_order)
