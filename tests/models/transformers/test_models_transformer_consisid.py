@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import CogView3PlusTransformer2DModel
+from diffusers import ConsisIDTransformer3DModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     torch_device,
@@ -29,35 +29,33 @@ from ..test_modeling_common import ModelTesterMixin
 enable_full_determinism()
 
 
-class CogView3PlusTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = CogView3PlusTransformer2DModel
+class ConsisIDTransformerTests(ModelTesterMixin, unittest.TestCase):
+    model_class = ConsisIDTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
-    model_split_percents = [0.7, 0.6, 0.6]
 
     @property
     def dummy_input(self):
         batch_size = 2
         num_channels = 4
+        num_frames = 1
         height = 8
         width = 8
         embedding_dim = 8
         sequence_length = 8
 
-        hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
+        hidden_states = torch.randn((batch_size, num_frames, num_channels, height, width)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        original_size = torch.tensor([height * 8, width * 8]).unsqueeze(0).repeat(batch_size, 1).to(torch_device)
-        target_size = torch.tensor([height * 8, width * 8]).unsqueeze(0).repeat(batch_size, 1).to(torch_device)
-        crop_coords = torch.tensor([0, 0]).unsqueeze(0).repeat(batch_size, 1).to(torch_device)
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
+        id_vit_hidden = [torch.ones([batch_size, 2, 2]).to(torch_device)] * 1
+        id_cond = torch.ones(batch_size, 2).to(torch_device)
 
         return {
             "hidden_states": hidden_states,
             "encoder_hidden_states": encoder_hidden_states,
-            "original_size": original_size,
-            "target_size": target_size,
-            "crop_coords": crop_coords,
             "timestep": timestep,
+            "id_vit_hidden": id_vit_hidden,
+            "id_cond": id_cond,
         }
 
     @property
@@ -70,21 +68,38 @@ class CogView3PlusTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "patch_size": 2,
-            "in_channels": 4,
-            "num_layers": 2,
-            "attention_head_dim": 4,
             "num_attention_heads": 2,
+            "attention_head_dim": 8,
+            "in_channels": 4,
             "out_channels": 4,
+            "time_embed_dim": 2,
             "text_embed_dim": 8,
-            "time_embed_dim": 8,
-            "condition_dim": 2,
-            "pos_embed_max_size": 8,
-            "sample_size": 8,
+            "num_layers": 1,
+            "sample_width": 8,
+            "sample_height": 8,
+            "sample_frames": 8,
+            "patch_size": 2,
+            "temporal_compression_ratio": 4,
+            "max_text_seq_length": 8,
+            "cross_attn_interval": 1,
+            "is_kps": False,
+            "is_train_face": True,
+            "cross_attn_dim_head": 1,
+            "cross_attn_num_heads": 1,
+            "LFE_id_dim": 2,
+            "LFE_vit_dim": 2,
+            "LFE_depth": 5,
+            "LFE_dim_head": 8,
+            "LFE_num_heads": 2,
+            "LFE_num_id_token": 1,
+            "LFE_num_querie": 1,
+            "LFE_output_dim": 10,
+            "LFE_ff_mult": 1,
+            "LFE_num_scale": 1,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"CogView3PlusTransformer2DModel"}
+        expected_set = {"ConsisIDTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
