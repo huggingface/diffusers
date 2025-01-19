@@ -812,6 +812,8 @@ def main(args):
         for name, module in flux_transformer.named_modules():
             if "transformer_blocks" in name:
                 module.requires_grad_(True)
+            else:
+                module.requirs_grad_(False)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
