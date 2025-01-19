@@ -1635,10 +1635,17 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 in_features = state_dict[lora_A_weight_name].shape[1]
                 out_features = state_dict[lora_B_weight_name].shape[0]
 
+                # Model maybe loaded with different quantization schemes which may flatten the params.
+                # `bitsandbytes`, for example, flatten the weights when using 4bit. 8bit bnb models
+                # preserve weight shape.
+                module_weight_shape = cls._calculate_module_shape(model=transformer, base_module=module)
+
                 # This means there's no need for an expansion in the params, so we simply skip.
-                if tuple(module_weight.shape) == (out_features, in_features):
+                if tuple(module_weight_shape) == (out_features, in_features):
                     continue
 
+                # TODO (sayakpaul): We still need to consider if the module we're expanding is
+                # quantized and handle it accordingly if that is the case.
                 module_out_features, module_in_features = module_weight.shape
                 debug_message = ""
                 if in_features > module_in_features:
@@ -1735,13 +1742,16 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             base_weight_param = transformer_state_dict[base_param_name]
             lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
 
-            if base_weight_param.shape[1] > lora_A_param.shape[1]:
+            # TODO (sayakpaul): Handle the cases when we actually need to expand when using quantization.
+            base_module_shape = cls._calculate_module_shape(model=transformer, base_weight_param_name=base_param_name)
+
+            if base_module_shape[1] > lora_A_param.shape[1]:
                 shape = (lora_A_param.shape[0], base_weight_param.shape[1])
                 expanded_state_dict_weight = torch.zeros(shape, device=base_weight_param.device)
                 expanded_state_dict_weight[:, : lora_A_param.shape[1]].copy_(lora_A_param)
                 lora_state_dict[f"{prefix}{k}.lora_A.weight"] = expanded_state_dict_weight
                 expanded_module_names.add(k)
-            elif base_weight_param.shape[1] < lora_A_param.shape[1]:
+            elif base_module_shape[1] < lora_A_param.shape[1]:
                 raise NotImplementedError(
                     f"This LoRA param ({k}.lora_A.weight) has an incompatible shape {lora_A_param.shape}. Please open an issue to file for a feature request - https://github.com/huggingface/diffusers/issues/new."
                 )
