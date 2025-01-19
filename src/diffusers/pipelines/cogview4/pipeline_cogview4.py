@@ -582,19 +582,18 @@ class CogView4Pipeline(DiffusionPipeline):
             device=device,
         )
         if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=1)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
-
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
-                self.transformer.config.patch_size ** 2
+            self.transformer.config.patch_size**2
         )
         mu = calculate_shift(image_seq_len)
         sigmas = timesteps / self.scheduler.config.num_train_timesteps
         sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])  # Append zero at the end
 
-        self.sigmas = time_shift(mu, 1.0, sigmas) # This is for noisy contr
+        self.sigmas = time_shift(mu, 1.0, sigmas).to(torch.long).to("cpu")  # This is for noisy control of cogview4
 
         self._num_timesteps = len(timesteps)
 
@@ -630,89 +629,26 @@ class CogView4Pipeline(DiffusionPipeline):
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             # for DPM-solver++
             old_pred_original_sample = None
-            # for i, t in enumerate(timesteps):
-            #     if self.interrupt:
-            #         continue
-            #
-            #     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-            #     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-            #
-            #     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-            #     timestep = t.expand(latent_model_input.shape[0])
-            #
-            #     # predict noise model_output
-            #     noise_pred = self.transformer(
-            #         hidden_states=latent_model_input,
-            #         encoder_hidden_states=prompt_embeds,
-            #         timestep=timestep,
-            #         original_size=original_size,
-            #         target_size=target_size,
-            #         crop_coords=crops_coords_top_left,
-            #         return_dict=False,
-            #     )[0]
-            #     noise_pred = noise_pred.float()
-            #
-            #     # perform guidance
-            #     if self.do_classifier_free_guidance:
-            #         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            #         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-            #
-            #     # compute the previous noisy sample x_t -> x_t-1
-            #     if not isinstance(self.scheduler, CogView4DDIMScheduler):
-            #         latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-            #     else:
-            #         latents, old_pred_original_sample = self.scheduler.step(
-            #             model_output=noise_pred,
-            #             timestep=t,
-            #             sample=latents,
-            #             **extra_step_kwargs,
-            #             return_dict=False,
-            #         )
-            #     latents = latents.to(prompt_embeds.dtype)
-            #
-            #     # call the callback, if provided
-            #     if callback_on_step_end is not None:
-            #         callback_kwargs = {}
-            #         for k in callback_on_step_end_tensor_inputs:
-            #             callback_kwargs[k] = locals()[k]
-            #         callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-            #
-            #         latents = callback_outputs.pop("latents", latents)
-            #         prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-            #         negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-            #
-            #     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-            #         progress_bar.update()
-            #
-            #     if XLA_AVAILABLE:
-            #         xm.mark_step()
-            # 假设 sigmas 已经计算好了，和之前的步骤一样
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
-                # 获取当前的 sigma 和下一个时间步的 sigma
-                sigma = sigmas[i]
-                sigma_next = sigmas[i + 1] if i + 1 < len(sigmas) else sigma  # 防止越界
-
-                # 根据 sigmas 修改 latent 模型输入
-                latent_model_input = latents * sigma  # 使用当前 sigma 调整 latents
-                latent_model_input = torch.cat(
-                    [latent_model_input] * 2) if self.do_classifier_free_guidance else latent_model_input
+                # latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = latents  # For CogView4 concat the text embed and only use prompt
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # 广播到 batch 维度，以便与 ONNX/Core ML 兼容
-                timestep = t.expand(latent_model_input.shape[0])
+                # Use sigma instead of timestep directly
+                sigma = self.sigmas[i]  # Get the corresponding sigma value
+                timestep = sigma.expand(latent_model_input.shape[0]).to(device)  # Use sigma to scale the timestep
 
-                # 预测噪声
+                # predict noise model_output using sigma
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
-                    timestep=timestep,
+                    timestep=timestep,  # Pass sigma as timestep for noise prediction
                     original_size=original_size,
                     target_size=target_size,
                     crop_coords=crops_coords_top_left,
@@ -720,23 +656,32 @@ class CogView4Pipeline(DiffusionPipeline):
                 )[0]
                 noise_pred = noise_pred.float()
 
-                # 执行引导
+                # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # 根据预测的噪声和 sigmas 更新 latents
-                latents = latents + (sigma_next - sigma) * noise_pred  # 使用 sigmas 计算新的 latents
-
-                # 或者使用更新后的 latents 进行下一步计算
+                # compute the previous noisy sample x_t -> x_t-1 using sigma (not timestep)
+                if not isinstance(self.scheduler, CogView4DDIMScheduler):
+                    latents = self.scheduler.step(noise_pred, sigma, latents, **extra_step_kwargs, return_dict=False)[
+                        0
+                    ]
+                else:
+                    latents, old_pred_original_sample = self.scheduler.step(
+                        model_output=noise_pred,
+                        timestep=sigma,  # Use sigma here as timestep
+                        sample=latents,
+                        **extra_step_kwargs,
+                        return_dict=False,
+                    )
                 latents = latents.to(prompt_embeds.dtype)
 
-                # 如果有回调，执行回调
+                # call the callback, if provided
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    callback_outputs = callback_on_step_end(self, i, sigma, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
@@ -747,6 +692,7 @@ class CogView4Pipeline(DiffusionPipeline):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
                 0
