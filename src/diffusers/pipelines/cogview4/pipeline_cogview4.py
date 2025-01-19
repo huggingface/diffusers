@@ -311,6 +311,24 @@ class CogView4Pipeline(DiffusionPipeline):
                 device=device,
                 dtype=dtype,
             )
+
+        #TODO: 先pad 0 ，后续再处理不同长度的问题
+        seq_len_prompt = prompt_embeds.shape[1]
+        seq_len_neg = negative_prompt_embeds.shape[1]
+        if seq_len_neg < seq_len_prompt:
+                # 创建一个新的张量，大小为 [batch_size, seq_len_prompt, hidden_size]
+                batch_size = negative_prompt_embeds.shape[0]
+                hidden_size = negative_prompt_embeds.shape[2]
+                # 填充后的张量
+                padded_negative_prompt_embeds = torch.zeros(
+                    batch_size,
+                    seq_len_prompt,
+                    hidden_size,
+                    dtype=negative_prompt_embeds.dtype,
+                    device=negative_prompt_embeds.device
+                )
+                padded_negative_prompt_embeds[:, :seq_len_neg, :] = negative_prompt_embeds
+                negative_prompt_embeds = padded_negative_prompt_embeds
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
@@ -582,7 +600,7 @@ class CogView4Pipeline(DiffusionPipeline):
             device=device,
         )
         if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=1)
+            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -594,7 +612,6 @@ class CogView4Pipeline(DiffusionPipeline):
         sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])  # Append zero at the end
 
         self.sigmas = time_shift(mu, 1.0, sigmas).to(torch.long).to("cpu")  # This is for noisy control of cogview4
-
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents.
@@ -635,11 +652,8 @@ class CogView4Pipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
-                # latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                latent_model_input = latents  # For CogView4 concat the text embed and only use prompt
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
                 # Use sigma instead of timestep directly
                 sigma = self.sigmas[i]  # Get the corresponding sigma value
                 timestep = sigma.expand(latent_model_input.shape[0]).to(device)  # Use sigma to scale the timestep

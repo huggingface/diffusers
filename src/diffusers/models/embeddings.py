@@ -812,6 +812,75 @@ class CogView3PlusPatchEmbed(nn.Module):
 
         return (hidden_states + pos_embed).to(hidden_states.dtype)
 
+class CogView4PatchEmbed(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 16,
+        hidden_size: int = 2560,
+        patch_size: int = 2,
+        text_hidden_size: int = 4096,
+        pos_embed_max_size: int = 128,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.hidden_size = hidden_size
+        self.patch_size = patch_size
+        self.text_hidden_size = text_hidden_size
+        self.pos_embed_max_size = pos_embed_max_size
+        # Linear projection for image patches
+        self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
+
+        # Linear projection for text embeddings
+        self.text_proj = nn.Linear(text_hidden_size, hidden_size)
+        #TODO：这里需要改成RotaryEmbed
+        pos_embed = get_2d_sincos_pos_embed(
+            hidden_size, pos_embed_max_size, base_size=pos_embed_max_size, output_type="pt"
+        )
+        pos_embed = pos_embed.reshape(pos_embed_max_size, pos_embed_max_size, hidden_size)
+        self.register_buffer("pos_embed", pos_embed.float(), persistent=False)
+
+    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
+        batch_size, channel, height, width = hidden_states.shape
+
+        if height % self.patch_size != 0 or width % self.patch_size != 0:
+            raise ValueError("Height and width must be divisible by patch size")
+
+        height = height // self.patch_size
+        width = width // self.patch_size
+        hidden_states = hidden_states.view(batch_size, channel, height, self.patch_size, width, self.patch_size)
+        hidden_states = hidden_states.permute(0, 2, 4, 1, 3, 5).contiguous()
+        hidden_states = hidden_states.view(batch_size, height * width, channel * self.patch_size * self.patch_size)
+
+        # Project the patches
+        hidden_states = self.proj(hidden_states)
+        prompt_encoder_hidden_states = []
+        negative_prompt_encoder_hidden_states = []
+
+        for i in range(0, batch_size, 2):
+            prompt_embeds = encoder_hidden_states[i, :, :]  # [seq_len, hidden_size]
+            negative_embeds = encoder_hidden_states[i + 1, :, :]  # [seq_len, hidden_size]
+            mask = negative_embeds.abs().sum(dim=-1) > 0
+            seq_len_neg = mask.sum().item()  # 非零部分的数量
+            negative_embeds_valid = negative_embeds[:seq_len_neg, :]  # [seq_len_neg, hidden_size]
+            prompt_encoder_hidden_states.append(prompt_embeds)
+            negative_prompt_encoder_hidden_states.append(negative_embeds_valid)
+        prompt_encoder_hidden_states = torch.stack(prompt_encoder_hidden_states, dim=0)
+        negative_prompt_encoder_hidden_states = torch.stack(negative_prompt_encoder_hidden_states, dim=0)
+        prompt_text_length = prompt_encoder_hidden_states.shape[1]
+        negative_prompt_text_length =  negative_prompt_encoder_hidden_states.shape[1]
+        image_pos_embed = self.pos_embed[:height, :width].reshape(height * width, -1)
+        prompt_text_pos_embed = torch.zeros(
+            (prompt_text_length, self.hidden_size), dtype=image_pos_embed.dtype, device=image_pos_embed.device
+        )
+        negative_prompt_text_pos_embed = torch.zeros(
+            (negative_prompt_text_length, self.hidden_size), dtype=image_pos_embed.dtype, device=image_pos_embed.device
+        )
+        prompt_pos_embed = torch.cat([prompt_text_pos_embed, image_pos_embed], dim=0)[None, ...]
+        negative_prompt_pos_embed = torch.cat([negative_prompt_text_pos_embed, image_pos_embed], dim=0)[None, ...]
+        # TODO: 拼接哼一个完整的 pos_embed 以及拼接 Rope Embed
+        pos_embed = torch.cat([prompt_pos_embed, negative_prompt_pos_embed], dim=0)
+        hidden_states = hidden_states + pos_embed.to(hidden_states.dtype)
+        return hidden_states
 
 def get_3d_rotary_pos_embed(
     embed_dim,
