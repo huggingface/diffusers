@@ -1342,16 +1342,13 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
     _lora_loadable_modules = ["transformer"]
     transformer_name = TRANSFORMER_NAME
-    text_encoder_name = TEXT_ENCODER_NAME
-    _control_lora_supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.lora_state_dict
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        return_alphas: bool = False,
         **kwargs,
     ):
         r"""
@@ -1435,84 +1432,43 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        # TODO (sayakpaul): to a follow-up to clean and try to unify the conditions.
-        is_kohya = any(".lora_down.weight" in k for k in state_dict)
-        if is_kohya:
-            state_dict = _convert_kohya_flux_lora_to_diffusers(state_dict)
-            # Kohya already takes care of scaling the LoRA parameters with alpha.
-            return (state_dict, None) if return_alphas else state_dict
+        return state_dict
 
-        is_xlabs = any("processor" in k for k in state_dict)
-        if is_xlabs:
-            state_dict = _convert_xlabs_flux_lora_to_diffusers(state_dict)
-            # xlabs doesn't use `alpha`.
-            return (state_dict, None) if return_alphas else state_dict
-
-        is_bfl_control = any("query_norm.scale" in k for k in state_dict)
-        if is_bfl_control:
-            state_dict = _convert_bfl_flux_control_lora_to_diffusers(state_dict)
-            return (state_dict, None) if return_alphas else state_dict
-
-        # For state dicts like
-        # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA
-        keys = list(state_dict.keys())
-        network_alphas = {}
-        for k in keys:
-            if "alpha" in k:
-                alpha_value = state_dict.get(k)
-                if (torch.is_tensor(alpha_value) and torch.is_floating_point(alpha_value)) or isinstance(
-                    alpha_value, float
-                ):
-                    network_alphas[k] = state_dict.pop(k)
-                else:
-                    raise ValueError(
-                        f"The alpha key ({k}) seems to be incorrect. If you think this error is unexpected, please open as issue."
-                    )
-
-        if return_alphas:
-            return state_dict, network_alphas
-        else:
-            return state_dict
-
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.load_lora_weights
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
     ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`.
-
-        All kwargs are forwarded to `self.lora_state_dict`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
-
+        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
+        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
         dict is loaded into `self.transformer`.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
             low_cpu_mem_usage (`bool`, *optional*):
-                `Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            kwargs (`dict`, *optional*):
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -1522,251 +1478,24 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(
-            pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
-        )
+        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
-        has_lora_keys = any("lora" in key for key in state_dict.keys())
-
-        # Flux Control LoRAs also have norm keys
-        has_norm_keys = any(
-            norm_key in key for key in state_dict.keys() for norm_key in self._control_lora_supported_norm_keys
-        )
-
-        if not (has_lora_keys or has_norm_keys):
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        transformer_lora_state_dict = {
-            k: state_dict.pop(k) for k in list(state_dict.keys()) if "transformer." in k and "lora" in k
-        }
-        transformer_norm_state_dict = {
-            k: state_dict.pop(k)
-            for k in list(state_dict.keys())
-            if "transformer." in k and any(norm_key in k for norm_key in self._control_lora_supported_norm_keys)
-        }
-
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        has_param_with_expanded_shape = self._maybe_expand_transformer_param_shape_or_error_(
-            transformer, transformer_lora_state_dict, transformer_norm_state_dict
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
-        if has_param_with_expanded_shape:
-            logger.info(
-                "The LoRA weights contain parameters that have different shapes that expected by the transformer. "
-                "As a result, the state_dict of the transformer has been expanded to match the LoRA parameter shapes. "
-                "To get a comprehensive list of parameter names that were modified, enable debug logging."
-            )
-        transformer_lora_state_dict = self._maybe_expand_lora_state_dict(
-            transformer=transformer, lora_state_dict=transformer_lora_state_dict
-        )
-
-        if len(transformer_lora_state_dict) > 0:
-            self.load_lora_into_transformer(
-                transformer_lora_state_dict,
-                network_alphas=network_alphas,
-                transformer=transformer,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
-
-        if len(transformer_norm_state_dict) > 0:
-            transformer._transformer_norm_layers = self._load_norm_into_transformer(
-                transformer_norm_state_dict,
-                transformer=transformer,
-                discard_original_layers=False,
-            )
-
-        text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
-        if len(text_encoder_state_dict) > 0:
-            self.load_lora_into_text_encoder(
-                text_encoder_state_dict,
-                network_alphas=network_alphas,
-                text_encoder=self.text_encoder,
-                prefix="text_encoder",
-                lora_scale=self.lora_scale,
-                adapter_name=adapter_name,
-                _pipeline=self,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
-
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin._maybe_expand_transformer_param_shape_or_error_
-    def _maybe_expand_transformer_param_shape_or_error_(
-        cls,
-        transformer: torch.nn.Module,
-        lora_state_dict=None,
-        norm_state_dict=None,
-        prefix=None,
-    ) -> bool:
-        """
-        Control LoRA expands the shape of the input layer from (3072, 64) to (3072, 128). This method handles that and
-        generalizes things a bit so that any parameter that needs expansion receives appropriate treatement.
-        """
-        state_dict = {}
-        if lora_state_dict is not None:
-            state_dict.update(lora_state_dict)
-        if norm_state_dict is not None:
-            state_dict.update(norm_state_dict)
-
-        # Remove prefix if present
-        prefix = prefix or cls.transformer_name
-        for key in list(state_dict.keys()):
-            if key.split(".")[0] == prefix:
-                state_dict[key[len(f"{prefix}.") :]] = state_dict.pop(key)
-
-        # Expand transformer parameter shapes if they don't match lora
-        has_param_with_shape_update = False
-        overwritten_params = {}
-
-        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
-        for name, module in transformer.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                module_weight = module.weight.data
-                module_bias = module.bias.data if module.bias is not None else None
-                bias = module_bias is not None
-
-                lora_base_name = name.replace(".base_layer", "") if is_peft_loaded else name
-                lora_A_weight_name = f"{lora_base_name}.lora_A.weight"
-                lora_B_weight_name = f"{lora_base_name}.lora_B.weight"
-                if lora_A_weight_name not in state_dict:
-                    continue
-
-                in_features = state_dict[lora_A_weight_name].shape[1]
-                out_features = state_dict[lora_B_weight_name].shape[0]
-
-                # Model maybe loaded with different quantization schemes which may flatten the params.
-                # `bitsandbytes`, for example, flatten the weights when using 4bit. 8bit bnb models
-                # preserve weight shape.
-                module_weight_shape = cls._calculate_module_shape(model=transformer, base_module=module)
-
-                # This means there's no need for an expansion in the params, so we simply skip.
-                if tuple(module_weight_shape) == (out_features, in_features):
-                    continue
-
-                # TODO (sayakpaul): We still need to consider if the module we're expanding is
-                # quantized and handle it accordingly if that is the case.
-                module_out_features, module_in_features = module_weight.shape
-                debug_message = ""
-                if in_features > module_in_features:
-                    debug_message += (
-                        f'Expanding the nn.Linear input/output features for module="{name}" because the provided LoRA '
-                        f"checkpoint contains higher number of features than expected. The number of input_features will be "
-                        f"expanded from {module_in_features} to {in_features}"
-                    )
-                if out_features > module_out_features:
-                    debug_message += (
-                        ", and the number of output features will be "
-                        f"expanded from {module_out_features} to {out_features}."
-                    )
-                else:
-                    debug_message += "."
-                if debug_message:
-                    logger.debug(debug_message)
-
-                if out_features > module_out_features or in_features > module_in_features:
-                    has_param_with_shape_update = True
-                    parent_module_name, _, current_module_name = name.rpartition(".")
-                    parent_module = transformer.get_submodule(parent_module_name)
-
-                    with torch.device("meta"):
-                        expanded_module = torch.nn.Linear(
-                            in_features, out_features, bias=bias, dtype=module_weight.dtype
-                        )
-                    # Only weights are expanded and biases are not. This is because only the input dimensions
-                    # are changed while the output dimensions remain the same. The shape of the weight tensor
-                    # is (out_features, in_features), while the shape of bias tensor is (out_features,), which
-                    # explains the reason why only weights are expanded.
-                    new_weight = torch.zeros_like(
-                        expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
-                    )
-                    slices = tuple(slice(0, dim) for dim in module_weight.shape)
-                    new_weight[slices] = module_weight
-                    tmp_state_dict = {"weight": new_weight}
-                    if module_bias is not None:
-                        tmp_state_dict["bias"] = module_bias
-                    expanded_module.load_state_dict(tmp_state_dict, strict=True, assign=True)
-
-                    setattr(parent_module, current_module_name, expanded_module)
-
-                    del tmp_state_dict
-
-                    if current_module_name in _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX:
-                        attribute_name = _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX[current_module_name]
-                        new_value = int(expanded_module.weight.data.shape[1])
-                        old_value = getattr(transformer.config, attribute_name)
-                        setattr(transformer.config, attribute_name, new_value)
-                        logger.info(
-                            f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}."
-                        )
-
-                    # For `unload_lora_weights()`.
-                    # TODO: this could lead to more memory overhead if the number of overwritten params
-                    # are large. Should be revisited later and tackled through a `discard_original_layers` arg.
-                    overwritten_params[f"{current_module_name}.weight"] = module_weight
-                    if module_bias is not None:
-                        overwritten_params[f"{current_module_name}.bias"] = module_bias
-
-        if len(overwritten_params) > 0:
-            transformer._overwritten_params = overwritten_params
-
-        return has_param_with_shape_update
-
-    @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin._maybe_expand_lora_state_dict
-    def _maybe_expand_lora_state_dict(cls, transformer, lora_state_dict):
-        expanded_module_names = set()
-        transformer_state_dict = transformer.state_dict()
-        prefix = f"{cls.transformer_name}."
-
-        lora_module_names = [
-            key[: -len(".lora_A.weight")] for key in lora_state_dict if key.endswith(".lora_A.weight")
-        ]
-        lora_module_names = [name[len(prefix) :] for name in lora_module_names if name.startswith(prefix)]
-        lora_module_names = sorted(set(lora_module_names))
-        transformer_module_names = sorted({name for name, _ in transformer.named_modules()})
-        unexpected_modules = set(lora_module_names) - set(transformer_module_names)
-        if unexpected_modules:
-            logger.debug(f"Found unexpected modules: {unexpected_modules}. These will be ignored.")
-
-        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
-        for k in lora_module_names:
-            if k in unexpected_modules:
-                continue
-
-            base_param_name = (
-                f"{k.replace(prefix, '')}.base_layer.weight"
-                if is_peft_loaded and f"{k.replace(prefix, '')}.base_layer.weight" in transformer_state_dict
-                else f"{k.replace(prefix, '')}.weight"
-            )
-            base_weight_param = transformer_state_dict[base_param_name]
-            lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
-
-            # TODO (sayakpaul): Handle the cases when we actually need to expand when using quantization.
-            base_module_shape = cls._calculate_module_shape(model=transformer, base_weight_param_name=base_param_name)
-
-            if base_module_shape[1] > lora_A_param.shape[1]:
-                shape = (lora_A_param.shape[0], base_weight_param.shape[1])
-                expanded_state_dict_weight = torch.zeros(shape, device=base_weight_param.device)
-                expanded_state_dict_weight[:, : lora_A_param.shape[1]].copy_(lora_A_param)
-                lora_state_dict[f"{prefix}{k}.lora_A.weight"] = expanded_state_dict_weight
-                expanded_module_names.add(k)
-            elif base_module_shape[1] < lora_A_param.shape[1]:
-                raise NotImplementedError(
-                    f"This LoRA param ({k}.lora_A.weight) has an incompatible shape {lora_A_param.shape}. Please open an issue to file for a feature request - https://github.com/huggingface/diffusers/issues/new."
-                )
-
-        if expanded_module_names:
-            logger.info(
-                f"The following LoRA modules were zero padded to match the state dict of {cls.transformer_name}: {expanded_module_names}. Please open an issue if you think this was unexpected - https://github.com/huggingface/diffusers/issues/new."
-            )
-
-        return lora_state_dict
-
-    @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.load_lora_into_transformer with FluxTransformer2DModel->AuraFlowTransformer2DModel
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->AuraFlowTransformer2DModel
     def load_lora_into_transformer(
-        cls, state_dict, network_alphas, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1776,10 +1505,6 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The keys can either be indexed directly
                 into the unet or prefixed with an additional `unet` which can be used to distinguish between text
                 encoder lora layers.
-            network_alphas (`Dict[str, float]`):
-                The value of the network alpha used for stable learning and preventing underflow. This value has the
-                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
-                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             transformer (`AuraFlowTransformer2DModel`):
                 The Transformer model to load the LoRA layers into.
             adapter_name (`str`, *optional*):
@@ -1789,81 +1514,27 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
         """
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
         # Load the layers corresponding to transformer.
-        keys = list(state_dict.keys())
-        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
-        if transformer_present:
-            logger.info(f"Loading {cls.transformer_name}.")
-            transformer.load_lora_adapter(
-                state_dict,
-                network_alphas=network_alphas,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
-
-    @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
-    def load_lora_into_text_encoder(
-        cls,
-        state_dict,
-        network_alphas,
-        text_encoder,
-        prefix=None,
-        lora_scale=1.0,
-        adapter_name=None,
-        _pipeline=None,
-        low_cpu_mem_usage=False,
-    ):
-        """
-        This will load the LoRA layers specified in `state_dict` into `text_encoder`
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The key should be prefixed with an
-                additional `text_encoder` to distinguish between unet lora layers.
-            network_alphas (`Dict[str, float]`):
-                The value of the network alpha used for stable learning and preventing underflow. This value has the
-                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
-                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
-            text_encoder (`CLIPTextModel`):
-                The text encoder model to load the LoRA layers into.
-            prefix (`str`):
-                Expected prefix of the `text_encoder` in the `state_dict`.
-            lora_scale (`float`):
-                How much to scale the output of the lora linear layer before it is added with the output of the regular
-                lora layer.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-        """
-        _load_lora_into_text_encoder(
-            state_dict=state_dict,
-            network_alphas=network_alphas,
-            lora_scale=lora_scale,
-            text_encoder=text_encoder,
-            prefix=prefix,
-            text_encoder_name=cls.text_encoder_name,
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
             adapter_name=adapter_name,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights with unet->transformer
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights with unet->transformer
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
         transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1877,9 +1548,6 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
             transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `transformer`.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -1893,14 +1561,11 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         """
         state_dict = {}
 
-        if not (transformer_lora_layers or text_encoder_lora_layers):
-            raise ValueError("You must pass at least one of `transformer_lora_layers` and `text_encoder_lora_layers`.")
+        if not transformer_lora_layers:
+            raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
-
-        if text_encoder_lora_layers:
-            state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -1912,7 +1577,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.fuse_lora
+    # Copied from diffusers.loaders.lora_pipeline.Mochi1LoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -1952,24 +1617,11 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         pipeline.fuse_lora(lora_scale=0.7)
         ```
         """
-
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        if (
-            hasattr(transformer, "_transformer_norm_layers")
-            and isinstance(transformer._transformer_norm_layers, dict)
-            and len(transformer._transformer_norm_layers.keys()) > 0
-        ):
-            logger.info(
-                "The provided state dict contains normalization layers in addition to LoRA layers. The normalization layers will be directly updated the state_dict of the transformer "
-                "as opposed to the LoRA layers that will co-exist separately until the 'fuse_lora()' method is called. That is to say, the normalization layers will always be directly "
-                "fused into the transformer and can only be unfused if `discard_original_layers=True` is passed."
-            )
-
         super().fuse_lora(
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.unfuse_lora
+    # Copied from diffusers.loaders.lora_pipeline.Mochi1LoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
         Reverses the effect of
@@ -1983,11 +1635,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
+            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        if hasattr(transformer, "_transformer_norm_layers") and transformer._transformer_norm_layers:
-            transformer.load_state_dict(transformer._transformer_norm_layers, strict=False)
-
         super().unfuse_lora(components=components)
 
     @staticmethod
