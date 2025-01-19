@@ -151,8 +151,7 @@ class HookRegistry:
         #         return hook.post_forward(module, output)
 
         new_forward = create_new_forward(fn_ref)
-        new_forward = functools.update_wrapper(functools.partial(new_forward, self._module_ref), forward)
-        self._module_ref.forward = new_forward
+        self._module_ref.forward = functools.update_wrapper(functools.partial(new_forward, self._module_ref), forward)
 
         self.hooks[name] = hook
         self._hook_order.append(name)

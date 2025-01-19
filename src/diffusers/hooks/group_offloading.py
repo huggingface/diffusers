@@ -88,6 +88,7 @@ class ModuleGroup:
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
         if self.stream is not None:
+            torch.cuda.current_stream().synchronize()
             for group_module in self.modules:
                 for param in group_module.parameters():
                     param.data = self.cpu_param_dict[param]
@@ -427,7 +428,7 @@ def _apply_group_offloading_leaf_level(
         cpu_param_dict = {param: param.data for param in module.parameters()}
 
     # Create module groups for leaf modules and apply group offloading hooks
-    for name, submodule in module.named_modules():
+    for submodule in module.modules():
         if not isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
             continue
         group = ModuleGroup(
