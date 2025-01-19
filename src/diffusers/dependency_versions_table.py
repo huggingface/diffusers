@@ -9,7 +9,7 @@ deps = {
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
-    "huggingface-hub": "huggingface-hub>=0.23.2",
+    "huggingface-hub": "huggingface-hub>=0.27.0",
     "requests-mock": "requests-mock==1.10.0",
     "importlib_metadata": "importlib_metadata",
     "invisible-watermark": "invisible-watermark>=0.2.0",
@@ -43,4 +43,5 @@ deps = {
     "transformers": "transformers>=4.41.2",
     "urllib3": "urllib3<=2.0.0",
     "black": "black",
+    "phonemizer": "phonemizer",
 }

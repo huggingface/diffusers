@@ -70,6 +70,7 @@ from .import_utils import (
     is_gguf_available,
     is_gguf_version,
     is_google_colab,
+    is_hf_hub_version,
     is_inflect_available,
     is_invisible_watermark_available,
     is_k_diffusion_available,
@@ -100,7 +101,7 @@ from .import_utils import (
     is_xformers_available,
     requires_backends,
 )
-from .loading_utils import get_module_from_name, load_image, load_video
+from .loading_utils import get_module_from_name, get_submodule_by_name, load_image, load_video
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
