@@ -198,7 +198,6 @@ def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefi
     if start_prefix + first_key in state_dict:
         return state_dict[start_prefix + first_key].dtype == model_to_load.state_dict()[first_key].dtype
 
-    # For cases when the `state_dict` doesn't contain real weights to the model (`test_model_weights_reload_no_missing_tied_weights`)
     return False
 
 
@@ -1210,6 +1209,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if len(resolved_archive_file) > 1:
             resolved_archive_file = logging.tqdm(resolved_archive_file, desc="Loading checkpoint shards")
+
         for shard_file in resolved_archive_file:
             state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
             model._fix_state_dict_keys_on_load(state_dict)

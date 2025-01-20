@@ -133,6 +133,19 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
+def _check_archive_and_maybe_raise_error(checkpoint_file, format_list):
+    """
+    Check format of the archive
+    """
+    with safetensors.safe_open(checkpoint_file, framework="pt") as f:
+        metadata = f.metadata()
+        if metadata is not None and metadata.get("format") not in format_list:
+            raise OSError(
+                f"The safetensors archive passed at {checkpoint_file} does not contain the valid metadata. Make sure "
+                "you save your model with the `save_pretrained` method."
+            )
+
+
 def load_state_dict(
     checkpoint_file: Union[str, os.PathLike],
     dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
@@ -152,14 +165,7 @@ def load_state_dict(
                 # tensors are loaded on cpu
                 with dduf_entries[checkpoint_file].as_mmap() as mm:
                     return safetensors.torch.load(mm)
-            # Check format of the archive
-            with safetensors.safe_open(checkpoint_file, framework="pt") as f:
-                metadata = f.metadata()
-                if metadata is not None and metadata.get("format") not in ["pt", "flax"]:
-                    raise OSError(
-                        f"The safetensors archive passed at {checkpoint_file} does not contain the valid metadata. Make sure "
-                        "you save your model with the `save_pretrained` method."
-                    )
+            _check_archive_and_maybe_raise_error(checkpoint_file, format_list=["pt", "flax"])
             if disable_mmap:
                 return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:

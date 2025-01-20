@@ -237,10 +237,11 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
 
     def update_device_map(self, device_map):
         if device_map is None:
-            device_map = {"": torch.cuda.current_device()}
+            device_map = {"": f"cuda:{torch.cuda.current_device()}"}
             logger.info(
                 "The device_map was not initialized. "
-                "Setting device_map to {'':torch.cuda.current_device()}. "
+                "Setting device_map to {"
+                ": f`cuda:{torch.cuda.current_device()}`}. "
                 "If you want to use the model for inference, please set device_map ='auto' "
             )
         return device_map
@@ -400,10 +401,11 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.update_device_map
     def update_device_map(self, device_map):
         if device_map is None:
-            device_map = {"": torch.cuda.current_device()}
+            device_map = {"": f"cuda:{torch.cuda.current_device()}"}
             logger.info(
                 "The device_map was not initialized. "
-                "Setting device_map to {'':torch.cuda.current_device()}. "
+                "Setting device_map to {"
+                ": f`cuda:{torch.cuda.current_device()}`}. "
                 "If you want to use the model for inference, please set device_map ='auto' "
             )
         return device_map
