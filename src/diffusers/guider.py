@@ -169,7 +169,7 @@ class CFGGuider:
             else:
                 negative_cond_input, cond_input = self._maybe_split_prepared_input(cond_input)
 
-        if not self._is_prepared_input(cond_input) and negative_cond_input is None:
+        if not self._is_prepared_input(cond_input) and self.do_classifier_free_guidance and negative_cond_input is None:
             raise ValueError(
                 "`negative_cond_input` is required when cond_input does not already contains negative conditional input"
             )
@@ -447,7 +447,7 @@ class PAGGuider:
             else:
                 negative_cond_input, cond_input = self._maybe_split_prepared_input(cond_input)
 
-        if not self._is_prepared_input(cond_input) and negative_cond_input is None:
+        if not self._is_prepared_input(cond_input) and self.do_perturbed_attention_guidance and negative_cond_input is None:
             raise ValueError(
                 "`negative_cond_input` is required when cond_input does not already contains negative conditional input"
             )
@@ -688,7 +688,7 @@ class APGGuider:
             else:
                 negative_cond_input, cond_input = self._maybe_split_prepared_input(cond_input)
 
-        if not self._is_prepared_input(cond_input) and negative_cond_input is None:
+        if not self._is_prepared_input(cond_input) and self.do_classifier_free_guidance and negative_cond_input is None:
             raise ValueError(
                 "`negative_cond_input` is required when cond_input does not already contains negative conditional input"
             )
