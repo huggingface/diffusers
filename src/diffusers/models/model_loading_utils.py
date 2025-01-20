@@ -163,7 +163,7 @@ def load_state_dict(
             if disable_mmap:
                 return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
-                return safetensors.torch.load_file(checkpoint_file, device="cpu")
+                return safetensors.torch.load_file(checkpoint_file, device=map_location)
         elif file_extension == GGUF_FILE_EXTENSION:
             return load_gguf_checkpoint(checkpoint_file)
         else:
