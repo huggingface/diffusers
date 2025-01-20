@@ -1,3 +1,5 @@
+import unittest
+
 import torch
 
 from diffusers import UnCLIPScheduler
@@ -130,8 +132,10 @@ class UnCLIPSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 258.2044983) < 1e-2
         assert abs(result_mean.item() - 0.3362038) < 1e-3
 
+    @unittest.skip("Test not supported.")
     def test_trained_betas(self):
         pass
 
+    @unittest.skip("Test not supported.")
     def test_add_noise_device(self):
         pass
