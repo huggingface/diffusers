@@ -23,13 +23,16 @@ from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
-from taming.modules.losses.vqperceptual import *
+from taming.modules.losses.vqperceptual import (
+    hinge_d_loss, vanilla_d_loss, weights_init, NLayerDiscriminator
+)
 from torchvision import transforms
 from tqdm.auto import tqdm
 
 import diffusers
 from diffusers import AutoencoderKL
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
@@ -56,6 +59,7 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
+@torch.no_grad()
 def log_validation(
     vae, args, accelerator, weight_dtype, step, is_final_validation=False
 ):
@@ -80,8 +84,8 @@ def log_validation(
 
     for i, validation_image in enumerate(args.validation_image):
         validation_image = Image.open(validation_image).convert("RGB")
-        targets = image_transforms(validation_image).to(weight_dtype)
-        targets = targets.unsqueeze(0).to(vae.device)
+        targets = image_transforms(validation_image).to(accelerator.device, weight_dtype)
+        targets = targets.unsqueeze(0)
 
         with inference_ctx:
             reconstructions = vae(targets).sample
@@ -112,15 +116,15 @@ def log_validation(
         gc.collect()
         torch.cuda.empty_cache()
 
-        return images
+    return images
 
 
 def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None):
     img_str = ""
     if images is not None:
         img_str = "You can find some example images below.\n\n"
-        image_grid(images, 1, "example").save(os.path.join(repo_folder, f"images_{i}.png"))
-        img_str += f"![images_{i})](./images_{i}.png)\n"
+        image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images.png"))
+        img_str += f"![images](./images.png)\n"
 
     model_description = f"""
 # autoencoderkl-{repo_id}
@@ -156,8 +160,13 @@ def parse_args(input_args=None):
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
-        required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--model_config_name_or_path",
+        type=str,
+        default=None,
+        help="The config of the VAE model to train, leave as None to use standard VAE model configuration.",
     )
     parser.add_argument(
         "--revision",
@@ -243,6 +252,12 @@ def parse_args(input_args=None):
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
+        "--disc_learning_rate",
+        type=float,
+        default=4.5e-6,
+        help="Initial learning rate (after the potential warmup period) to use.",
+    )
+    parser.add_argument(
         "--scale_lr",
         action="store_true",
         default=False,
@@ -250,6 +265,15 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--lr_scheduler",
+        type=str,
+        default="constant",
+        help=(
+            'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
+            ' "constant", "constant_with_warmup"]'
+        ),
+    )
+    parser.add_argument(
+        "--disc_lr_scheduler",
         type=str,
         default="constant",
         help=(
@@ -270,6 +294,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
+    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
@@ -417,7 +442,7 @@ def parse_args(input_args=None):
         help="Scaling factor for the Kullback-Leibler divergence penalty term.",
     )
     parser.add_argument(
-        "--lpips_scale",
+        "--perceptual_scale",
         type=float,
         default=0.5,
         help="Scaling factor for the LPIPS metric",
@@ -439,6 +464,12 @@ def parse_args(input_args=None):
         type=float,
         default=1.0,
         help="Scaling factor for the discriminator",
+    )
+    parser.add_argument(
+        "--disc_loss",
+        type=str,
+        default="hinge",
+        help="Loss function for the discriminator",
     )
     parser.add_argument(
         "--decoder_only",
@@ -587,19 +618,28 @@ def main(args):
             ).repo_id
     
     # Load AutoencoderKL
-    vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, revision=args.revision
-    )
-    lpips_loss_fn = lpips.LPIPS(net="vgg")
-    discriminator = NLayerDiscriminator(
-        input_nc=3, n_layers=3, use_actnorm=False,
-    ).apply(weights_init)
+    if args.pretrained_model_name_or_path is None and args.model_config_name_or_path is None:
+        config = AutoencoderKL.load_config("stabilityai/sd-vae-ft-mse")
+        vae = AutoencoderKL.from_config(config)
+    elif args.pretrained_model_name_or_path is not None:
+        vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, revision=args.revision)
+    else:
+        config = AutoencoderKL.load_config(args.model_config_name_or_path)
+        vae = AutoencoderKL.from_config(config)
+    if args.use_ema:
+        ema_vae = EMAModel(vae.parameters(), model_cls=AutoencoderKL, model_config=vae.config)
+    perceptual_loss = lpips.LPIPS(net="vgg").eval()
+    discriminator = NLayerDiscriminator(input_nc=3, n_layers=3, use_actnorm=False).apply(weights_init)
     
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             if accelerator.is_main_process:
+                if args.use_ema:
+                    sub_dir = "autoencoderkl_ema"
+                    ema_vae.save_pretrained(os.path.join(output_dir, sub_dir))
+
                 i = len(weights) - 1
 
                 while len(weights) > 0:
@@ -618,13 +658,22 @@ def main(args):
 
         def load_model_hook(models, input_dir):
             while len(models) > 0:
+                if args.use_ema:
+                    sub_dir = "autoencoderkl_ema"
+                    load_model = EMAModel.from_pretrained(os.path.join(input_dir, sub_dir), AutoencoderKL)
+                    ema_vae.load_state_dict(load_model.state_dict())
+                    ema_vae.to(accelerator.device)
+                    del load_model
+
                 # pop models so that they are not loaded again
                 model = models.pop()
-
-                # load diffusers style into model
+                load_model = NLayerDiscriminator(input_nc=3, n_layers=3, use_actnorm=False).load_state_dict(os.path.join(input_dir, "discriminator", "pytorch_model.bin"))
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+                
+                model = models.pop()
                 load_model = AutoencoderKL.from_pretrained(input_dir, subfolder="autoencoderkl")
                 model.register_to_config(**load_model.config)
-
                 model.load_state_dict(load_model.state_dict())
                 del load_model
 
@@ -638,7 +687,6 @@ def main(args):
         if getattr(vae, "quant_conv", None):
             vae.quant_conv.requires_grad_(False)
     vae.train()
-    lpips_loss_fn.requires_grad_(False)
     discriminator.requires_grad_(True)
     discriminator.train()
     
@@ -688,7 +736,7 @@ def main(args):
         optimizer_class = torch.optim.AdamW
     
     params_to_optimize = filter(lambda p: p.requires_grad, vae.parameters())
-    params_to_optimize_2 = filter(lambda p: p.requires_grad, discriminator.parameters())
+    disc_params_to_optimize = filter(lambda p: p.requires_grad, discriminator.parameters())
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -696,9 +744,9 @@ def main(args):
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-    optimizer_2 = optimizer_class(
-        params_to_optimize_2,
-        lr=args.learning_rate,
+    disc_optimizer = optimizer_class(
+        disc_params_to_optimize,
+        lr=args.disc_learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
@@ -729,10 +777,18 @@ def main(args):
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
+    disc_lr_scheduler = get_scheduler(
+        args.disc_lr_scheduler,
+        optimizer=disc_optimizer,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_cycles=args.lr_num_cycles,
+        power=args.lr_power,
+    )
     
     # Prepare everything with our `accelerator`.
-    vae, discriminator, optimizer, optimizer_2, train_dataloader, lr_scheduler = accelerator.prepare(
-        vae, discriminator, optimizer, optimizer_2, train_dataloader, lr_scheduler
+    vae, discriminator, optimizer, disc_optimizer, train_dataloader, lr_scheduler, disc_lr_scheduler = accelerator.prepare(
+        vae, discriminator, optimizer, disc_optimizer, train_dataloader, lr_scheduler, disc_lr_scheduler
     )
     
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
@@ -743,10 +799,12 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
     
-    # Move vae to device and cast to weight_dtype
+    # Move VAE, perceptual loss and discriminator to device and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
-    lpips_loss_fn.to(accelerator.device, dtype=weight_dtype)
+    perceptual_loss.to(accelerator.device, dtype=weight_dtype)
     discriminator.to(accelerator.device, dtype=weight_dtype)
+    if args.use_ema:
+        ema_vae.to(accelerator.device, dtype=weight_dtype)
     
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -812,6 +870,8 @@ def main(args):
 
     image_logs = None
     for epoch in range(first_epoch, args.num_train_epochs):
+        vae.train()
+        discriminator.train()
         for step, batch in enumerate(train_dataloader):
             # Convert images to latent space and reconstruct from them
             targets = batch["pixel_values"].to(dtype=weight_dtype)
@@ -834,9 +894,9 @@ def main(args):
                         rec_loss = F.l1_loss(reconstructions.float(), targets.float(), reduction="none")
                     # perceptual loss. The high level feature mean squared error loss
                     with torch.no_grad():
-                        lpips_loss = lpips_loss_fn(reconstructions, targets)
+                        p_loss = perceptual_loss(reconstructions, targets)
                 
-                    rec_loss = rec_loss + args.lpips_scale * lpips_loss
+                    rec_loss = rec_loss + args.perceptual_scale * p_loss
                     nll_loss = rec_loss
                     nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
 
@@ -859,10 +919,10 @@ def main(args):
                         "loss": loss.detach().mean().item(),
                         "nll_loss": nll_loss.detach().mean().item(),
                         "rec_loss": rec_loss.detach().mean().item(),
-                        "lpips_loss": lpips_loss.detach().mean().item(),
+                        "p_loss": p_loss.detach().mean().item(),
                         "kl_loss": kl_loss.detach().mean().item(),
                         "disc_weight": disc_weight.detach().mean().item(),
-                        "disc_factor": torch.tensor(disc_factor),
+                        "disc_factor": disc_factor,
                         "g_loss": g_loss.detach().mean().item(),
                         "lr": lr_scheduler.get_last_lr()[0]
                     }
@@ -878,18 +938,21 @@ def main(args):
                 with accelerator.accumulate(discriminator):
                     logits_real = discriminator(targets)
                     logits_fake = discriminator(reconstructions)
-                    disc_loss = hinge_d_loss
+                    disc_loss = hinge_d_loss if args.disc_loss == "hinge" else vanilla_d_loss
                     disc_factor = args.disc_factor if global_step >= args.disc_start else 0.0
                     disc_loss = disc_factor * disc_loss(logits_real, logits_fake)
                     logs = {
                         "disc_loss": disc_loss.detach().mean().item(),
                         "logits_real": logits_real.detach().mean().item(),
                         "logits_fake": logits_fake.detach().mean().item(),
+                        "disc_lr": disc_lr_scheduler.get_last_lr()[0]
                     }
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
+                if args.use_ema:
+                    ema_vae.step(vae.parameters())
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
@@ -918,6 +981,9 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
                     if global_step == 1 or global_step % args.validation_steps == 0:
+                        if args.use_ema:
+                            ema_vae.store(vae.parameters())
+                            ema_vae.copy_to(vae.parameters())
                         image_logs = log_validation(
                             vae,
                             args,
@@ -925,6 +991,8 @@ def main(args):
                             weight_dtype,
                             global_step,
                         )
+                        if args.use_ema:
+                            ema_vae.restore(vae.parameters())
 
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
@@ -936,8 +1004,11 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         vae = accelerator.unwrap_model(vae)
+        discriminator = accelerator.unwrap_model(discriminator)
+        if args.use_ema:
+            ema_vae.copy_to(vae.parameters())
         vae.save_pretrained(args.output_dir)
-
+        torch.save(discriminator.state_dict(), os.path.join(args.output_dir, "pytorch_model.bin"))
         # Run a final round of validation.
         image_logs = None
         image_logs = log_validation(
