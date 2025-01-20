@@ -250,13 +250,11 @@ class AnyTextControlNetModel(ControlNetModel):
         )
 
         # control net conditioning embedding
-        # TODO: what happens ControlNetModel's self.controlnet_cond_embedding's memory occupation?
-        # self.controlnet_cond_embedding = AnyTextControlNetConditioningEmbedding(
-        #     conditioning_embedding_channels=block_out_channels[0],
-        #     glyph_channels=conditioning_channels,
-        #     position_channels=conditioning_channels,
-        # )
-        self.controlnet_cond_embedding = None
+        self.controlnet_cond_embedding = AnyTextControlNetConditioningEmbedding(
+            conditioning_embedding_channels=block_out_channels[0],
+            glyph_channels=conditioning_channels,
+            position_channels=conditioning_channels,
+        )
 
     def forward(
         self,
