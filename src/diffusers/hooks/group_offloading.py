@@ -448,18 +448,22 @@ def _apply_group_offloading_leaf_level(
     # of the module is called
     parameters = []
     buffers = []
+    module_dict = dict(module.named_modules())
 
-    def gather_non_module_parameters_and_buffers(m: torch.nn.Module):
-        if isinstance(m, _SUPPORTED_PYTORCH_LAYERS):
-            return
-        for parameter in m.parameters(recurse=False):
-            parameters.append(parameter)
-        for buffer in m.buffers(recurse=False):
-            buffers.append(buffer)
-        for submodule in m.children():
-            gather_non_module_parameters_and_buffers(submodule)
+    for name, parameter in module.named_parameters():
+        atoms = name.split(".")
+        parent_name = ".".join(atoms[:-1])
+        if parent_name in module_dict and isinstance(module_dict[parent_name], _SUPPORTED_PYTORCH_LAYERS):
+            continue
+        parameters.append(parameter)
 
-    gather_non_module_parameters_and_buffers(module)
+    for name, buffer in module.named_buffers():
+        atoms = name.split(".")
+        parent_name = ".".join(atoms[:-1])
+        if parent_name in module_dict and isinstance(module_dict[parent_name], _SUPPORTED_PYTORCH_LAYERS):
+            continue
+        buffers.append(buffer)
+
     unmatched_group = ModuleGroup(
         modules=[],
         offload_device=offload_device,

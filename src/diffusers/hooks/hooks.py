@@ -31,6 +31,9 @@ class ModelHook:
 
     _is_stateful = False
 
+    def __init__(self) -> None:
+        self.fn_ref = None
+
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when a model is initialized.
@@ -103,6 +106,7 @@ class FunctionReference:
         self.pre_forward = None
         self.post_forward = None
         self.old_forward = None
+        self.is_overwritten_forward = False
 
 
 class HookRegistry:
@@ -119,6 +123,16 @@ class HookRegistry:
         if name in self.hooks.keys():
             logger.warning(f"Hook with name {name} already exists, replacing it.")
 
+        self._module_ref = hook.initialize_hook(self._module_ref)
+
+        def create_new_forward(function_reference: FunctionReference, forward):
+            def new_forward(module, *args, **kwargs):
+                args, kwargs = function_reference.pre_forward(module, *args, **kwargs)
+                output = forward(*args, **kwargs)
+                return function_reference.post_forward(module, output)
+
+            return new_forward
+
         forward = self._module_ref.forward
 
         fn_ref = FunctionReference()
@@ -126,33 +140,19 @@ class HookRegistry:
         fn_ref.post_forward = hook.post_forward
         fn_ref.old_forward = forward
 
-        self._module_ref = hook.initialize_hook(self._module_ref)
+        if hasattr(hook, "new_forward"):
+            new_forward = hook.new_forward
+            fn_ref.is_overwritten_forward = True
+        else:
+            new_forward = forward
+            fn_ref.is_overwritten_forward = False
 
-        def create_new_forward(function_reference: FunctionReference):
-            def new_forward(module, *args, **kwargs):
-                args, kwargs = function_reference.pre_forward(module, *args, **kwargs)
-                output = function_reference.old_forward(*args, **kwargs)
-                return function_reference.post_forward(module, output)
+        rewritten_forward = create_new_forward(fn_ref, new_forward)
+        self._module_ref.forward = functools.update_wrapper(
+            functools.partial(rewritten_forward, self._module_ref), forward
+        )
 
-            return new_forward
-
-        # if hasattr(hook, "new_forward"):
-        #     fn_ref.old_forward = hook.new_forward
-
-        #     def new_forward(module, *args, **kwargs):
-        #         args, kwargs = hook.pre_forward(module, *args, **kwargs)
-        #         output = rewritten_forward(module, *args, **kwargs)
-        #         return hook.post_forward(module, output)
-        # else:
-
-        #     def new_forward(module, *args, **kwargs):
-        #         args, kwargs = hook.pre_forward(module, *args, **kwargs)
-        #         output = forward(*args, **kwargs)
-        #         return hook.post_forward(module, output)
-
-        new_forward = create_new_forward(fn_ref)
-        self._module_ref.forward = functools.update_wrapper(functools.partial(new_forward, self._module_ref), forward)
-
+        hook.fn_ref = fn_ref
         self.hooks[name] = hook
         self._hook_order.append(name)
         self._fn_refs.append(fn_ref)
@@ -165,7 +165,6 @@ class HookRegistry:
         if name in self.hooks.keys():
             hook = self.hooks[name]
             index = self._hook_order.index(name)
-
             fn_ref = self._fn_refs[index]
 
             if index == num_hooks - 1:
