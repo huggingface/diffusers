@@ -299,6 +299,8 @@ def free_memory():
         torch.mps.empty_cache()
     elif is_torch_npu_available():
         torch_npu.npu.empty_cache()
+    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+        torch.xpu.empty_cache()
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
