@@ -946,7 +946,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
                         )
 
-                if resolved_archive_file is None:
+                if resolved_archive_file is None and not is_sharded:
                     resolved_archive_file = _get_model_file(
                         pretrained_model_name_or_path,
                         weights_name=_add_variant(WEIGHTS_NAME, variant),
