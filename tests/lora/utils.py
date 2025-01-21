@@ -2098,3 +2098,43 @@ class PeftLoraLoaderMixinTests:
         lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
         self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+
+    def test_layerwise_upcasting_inference_denoiser(self):
+        def initialize_pipeline(storage_dtype=None, compute_dtype=torch.float32):
+            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device, dtype=compute_dtype)
+            pipe.set_progress_bar_config(disable=None)
+
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder.add_adapter(text_lora_config)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                )
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
+
+            if storage_dtype is not None:
+                denoiser.enable_layerwise_upcasting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+
+            return pipe
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        pipe_fp32 = initialize_pipeline(storage_dtype=None)
+        pipe_fp32(**inputs, generator=torch.manual_seed(0))[0]
+
+        pipe_float8_e4m3_fp32 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
+        pipe_float8_e4m3_fp32(**inputs, generator=torch.manual_seed(0))[0]
+
+        pipe_float8_e4m3_bf16 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+        pipe_float8_e4m3_bf16(**inputs, generator=torch.manual_seed(0))[0]
