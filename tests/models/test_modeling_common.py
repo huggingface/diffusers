@@ -29,7 +29,7 @@ import numpy as np
 import requests_mock
 import torch
 import torch.nn as nn
-from accelerate.utils.modeling import _get_proper_dtype, dtype_byte_size
+from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
 from huggingface_hub import ModelCard, delete_repo, snapshot_download
 from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
@@ -1080,7 +1080,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1110,7 +1110,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
 
@@ -1144,7 +1144,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
@@ -1172,7 +1172,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1183,6 +1183,7 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
                 # Making sure part of the model will actually end up offloaded
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
+                print(f" new_model.hf_device_map:{new_model.hf_device_map}")
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
 
