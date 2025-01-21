@@ -1215,9 +1215,19 @@ class FeedForward(nn.Module):
         bias: bool = True,
     ):
         super().__init__()
+
         if inner_dim is None:
             inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
+
+        self._dim = dim
+        self._dim_out = dim_out
+        self._mult = mult
+        self._dropout = dropout
+        self._activation_fn = activation_fn
+        self._final_dropout = final_dropout
+        self._inner_dim = inner_dim
+        self._bias = bias
 
         if activation_fn == "gelu":
             act_fn = GELU(dim, inner_dim, bias=bias)
