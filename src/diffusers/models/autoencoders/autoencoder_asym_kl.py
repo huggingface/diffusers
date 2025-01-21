@@ -60,7 +60,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
             Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
     """
 
-    _always_upcast_modules = ["decoder"]
+    _precision_sensitive_module_patterns = ["decoder"]
 
     @register_to_config
     def __init__(

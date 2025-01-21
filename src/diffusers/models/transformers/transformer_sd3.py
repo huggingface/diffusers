@@ -127,7 +127,7 @@ class SD3Transformer2DModel(
     """
 
     _supports_gradient_checkpointing = True
-    _always_upcast_modules = ["pos_embed", "norm"]
+    _precision_sensitive_module_patterns = ["pos_embed", "norm"]
 
     @register_to_config
     def __init__(

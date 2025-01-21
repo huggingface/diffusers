@@ -166,7 +166,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _always_upcast_modules = ["patch_embed", "norm"]
+    _precision_sensitive_module_patterns = ["patch_embed", "norm"]
     _no_split_modules = ["CogView3PlusTransformerBlock", "CogView3PlusPatchEmbed"]
 
     @register_to_config
