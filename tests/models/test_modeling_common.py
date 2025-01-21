@@ -18,6 +18,7 @@ import gc
 import inspect
 import json
 import os
+import re
 import tempfile
 import traceback
 import unittest
@@ -181,6 +182,16 @@ def compute_module_persistent_sizes(
             module_sizes[".".join(name_parts[:idx])] += size
 
     return module_sizes
+
+
+def cast_maybe_tensor_dtype(maybe_tensor, current_dtype, target_dtype):
+    if torch.is_tensor(maybe_tensor):
+        return maybe_tensor.to(target_dtype) if maybe_tensor.dtype == current_dtype else maybe_tensor
+    if isinstance(maybe_tensor, dict):
+        return {k: cast_maybe_tensor_dtype(v, current_dtype, target_dtype) for k, v in maybe_tensor.items()}
+    if isinstance(maybe_tensor, list):
+        return [cast_maybe_tensor_dtype(v, current_dtype, target_dtype) for v in maybe_tensor]
+    return maybe_tensor
 
 
 class ModelUtilsTest(unittest.TestCase):
@@ -1334,80 +1345,78 @@ class ModelTesterMixin:
                 assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
 
     def test_layerwise_upcasting_inference(self):
+        from diffusers.hooks.layerwise_upcasting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
         base_slice = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
 
-        # fp16-fp32
-        torch.manual_seed(0)
-        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-        model.enable_layerwise_upcasting(storage_dtype=torch.float16, compute_dtype=torch.float32)
-        layerwise_upcast_slice_fp16 = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+        def check_linear_dtype(module, storage_dtype, compute_dtype):
+            patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+            if getattr(module, "_always_upcast_modules", None) is not None:
+                patterns_to_check += tuple(module._always_upcast_modules)
+            for name, submodule in module.named_modules():
+                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                    continue
+                dtype_to_check = storage_dtype
+                if any(re.search(pattern, name) for pattern in patterns_to_check):
+                    dtype_to_check = compute_dtype
+                if getattr(submodule, "weight", None) is not None:
+                    self.assertEqual(submodule.weight.dtype, dtype_to_check)
+                if getattr(submodule, "bias", None) is not None:
+                    self.assertEqual(submodule.bias.dtype, dtype_to_check)
 
-        # The precision test is not very important for fast tests. In most cases, the outputs will not be the same.
-        # We just want to make sure that the layerwise upcasting is working as expected.
-        self.assertTrue(numpy_cosine_similarity_distance(base_slice, layerwise_upcast_slice_fp16) < 1.0)
+        def test_layerwise_upcasting(storage_dtype, compute_dtype):
+            torch.manual_seed(0)
+            config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            model = self.model_class(**config).eval()
+            model = model.to(torch_device, dtype=compute_dtype)
+            model.enable_layerwise_upcasting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+            check_linear_dtype(model, storage_dtype, compute_dtype)
+            output = model(**inputs_dict)[0].float().flatten().detach().cpu().numpy()
 
-        # fp8_e4m3-fp32
-        torch.manual_seed(0)
-        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-        model.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
-        layerwise_upcast_slice_fp8_e4m3 = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+            # The precision test is not very important for fast tests. In most cases, the outputs will not be the same.
+            # We just want to make sure that the layerwise upcasting is working as expected.
+            self.assertTrue(numpy_cosine_similarity_distance(base_slice, output) < 1.0)
 
-        self.assertTrue(numpy_cosine_similarity_distance(base_slice, layerwise_upcast_slice_fp8_e4m3) < 1.0)
-
-        # fp8_e5m2-fp32
-        torch.manual_seed(0)
-        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-        model.enable_layerwise_upcasting(storage_dtype=torch.float8_e5m2, compute_dtype=torch.float32)
-        layerwise_upcast_slice_fp8_e5m2 = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
-
-        self.assertTrue(numpy_cosine_similarity_distance(base_slice, layerwise_upcast_slice_fp8_e5m2) < 1.0)
+        test_layerwise_upcasting(torch.float16, torch.float32)
+        test_layerwise_upcasting(torch.float8_e4m3fn, torch.float32)
+        test_layerwise_upcasting(torch.float8_e5m2, torch.float32)
+        test_layerwise_upcasting(torch.float8_e4m3fn, torch.bfloat16)
 
     @require_torch_gpu
     def test_layerwise_upcasting_memory(self):
-        # fp32
-        gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
-        torch.cuda.synchronize()
+        def reset_memory_stats():
+            gc.collect()
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
 
-        torch.manual_seed(0)
-        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-        model(**inputs_dict)
-        base_memory_footprint = model.get_memory_footprint()
-        base_max_memory = torch.cuda.max_memory_allocated()
+        def get_memory_usage(storage_dtype, compute_dtype):
+            torch.manual_seed(0)
+            config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            model = self.model_class(**config).eval()
+            model = model.to(torch_device, dtype=compute_dtype)
+            model.enable_layerwise_upcasting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
 
-        model.to("cpu")
-        del model
+            reset_memory_stats()
+            model(**inputs_dict)
+            model_memory_footprint = model.get_memory_footprint()
+            peak_inference_memory_allocated = torch.cuda.max_memory_allocated()
 
-        # fp8_e4m3-fp32
-        gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
-        torch.cuda.synchronize()
+            return model_memory_footprint, peak_inference_memory_allocated
 
-        torch.manual_seed(0)
-        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**config).eval()
-        model = model.to(torch_device)
-        model.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
-        model(**inputs_dict)
-        fp8_e4m3_memory_footprint = model.get_memory_footprint()
-        fp8_e4m3_max_memory = torch.cuda.max_memory_allocated()
+        fp8_e4m3_fp32_memory_footprint, fp8_e4m3_fp32_max_memory = get_memory_usage(torch.float8_e4m3fn, torch.float32)
+        fp8_e4m3_bf16_memory_footprint, fp8_e4m3_bf16_max_memory = get_memory_usage(
+            torch.float8_e4m3fn, torch.bfloat16
+        )
 
-        self.assertTrue(fp8_e4m3_memory_footprint < base_memory_footprint)
-        self.assertTrue(fp8_e4m3_max_memory < base_max_memory)
+        self.assertTrue(fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint)
+        self.assertTrue(fp8_e4m3_bf16_max_memory < fp8_e4m3_fp32_max_memory)
 
 
 @is_staging_test
