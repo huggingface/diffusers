@@ -1716,9 +1716,9 @@ def main(args):
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
-                    text_encoder=accelerator.unwrap_model(text_encoder_one),
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_two),
-                    transformer=accelerator.unwrap_model(transformer),
+                    text_encoder=accelerator.unwrap_model(text_encoder_one, keep_fp32_wrapper=False),
+                    text_encoder_2=accelerator.unwrap_model(text_encoder_two, keep_fp32_wrapper=False),
+                    transformer=accelerator.unwrap_model(transformer, keep_fp32_wrapper=False),
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
