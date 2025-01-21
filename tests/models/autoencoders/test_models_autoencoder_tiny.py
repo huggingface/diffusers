@@ -178,7 +178,7 @@ class AutoencoderTinyTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
         "1. Change the forward pass to be dtype agnostic.\n"
         "2. Unskip this test."
     )
-    def test_layerwise_upcasting_inference(self):
+    def test_layerwise_casting_inference(self):
         pass
 
     @unittest.skip(
@@ -186,7 +186,7 @@ class AutoencoderTinyTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
         "1. Change the forward pass to be dtype agnostic.\n"
         "2. Unskip this test."
     )
-    def test_layerwise_upcasting_memory(self):
+    def test_layerwise_casting_memory(self):
         pass
 
 

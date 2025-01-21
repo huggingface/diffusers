@@ -171,9 +171,9 @@ from diffusers.utils import export_to_video
 
 model_id = "THUDM/CogVideoX-5b"
 
-# Load the model in bfloat16 and enable layerwise upcasting
+# Load the model in bfloat16 and enable layerwise casting
 transformer = CogVideoXTransformer3DModel.from_pretrained(model_id, subfolder="transformer", torch_dtype=torch.bfloat16)
-transformer.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
 
 # Load the pipeline
 pipe = CogVideoXPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
@@ -191,9 +191,9 @@ video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
 export_to_video(video, "output.mp4", fps=8)
 ```
 
-In the above example, layerwise upcasting is enabled on the transformer component of the pipeline. By default, certain layers are skipped from the FP8 weight casting because it can lead to significant degradation of generation quality. The normalization and modulation related weight parameters are also skipped by default.
+In the above example, layerwise casting is enabled on the transformer component of the pipeline. By default, certain layers are skipped from the FP8 weight casting because it can lead to significant degradation of generation quality. The normalization and modulation related weight parameters are also skipped by default.
 
-However, you gain more control and flexibility by directly utilizing the [`~hooks.layerwise_upcasting.apply_layerwise_upcasting`] function instead of [`~ModelMixin.enable_layerwise_upcasting`].
+However, you gain more control and flexibility by directly utilizing the [`~hooks.layerwise_casting.apply_layerwise_casting`] function instead of [`~ModelMixin.enable_layerwise_casting`].
 
 ## Channels-last memory format
 

@@ -2100,8 +2100,8 @@ class PeftLoraLoaderMixinTests:
         self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
-    def test_layerwise_upcasting_inference_denoiser(self):
-        from diffusers.hooks.layerwise_upcasting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+    def test_layerwise_casting_inference_denoiser(self):
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
@@ -2142,7 +2142,7 @@ class PeftLoraLoaderMixinTests:
                     )
 
             if storage_dtype is not None:
-                denoiser.enable_layerwise_upcasting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+                denoiser.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
                 check_linear_dtype(denoiser, storage_dtype, compute_dtype)
 
             return pipe

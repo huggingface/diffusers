@@ -32,7 +32,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
-from ..hooks import apply_layerwise_upcasting
+from ..hooks import apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -104,13 +104,13 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     """
     Returns the first found floating dtype in parameters if there is one, otherwise returns the last dtype it found.
     """
-    # 1. Check if we have attached any dtype modifying hooks (eg. layerwise upcasting)
+    # 1. Check if we have attached any dtype modifying hooks (eg. layerwise casting)
     if isinstance(parameter, nn.Module):
         for name, submodule in parameter.named_modules():
             if not hasattr(submodule, "_diffusers_hook"):
                 continue
             registry = submodule._diffusers_hook
-            hook = registry.get_hook("layerwise_upcasting")
+            hook = registry.get_hook("layerwise_casting")
             if hook is not None:
                 return hook.compute_dtype
 
@@ -328,7 +328,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
-    def enable_layerwise_upcasting(
+    def enable_layerwise_casting(
         self,
         storage_dtype: torch.dtype = torch.float8_e4m3fn,
         compute_dtype: Optional[torch.dtype] = None,
@@ -337,9 +337,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         non_blocking: bool = False,
     ) -> None:
         r"""
-        Activates layerwise upcasting for the current model.
+        Activates layerwise casting for the current model.
 
-        Layerwise upcasting is a technique that casts the model weights to a lower precision dtype for storage but
+        Layerwise casting is a technique that casts the model weights to a lower precision dtype for storage but
         upcasts them on-the-fly to a higher precision dtype for computation. This process can significantly reduce the
         memory footprint from model weights, but may lead to some quality degradation in the outputs. Most degradations
         are negligible, mostly stemming from weight casting in normalization and modulation layers.
@@ -348,10 +348,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         embedding, positional embedding and normalization layers. This is because these layers are most likely
         precision-critical for quality. If you wish to change this behavior, you can set the
         `_skip_layerwise_casting_patterns` attribute to `None`, or call
-        [`~hooks.layerwise_upcasting.apply_layerwise_upcasting`] with custom arguments.
+        [`~hooks.layerwise_casting.apply_layerwise_casting`] with custom arguments.
 
         Example:
-            Using [`~models.ModelMixin.enable_layerwise_upcasting`]:
+            Using [`~models.ModelMixin.enable_layerwise_casting`]:
 
             ```python
             >>> from diffusers import CogVideoXTransformer3DModel
@@ -360,8 +360,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
             ... )
 
-            >>> # Enable layerwise upcasting via the model, which ignores certain modules by default
-            >>> transformer.enable_layerwise_upcasting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+            >>> # Enable layerwise casting via the model, which ignores certain modules by default
+            >>> transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
             ```
 
         Args:
@@ -370,18 +370,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             compute_dtype (`torch.dtype`):
                 The dtype to which the model weights should be cast during the forward pass.
             skip_modules_pattern (`Tuple[str, ...]`, *optional*):
-                A list of patterns to match the names of the modules to skip during the layerwise upcasting process. If
+                A list of patterns to match the names of the modules to skip during the layerwise casting process. If
                 set to `None`, default skip patterns are used to ignore certain internal layers of modules and PEFT
                 layers.
             skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
-                A list of module classes to skip during the layerwise upcasting process.
+                A list of module classes to skip during the layerwise casting process.
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
         """
 
         user_provided_patterns = True
         if skip_modules_pattern is None:
-            from ..hooks.layerwise_upcasting import DEFAULT_SKIP_MODULES_PATTERN
+            from ..hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
 
             skip_modules_pattern = DEFAULT_SKIP_MODULES_PATTERN
             user_provided_patterns = False
@@ -393,8 +393,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if is_peft_available() and not user_provided_patterns:
             # By default, we want to skip all peft layers because they have a very low memory footprint.
-            # If users want to apply layerwise upcasting on peft layers as well, they can utilize the
-            # `~diffusers.hooks.layerwise_upcasting.apply_layerwise_upcasting` function which provides
+            # If users want to apply layerwise casting on peft layers as well, they can utilize the
+            # `~diffusers.hooks.layerwise_casting.apply_layerwise_casting` function which provides
             # them with more flexibility and control.
 
             from peft.tuners.loha.layer import LoHaLayer
@@ -405,10 +405,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 skip_modules_pattern += tuple(layer.adapter_layer_names)
 
         if compute_dtype is None:
-            logger.info("`compute_dtype` not provided when enabling layerwise upcasting. Using dtype of the model.")
+            logger.info("`compute_dtype` not provided when enabling layerwise casting. Using dtype of the model.")
             compute_dtype = self.dtype
 
-        apply_layerwise_upcasting(
+        apply_layerwise_casting(
             self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
         )
 

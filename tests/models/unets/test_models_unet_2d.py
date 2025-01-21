@@ -403,13 +403,13 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         super().test_effective_gradient_checkpointing(skip={"time_proj.weight"})
 
     @unittest.skip(
-        "To make layerwise upcasting work with this model, we will have to update the implementation. Due to potentially low usage, we don't support it here."
+        "To make layerwise casting work with this model, we will have to update the implementation. Due to potentially low usage, we don't support it here."
     )
-    def test_layerwise_upcasting_inference(self):
+    def test_layerwise_casting_inference(self):
         pass
 
     @unittest.skip(
-        "To make layerwise upcasting work with this model, we will have to update the implementation. Due to potentially low usage, we don't support it here."
+        "To make layerwise casting work with this model, we will have to update the implementation. Due to potentially low usage, we don't support it here."
     )
-    def test_layerwise_upcasting_memory(self):
+    def test_layerwise_casting_memory(self):
         pass

@@ -1346,8 +1346,8 @@ class ModelTesterMixin:
                 # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
                 assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
 
-    def test_layerwise_upcasting_inference(self):
-        from diffusers.hooks.layerwise_upcasting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+    def test_layerwise_casting_inference(self):
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1371,28 +1371,28 @@ class ModelTesterMixin:
                 if getattr(submodule, "bias", None) is not None:
                     self.assertEqual(submodule.bias.dtype, dtype_to_check)
 
-        def test_layerwise_upcasting(storage_dtype, compute_dtype):
+        def test_layerwise_casting(storage_dtype, compute_dtype):
             torch.manual_seed(0)
             config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
             model = self.model_class(**config).eval()
             model = model.to(torch_device, dtype=compute_dtype)
-            model.enable_layerwise_upcasting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+            model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
 
             check_linear_dtype(model, storage_dtype, compute_dtype)
             output = model(**inputs_dict)[0].float().flatten().detach().cpu().numpy()
 
             # The precision test is not very important for fast tests. In most cases, the outputs will not be the same.
-            # We just want to make sure that the layerwise upcasting is working as expected.
+            # We just want to make sure that the layerwise casting is working as expected.
             self.assertTrue(numpy_cosine_similarity_distance(base_slice, output) < 1.0)
 
-        test_layerwise_upcasting(torch.float16, torch.float32)
-        test_layerwise_upcasting(torch.float8_e4m3fn, torch.float32)
-        test_layerwise_upcasting(torch.float8_e5m2, torch.float32)
-        test_layerwise_upcasting(torch.float8_e4m3fn, torch.bfloat16)
+        test_layerwise_casting(torch.float16, torch.float32)
+        test_layerwise_casting(torch.float8_e4m3fn, torch.float32)
+        test_layerwise_casting(torch.float8_e5m2, torch.float32)
+        test_layerwise_casting(torch.float8_e4m3fn, torch.bfloat16)
 
     @require_torch_gpu
-    def test_layerwise_upcasting_memory(self):
+    def test_layerwise_casting_memory(self):
         def reset_memory_stats():
             gc.collect()
             torch.cuda.synchronize()
@@ -1405,7 +1405,7 @@ class ModelTesterMixin:
             inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
             model = self.model_class(**config).eval()
             model = model.to(torch_device, dtype=compute_dtype)
-            model.enable_layerwise_upcasting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+            model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
 
             reset_memory_stats()
             model(**inputs_dict)

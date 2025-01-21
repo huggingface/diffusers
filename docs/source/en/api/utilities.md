@@ -42,6 +42,6 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 [[autodoc]] utils.torch_utils.randn_tensor
 
-## apply_layerwise_upcasting
+## apply_layerwise_casting
 
-[[autodoc]] hooks.layerwise_upcasting.apply_layerwise_upcasting
+[[autodoc]] hooks.layerwise_casting.apply_layerwise_casting

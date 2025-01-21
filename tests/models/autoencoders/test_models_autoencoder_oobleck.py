@@ -120,7 +120,7 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
         "1. Make sure `nn::Module::to` works with `torch.nn.utils.weight_norm` wrapped convolution layer.\n"
         "2. Unskip this test."
     )
-    def test_layerwise_upcasting_inference(self):
+    def test_layerwise_casting_inference(self):
         pass
 
     @unittest.skip(
@@ -129,7 +129,7 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
         "1. Make sure `nn::Module::to` works with `torch.nn.utils.weight_norm` wrapped convolution layer.\n"
         "2. Unskip this test."
     )
-    def test_layerwise_upcasting_memory(self):
+    def test_layerwise_casting_memory(self):
         pass
 
 
