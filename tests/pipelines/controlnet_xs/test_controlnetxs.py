@@ -34,13 +34,14 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     is_torch_compile,
     load_image,
     load_numpy,
     require_accelerator,
     require_torch_2,
-    require_torch_gpu,
+    require_torch_accelerator,
     run_test_in_subprocess,
     slow,
     torch_device,
@@ -92,7 +93,7 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
             safety_checker=None,
             torch_dtype=torch.float16,
         )
-        pipe.to("cuda")
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         pipe.unet.to(memory_format=torch.channels_last)
@@ -334,12 +335,12 @@ class ControlNetXSPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class ControlNetXSPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_canny(self):
         controlnet = ControlNetXSAdapter.from_pretrained(
@@ -348,7 +349,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-1-base", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -374,7 +375,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-1-base", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
