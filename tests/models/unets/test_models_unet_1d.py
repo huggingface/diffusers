@@ -152,6 +152,24 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         assert (output_sum - 224.0896).abs() < 0.5
         assert (output_max - 0.0607).abs() < 4e-4
 
+    @unittest.skip(
+        "RuntimeError: 'fill_out' not implemented for 'Float8_e4m3fn'. The error is caused due to certain torch.float8_e4m3fn and torch.float8_e5m2 operations "
+        "not being supported when using deterministic algorithms (which is what the tests run with). To fix:\n"
+        "1. Wait for next PyTorch release: https://github.com/pytorch/pytorch/issues/137160.\n"
+        "2. Unskip this test."
+    )
+    def test_layerwise_casting_inference(self):
+        pass
+
+    @unittest.skip(
+        "RuntimeError: 'fill_out' not implemented for 'Float8_e4m3fn'. The error is caused due to certain torch.float8_e4m3fn and torch.float8_e5m2 operations "
+        "not being supported when using deterministic algorithms (which is what the tests run with). To fix:\n"
+        "1. Wait for next PyTorch release: https://github.com/pytorch/pytorch/issues/137160.\n"
+        "2. Unskip this test."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
+
 
 class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet1DModel
