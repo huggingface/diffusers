@@ -103,7 +103,7 @@ class CogVideoXCausalConv3d(nn.Module):
         self.width_pad = width_pad
         self.time_pad = time_pad
         self.time_causal_padding = (width_pad, width_pad, height_pad, height_pad, time_pad, 0)
-        self.const_padding_conv3d =  (0, self.width_pad, self.height_pad)
+        self.const_padding_conv3d = (0, self.width_pad, self.height_pad)
 
         self.temporal_dim = 2
         self.time_kernel_size = time_kernel_size
@@ -116,8 +116,8 @@ class CogVideoXCausalConv3d(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation,
-            padding = 0 if self.pad_mode == 'replicate' else self.const_padding_conv3d,
-            padding_mode = 'zeros',
+            padding=0 if self.pad_mode == "replicate" else self.const_padding_conv3d,
+            padding_mode="zeros",
         )
 
     def fake_context_parallel_forward(
