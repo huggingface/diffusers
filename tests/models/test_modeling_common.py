@@ -1366,7 +1366,6 @@ class ModelTesterMixin:
                 if any(re.search(pattern, name) for pattern in patterns_to_check):
                     dtype_to_check = compute_dtype
                 if getattr(submodule, "weight", None) is not None:
-                    print(name, submodule.weight.dtype, dtype_to_check, patterns_to_check)
                     self.assertEqual(submodule.weight.dtype, dtype_to_check)
                 if getattr(submodule, "bias", None) is not None:
                     self.assertEqual(submodule.bias.dtype, dtype_to_check)
