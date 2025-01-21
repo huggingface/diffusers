@@ -87,6 +87,8 @@ class UniDiffuserPipelineFastTests(
     # vae_latents, not latents, is the argument that corresponds to VAE latent inputs
     image_latents_params = frozenset(["vae_latents"])
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         unet = UniDiffuserModel.from_pretrained(
             "hf-internal-testing/unidiffuser-diffusers-test",

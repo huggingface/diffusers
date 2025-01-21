@@ -17,6 +17,7 @@ import inspect
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -24,9 +25,10 @@ from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, Mochi
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
+    nightly,
     numpy_cosine_similarity_distance,
+    require_big_gpu_with_torch_cuda,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 
@@ -294,7 +296,7 @@ class MochiPipelineIntegrationTests(unittest.TestCase):
         ).frames
 
         video = videos[0]
-        expected_video = torch.randn(1, 16, 480, 848, 3).numpy()
+        expected_video = torch.randn(1, 19, 480, 848, 3).numpy()
 
         max_diff = numpy_cosine_similarity_distance(video, expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video}"

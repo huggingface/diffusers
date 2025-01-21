@@ -30,8 +30,10 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
     BaseOutput,
+    deprecate,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -39,7 +41,15 @@ from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...video_processor import VideoProcessor
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 if is_bs4_available():
     from bs4 import BeautifulSoup
@@ -788,10 +798,11 @@ class LattePipeline(DiffusionPipeline):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                     # This would be a good case for the `match` statement (Python 3.10+)
                     is_mps = latent_model_input.device.type == "mps"
+                    is_npu = latent_model_input.device.type == "npu"
                     if isinstance(current_timestep, float):
-                        dtype = torch.float32 if is_mps else torch.float64
+                        dtype = torch.float32 if (is_mps or is_npu) else torch.float64
                     else:
-                        dtype = torch.int32 if is_mps else torch.int64
+                        dtype = torch.int32 if (is_mps or is_npu) else torch.int64
                     current_timestep = torch.tensor([current_timestep], dtype=dtype, device=latent_model_input.device)
                 elif len(current_timestep.shape) == 0:
                     current_timestep = current_timestep[None].to(latent_model_input.device)
@@ -836,7 +847,17 @@ class LattePipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        if not output_type == "latents":
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
+        if output_type == "latents":
+            deprecation_message = (
+                "Passing `output_type='latents'` is deprecated. Please pass `output_type='latent'` instead."
+            )
+            deprecate("output_type_latents", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "latent"
+
+        if not output_type == "latent":
             video = self.decode_latents(latents, video_length, decode_chunk_size=14)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:

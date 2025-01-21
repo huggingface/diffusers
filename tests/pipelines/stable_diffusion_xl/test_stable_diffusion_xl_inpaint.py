@@ -72,6 +72,8 @@ class StableDiffusionXLInpaintPipelineFastTests(
         }
     )
 
+    supports_dduf = False
+
     def get_dummy_components(self, skip_first_text_encoder=False, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(

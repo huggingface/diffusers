@@ -83,6 +83,8 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
         {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
 
+    supports_dduf = False
+
     #  based on tests.pipelines.stable_diffusion_xl.test_stable_diffusion_xl_img2img_pipeline.get_dummy_components
     def get_dummy_components(
         self, skip_first_text_encoder=False, time_cond_proj_dim=None, requires_aesthetics_score=False

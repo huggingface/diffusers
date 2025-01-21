@@ -342,7 +342,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = torch.from_numpy(timesteps)
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
 
-        self.timesteps = timesteps.to(device=device)
+        self.timesteps = timesteps.to(device=device, dtype=torch.float32)
 
         # empty dt and derivative
         self.prev_derivative = None
