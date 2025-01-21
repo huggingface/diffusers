@@ -75,6 +75,13 @@ check_min_version("0.33.0.dev0")
 logger = get_logger(__name__)
 
 
+def free_memory():
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        torch.xpu.empty_cache()
+
+
 def save_model_card(
     repo_id: str,
     images=None,
@@ -151,14 +158,14 @@ def log_validation(
     if args.validation_images is None:
         images = []
         for _ in range(args.num_validation_images):
-            with torch.amp.autocast(pipeline.device.type):
+            with torch.amp.autocast(accelerator.device.type):
                 image = pipeline(**pipeline_args, generator=generator).images[0]
                 images.append(image)
     else:
         images = []
         for image in args.validation_images:
             image = Image.open(image)
-            with torch.amp.autocast(pipeline.device.type):
+            with torch.amp.autocast(accelerator.device.type):
                 image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
             images.append(image)
 
@@ -177,10 +184,7 @@ def log_validation(
             )
 
     del pipeline
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        torch.xpu.empty_cache()
+    free_memory()
 
     return images
 
@@ -832,10 +836,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            if hasattr(torch, "xpu") and torch.xpu.is_available():
-                torch.xpu.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1090,10 +1091,7 @@ def main(args):
         tokenizer = None
 
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        if hasattr(torch, "xpu") and torch.xpu.is_available():
-            torch.xpu.empty_cache()
+        free_memory()
     else:
         pre_computed_encoder_hidden_states = None
         validation_prompt_encoder_hidden_states = None
