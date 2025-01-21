@@ -292,3 +292,21 @@ class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_forward_with_norm_groups(self):
         # Not implemented yet for this UNet
         pass
+
+    @unittest.skip(
+        "RuntimeError: 'fill_out' not implemented for 'Float8_e4m3fn'. The error is caused due to certain torch.float8_e4m3fn and torch.float8_e5m2 operations "
+        "not being supported when using deterministic algorithms (which is what the tests run with). To fix:\n"
+        "1. Wait for next PyTorch release: https://github.com/pytorch/pytorch/issues/137160.\n"
+        "2. Unskip this test."
+    )
+    def test_layerwise_casting_inference(self):
+        pass
+
+    @unittest.skip(
+        "RuntimeError: 'fill_out' not implemented for 'Float8_e4m3fn'. The error is caused due to certain torch.float8_e4m3fn and torch.float8_e5m2 operations "
+        "not being supported when using deterministic algorithms (which is what the tests run with). To fix:\n"
+        "1. Wait for next PyTorch release: https://github.com/pytorch/pytorch/issues/137160.\n"
+        "2. Unskip this test."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
