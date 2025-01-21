@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -101,7 +101,7 @@ from .import_utils import (
     is_xformers_available,
     requires_backends,
 )
-from .loading_utils import get_module_from_name, load_image, load_video
+from .loading_utils import get_module_from_name, get_submodule_by_name, load_image, load_video
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
