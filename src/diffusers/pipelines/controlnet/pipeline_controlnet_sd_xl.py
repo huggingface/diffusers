@@ -1507,7 +1507,7 @@ class StableDiffusionXLControlNetPipeline(
         is_unet_compiled = is_compiled_module(self.unet)
         is_controlnet_compiled = is_compiled_module(self.controlnet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
-        
+        # thesea modified for inference steps info
         global_step = 0
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1609,6 +1609,7 @@ class StableDiffusionXLControlNetPipeline(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+                    # thesea modified for inference steps info
                     global_step += 1
                     logger.info(f"global_step:{global_step}")
                     if callback is not None and i % callback_steps == 0:
