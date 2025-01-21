@@ -262,7 +262,7 @@ class FluxTransformer2DModel(
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
-    _precision_sensitive_module_patterns = ["pos_embed", "norm"]
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
 
     @register_to_config
     def __init__(

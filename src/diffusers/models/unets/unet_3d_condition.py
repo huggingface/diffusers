@@ -97,7 +97,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
     """
 
     _supports_gradient_checkpointing = False
-    _precision_sensitive_module_patterns = ["norm", "time_embedding"]
+    _skip_layerwise_casting_patterns = ["norm", "time_embedding"]
 
     @register_to_config
     def __init__(

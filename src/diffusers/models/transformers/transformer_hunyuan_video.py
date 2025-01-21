@@ -542,7 +542,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     """
 
     _supports_gradient_checkpointing = True
-    _precision_sensitive_module_patterns = ["x_embedder", "context_embedder", "norm"]
+    _skip_layerwise_casting_patterns = ["x_embedder", "context_embedder", "norm"]
     _no_split_modules = [
         "HunyuanVideoTransformerBlock",
         "HunyuanVideoSingleTransformerBlock",

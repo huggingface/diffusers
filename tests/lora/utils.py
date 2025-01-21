@@ -2105,8 +2105,8 @@ class PeftLoraLoaderMixinTests:
 
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
-            if getattr(module, "_precision_sensitive_module_patterns", None) is not None:
-                patterns_to_check += tuple(module._precision_sensitive_module_patterns)
+            if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
+                patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
             for name, submodule in module.named_modules():
                 if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
                     continue

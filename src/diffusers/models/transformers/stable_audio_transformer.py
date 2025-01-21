@@ -211,7 +211,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _precision_sensitive_module_patterns = ["preprocess_conv", "postprocess_conv", "^proj_in$", "^proj_out$", "norm"]
+    _skip_layerwise_casting_patterns = ["preprocess_conv", "postprocess_conv", "^proj_in$", "^proj_out$", "norm"]
 
     @register_to_config
     def __init__(

@@ -163,7 +163,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _keys_to_ignore_on_load_unexpected = None
     _no_split_modules = None
     _keep_in_fp32_modules = None
-    _precision_sensitive_module_patterns = None
+    _skip_layerwise_casting_patterns = None
 
     def __init__(self):
         super().__init__()
@@ -344,10 +344,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         memory footprint from model weights, but may lead to some quality degradation in the outputs. Most degradations
         are negligible, mostly stemming from weight casting in normalization and modulation layers.
 
-        By default, most models in diffusers set the `_precision_sensitive_module_patterns` attribute to ignore patch
+        By default, most models in diffusers set the `_skip_layerwise_casting_patterns` attribute to ignore patch
         embedding, positional embedding and normalization layers. This is because these layers are most likely
         precision-critical for quality. If you wish to change this behavior, you can set the
-        `_precision_sensitive_module_patterns` attribute to `None`, or call
+        `_skip_layerwise_casting_patterns` attribute to `None`, or call
         [`~hooks.layerwise_upcasting.apply_layerwise_upcasting`] with custom arguments.
 
         Example:
@@ -387,8 +387,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             user_provided_patterns = False
         if self._keep_in_fp32_modules is not None:
             skip_modules_pattern += tuple(self._keep_in_fp32_modules)
-        if self._precision_sensitive_module_patterns is not None:
-            skip_modules_pattern += tuple(self._precision_sensitive_module_patterns)
+        if self._skip_layerwise_casting_patterns is not None:
+            skip_modules_pattern += tuple(self._skip_layerwise_casting_patterns)
         skip_modules_pattern = tuple(set(skip_modules_pattern))
 
         if is_peft_available() and not user_provided_patterns:
