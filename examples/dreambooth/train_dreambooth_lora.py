@@ -54,7 +54,11 @@ from diffusers import (
 )
 from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params
+from diffusers.training_utils import (
+    _set_state_dict_into_text_encoder,
+    cast_training_params,
+    free_memory,
+)
 from diffusers.utils import (
     check_min_version,
     convert_state_dict_to_diffusers,
@@ -73,13 +77,6 @@ if is_wandb_available():
 check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
-
-
-def free_memory():
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        torch.xpu.empty_cache()
 
 
 def save_model_card(
