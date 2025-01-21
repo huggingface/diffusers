@@ -14,6 +14,7 @@
 # limitations under the License.
 import inspect
 import os
+import re
 import tempfile
 import unittest
 from itertools import product
@@ -2100,6 +2101,23 @@ class PeftLoraLoaderMixinTests:
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
     def test_layerwise_upcasting_inference_denoiser(self):
+        from diffusers.hooks.layerwise_upcasting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+
+        def check_linear_dtype(module, storage_dtype, compute_dtype):
+            patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+            if getattr(module, "_precision_sensitive_module_patterns", None) is not None:
+                patterns_to_check += tuple(module._precision_sensitive_module_patterns)
+            for name, submodule in module.named_modules():
+                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                    continue
+                dtype_to_check = storage_dtype
+                if "lora" in name or any(re.search(pattern, name) for pattern in patterns_to_check):
+                    dtype_to_check = compute_dtype
+                if getattr(submodule, "weight", None) is not None:
+                    self.assertEqual(submodule.weight.dtype, dtype_to_check)
+                if getattr(submodule, "bias", None) is not None:
+                    self.assertEqual(submodule.bias.dtype, dtype_to_check)
+
         def initialize_pipeline(storage_dtype=None, compute_dtype=torch.float32):
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
             pipe = self.pipeline_class(**components)
@@ -2125,6 +2143,7 @@ class PeftLoraLoaderMixinTests:
 
             if storage_dtype is not None:
                 denoiser.enable_layerwise_upcasting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+                check_linear_dtype(denoiser, storage_dtype, compute_dtype)
 
             return pipe
 
