@@ -225,7 +225,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
         timestep_embed = self.time_proj(timesteps)
         if self.config.use_timestep_embedding:
-            timestep_embed = self.time_mlp(timestep_embed)
+            timestep_embed = self.time_mlp(timestep_embed.to(sample.dtype))
         else:
             timestep_embed = timestep_embed[..., None]
             timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
