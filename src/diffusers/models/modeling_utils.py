@@ -1176,13 +1176,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         error_msgs = []
 
         # Deal with offload
-        is_safetensors = False
         if device_map is not None and "disk" in device_map.values():
-            archive_file = (
-                resolved_archive_file[0] if isinstance(resolved_archive_file, (list, tuple)) else resolved_archive_file
-            )
-            is_safetensors = archive_file.endswith(".safetensors")
-            if offload_folder is None and not is_safetensors:
+            if offload_folder is None:
                 raise ValueError(
                     "The current `device_map` had weights offloaded to the disk. Please provide an `offload_folder`"
                     " for them. Alternatively, make sure you have `safetensors` installed if the model you are using"
