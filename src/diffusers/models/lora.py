@@ -38,7 +38,7 @@ if is_transformers_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def text_encoder_attn_modules(text_encoder):
+def text_encoder_attn_modules(text_encoder: nn.Module):
     attn_modules = []
 
     if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
@@ -52,7 +52,7 @@ def text_encoder_attn_modules(text_encoder):
     return attn_modules
 
 
-def text_encoder_mlp_modules(text_encoder):
+def text_encoder_mlp_modules(text_encoder: nn.Module):
     mlp_modules = []
 
     if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):

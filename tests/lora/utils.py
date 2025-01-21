@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import functools
 import inspect
 import os
 import tempfile
@@ -2098,3 +2099,7 @@ class PeftLoraLoaderMixinTests:
         lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
         self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+
+    @property
+    def supports_text_encoder_lora(self):
+        return len({"text_encoder", "text_encoder_2", "text_encoder_3"}.intersection(self.pipeline_class._lora_loadable_modules)) != 0
