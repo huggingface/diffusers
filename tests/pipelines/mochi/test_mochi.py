@@ -17,6 +17,7 @@ import inspect
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -24,9 +25,10 @@ from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, Mochi
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
+    nightly,
     numpy_cosine_similarity_distance,
-    require_torch_accelerator,
-    slow,
+    require_big_gpu_with_torch_cuda,
+    require_torch_gpu,
     torch_device,
 )
 
@@ -261,8 +263,10 @@ class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
 
-@slow
-@require_torch_accelerator
+@nightly
+@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class MochiPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
