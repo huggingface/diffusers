@@ -53,6 +53,7 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     required_optional_params = PipelineTesterMixin.required_optional_params
+    test_layerwise_casting = True
 
     pab_config = PyramidAttentionBroadcastConfig(
         spatial_attention_block_skip_range=2,

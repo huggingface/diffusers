@@ -34,6 +34,7 @@ class FluxPipelineFastTests(
 
     # there is no xformers processor for Flux
     test_xformers_attention = False
+    test_layerwise_casting = True
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)

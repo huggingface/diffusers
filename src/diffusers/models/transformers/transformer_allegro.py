@@ -223,6 +223,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm", "adaln_single"]
 
     @register_to_config
     def __init__(

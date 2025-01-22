@@ -989,7 +989,7 @@ class PipelineTesterMixin:
     test_attention_slicing = True
 
     test_xformers_attention = True
-
+    test_layerwise_casting = False
     supports_dduf = True
 
     def get_generator(self, seed):
@@ -2028,6 +2028,21 @@ class PipelineTesterMixin:
             assert np.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
         elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
             assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
+
+    def test_layerwise_casting_inference(self):
+        if not self.test_layerwise_casting:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device, dtype=torch.bfloat16)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        _ = pipe(**inputs)[0]
 
 
 @is_staging_test
