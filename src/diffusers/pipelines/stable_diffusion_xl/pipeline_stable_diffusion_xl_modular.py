@@ -1338,7 +1338,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                     num_images_per_prompt=data.num_images_per_prompt,
                     device=data.device,
                     dtype=controlnet.dtype,
-                    crops_coords=crops_coords,
+                    crops_coords=data.crops_coords,
                 )
 
                 control_images.append(control_image)
