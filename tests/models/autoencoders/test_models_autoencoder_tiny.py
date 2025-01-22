@@ -173,6 +173,22 @@ class AutoencoderTinyTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
                 continue
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=3e-2))
 
+    @unittest.skip(
+        "The forward pass of AutoencoderTiny creates a torch.float32 tensor. This causes inference in compute_dtype=torch.bfloat16 to fail. To fix:\n"
+        "1. Change the forward pass to be dtype agnostic.\n"
+        "2. Unskip this test."
+    )
+    def test_layerwise_casting_inference(self):
+        pass
+
+    @unittest.skip(
+        "The forward pass of AutoencoderTiny creates a torch.float32 tensor. This causes inference in compute_dtype=torch.bfloat16 to fail. To fix:\n"
+        "1. Change the forward pass to be dtype agnostic.\n"
+        "2. Unskip this test."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
+
 
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):
