@@ -23,12 +23,26 @@ You should install 🤗 Diffusers in a [virtual environment](https://docs.python
 If you're unfamiliar with Python virtual environments, take a look at this [guide](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
 A virtual environment makes it easier to manage different projects and avoid compatibility issues between dependencies.
 
-Create a virtual environment with [uv](https://docs.astral.sh/uv/) (refer to [Installation](https://docs.astral.sh/uv/getting-started/installation/) for installation instructions), a fast Rust-based Python package and project manager.
+Create a virtual environment with Python or [uv](https://docs.astral.sh/uv/) (refer to [Installation](https://docs.astral.sh/uv/getting-started/installation/) for installation instructions), a fast Rust-based Python package and project manager.
+
+<hfoptions id="install">
+<hfoption id="uv">
 
 ```bash
 uv venv my-env
 source my-env/bin/activate
 ```
+
+</hfoption>
+<hfoption id="Python">
+
+```bash
+python -m venv my-env
+source my-env/bin/activate
+```
+
+</hfoption>
+</hfoptions>
 
 You should also install 🤗 Transformers because 🤗 Diffusers relies on its models.
 
