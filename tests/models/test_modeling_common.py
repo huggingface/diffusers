@@ -29,7 +29,7 @@ import numpy as np
 import requests_mock
 import torch
 import torch.nn as nn
-from accelerate.utils.modeling import _get_proper_dtype, dtype_byte_size
+from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
 from huggingface_hub import ModelCard, delete_repo, snapshot_download
 from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
@@ -57,8 +57,8 @@ from diffusers.utils.testing_utils import (
     get_python_version,
     is_torch_compile,
     require_torch_2,
+    require_torch_accelerator,
     require_torch_accelerator_with_training,
-    require_torch_gpu,
     require_torch_multi_gpu,
     run_test_in_subprocess,
     torch_all_close,
@@ -543,7 +543,7 @@ class ModelTesterMixin:
         assert torch.allclose(output, output_3, atol=self.base_precision)
         assert torch.allclose(output_2, output_3, atol=self.base_precision)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_set_attn_processor_for_determinism(self):
         if self.uses_custom_attn_processor:
             return
@@ -1068,7 +1068,7 @@ class ModelTesterMixin:
 
             self.assertTrue(f"Adapter name {wrong_name} not found in the model." in str(err_context.exception))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_cpu_offload(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -1080,7 +1080,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1098,7 +1098,7 @@ class ModelTesterMixin:
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_disk_offload_without_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -1110,7 +1110,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
 
@@ -1132,7 +1132,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_disk_offload_with_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -1144,7 +1144,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
@@ -1172,7 +1172,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1183,6 +1183,7 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
                 # Making sure part of the model will actually end up offloaded
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
+                print(f" new_model.hf_device_map:{new_model.hf_device_map}")
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
 
@@ -1191,7 +1192,7 @@ class ModelTesterMixin:
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1223,7 +1224,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints_with_variant(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1261,7 +1262,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints_device_map(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()

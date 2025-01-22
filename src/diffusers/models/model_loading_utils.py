@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,7 @@ import os
 from array import array
 from collections import OrderedDict
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import safetensors
 import torch
@@ -193,6 +193,7 @@ def load_model_dict_into_meta(
     model_name_or_path: Optional[str] = None,
     hf_quantizer=None,
     keep_in_fp32_modules=None,
+    named_buffers: Optional[Iterator[Tuple[str, torch.Tensor]]] = None,
 ) -> List[str]:
     if device is not None and not isinstance(device, (str, torch.device)):
         raise ValueError(f"Expected device to have type `str` or `torch.device`, but got {type(device)=}.")
@@ -244,6 +245,20 @@ def load_model_dict_into_meta(
                     f"Cannot load {model_name_or_path_str} because {param_name} expected shape {empty_state_dict[param_name].shape}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
                 )
 
+        if is_quantized and (
+            hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
+        ):
+            hf_quantizer.create_quantized_param(model, param, param_name, device, state_dict, unexpected_keys)
+        else:
+            if accepts_dtype:
+                set_module_tensor_to_device(model, param_name, device, value=param, **set_module_kwargs)
+            else:
+                set_module_tensor_to_device(model, param_name, device, value=param)
+
+    if named_buffers is None:
+        return unexpected_keys
+
+    for param_name, param in named_buffers:
         if is_quantized and (
             hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
         ):
