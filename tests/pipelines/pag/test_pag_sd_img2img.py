@@ -269,7 +269,7 @@ class StableDiffusionPAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs(torch_device, guidance_scale=0.0)
         image = pipeline(**inputs).images
 
         image_slice = image[0, -3:, -3:, -1].flatten()

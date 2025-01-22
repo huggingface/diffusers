@@ -32,6 +32,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     enable_full_determinism,
     floats_tensor,
@@ -263,6 +264,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         backend_empty_cache(torch_device)
         backend_reset_peak_memory_stats(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
 
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             "lambdalabs/sd-image-variations-diffusers", safety_checker=None, torch_dtype=torch.float16

@@ -39,6 +39,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     enable_full_determinism,
     floats_tensor,
@@ -702,6 +703,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_inpaint_with_sequential_cpu_offloading(self):
         backend_empty_cache(torch_device)
         backend_reset_peak_memory_stats(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "botp/stable-diffusion-v1-5-inpainting", safety_checker=None, torch_dtype=torch.float16
@@ -904,6 +906,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
     def test_stable_diffusion_inpaint_with_sequential_cpu_offloading(self):
         backend_empty_cache(torch_device)
         backend_reset_peak_memory_stats(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
 
         vae = AsymmetricAutoencoderKL.from_pretrained(
             "cross-attention/asymmetric-autoencoder-kl-x-1-5", torch_dtype=torch.float16

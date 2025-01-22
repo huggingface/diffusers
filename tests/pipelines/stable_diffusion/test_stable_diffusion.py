@@ -46,6 +46,7 @@ from diffusers.utils.testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     enable_full_determinism,
     is_torch_compile,
@@ -1142,6 +1143,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
         backend_reset_peak_memory_stats(torch_device)
 
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
