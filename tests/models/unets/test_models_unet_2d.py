@@ -383,6 +383,7 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
 
+    @unittest.skip("Test not supported.")
     def test_forward_with_norm_groups(self):
         # not required for this model
         pass

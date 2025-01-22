@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,11 +23,11 @@ import re
 from collections import OrderedDict
 from functools import partial, wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
-from huggingface_hub import create_repo, split_torch_state_dict_into_shards
+from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
@@ -227,14 +227,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.set_use_npu_flash_attention(False)
 
     def set_use_xla_flash_attention(
-        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None, **kwargs
     ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
         # gets the message
         def fn_recursive_set_flash_attention(module: torch.nn.Module):
             if hasattr(module, "set_use_xla_flash_attention"):
-                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec)
+                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, **kwargs)
 
             for child in module.children():
                 fn_recursive_set_flash_attention(child)
@@ -243,11 +243,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_flash_attention(module)
 
-    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None):
+    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None, **kwargs):
         r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
-        self.set_use_xla_flash_attention(True, partition_spec)
+        self.set_use_xla_flash_attention(True, partition_spec, **kwargs)
 
     def disable_xla_flash_attention(self):
         r"""
@@ -559,6 +559,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
                 weights. If set to `False`, `safetensors` weights are not loaded.
+            disable_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
+                is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
 
         <Tip>
 
@@ -604,6 +607,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
+        dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
+        disable_mmap = kwargs.pop("disable_mmap", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -696,6 +701,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision=revision,
             subfolder=subfolder,
             user_agent=user_agent,
+            dduf_entries=dduf_entries,
             **kwargs,
         )
         # no in-place modification of the original config.
@@ -772,13 +778,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "revision": revision,
             "user_agent": user_agent,
             "commit_hash": commit_hash,
+            "dduf_entries": dduf_entries,
         }
         index_file = _fetch_index_file(**index_file_kwargs)
         # In case the index file was not found we still have to consider the legacy format.
         # this becomes applicable when the variant is not None.
         if variant is not None and (index_file is None or not os.path.exists(index_file)):
             index_file = _fetch_index_file_legacy(**index_file_kwargs)
-        if index_file is not None and index_file.is_file():
+        if index_file is not None and (dduf_entries or index_file.is_file()):
             is_sharded = True
 
         if is_sharded and from_flax:
@@ -807,6 +814,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
+            # in the case it is sharded, we have already the index
             if is_sharded:
                 sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
                     pretrained_model_name_or_path,
@@ -818,10 +826,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     user_agent=user_agent,
                     revision=revision,
                     subfolder=subfolder or "",
+                    dduf_entries=dduf_entries,
                 )
                 # TODO: https://github.com/huggingface/diffusers/issues/10013
-                if hf_quantizer is not None:
-                    model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
+                if hf_quantizer is not None or dduf_entries:
+                    model_file = _merge_sharded_checkpoints(
+                        sharded_ckpt_cached_folder, sharded_metadata, dduf_entries=dduf_entries
+                    )
                     logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
                     is_sharded = False
 
@@ -839,6 +850,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         subfolder=subfolder,
                         user_agent=user_agent,
                         commit_hash=commit_hash,
+                        dduf_entries=dduf_entries,
                     )
 
                 except IOError as e:
@@ -862,6 +874,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     subfolder=subfolder,
                     user_agent=user_agent,
                     commit_hash=commit_hash,
+                    dduf_entries=dduf_entries,
                 )
 
             if low_cpu_mem_usage:
@@ -883,7 +896,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
                     else:
                         param_device = torch.device(torch.cuda.current_device())
-                    state_dict = load_state_dict(model_file, variant=variant)
+                    state_dict = load_state_dict(
+                        model_file, variant=variant, dduf_entries=dduf_entries, disable_mmap=disable_mmap
+                    )
                     model._convert_deprecated_attention_blocks(state_dict)
 
                     # move the params from meta device to cpu
@@ -898,6 +913,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
+                    named_buffers = model.named_buffers()
+
                     unexpected_keys = load_model_dict_into_meta(
                         model,
                         state_dict,
@@ -906,6 +923,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         model_name_or_path=pretrained_model_name_or_path,
                         hf_quantizer=hf_quantizer,
                         keep_in_fp32_modules=keep_in_fp32_modules,
+                        named_buffers=named_buffers,
                     )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
@@ -979,7 +997,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 model = cls.from_config(config, **unused_kwargs)
 
-                state_dict = load_state_dict(model_file, variant=variant)
+                state_dict = load_state_dict(
+                    model_file, variant=variant, dduf_entries=dduf_entries, disable_mmap=disable_mmap
+                )
                 model._convert_deprecated_attention_blocks(state_dict)
 
                 model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
