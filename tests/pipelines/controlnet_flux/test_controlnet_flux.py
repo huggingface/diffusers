@@ -31,6 +31,7 @@ from diffusers import (
 from diffusers.models import FluxControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     nightly,
     numpy_cosine_similarity_distance,
@@ -213,12 +214,12 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_canny(self):
         controlnet = FluxControlNetModel.from_pretrained(

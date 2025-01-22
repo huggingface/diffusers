@@ -33,6 +33,7 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,

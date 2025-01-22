@@ -79,7 +79,7 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe.to("cuda")
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         pipe.unet.to(memory_format=torch.channels_last)

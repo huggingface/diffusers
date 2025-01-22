@@ -41,7 +41,13 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_accelerator, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,

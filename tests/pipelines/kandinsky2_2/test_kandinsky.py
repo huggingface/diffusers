@@ -22,12 +22,14 @@ import torch
 
 from diffusers import DDIMScheduler, KandinskyV22Pipeline, KandinskyV22PriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_numpy,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
+    torch_device,
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -221,19 +223,19 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_kandinsky_text2img(self):
         expected_image = load_numpy(
@@ -244,12 +246,12 @@ class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
         pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
         )
-        pipe_prior.enable_model_cpu_offload()
+        pipe_prior.enable_model_cpu_offload(device=torch_device)
 
         pipeline = KandinskyV22Pipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         prompt = "red cat, 4k photo"

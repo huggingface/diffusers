@@ -34,8 +34,8 @@ from diffusers import (
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
-    backend_reset_peak_memory_stats,
     backend_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     enable_full_determinism,
     floats_tensor,
     load_image,

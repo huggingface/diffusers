@@ -366,7 +366,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         image_sliced = pipe(**inputs).images
-        
+
         mem_bytes = backend_max_memory_allocated(torch_device)
         backend_reset_peak_memory_stats(torch_device)
         # make sure that less than 3.3 GB is allocated
@@ -377,7 +377,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         pipe.unet.set_default_attn_processor()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         image = pipe(**inputs).images
-        
+
         # make sure that more than 3.3 GB is allocated
         mem_bytes = backend_max_memory_allocated(torch_device)
         assert mem_bytes > 3.3 * 10**9

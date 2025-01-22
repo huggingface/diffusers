@@ -527,7 +527,6 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         assert mem_bytes < 2.2 * 10**9
 
     def test_stable_diffusion_pipeline_with_model_offloading(self):
-        
         backend_empty_cache(torch_device)
         backend_reset_peak_memory_stats(torch_device)
 
@@ -560,7 +559,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
         _ = pipe(**inputs)
-        mem_bytes_offloaded  = backend_max_memory_allocated(torch_device)
+        mem_bytes_offloaded = backend_max_memory_allocated(torch_device)
 
         assert mem_bytes_offloaded < mem_bytes
         for module in pipe.text_encoder, pipe.unet, pipe.vae:

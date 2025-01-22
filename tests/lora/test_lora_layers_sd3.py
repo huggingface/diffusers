@@ -30,12 +30,12 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     nightly,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 

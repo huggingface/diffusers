@@ -36,9 +36,9 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
+    backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
-    backend_max_memory_allocated,
     enable_full_determinism,
     floats_tensor,
     is_peft_available,
@@ -1005,7 +1005,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_load_sharded_checkpoint_from_hub_local(self):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
@@ -1204,7 +1204,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = backend_max_memory_allocated(torch_device)
-        
+
         assert mem_bytes < 5 * 10**9
 
     @require_torch_accelerator

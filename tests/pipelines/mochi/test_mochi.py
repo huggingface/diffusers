@@ -17,7 +17,6 @@ import inspect
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -25,10 +24,9 @@ from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, Mochi
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
-    nightly,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
     require_torch_accelerator,
+    slow,
     torch_device,
 )
 
