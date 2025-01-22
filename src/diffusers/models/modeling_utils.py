@@ -21,7 +21,7 @@ import json
 import os
 import re
 from collections import OrderedDict
-from functools import partial, wraps
+from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
@@ -196,14 +196,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         return any(hasattr(m, "gradient_checkpointing") and m.gradient_checkpointing for m in self.modules())
 
-    def enable_gradient_checkpointing(
-        self,
-        gradient_checkpointing_func: Optional[Callable] = None,
-        gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> None:
+    def enable_gradient_checkpointing(self, gradient_checkpointing_func: Optional[Callable] = None) -> None:
         """
         Activates gradient checkpointing for the current model (may be referred to as *activation checkpointing* or
         *checkpoint activations* in other frameworks).
+
+        Args:
+            gradient_checkpointing_func (`Callable`, *optional*):
+                The function to use for gradient checkpointing. If `None`, the default PyTorch checkpointing function
+                is used (`torch.utils.checkpoint.checkpoint`).
         """
         if not self._supports_gradient_checkpointing:
             raise ValueError(
@@ -211,7 +212,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"`_supports_gradient_checkpointing` to `True` in the class definition."
             )
 
-        user_provided_gradient_checkpointing_func = gradient_checkpointing_func is not None
         if gradient_checkpointing_func is None:
 
             def _gradient_checkpointing_func(module, *args):
@@ -223,18 +223,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
 
             gradient_checkpointing_func = _gradient_checkpointing_func
-
-        if gradient_checkpointing_kwargs is None:
-            gradient_checkpointing_kwargs = {}
-
-            if (
-                not user_provided_gradient_checkpointing_func
-                and is_torch_version(">=", "1.11.0")
-                and inspect.signature(gradient_checkpointing_func).parameters.get("use_reentrant") is not None
-            ):
-                gradient_checkpointing_kwargs["use_reentrant"] = False
-
-        gradient_checkpointing_func = partial(gradient_checkpointing_func, **gradient_checkpointing_kwargs)
 
         self._set_gradient_checkpointing(enable=True, gradient_checkpointing_func=gradient_checkpointing_func)
 
@@ -1502,8 +1490,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if not is_gradient_checkpointing_set:
             raise ValueError(
-                f"The module {self.__class__.__name__} does not support gradient checkpointing. Please make sure to use a module that supports gradient checkpointing "
-                f"by creating a boolean attribute `gradient_checkpointing` in the module and setting it to `True`."
+                f"The module {self.__class__.__name__} does not support gradient checkpointing. Please make sure to "
+                f"use a module that supports gradient checkpointing by creating a boolean attribute `gradient_checkpointing`."
             )
 
     def _convert_deprecated_attention_blocks(self, state_dict: OrderedDict) -> None:
