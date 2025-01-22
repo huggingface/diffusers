@@ -31,6 +31,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
+    _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_hunyuan_video"] = ["AutoencoderKLHunyuanVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
@@ -54,6 +55,7 @@ if is_torch_available():
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
+    _import_structure["transformers.easyanimate_transformer_3d"] = ["EasyAnimateTransformer3DModel"]
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
     _import_structure["transformers.dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
@@ -101,6 +103,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLCogVideoX,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLLTXVideo,
+            AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
@@ -131,6 +134,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView3PlusTransformer2DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,
+            EasyAnimateTransformer3DModel,
             FluxTransformer2DModel,
             HunyuanDiT2DModel,
             HunyuanVideoTransformer3DModel,

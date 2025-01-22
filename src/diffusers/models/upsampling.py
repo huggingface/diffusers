@@ -14,6 +14,7 @@
 
 from typing import Optional, Tuple
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -418,6 +419,130 @@ class CogVideoXUpsample3D(nn.Module):
         inputs = inputs.reshape(b, t, *inputs.shape[1:]).permute(0, 2, 1, 3, 4)
 
         return inputs
+
+
+class EasyAnimateUpsampler3D(nn.Module):
+    def __init__(
+        self, 
+        in_channels: int, 
+        out_channels: int,
+        kernel_size: int = 3,
+        stride: tuple = (1, 1, 1),
+        temporal_upsample: bool = False,
+    ):
+        super().__init__()
+        if out_channels is None:
+            out_channels = in_channels
+
+
+        # Ensure kernel_size, stride, and dilation are tuples of length 3
+        kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size,) * 3
+        assert len(kernel_size) == 3, f"Kernel size must be a 3-tuple, got {kernel_size} instead."
+
+        stride = stride if isinstance(stride, tuple) else (stride,) * 3
+        assert len(stride) == 3, f"Stride must be a 3-tuple, got {stride} instead."
+
+        # Unpack kernel size, stride, and dilation for temporal, height, and width dimensions
+        t_ks, h_ks, w_ks = kernel_size
+        self.t_stride, h_stride, w_stride = stride
+
+        self.temporal_upsample = temporal_upsample
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        # Store temporal padding and initialize flags and previous features cache
+        self.temporal_padding = t_ks - 1
+        self.temporal_padding_origin = math.ceil(((t_ks - 1) + (1 - w_stride)) / 2)
+
+        self.padding_flag = 0
+        self.prev_features = None
+        self.set_3dgroupnorm = False
+        
+        self.conv = nn.Conv3d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=(0, math.ceil(((h_ks - 1) + (1 - h_stride)) / 2), math.ceil(((w_ks - 1) + (1 - w_stride)) / 2)),
+        )
+
+    def _clear_conv_cache(self):
+        """
+        Clear the cache storing previous features to free memory.
+        """
+        del self.prev_features
+        self.prev_features = None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.interpolate(x, scale_factor=(1, 2, 2), mode="nearest")
+
+        # Ensure input tensor is of the correct type
+        dtype = x.dtype
+        # Apply different padding strategies based on the padding_flag
+        if self.padding_flag == 1:
+            # Pad the input tensor in the temporal dimension to maintain causality
+            x = F.pad(
+                x,
+                pad=(0, 0, 0, 0, self.temporal_padding, 0),
+                mode="replicate",     # TODO: check if this is necessary
+            )
+            x = x.to(dtype=dtype)
+
+            # Clear cache before processing and store previous features for causality
+            self._clear_conv_cache()
+            self.prev_features = x[:, :, -self.temporal_padding:].clone()
+
+            # Process the input tensor in chunks along the temporal dimension
+            b, c, f, h, w = x.size()
+            outputs = []
+            i = 0
+            while i + self.temporal_padding + 1 <= f:
+                out = self.conv(x[:, :, i:i + self.temporal_padding + 1])
+                i += self.t_stride
+                outputs.append(out)
+            x = torch.concat(outputs, 2)
+        elif self.padding_flag == 2:
+            # Concatenate previous features with the input tensor for continuous temporal processing
+            if self.t_stride == 2:
+                x = torch.concat(
+                    [self.prev_features[:, :, -(self.temporal_padding - 1):], x], dim = 2
+                )
+            else:
+                x = torch.concat(
+                    [self.prev_features, x], dim = 2
+                )
+            x = x.to(dtype=dtype)
+
+            # Clear cache and update previous features
+            self._clear_conv_cache()
+            self.prev_features = x[:, :, -self.temporal_padding:].clone()
+
+            # Process the concatenated tensor in chunks along the temporal dimension
+            b, c, f, h, w = x.size()
+            outputs = []
+            i = 0
+            while i + self.temporal_padding + 1 <= f:
+                out = self.conv(x[:, :, i:i + self.temporal_padding + 1])
+                i += self.t_stride
+                outputs.append(out)
+            x = torch.concat(outputs, 2)
+        else:
+            # Apply symmetric padding to the temporal dimension for the initial pass
+            x = F.pad(
+                x,
+                pad=(0, 0, 0, 0, self.temporal_padding_origin, self.temporal_padding_origin),
+            )
+            x = x.to(dtype=dtype)
+            x = self.conv(x)
+
+        if self.temporal_upsample:
+            if self.padding_flag == 0:
+                if x.shape[2] > 1:
+                    first_frame, x = x[:, :, :1], x[:, :, 1:]
+                    x = F.interpolate(x, scale_factor=(2, 1, 1), mode="trilinear" if not self.set_3dgroupnorm else "nearest")
+                    x = torch.cat([first_frame, x], dim=2)
+            elif self.padding_flag == 2:
+                x = F.interpolate(x, scale_factor=(2, 1, 1), mode="trilinear" if not self.set_3dgroupnorm else "nearest")
+        return x
 
 
 def upfirdn2d_native(
