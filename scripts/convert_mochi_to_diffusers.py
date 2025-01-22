@@ -168,28 +168,28 @@ def convert_mochi_vae_state_dict_to_diffusers(encoder_ckpt_path, decoder_ckpt_pa
     # Convert block_in (MochiMidBlock3D)
     for i in range(3):  # layers_per_block[-1] = 3
         new_state_dict[f"{prefix}block_in.resnets.{i}.norm1.norm_layer.weight"] = decoder_state_dict.pop(
-            f"blocks.0.{i+1}.stack.0.weight"
+            f"blocks.0.{i + 1}.stack.0.weight"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.norm1.norm_layer.bias"] = decoder_state_dict.pop(
-            f"blocks.0.{i+1}.stack.0.bias"
+            f"blocks.0.{i + 1}.stack.0.bias"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.conv1.conv.weight"] = decoder_state_dict.pop(
-            f"blocks.0.{i+1}.stack.2.weight"
+            f"blocks.0.{i + 1}.stack.2.weight"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.conv1.conv.bias"] = decoder_state_dict.pop(
-            f"blocks.0.{i+1}.stack.2.bias"
+            f"blocks.0.{i + 1}.stack.2.bias"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.norm2.norm_layer.weight"] = decoder_state_dict.pop(
-            f"blocks.0.{i+1}.stack.3.weight"
+            f"blocks.0.{i + 1}.stack.3.weight"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.norm2.norm_layer.bias"] = decoder_state_dict.pop(
-            f"blocks.0.{i+1}.stack.3.bias"
+            f"blocks.0.{i + 1}.stack.3.bias"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.conv2.conv.weight"] = decoder_state_dict.pop(
-            f"blocks.0.{i+1}.stack.5.weight"
+            f"blocks.0.{i + 1}.stack.5.weight"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.conv2.conv.bias"] = decoder_state_dict.pop(
-            f"blocks.0.{i+1}.stack.5.bias"
+            f"blocks.0.{i + 1}.stack.5.bias"
         )
 
     # Convert up_blocks (MochiUpBlock3D)
@@ -197,33 +197,35 @@ def convert_mochi_vae_state_dict_to_diffusers(encoder_ckpt_path, decoder_ckpt_pa
     for block in range(3):
         for i in range(down_block_layers[block]):
             new_state_dict[f"{prefix}up_blocks.{block}.resnets.{i}.norm1.norm_layer.weight"] = decoder_state_dict.pop(
-                f"blocks.{block+1}.blocks.{i}.stack.0.weight"
+                f"blocks.{block + 1}.blocks.{i}.stack.0.weight"
             )
             new_state_dict[f"{prefix}up_blocks.{block}.resnets.{i}.norm1.norm_layer.bias"] = decoder_state_dict.pop(
-                f"blocks.{block+1}.blocks.{i}.stack.0.bias"
+                f"blocks.{block + 1}.blocks.{i}.stack.0.bias"
             )
             new_state_dict[f"{prefix}up_blocks.{block}.resnets.{i}.conv1.conv.weight"] = decoder_state_dict.pop(
-                f"blocks.{block+1}.blocks.{i}.stack.2.weight"
+                f"blocks.{block + 1}.blocks.{i}.stack.2.weight"
             )
             new_state_dict[f"{prefix}up_blocks.{block}.resnets.{i}.conv1.conv.bias"] = decoder_state_dict.pop(
-                f"blocks.{block+1}.blocks.{i}.stack.2.bias"
+                f"blocks.{block + 1}.blocks.{i}.stack.2.bias"
             )
             new_state_dict[f"{prefix}up_blocks.{block}.resnets.{i}.norm2.norm_layer.weight"] = decoder_state_dict.pop(
-                f"blocks.{block+1}.blocks.{i}.stack.3.weight"
+                f"blocks.{block + 1}.blocks.{i}.stack.3.weight"
             )
             new_state_dict[f"{prefix}up_blocks.{block}.resnets.{i}.norm2.norm_layer.bias"] = decoder_state_dict.pop(
-                f"blocks.{block+1}.blocks.{i}.stack.3.bias"
+                f"blocks.{block + 1}.blocks.{i}.stack.3.bias"
             )
             new_state_dict[f"{prefix}up_blocks.{block}.resnets.{i}.conv2.conv.weight"] = decoder_state_dict.pop(
-                f"blocks.{block+1}.blocks.{i}.stack.5.weight"
+                f"blocks.{block + 1}.blocks.{i}.stack.5.weight"
             )
             new_state_dict[f"{prefix}up_blocks.{block}.resnets.{i}.conv2.conv.bias"] = decoder_state_dict.pop(
-                f"blocks.{block+1}.blocks.{i}.stack.5.bias"
+                f"blocks.{block + 1}.blocks.{i}.stack.5.bias"
             )
         new_state_dict[f"{prefix}up_blocks.{block}.proj.weight"] = decoder_state_dict.pop(
-            f"blocks.{block+1}.proj.weight"
+            f"blocks.{block + 1}.proj.weight"
         )
-        new_state_dict[f"{prefix}up_blocks.{block}.proj.bias"] = decoder_state_dict.pop(f"blocks.{block+1}.proj.bias")
+        new_state_dict[f"{prefix}up_blocks.{block}.proj.bias"] = decoder_state_dict.pop(
+            f"blocks.{block + 1}.proj.bias"
+        )
 
     # Convert block_out (MochiMidBlock3D)
     for i in range(3):  # layers_per_block[0] = 3
@@ -267,133 +269,133 @@ def convert_mochi_vae_state_dict_to_diffusers(encoder_ckpt_path, decoder_ckpt_pa
     # Convert block_in (MochiMidBlock3D)
     for i in range(3):  # layers_per_block[0] = 3
         new_state_dict[f"{prefix}block_in.resnets.{i}.norm1.norm_layer.weight"] = encoder_state_dict.pop(
-            f"layers.{i+1}.stack.0.weight"
+            f"layers.{i + 1}.stack.0.weight"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.norm1.norm_layer.bias"] = encoder_state_dict.pop(
-            f"layers.{i+1}.stack.0.bias"
+            f"layers.{i + 1}.stack.0.bias"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.conv1.conv.weight"] = encoder_state_dict.pop(
-            f"layers.{i+1}.stack.2.weight"
+            f"layers.{i + 1}.stack.2.weight"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.conv1.conv.bias"] = encoder_state_dict.pop(
-            f"layers.{i+1}.stack.2.bias"
+            f"layers.{i + 1}.stack.2.bias"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.norm2.norm_layer.weight"] = encoder_state_dict.pop(
-            f"layers.{i+1}.stack.3.weight"
+            f"layers.{i + 1}.stack.3.weight"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.norm2.norm_layer.bias"] = encoder_state_dict.pop(
-            f"layers.{i+1}.stack.3.bias"
+            f"layers.{i + 1}.stack.3.bias"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.conv2.conv.weight"] = encoder_state_dict.pop(
-            f"layers.{i+1}.stack.5.weight"
+            f"layers.{i + 1}.stack.5.weight"
         )
         new_state_dict[f"{prefix}block_in.resnets.{i}.conv2.conv.bias"] = encoder_state_dict.pop(
-            f"layers.{i+1}.stack.5.bias"
+            f"layers.{i + 1}.stack.5.bias"
         )
 
     # Convert down_blocks (MochiDownBlock3D)
     down_block_layers = [3, 4, 6]  # layers_per_block[1], layers_per_block[2], layers_per_block[3]
     for block in range(3):
         new_state_dict[f"{prefix}down_blocks.{block}.conv_in.conv.weight"] = encoder_state_dict.pop(
-            f"layers.{block+4}.layers.0.weight"
+            f"layers.{block + 4}.layers.0.weight"
         )
         new_state_dict[f"{prefix}down_blocks.{block}.conv_in.conv.bias"] = encoder_state_dict.pop(
-            f"layers.{block+4}.layers.0.bias"
+            f"layers.{block + 4}.layers.0.bias"
         )
 
         for i in range(down_block_layers[block]):
             # Convert resnets
-            new_state_dict[
-                f"{prefix}down_blocks.{block}.resnets.{i}.norm1.norm_layer.weight"
-            ] = encoder_state_dict.pop(f"layers.{block+4}.layers.{i+1}.stack.0.weight")
+            new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.norm1.norm_layer.weight"] = (
+                encoder_state_dict.pop(f"layers.{block + 4}.layers.{i + 1}.stack.0.weight")
+            )
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.norm1.norm_layer.bias"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.stack.0.bias"
+                f"layers.{block + 4}.layers.{i + 1}.stack.0.bias"
             )
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.conv1.conv.weight"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.stack.2.weight"
+                f"layers.{block + 4}.layers.{i + 1}.stack.2.weight"
             )
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.conv1.conv.bias"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.stack.2.bias"
+                f"layers.{block + 4}.layers.{i + 1}.stack.2.bias"
             )
-            new_state_dict[
-                f"{prefix}down_blocks.{block}.resnets.{i}.norm2.norm_layer.weight"
-            ] = encoder_state_dict.pop(f"layers.{block+4}.layers.{i+1}.stack.3.weight")
+            new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.norm2.norm_layer.weight"] = (
+                encoder_state_dict.pop(f"layers.{block + 4}.layers.{i + 1}.stack.3.weight")
+            )
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.norm2.norm_layer.bias"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.stack.3.bias"
+                f"layers.{block + 4}.layers.{i + 1}.stack.3.bias"
             )
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.conv2.conv.weight"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.stack.5.weight"
+                f"layers.{block + 4}.layers.{i + 1}.stack.5.weight"
             )
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.conv2.conv.bias"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.stack.5.bias"
+                f"layers.{block + 4}.layers.{i + 1}.stack.5.bias"
             )
 
             # Convert attentions
-            qkv_weight = encoder_state_dict.pop(f"layers.{block+4}.layers.{i+1}.attn_block.attn.qkv.weight")
+            qkv_weight = encoder_state_dict.pop(f"layers.{block + 4}.layers.{i + 1}.attn_block.attn.qkv.weight")
             q, k, v = qkv_weight.chunk(3, dim=0)
 
             new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_q.weight"] = q
             new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_k.weight"] = k
             new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_v.weight"] = v
             new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_out.0.weight"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.attn_block.attn.out.weight"
+                f"layers.{block + 4}.layers.{i + 1}.attn_block.attn.out.weight"
             )
             new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_out.0.bias"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.attn_block.attn.out.bias"
+                f"layers.{block + 4}.layers.{i + 1}.attn_block.attn.out.bias"
             )
             new_state_dict[f"{prefix}down_blocks.{block}.norms.{i}.norm_layer.weight"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.attn_block.norm.weight"
+                f"layers.{block + 4}.layers.{i + 1}.attn_block.norm.weight"
             )
             new_state_dict[f"{prefix}down_blocks.{block}.norms.{i}.norm_layer.bias"] = encoder_state_dict.pop(
-                f"layers.{block+4}.layers.{i+1}.attn_block.norm.bias"
+                f"layers.{block + 4}.layers.{i + 1}.attn_block.norm.bias"
             )
 
     # Convert block_out (MochiMidBlock3D)
     for i in range(3):  # layers_per_block[-1] = 3
         # Convert resnets
         new_state_dict[f"{prefix}block_out.resnets.{i}.norm1.norm_layer.weight"] = encoder_state_dict.pop(
-            f"layers.{i+7}.stack.0.weight"
+            f"layers.{i + 7}.stack.0.weight"
         )
         new_state_dict[f"{prefix}block_out.resnets.{i}.norm1.norm_layer.bias"] = encoder_state_dict.pop(
-            f"layers.{i+7}.stack.0.bias"
+            f"layers.{i + 7}.stack.0.bias"
         )
         new_state_dict[f"{prefix}block_out.resnets.{i}.conv1.conv.weight"] = encoder_state_dict.pop(
-            f"layers.{i+7}.stack.2.weight"
+            f"layers.{i + 7}.stack.2.weight"
         )
         new_state_dict[f"{prefix}block_out.resnets.{i}.conv1.conv.bias"] = encoder_state_dict.pop(
-            f"layers.{i+7}.stack.2.bias"
+            f"layers.{i + 7}.stack.2.bias"
         )
         new_state_dict[f"{prefix}block_out.resnets.{i}.norm2.norm_layer.weight"] = encoder_state_dict.pop(
-            f"layers.{i+7}.stack.3.weight"
+            f"layers.{i + 7}.stack.3.weight"
         )
         new_state_dict[f"{prefix}block_out.resnets.{i}.norm2.norm_layer.bias"] = encoder_state_dict.pop(
-            f"layers.{i+7}.stack.3.bias"
+            f"layers.{i + 7}.stack.3.bias"
         )
         new_state_dict[f"{prefix}block_out.resnets.{i}.conv2.conv.weight"] = encoder_state_dict.pop(
-            f"layers.{i+7}.stack.5.weight"
+            f"layers.{i + 7}.stack.5.weight"
         )
         new_state_dict[f"{prefix}block_out.resnets.{i}.conv2.conv.bias"] = encoder_state_dict.pop(
-            f"layers.{i+7}.stack.5.bias"
+            f"layers.{i + 7}.stack.5.bias"
         )
 
         # Convert attentions
-        qkv_weight = encoder_state_dict.pop(f"layers.{i+7}.attn_block.attn.qkv.weight")
+        qkv_weight = encoder_state_dict.pop(f"layers.{i + 7}.attn_block.attn.qkv.weight")
         q, k, v = qkv_weight.chunk(3, dim=0)
 
         new_state_dict[f"{prefix}block_out.attentions.{i}.to_q.weight"] = q
         new_state_dict[f"{prefix}block_out.attentions.{i}.to_k.weight"] = k
         new_state_dict[f"{prefix}block_out.attentions.{i}.to_v.weight"] = v
         new_state_dict[f"{prefix}block_out.attentions.{i}.to_out.0.weight"] = encoder_state_dict.pop(
-            f"layers.{i+7}.attn_block.attn.out.weight"
+            f"layers.{i + 7}.attn_block.attn.out.weight"
         )
         new_state_dict[f"{prefix}block_out.attentions.{i}.to_out.0.bias"] = encoder_state_dict.pop(
-            f"layers.{i+7}.attn_block.attn.out.bias"
+            f"layers.{i + 7}.attn_block.attn.out.bias"
         )
         new_state_dict[f"{prefix}block_out.norms.{i}.norm_layer.weight"] = encoder_state_dict.pop(
-            f"layers.{i+7}.attn_block.norm.weight"
+            f"layers.{i + 7}.attn_block.norm.weight"
         )
         new_state_dict[f"{prefix}block_out.norms.{i}.norm_layer.bias"] = encoder_state_dict.pop(
-            f"layers.{i+7}.attn_block.norm.bias"
+            f"layers.{i + 7}.attn_block.norm.bias"
         )
 
     # Convert output layers

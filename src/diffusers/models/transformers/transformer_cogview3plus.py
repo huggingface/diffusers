@@ -28,7 +28,7 @@ from ...models.attention_processor import (
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import is_torch_version, logging
-from ..embeddings import CogView3CombinedTimestepSizeEmbeddings, CogView3PlusPatchEmbed
+from ..embeddings import CogView3CombinedTimestepSizeEmbeddings, CogView3PlusPatchEmbed, CogView4PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
 
@@ -166,7 +166,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["CogView3PlusTransformerBlock", "CogView3PlusPatchEmbed"]
+    _no_split_modules = ["CogView3PlusTransformerBlock", "CogView3PlusPatchEmbed", "CogView4PlusPatchEmbed"]
 
     @register_to_config
     def __init__(
@@ -191,7 +191,15 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         # Each of these are sincos embeddings of shape 2 * condition_dim
         self.pooled_projection_dim = 3 * 2 * condition_dim
 
-        self.patch_embed = CogView3PlusPatchEmbed(
+        # self.patch_embed = CogView3PlusPatchEmbed(
+        #     in_channels=in_channels,
+        #     hidden_size=self.inner_dim,
+        #     patch_size=patch_size,
+        #     text_hidden_size=text_embed_dim,
+        #     pos_embed_max_size=pos_embed_max_size,
+        # )
+        # TODO: 兼容性适配
+        self.patch_embed = CogView4PatchEmbed(
             in_channels=in_channels,
             hidden_size=self.inner_dim,
             patch_size=patch_size,

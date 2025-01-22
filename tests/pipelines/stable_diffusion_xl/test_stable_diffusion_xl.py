@@ -242,15 +242,15 @@ class StableDiffusionXLPipelineFastTests(
         inputs["sigmas"] = sigma_schedule
         output_sigmas = sd_pipe(**inputs).images
 
-        assert (
-            np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3
-        ), "ays timesteps and ays sigmas should have the same outputs"
-        assert (
-            np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3
-        ), "use ays timesteps should have different outputs"
-        assert (
-            np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3
-        ), "use ays sigmas should have different outputs"
+        assert np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3, (
+            "ays timesteps and ays sigmas should have the same outputs"
+        )
+        assert np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3, (
+            "use ays timesteps should have different outputs"
+        )
+        assert np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3, (
+            "use ays sigmas should have different outputs"
+        )
 
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
@@ -855,9 +855,9 @@ class StableDiffusionXLPipelineFastTests(
             inputs_1 = {**inputs, **{"denoising_end": split_1, "output_type": "latent"}}
             latents = pipe_1(**inputs_1).images[0]
 
-            assert (
-                expected_steps_1 == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps_1 == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
             with self.assertRaises(ValueError) as cm:
                 inputs_2 = {
@@ -884,9 +884,9 @@ class StableDiffusionXLPipelineFastTests(
             pipe_3(**inputs_3).images[0]
 
             assert expected_steps_3 == done_steps[len(expected_steps_1) + len(expected_steps_2) :]
-            assert (
-                expected_steps == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
         for steps in [7, 11, 20]:
             for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):

@@ -199,9 +199,9 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
         else:
             expected_slice = np.array([1.0000, 0.9072, 0.4209, 0.2744, 0.5737, 0.3840, 0.6113, 0.6250, 0.6328])
 
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        ), f"Expected: {expected_slice}, got: {image_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
+            f"Expected: {expected_slice}, got: {image_slice.flatten()}"
+        )
 
     def test_controlnet_sd3(self):
         components = self.get_dummy_components()

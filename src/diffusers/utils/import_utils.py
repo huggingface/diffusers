@@ -235,7 +235,7 @@ except importlib_metadata.PackageNotFoundError:
 _wandb_available = importlib.util.find_spec("wandb") is not None
 try:
     _wandb_version = importlib_metadata.version("wandb")
-    logger.debug(f"Successfully imported wandb version {_wandb_version }")
+    logger.debug(f"Successfully imported wandb version {_wandb_version}")
 except importlib_metadata.PackageNotFoundError:
     _wandb_available = False
 

@@ -266,7 +266,7 @@ class ShapEImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
     def test_shap_e_img2img(self):
         input_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/shap_e/corgi.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/corgi.png"
         )
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"

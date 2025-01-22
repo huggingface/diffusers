@@ -221,9 +221,9 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert (
-            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
+            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        )
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0
@@ -322,9 +322,9 @@ class StableDiffusionXLPAGInpaintPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.41385046, 0.39608297, 0.4360491, 0.26872507, 0.32187328, 0.4242474, 0.2603805, 0.34167895, 0.46561807]
         )
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-        ), f"output is different from expected, {image_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
+            f"output is different from expected, {image_slice.flatten()}"
+        )
 
     def test_pag_uncond(self):
         pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
@@ -339,6 +339,6 @@ class StableDiffusionXLPAGInpaintPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.41597816, 0.39302617, 0.44287828, 0.2687074, 0.28315824, 0.40582314, 0.20877528, 0.2380802, 0.39447647]
         )
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-        ), f"output is different from expected, {image_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
+            f"output is different from expected, {image_slice.flatten()}"
+        )
