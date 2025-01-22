@@ -67,7 +67,7 @@ class VideoProcessor(VaeImageProcessor):
 
         # ensure the input is a list of videos:
         # - if it is a batch of videos (5d torch.Tensor or np.ndarray), it is converted to a list of videos (a list of 4d torch.Tensor or np.ndarray)
-        # - if it is is a single video, it is convereted to a list of one video.
+        # - if it is a single video, it is convereted to a list of one video.
         if isinstance(video, (np.ndarray, torch.Tensor)) and video.ndim == 5:
             video = list(video)
         elif isinstance(video, list) and is_valid_image(video[0]) or is_valid_image_imagelist(video):
