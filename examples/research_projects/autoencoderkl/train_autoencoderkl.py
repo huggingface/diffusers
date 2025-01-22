@@ -486,6 +486,9 @@ def parse_args(input_args=None):
     else:
         args = parser.parse_args()
 
+    if args.pretrained_model_name_or_path is not None and args.model_config_name_or_path is not None:
+        raise ValueError("Cannot specify both `--pretrained_model_name_or_path` and `--model_config_name_or_path`")
+
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Specify either `--dataset_name` or `--train_data_dir`")
 
