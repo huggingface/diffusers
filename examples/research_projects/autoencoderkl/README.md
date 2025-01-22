@@ -25,11 +25,26 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 accelerate config
 ```
 
+## Training on CIFAR10
+
+```bash
+accelerate launch train_autoencoderkl.py \
+    --pretrained_model_name_or_path stabilityai/sd-vae-ft-mse \
+    --dataset_name=cifar10 \
+    --image_column=img \
+    --validation_image images/bird.jpg images/car.jpg images/dog.jpg images/frog.jpg \
+    --num_train_epochs 100 \
+    --gradient_accumulation_steps 2 \
+    --learning_rate 4.5e-6 \
+    --lr_scheduler cosine \
+    --report_to wandb \
+```
+
 ## Training on ImageNet
 
 ```bash
-accelerate launch --multi_gpu --num_processes 4 --mixed_precision bf16 train_autoencoderkl.py \
-    --pretrained_model_name_or_path stabilityai/sdxl-vae \
+accelerate launch train_autoencoderkl.py \
+    --pretrained_model_name_or_path stabilityai/sd-vae-ft-mse \
     --num_train_epochs 100 \
     --gradient_accumulation_steps 2 \
     --learning_rate 4.5e-6 \

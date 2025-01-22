@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+# coding=utf-8
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+
 import argparse
 import contextlib
 import gc
@@ -33,7 +48,7 @@ import diffusers
 from diffusers import AutoencoderKL
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
@@ -43,20 +58,9 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+# check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
-
-
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 @torch.no_grad()
@@ -111,7 +115,7 @@ def log_validation(
                 }
             )
         else:
-            logger.warn(f"image logging not implemented for {tracker.gen_images}")
+            logger.warn(f"image logging not implemented for {tracker.name}")
 
         gc.collect()
         torch.cuda.empty_cache()
@@ -123,7 +127,7 @@ def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None)
     img_str = ""
     if images is not None:
         img_str = "You can find some example images below.\n\n"
-        image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images.png"))
+        make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images.png"))
         img_str += f"![images](./images.png)\n"
 
     model_description = f"""
@@ -875,23 +879,19 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             # Convert images to latent space and reconstruct from them
             targets = batch["pixel_values"].to(dtype=weight_dtype)
-            if accelerator.num_processes > 1:
-                posterior = vae.module.encode(targets).latent_dist
-            else:
-                posterior = vae.encode(targets).latent_dist
+            posterior = accelerator.unwrap_model(vae).encode(targets).latent_dist
             latents = posterior.sample()
-            if accelerator.num_processes > 1:
-                reconstructions = vae.module.decode(latents).sample
-            else:
-                reconstructions = vae.decode(latents).sample
+            reconstructions = accelerator.unwrap_model(vae).decode(latents).sample
 
             if (step // args.gradient_accumulation_steps) % 2 == 0 or global_step < args.disc_start:
                 with accelerator.accumulate(vae):
                     # reconstruction loss. Pixel level differences between input vs output
                     if args.rec_loss == "l2":
                         rec_loss = F.mse_loss(reconstructions.float(), targets.float(), reduction="none")
-                    else:
+                    elif args.rec_loss == "l1":
                         rec_loss = F.l1_loss(reconstructions.float(), targets.float(), reduction="none")
+                    else:
+                        raise ValueError(f"Invalid reconstruction loss type: {args.rec_loss}")
                     # perceptual loss. The high level feature mean squared error loss
                     with torch.no_grad():
                         p_loss = perceptual_loss(reconstructions, targets)
