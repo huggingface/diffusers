@@ -18,7 +18,6 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple, Union
 
-from types import SimpleNamespace
 
 import torch
 from tqdm.auto import tqdm
@@ -102,6 +101,50 @@ class PipelineState:
             f"  outputs={{\n{outputs}\n  }}\n"
             f")"
         )
+
+
+@dataclass 
+class BlockState:
+    """
+    Container for block state data with attribute access and formatted representation.
+    """
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def __repr__(self):
+        def format_value(v):
+            # Handle tensors directly
+            if hasattr(v, "shape") and hasattr(v, "dtype"):
+                return f"Tensor(dtype={v.dtype}, shape={v.shape})"
+            
+            # Handle lists of tensors
+            elif isinstance(v, list):
+                if len(v) > 0 and hasattr(v[0], "shape") and hasattr(v[0], "dtype"):
+                    shapes = [t.shape for t in v]
+                    return f"List[{len(v)}] of Tensors with shapes {shapes}"
+                return repr(v)
+            
+            # Handle tuples of tensors
+            elif isinstance(v, tuple):
+                if len(v) > 0 and hasattr(v[0], "shape") and hasattr(v[0], "dtype"):
+                    shapes = [t.shape for t in v]
+                    return f"Tuple[{len(v)}] of Tensors with shapes {shapes}"
+                return repr(v)
+            
+            # Handle dicts with tensor values
+            elif isinstance(v, dict):
+                if any(hasattr(val, "shape") and hasattr(val, "dtype") for val in v.values()):
+                    shapes = {k: val.shape for k, val in v.items() if hasattr(val, "shape")}
+                    return f"Dict of Tensors with shapes {shapes}"
+                return repr(v)
+            
+            # Default case
+            return repr(v)
+
+        attributes = "\n".join(f"    {k}: {format_value(v)}" for k, v in self.__dict__.items())
+        return f"BlockState(\n{attributes}\n)"
+
 
 @dataclass
 class InputParam:
@@ -487,9 +530,9 @@ class PipelineBlock:
                 raise ValueError(f"Required intermediate input '{input_param.name}' is missing")
             data[input_param.name] = value
 
-        return SimpleNamespace(**data)
+        return BlockState(**data)
     
-    def add_block_state(self, state: PipelineState, block_state: SimpleNamespace):
+    def add_block_state(self, state: PipelineState, block_state: BlockState):
         for output_param in self.intermediates_outputs:
             if not hasattr(block_state, output_param.name):
                 raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")

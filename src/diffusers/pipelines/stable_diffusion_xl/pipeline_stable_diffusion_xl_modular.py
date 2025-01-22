@@ -988,8 +988,6 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
             data.pooled_prompt_embeds.dtype,
             text_encoder_projection_dim=data.text_encoder_projection_dim,
         )
-        data.add_time_ids = data.add_time_ids.repeat(data.batch_size * data.num_images_per_prompt, 1).to(device=data.device)
-
         if data.negative_original_size is not None and data.negative_target_size is not None:
             data.negative_add_time_ids = pipeline._get_add_time_ids(
                 data.negative_original_size,
@@ -1000,6 +998,8 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
             )
         else:
             data.negative_add_time_ids = data.add_time_ids
+
+        data.add_time_ids = data.add_time_ids.repeat(data.batch_size * data.num_images_per_prompt, 1).to(device=data.device)
         data.negative_add_time_ids = data.negative_add_time_ids.repeat(data.batch_size * data.num_images_per_prompt, 1).to(device=data.device)
 
         # Optionally get Guidance Scale Embedding for LCM
@@ -1031,6 +1031,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
             InputParam("generator", default=None),
             InputParam("eta", default=0.0),
             InputParam("guider_kwargs", default=None),
+            InputParam("num_images_per_prompt", default=1),
         ]
 
     @property
@@ -1101,7 +1102,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
             "disable_guidance": data.disable_guidance,
             "guidance_scale": data.guidance_scale,
             "guidance_rescale": data.guidance_rescale,
-            "batch_size": data.batch_size,
+            "batch_size": data.batch_size * data.num_images_per_prompt,
         }
 
         pipeline.guider.set_guider(pipeline, data.guider_kwargs)
@@ -1366,7 +1367,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
             "disable_guidance": data.disable_guidance,
             "guidance_scale": data.guidance_scale,
             "guidance_rescale": data.guidance_rescale,
-            "batch_size": data.batch_size,
+            "batch_size": data.batch_size * data.num_images_per_prompt,
         }
         pipeline.guider.set_guider(pipeline, data.guider_kwargs)
         data.prompt_embeds = pipeline.guider.prepare_input(
@@ -1402,7 +1403,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
             "disable_guidance": data.controlnet_disable_guidance,
             "guidance_scale": data.guidance_scale,
             "guidance_rescale": data.guidance_rescale,
-            "batch_size": data.batch_size,
+            "batch_size": data.batch_size * data.num_images_per_prompt,
         }
         pipeline.controlnet_guider.set_guider(pipeline, data.controlnet_guider_kwargs)
         data.controlnet_prompt_embeds = pipeline.controlnet_guider.prepare_input(data.prompt_embeds)
@@ -1660,7 +1661,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
             "disable_guidance": data.disable_guidance,
             "guidance_scale": data.guidance_scale,
             "guidance_rescale": data.guidance_rescale,
-            "batch_size": data.batch_size,
+            "batch_size": data.batch_size * data.num_images_per_prompt,
         }
         pipeline.guider.set_guider(pipeline, data.guider_kwargs)
         data.prompt_embeds = pipeline.guider.prepare_input(
@@ -1697,7 +1698,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
             "disable_guidance": data.controlnet_disable_guidance,
             "guidance_scale": data.guidance_scale,
             "guidance_rescale": data.guidance_rescale,
-            "batch_size": data.batch_size,
+            "batch_size": data.batch_size * data.num_images_per_prompt,
         }
         pipeline.controlnet_guider.set_guider(pipeline, data.controlnet_guider_kwargs)
         data.controlnet_prompt_embeds = pipeline.controlnet_guider.prepare_input(data.prompt_embeds)
@@ -1712,6 +1713,8 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
             data.control_type.reshape(1, -1)
             .to(data.device, dtype=data.prompt_embeds.dtype)
         )
+        repeat_by = data.batch_size * data.num_images_per_prompt // data.control_type.shape[0]
+        data.control_type = data.control_type.repeat_interleave(repeat_by, dim=0)
         data.control_type = pipeline.controlnet_guider.prepare_input(data.control_type, data.control_type)
 
         # (4) Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
