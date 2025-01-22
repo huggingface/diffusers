@@ -1392,6 +1392,8 @@ class ModelTesterMixin:
 
     @require_torch_gpu
     def test_layerwise_casting_memory(self):
+        MB_TOLERANCE = 0.2
+
         def reset_memory_stats():
             gc.collect()
             torch.cuda.synchronize()
@@ -1409,17 +1411,25 @@ class ModelTesterMixin:
             reset_memory_stats()
             model(**inputs_dict)
             model_memory_footprint = model.get_memory_footprint()
-            peak_inference_memory_allocated = torch.cuda.max_memory_allocated()
+            peak_inference_memory_allocated_mb = torch.cuda.max_memory_allocated() / 1024**2
 
-            return model_memory_footprint, peak_inference_memory_allocated
+            return model_memory_footprint, peak_inference_memory_allocated_mb
 
+        fp32_memory_footprint, fp32_max_memory = get_memory_usage(torch.float32, torch.float32)
         fp8_e4m3_fp32_memory_footprint, fp8_e4m3_fp32_max_memory = get_memory_usage(torch.float8_e4m3fn, torch.float32)
         fp8_e4m3_bf16_memory_footprint, fp8_e4m3_bf16_max_memory = get_memory_usage(
             torch.float8_e4m3fn, torch.bfloat16
         )
 
-        self.assertTrue(fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint)
+        self.assertTrue(fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint < fp32_memory_footprint)
         self.assertTrue(fp8_e4m3_bf16_max_memory < fp8_e4m3_fp32_max_memory)
+        # On this dummy test case with a small model, sometimes fp8_e4m3_fp32 max memory usage is higher than fp32 by a few
+        # bytes. This only happens for some models, so we allow a small tolerance.
+        # For any real model being tested, the order would be fp8_e4m3_bf16 < fp8_e4m3_fp32 < fp32.
+        self.assertTrue(
+            fp8_e4m3_fp32_max_memory < fp32_max_memory
+            or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
+        )
 
 
 @is_staging_test
