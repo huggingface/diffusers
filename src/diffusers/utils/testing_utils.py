@@ -1098,7 +1098,9 @@ if is_torch_available():
     }
     BACKEND_RESET_PEAK_MEMORY_STATS = {
         "cuda": torch.cuda.reset_peak_memory_stats,
-        "xpu": torch.xpu.reset_peak_memory_stats,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
+        "cpu": None,
+        "mps": None,
         "default": None,
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
@@ -1214,4 +1216,5 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
         update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
         update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEMORY_STATS_FN")
+        update_mapping_from_spec(BACKEND_RESET_MAX_MEMORY_ALLOCATED, "RESET_MAX_MEMORY_ALLOCATED_FN")
         update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")

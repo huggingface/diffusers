@@ -25,6 +25,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     floats_tensor,
     load_numpy,
@@ -127,6 +128,7 @@ class IFSuperResolutionPipelineSlowTests(unittest.TestCase):
 
         # Super resolution test
         backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
         backend_reset_peak_memory_stats(torch_device)
 
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)

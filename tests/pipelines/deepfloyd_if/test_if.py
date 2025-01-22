@@ -25,6 +25,7 @@ from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
+    backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     load_numpy,
     require_accelerator,
@@ -119,6 +120,7 @@ class IFPipelineSlowTests(unittest.TestCase):
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload(device=torch_device)
 
+        backend_reset_max_memory_allocated(torch_device)
         backend_empty_cache(torch_device)
         backend_reset_peak_memory_stats(torch_device)
 
