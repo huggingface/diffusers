@@ -27,6 +27,8 @@ accelerate config
 
 ## Training on CIFAR10
 
+Please replace the validation image with your own image.
+
 ```bash
 accelerate launch train_autoencoderkl.py \
     --pretrained_model_name_or_path stabilityai/sd-vae-ft-mse \
