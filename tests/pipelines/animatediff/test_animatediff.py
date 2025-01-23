@@ -60,6 +60,7 @@ class AnimateDiffPipelineFastTests(
             "callback_on_step_end_tensor_inputs",
         ]
     )
+    test_layerwise_casting = True
 
     def get_dummy_components(self):
         cross_attention_dim = 8
