@@ -324,9 +324,8 @@ import torch
 from diffusers import FluxPipeline
 from diffusers.utils import load_image
 
-pipe: FluxPipeline = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
 ).to("cuda")
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux_ip_adapter_input.jpg").resize((1024, 1024))
@@ -341,7 +340,7 @@ pipe.set_ip_adapter_scale(1.0)
 image = pipe(
     width=1024,
     height=1024,
-    prompt='wearing sunglasses',
+    prompt="wearing sunglasses",
     negative_prompt="",
     true_cfg=4.0,
     generator=torch.Generator().manual_seed(4444),
