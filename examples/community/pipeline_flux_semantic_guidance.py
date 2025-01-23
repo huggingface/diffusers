@@ -230,6 +230,7 @@ class FluxSemanticGuidancePipeline(
         )
         self.default_sample_size = 128
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -279,6 +280,7 @@ class FluxSemanticGuidancePipeline(
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -323,6 +325,7 @@ class FluxSemanticGuidancePipeline(
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -513,6 +516,7 @@ class FluxSemanticGuidancePipeline(
             enabled_editing_prompts,
         )
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -524,6 +528,7 @@ class FluxSemanticGuidancePipeline(
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
     ):
@@ -555,6 +560,7 @@ class FluxSemanticGuidancePipeline(
 
         return ip_adapter_image_embeds
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -633,6 +639,7 @@ class FluxSemanticGuidancePipeline(
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
         latent_image_ids = torch.zeros(height, width, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
@@ -647,6 +654,7 @@ class FluxSemanticGuidancePipeline(
         return latent_image_ids.to(device=device, dtype=dtype)
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
@@ -655,6 +663,7 @@ class FluxSemanticGuidancePipeline(
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
@@ -670,6 +679,7 @@ class FluxSemanticGuidancePipeline(
 
         return latents
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -677,6 +687,7 @@ class FluxSemanticGuidancePipeline(
         """
         self.vae.enable_slicing()
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -684,6 +695,7 @@ class FluxSemanticGuidancePipeline(
         """
         self.vae.disable_slicing()
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -692,6 +704,7 @@ class FluxSemanticGuidancePipeline(
         """
         self.vae.enable_tiling()
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
@@ -699,6 +712,7 @@ class FluxSemanticGuidancePipeline(
         """
         self.vae.disable_tiling()
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -1171,7 +1185,7 @@ class FluxSemanticGuidancePipeline(
                         device=device,
                         dtype=noise_guidance.dtype,
                     )
-                    # noise_guidance_edit = torch.zeros_like(noise_guidance)
+
                     warmup_inds = []
                     for c, noise_pred_edit_concept in enumerate(noise_pred_edit_concepts):
                         if isinstance(edit_guidance_scale, list):
@@ -1244,9 +1258,6 @@ class FluxSemanticGuidancePipeline(
                         )
 
                         noise_guidance_edit[c, :, :, :] = noise_guidance_edit_tmp
-                        # noise_guidance_edit[c] = noise_guidance_edit_tmp
-
-                        # noise_guidance_edit = noise_guidance_edit + noise_guidance_edit_tmp
 
                     warmup_inds = torch.tensor(warmup_inds).to(device)
                     if len(noise_pred_edit_concepts) > warmup_inds.shape[0] > 0:
@@ -1258,7 +1269,6 @@ class FluxSemanticGuidancePipeline(
                             concept_weights_tmp < 0, torch.zeros_like(concept_weights_tmp), concept_weights_tmp
                         )
                         concept_weights_tmp = concept_weights_tmp / concept_weights_tmp.sum(dim=0)
-                        # concept_weights_tmp = torch.nan_to_num(concept_weights_tmp)
 
                         noise_guidance_edit_tmp = torch.index_select(noise_guidance_edit.to(device), 0, warmup_inds)
                         noise_guidance_edit_tmp = torch.einsum(
