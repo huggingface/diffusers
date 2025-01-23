@@ -14,7 +14,6 @@
 
 import unittest
 
-import pytest
 import torch
 
 from diffusers import SanaTransformer2DModel
@@ -33,6 +32,7 @@ class SanaTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = SanaTransformer2DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
+    model_split_percents = [0.7, 0.7, 0.9]
 
     @property
     def dummy_input(self):
@@ -81,27 +81,3 @@ class SanaTransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"SanaTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-    @pytest.mark.xfail(
-        condition=torch.device(torch_device).type == "cuda",
-        reason="Test currently fails.",
-        strict=True,
-    )
-    def test_cpu_offload(self):
-        return super().test_cpu_offload()
-
-    @pytest.mark.xfail(
-        condition=torch.device(torch_device).type == "cuda",
-        reason="Test currently fails.",
-        strict=True,
-    )
-    def test_disk_offload_with_safetensors(self):
-        return super().test_disk_offload_with_safetensors()
-
-    @pytest.mark.xfail(
-        condition=torch.device(torch_device).type == "cuda",
-        reason="Test currently fails.",
-        strict=True,
-    )
-    def test_disk_offload_without_safetensors(self):
-        return super().test_disk_offload_without_safetensors()

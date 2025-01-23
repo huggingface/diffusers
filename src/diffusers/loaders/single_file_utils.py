@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -186,6 +186,7 @@ DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
     "inpainting": 512,
     "inpainting_v2": 512,
     "controlnet": 512,
+    "instruct-pix2pix": 512,
     "v2": 768,
     "v1": 512,
 }
@@ -605,10 +606,14 @@ def infer_diffusers_model_type(checkpoint):
         if any(
             g in checkpoint for g in ["guidance_in.in_layer.bias", "model.diffusion_model.guidance_in.in_layer.bias"]
         ):
-            if checkpoint["img_in.weight"].shape[1] == 384:
-                model_type = "flux-fill"
+            if "model.diffusion_model.img_in.weight" in checkpoint:
+                key = "model.diffusion_model.img_in.weight"
+            else:
+                key = "img_in.weight"
 
-            elif checkpoint["img_in.weight"].shape[1] == 128:
+            if checkpoint[key].shape[1] == 384:
+                model_type = "flux-fill"
+            elif checkpoint[key].shape[1] == 128:
                 model_type = "flux-depth"
             else:
                 model_type = "flux-dev"
