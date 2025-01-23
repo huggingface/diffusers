@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,15 +23,16 @@ import re
 from collections import OrderedDict
 from functools import partial, wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import safetensors
 import torch
-from huggingface_hub import create_repo, split_torch_state_dict_into_shards
+from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
+from ..hooks import apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -48,6 +49,7 @@ from ..utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
+    is_peft_available,
     is_torch_version,
     logging,
 )
@@ -102,6 +104,17 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     """
     Returns the first found floating dtype in parameters if there is one, otherwise returns the last dtype it found.
     """
+    # 1. Check if we have attached any dtype modifying hooks (eg. layerwise casting)
+    if isinstance(parameter, nn.Module):
+        for name, submodule in parameter.named_modules():
+            if not hasattr(submodule, "_diffusers_hook"):
+                continue
+            registry = submodule._diffusers_hook
+            hook = registry.get_hook("layerwise_casting")
+            if hook is not None:
+                return hook.compute_dtype
+
+    # 2. If no dtype modifying hooks are attached, return the dtype of the first floating point parameter/buffer
     last_dtype = None
     for param in parameter.parameters():
         last_dtype = param.dtype
@@ -150,6 +163,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _keys_to_ignore_on_load_unexpected = None
     _no_split_modules = None
     _keep_in_fp32_modules = None
+    _skip_layerwise_casting_patterns = None
 
     def __init__(self):
         super().__init__()
@@ -227,14 +241,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.set_use_npu_flash_attention(False)
 
     def set_use_xla_flash_attention(
-        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None, **kwargs
     ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
         # gets the message
         def fn_recursive_set_flash_attention(module: torch.nn.Module):
             if hasattr(module, "set_use_xla_flash_attention"):
-                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec)
+                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, **kwargs)
 
             for child in module.children():
                 fn_recursive_set_flash_attention(child)
@@ -243,11 +257,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_flash_attention(module)
 
-    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None):
+    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None, **kwargs):
         r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
-        self.set_use_xla_flash_attention(True, partition_spec)
+        self.set_use_xla_flash_attention(True, partition_spec, **kwargs)
 
     def disable_xla_flash_attention(self):
         r"""
@@ -313,6 +327,90 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
         """
         self.set_use_memory_efficient_attention_xformers(False)
+
+    def enable_layerwise_casting(
+        self,
+        storage_dtype: torch.dtype = torch.float8_e4m3fn,
+        compute_dtype: Optional[torch.dtype] = None,
+        skip_modules_pattern: Optional[Tuple[str, ...]] = None,
+        skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+        non_blocking: bool = False,
+    ) -> None:
+        r"""
+        Activates layerwise casting for the current model.
+
+        Layerwise casting is a technique that casts the model weights to a lower precision dtype for storage but
+        upcasts them on-the-fly to a higher precision dtype for computation. This process can significantly reduce the
+        memory footprint from model weights, but may lead to some quality degradation in the outputs. Most degradations
+        are negligible, mostly stemming from weight casting in normalization and modulation layers.
+
+        By default, most models in diffusers set the `_skip_layerwise_casting_patterns` attribute to ignore patch
+        embedding, positional embedding and normalization layers. This is because these layers are most likely
+        precision-critical for quality. If you wish to change this behavior, you can set the
+        `_skip_layerwise_casting_patterns` attribute to `None`, or call
+        [`~hooks.layerwise_casting.apply_layerwise_casting`] with custom arguments.
+
+        Example:
+            Using [`~models.ModelMixin.enable_layerwise_casting`]:
+
+            ```python
+            >>> from diffusers import CogVideoXTransformer3DModel
+
+            >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
+            ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
+            ... )
+
+            >>> # Enable layerwise casting via the model, which ignores certain modules by default
+            >>> transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+            ```
+
+        Args:
+            storage_dtype (`torch.dtype`):
+                The dtype to which the model should be cast for storage.
+            compute_dtype (`torch.dtype`):
+                The dtype to which the model weights should be cast during the forward pass.
+            skip_modules_pattern (`Tuple[str, ...]`, *optional*):
+                A list of patterns to match the names of the modules to skip during the layerwise casting process. If
+                set to `None`, default skip patterns are used to ignore certain internal layers of modules and PEFT
+                layers.
+            skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
+                A list of module classes to skip during the layerwise casting process.
+            non_blocking (`bool`, *optional*, defaults to `False`):
+                If `True`, the weight casting operations are non-blocking.
+        """
+
+        user_provided_patterns = True
+        if skip_modules_pattern is None:
+            from ..hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
+
+            skip_modules_pattern = DEFAULT_SKIP_MODULES_PATTERN
+            user_provided_patterns = False
+        if self._keep_in_fp32_modules is not None:
+            skip_modules_pattern += tuple(self._keep_in_fp32_modules)
+        if self._skip_layerwise_casting_patterns is not None:
+            skip_modules_pattern += tuple(self._skip_layerwise_casting_patterns)
+        skip_modules_pattern = tuple(set(skip_modules_pattern))
+
+        if is_peft_available() and not user_provided_patterns:
+            # By default, we want to skip all peft layers because they have a very low memory footprint.
+            # If users want to apply layerwise casting on peft layers as well, they can utilize the
+            # `~diffusers.hooks.layerwise_casting.apply_layerwise_casting` function which provides
+            # them with more flexibility and control.
+
+            from peft.tuners.loha.layer import LoHaLayer
+            from peft.tuners.lokr.layer import LoKrLayer
+            from peft.tuners.lora.layer import LoraLayer
+
+            for layer in (LoHaLayer, LoKrLayer, LoraLayer):
+                skip_modules_pattern += tuple(layer.adapter_layer_names)
+
+        if compute_dtype is None:
+            logger.info("`compute_dtype` not provided when enabling layerwise casting. Using dtype of the model.")
+            compute_dtype = self.dtype
+
+        apply_layerwise_casting(
+            self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
+        )
 
     def save_pretrained(
         self,
@@ -559,6 +657,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
                 weights. If set to `False`, `safetensors` weights are not loaded.
+            disable_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
+                is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
 
         <Tip>
 
@@ -604,6 +705,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
+        dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
+        disable_mmap = kwargs.pop("disable_mmap", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -696,6 +799,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision=revision,
             subfolder=subfolder,
             user_agent=user_agent,
+            dduf_entries=dduf_entries,
             **kwargs,
         )
         # no in-place modification of the original config.
@@ -772,13 +876,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "revision": revision,
             "user_agent": user_agent,
             "commit_hash": commit_hash,
+            "dduf_entries": dduf_entries,
         }
         index_file = _fetch_index_file(**index_file_kwargs)
         # In case the index file was not found we still have to consider the legacy format.
         # this becomes applicable when the variant is not None.
         if variant is not None and (index_file is None or not os.path.exists(index_file)):
             index_file = _fetch_index_file_legacy(**index_file_kwargs)
-        if index_file is not None and index_file.is_file():
+        if index_file is not None and (dduf_entries or index_file.is_file()):
             is_sharded = True
 
         if is_sharded and from_flax:
@@ -807,6 +912,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
+            # in the case it is sharded, we have already the index
             if is_sharded:
                 sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
                     pretrained_model_name_or_path,
@@ -818,10 +924,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     user_agent=user_agent,
                     revision=revision,
                     subfolder=subfolder or "",
+                    dduf_entries=dduf_entries,
                 )
                 # TODO: https://github.com/huggingface/diffusers/issues/10013
-                if hf_quantizer is not None:
-                    model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
+                if hf_quantizer is not None or dduf_entries:
+                    model_file = _merge_sharded_checkpoints(
+                        sharded_ckpt_cached_folder, sharded_metadata, dduf_entries=dduf_entries
+                    )
                     logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
                     is_sharded = False
 
@@ -839,6 +948,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         subfolder=subfolder,
                         user_agent=user_agent,
                         commit_hash=commit_hash,
+                        dduf_entries=dduf_entries,
                     )
 
                 except IOError as e:
@@ -862,6 +972,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     subfolder=subfolder,
                     user_agent=user_agent,
                     commit_hash=commit_hash,
+                    dduf_entries=dduf_entries,
                 )
 
             if low_cpu_mem_usage:
@@ -883,7 +994,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
                     else:
                         param_device = torch.device(torch.cuda.current_device())
-                    state_dict = load_state_dict(model_file, variant=variant)
+                    state_dict = load_state_dict(
+                        model_file, variant=variant, dduf_entries=dduf_entries, disable_mmap=disable_mmap
+                    )
                     model._convert_deprecated_attention_blocks(state_dict)
 
                     # move the params from meta device to cpu
@@ -898,6 +1011,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
+                    named_buffers = model.named_buffers()
+
                     unexpected_keys = load_model_dict_into_meta(
                         model,
                         state_dict,
@@ -906,6 +1021,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         model_name_or_path=pretrained_model_name_or_path,
                         hf_quantizer=hf_quantizer,
                         keep_in_fp32_modules=keep_in_fp32_modules,
+                        named_buffers=named_buffers,
                     )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
@@ -920,14 +1036,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
-                    force_hook = True
                     device_map = _determine_device_map(
                         model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
                     )
                     if device_map is None and is_sharded:
                         # we load the parameters on the cpu
                         device_map = {"": "cpu"}
-                        force_hook = False
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
@@ -937,7 +1051,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             offload_folder=offload_folder,
                             offload_state_dict=offload_state_dict,
                             dtype=torch_dtype,
-                            force_hooks=force_hook,
                             strict=True,
                         )
                     except AttributeError as e:
@@ -967,7 +1080,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                                 offload_folder=offload_folder,
                                 offload_state_dict=offload_state_dict,
                                 dtype=torch_dtype,
-                                force_hooks=force_hook,
                                 strict=True,
                             )
                             model._undo_temp_convert_self_to_deprecated_attention_blocks()
@@ -983,7 +1095,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 model = cls.from_config(config, **unused_kwargs)
 
-                state_dict = load_state_dict(model_file, variant=variant)
+                state_dict = load_state_dict(
+                    model_file, variant=variant, dduf_entries=dduf_entries, disable_mmap=disable_mmap
+                )
                 model._convert_deprecated_attention_blocks(state_dict)
 
                 model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
@@ -1214,7 +1328,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     # Adapted from `transformers` modeling_utils.py
     def _get_no_split_modules(self, device_map: str):
         """
-        Get the modules of the model that should not be spit when using device_map. We iterate through the modules to
+        Get the modules of the model that should not be split when using device_map. We iterate through the modules to
         get the underlying `_no_split_modules`.
 
         Args:

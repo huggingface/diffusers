@@ -43,7 +43,9 @@ from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_accelerate_version_greater,
     require_accelerator,
+    require_hf_hub_version_greater,
     require_torch,
+    require_transformers_version_greater,
     skip_mps,
     torch_device,
 )
@@ -985,6 +987,8 @@ class PipelineTesterMixin:
     test_attention_slicing = True
 
     test_xformers_attention = True
+    test_layerwise_casting = False
+    supports_dduf = True
 
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
@@ -1192,7 +1196,6 @@ class PipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
-            print(batch_size, batched_input)
             output = pipe(**batched_input)
             assert len(output[0]) == batch_size
 
@@ -1990,6 +1993,54 @@ class PipelineTesterMixin:
                 (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, UNetControlNetXSModel),
             )
         )
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
+        if not self.supports_dduf:
+            return
+
+        from huggingface_hub import export_folder_as_dduf
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device="cpu")
+        inputs.pop("generator")
+        inputs["generator"] = torch.manual_seed(0)
+
+        pipeline_out = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
+            pipe.save_pretrained(tmpdir, safe_serialization=True)
+            export_folder_as_dduf(dduf_filename, folder_path=tmpdir)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
+
+        inputs["generator"] = torch.manual_seed(0)
+        loaded_pipeline_out = loaded_pipe(**inputs)[0]
+
+        if isinstance(pipeline_out, np.ndarray) and isinstance(loaded_pipeline_out, np.ndarray):
+            assert np.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
+        elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
+            assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
+
+    def test_layerwise_casting_inference(self):
+        if not self.test_layerwise_casting:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device, dtype=torch.bfloat16)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        _ = pipe(**inputs)[0]
 
 
 @is_staging_test

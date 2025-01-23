@@ -99,7 +99,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
             scaled_sample = scheduler.scale_model_input(sample, 0.0)
             self.assertEqual(sample.shape, scaled_sample.shape)
 
-            noise = torch.randn_like(scaled_sample).to(torch_device)
+            noise = torch.randn(scaled_sample.shape).to(torch_device)
             t = scheduler.timesteps[5][None]
             noised = scheduler.add_noise(scaled_sample, noise, t)
             self.assertEqual(noised.shape, scaled_sample.shape)

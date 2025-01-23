@@ -21,7 +21,7 @@ from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import Mochi1LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKL
+from ...models.autoencoders import AutoencoderKLMochi
 from ...models.transformers import MochiTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -60,19 +60,6 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_video(frames, "mochi.mp4")
         ```
 """
-
-
-def calculate_shift(
-    image_seq_len,
-    base_seq_len: int = 256,
-    max_seq_len: int = 4096,
-    base_shift: float = 0.5,
-    max_shift: float = 1.16,
-):
-    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-    b = base_shift - m * base_seq_len
-    mu = image_seq_len * m + b
-    return mu
 
 
 # from: https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
@@ -164,8 +151,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             Conditional Transformer architecture to denoise the encoded video latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        vae ([`AutoencoderKLMochi`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
@@ -184,7 +171,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKL,
+        vae: AutoencoderKLMochi,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
         transformer: MochiTransformer3DModel,
