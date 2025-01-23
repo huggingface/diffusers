@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import inspect
+import math
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import math
 import torch
 from transformers import GlmModel
 
@@ -28,6 +28,7 @@ from ...schedulers import CogView4DDIMScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import CogView4PipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -67,63 +68,63 @@ def time_shift(mu: float, shift_sigma: float, sigmas: torch.Tensor):
     return math.exp(mu) / (math.exp(mu) + (1 / sigmas - 1) ** shift_sigma)
 
 
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
-    **kwargs,
-):
-    r"""
-    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+# def retrieve_timesteps(
+#     scheduler,
+#     num_inference_steps: Optional[int] = None,
+#     device: Optional[Union[str, torch.device]] = None,
+#     timesteps: Optional[List[int]] = None,
+#     sigmas: Optional[List[float]] = None,
+#     **kwargs,
+# ):
+#     r"""
+#     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+#     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
-            must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
-            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
-            `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
-            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
-            `num_inference_steps` and `timesteps` must be `None`.
+#     Args:
+#         scheduler (`SchedulerMixin`):
+#             The scheduler to get timesteps from.
+#         num_inference_steps (`int`):
+#             The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+#             must be `None`.
+#         device (`str` or `torch.device`, *optional*):
+#             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+#         timesteps (`List[int]`, *optional*):
+#             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+#             `num_inference_steps` and `sigmas` must be `None`.
+#         sigmas (`List[float]`, *optional*):
+#             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+#             `num_inference_steps` and `timesteps` must be `None`.
 
-    Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
-    """
-    if timesteps is not None and sigmas is not None:
-        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accepts_timesteps:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    elif sigmas is not None:
-        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accept_sigmas:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" sigmas schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
+#     Returns:
+#         `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+#         second element is the number of inference steps.
+#     """
+#     if timesteps is not None and sigmas is not None:
+#         raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+#     if timesteps is not None:
+#         accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+#         if not accepts_timesteps:
+#             raise ValueError(
+#                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+#                 f" timestep schedules. Please check whether you are using the correct scheduler."
+#             )
+#         scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+#         timesteps = scheduler.timesteps
+#         num_inference_steps = len(timesteps)
+#     elif sigmas is not None:
+#         accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+#         if not accept_sigmas:
+#             raise ValueError(
+#                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+#                 f" sigmas schedules. Please check whether you are using the correct scheduler."
+#             )
+#         scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+#         timesteps = scheduler.timesteps
+#         num_inference_steps = len(timesteps)
+#     else:
+#         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+#         timesteps = scheduler.timesteps
+#     return timesteps, num_inference_steps
 
 
 class CogView4Pipeline(DiffusionPipeline):
@@ -172,6 +173,7 @@ class CogView4Pipeline(DiffusionPipeline):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
+        self.image_factor = 16
 
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
@@ -210,7 +212,7 @@ class CogView4Pipeline(DiffusionPipeline):
         if pad_length > 0:
             pad_ids = torch.full(
                 (text_input_ids.shape[0], pad_length),
-                fill_value=151329,  # <|endoftext|> of glm-4
+                fill_value=self.tokenizer.pad_token_id,
                 dtype=text_input_ids.dtype,
                 device=text_input_ids.device,
             )
@@ -312,23 +314,23 @@ class CogView4Pipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
-        #TODO: 先pad 0 ，后续再处理不同长度的问题
+        # TODO: 先pad 0 ，后续再处理不同长度的问题  (lhy: 这里改为pad padding token试试)
         seq_len_prompt = prompt_embeds.shape[1]
         seq_len_neg = negative_prompt_embeds.shape[1]
         if seq_len_neg < seq_len_prompt:
-                # 创建一个新的张量，大小为 [batch_size, seq_len_prompt, hidden_size]
-                batch_size = negative_prompt_embeds.shape[0]
-                hidden_size = negative_prompt_embeds.shape[2]
-                # 填充后的张量
-                padded_negative_prompt_embeds = torch.zeros(
-                    batch_size,
-                    seq_len_prompt,
-                    hidden_size,
-                    dtype=negative_prompt_embeds.dtype,
-                    device=negative_prompt_embeds.device
-                )
-                padded_negative_prompt_embeds[:, :seq_len_neg, :] = negative_prompt_embeds
-                negative_prompt_embeds = padded_negative_prompt_embeds
+            # 创建一个新的张量，大小为 [batch_size, seq_len_prompt, hidden_size]
+            batch_size, seq_len, hidden_size = negative_prompt_embeds.shape
+            # 填充后的张量
+            padded_negative_prompt = torch.full(
+                (batch_size, seq_len_prompt - seq_len_neg),
+                fill_value=self.tokenizer.pad_token_id,
+                device=negative_prompt_embeds.device,
+            )
+            padded_negative_prompt_embeds = self.text_encoder.model.embed_tokens(
+                padded_negative_prompt.to(self.text_encoder.model.device)
+            )
+            negative_prompt_embeds = torch.cat([padded_negative_prompt_embeds, negative_prompt_embeds], dim=1)
+            assert negative_prompt_embeds.shape == prompt_embeds.shape
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
@@ -382,8 +384,15 @@ class CogView4Pipeline(DiffusionPipeline):
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if height % self.image_factor != 0 or width % self.image_factor != 0:
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.image_factor} but are {height} and {width}."
+            )
+
+        if height < 512 or height > 2048 or width < 512 or width > 2048:
+            raise ValueError(
+                f"`height` and `width` must be between 512 and 2048, but got height={height} and width={width}."
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -561,7 +570,7 @@ class CogView4Pipeline(DiffusionPipeline):
         original_size = original_size or (height, width)
         target_size = (height, width)
 
-        # 1. Check inputs. Raise error if not correct
+        # Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             height,
@@ -574,7 +583,7 @@ class CogView4Pipeline(DiffusionPipeline):
         self._guidance_scale = guidance_scale
         self._interrupt = False
 
-        # 2. Default call parameters
+        # Default call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -587,34 +596,20 @@ class CogView4Pipeline(DiffusionPipeline):
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
-        # 3. Encode input prompt
+        do_classifier_free_guidance = self.do_classifier_free_guidance
+        # Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             negative_prompt,
-            self.do_classifier_free_guidance,
+            do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
 
-        # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
-        image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
-            self.transformer.config.patch_size**2
-        )
-        mu = calculate_shift(image_seq_len)
-        sigmas = timesteps / self.scheduler.config.num_train_timesteps
-        sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])  # Append zero at the end
-
-        self.sigmas = time_shift(mu, 1.0, sigmas).to(torch.long).to("cpu")  # This is for noisy control of cogview4
-        self._num_timesteps = len(timesteps)
-
-        # 5. Prepare latents.
+        # Prepare latents.
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -627,15 +622,12 @@ class CogView4Pipeline(DiffusionPipeline):
             latents,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
-        # 7. Prepare additional timestep conditions
+        # Prepare additional timestep conditions
         original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype)
         target_size = torch.tensor([target_size], dtype=prompt_embeds.dtype)
         crops_coords_top_left = torch.tensor([crops_coords_top_left], dtype=prompt_embeds.dtype)
 
-        if self.do_classifier_free_guidance:
+        if do_classifier_free_guidance:
             original_size = torch.cat([original_size, original_size])
             target_size = torch.cat([target_size, target_size])
             crops_coords_top_left = torch.cat([crops_coords_top_left, crops_coords_top_left])
@@ -644,50 +636,63 @@ class CogView4Pipeline(DiffusionPipeline):
         target_size = target_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
         crops_coords_top_left = crops_coords_top_left.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
-        # 8. Denoising loop
+        # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+
+        # Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device)  # 记得确认把scheduler.config的timestep_spacing是linspace
+        timesteps = self.scheduler.timesteps
+        image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
+            self.transformer.config.patch_size**2
+        )
+        mu = calculate_shift(image_seq_len)
+        sigmas = timesteps / self.scheduler.config.num_train_timesteps
+        sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])  # Append zero at the end
+
+        self.sigmas = time_shift(mu, 1.0, sigmas).to("cpu")  # This is for noisy control of cogview4
+        self._num_timesteps = len(timesteps)
+
+        # Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            # for DPM-solver++
-            old_pred_original_sample = None
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                timestep = t.reshape((1,))
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                timestep = torch.cat([timestep] * 2) if do_classifier_free_guidance else t
+
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                # Use sigma instead of timestep directly
-                sigma = self.sigmas[i]  # Get the corresponding sigma value
-                timestep = sigma.expand(latent_model_input.shape[0]).to(device)  # Use sigma to scale the timestep
 
                 # predict noise model_output using sigma
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
+                    prompt_embeds=prompt_embeds,
+                    negative_prompt_embeds=negative_prompt_embeds,
                     timestep=timestep,  # Pass sigma as timestep for noise prediction
                     original_size=original_size,
                     target_size=target_size,
                     crop_coords=crops_coords_top_left,
                     return_dict=False,
                 )[0]
+
                 noise_pred = noise_pred.float()
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
+                    noise_pred_guided = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1 using sigma (not timestep)
-                if not isinstance(self.scheduler, CogView4DDIMScheduler):
-                    latents = self.scheduler.step(noise_pred, sigma, latents, **extra_step_kwargs, return_dict=False)[
-                        0
-                    ]
-                else:
-                    latents, old_pred_original_sample = self.scheduler.step(
-                        model_output=noise_pred,
-                        timestep=sigma,  # Use sigma here as timestep
-                        sample=latents,
-                        **extra_step_kwargs,
-                        return_dict=False,
-                    )
+                ###########################
+                # Get the corresponding sigma value
+                # 这一部分应该放到schduler中（包括self.sigmas的计算也是）
+                # 最后应该调用self.scheduler.step()，只需要传入当前的t，返回下一步的latents即可
+                sigma = self.sigmas[i]
+                sigma_next = self.sigmas[i + 1]
+                dt = sigma_next - sigma
+
+                latents = latents + dt * noise_pred_guided
+                ##############################
                 latents = latents.to(prompt_embeds.dtype)
 
                 # call the callback, if provided

@@ -84,6 +84,7 @@ class CogView3PlusTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         emb: torch.Tensor,
+        **kwargs,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
@@ -103,7 +104,7 @@ class CogView3PlusTransformerBlock(nn.Module):
 
         # attention
         attn_hidden_states, attn_encoder_hidden_states = self.attn1(
-            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states
+            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states, **kwargs
         )
 
         hidden_states = hidden_states + gate_msa.unsqueeze(1) * attn_hidden_states
@@ -191,14 +192,15 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         # Each of these are sincos embeddings of shape 2 * condition_dim
         self.pooled_projection_dim = 3 * 2 * condition_dim
 
-        # self.patch_embed = CogView3PlusPatchEmbed(
-        #     in_channels=in_channels,
-        #     hidden_size=self.inner_dim,
-        #     patch_size=patch_size,
-        #     text_hidden_size=text_embed_dim,
-        #     pos_embed_max_size=pos_embed_max_size,
-        # )
-        # TODO: 兼容性适配
+        self.max_h = 256
+        self.max_w = 256
+        self.rope = self.prepare_rope(
+            embed_dim=self.config.attention_head_dim,
+            max_h=self.max_h,
+            max_w=self.max_w,
+            rotary_base=10000
+        )
+
         self.patch_embed = CogView4PatchEmbed(
             in_channels=in_channels,
             hidden_size=self.inner_dim,
@@ -300,10 +302,55 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    @staticmethod
+    def prepare_rope(embed_dim, max_h, max_w, rotary_base):
+        dim_h = embed_dim // 2
+        dim_w = embed_dim // 2
+        h_inv_freq = 1.0 / (
+            rotary_base ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: (dim_h // 2)].float() / dim_h)
+        )
+        w_inv_freq = 1.0 / (
+            rotary_base ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w)
+        )
+        h_seq = torch.arange(max_h, dtype=h_inv_freq.dtype)
+        w_seq = torch.arange(max_w, dtype=w_inv_freq.dtype)
+        freqs_h = torch.outer(h_seq, h_inv_freq)
+        freqs_w = torch.outer(w_seq, w_inv_freq)
+        return (freqs_h, freqs_w)
+
+    def get_rope_embedding(self, height, width, target_h, target_w, device):
+        # Get pre-computed frequencies
+        freqs_h, freqs_w = self.rope
+
+        h_idx = torch.arange(height)
+        w_idx = torch.arange(width)
+        inner_h_idx = (h_idx * self.max_h) // target_h
+        inner_w_idx = (w_idx * self.max_w) // target_w
+
+        freqs_h = freqs_h[inner_h_idx].to(device)
+        freqs_w = freqs_w[inner_w_idx].to(device)
+
+        # Create position matrices for height and width
+        # [height, 1, dim//4] and [1, width, dim//4]
+        freqs_h = freqs_h.unsqueeze(1)
+        freqs_w = freqs_w.unsqueeze(0)
+        # Broadcast freqs_h and freqs_w to [height, width, dim//4]
+        freqs_h = freqs_h.expand(height, width, -1)
+        freqs_w = freqs_w.expand(height, width, -1)
+
+        # Concatenate along last dimension to get [height, width, dim//2]
+        freqs = torch.cat([freqs_h, freqs_w], dim=-1)
+
+        freqs = torch.cat([freqs, freqs], dim=-1)  # [height, width, dim]
+        freqs = freqs.reshape(height*width, -1)
+
+        return freqs.cos(), freqs.sin()
+
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
+        prompt_embeds: torch.Tensor,
+        negative_prompt_embeds: torch.Tensor | None,
         timestep: torch.LongTensor,
         original_size: torch.Tensor,
         target_size: torch.Tensor,
@@ -338,16 +385,27 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
             `torch.Tensor` or [`~models.transformer_2d.Transformer2DModelOutput`]:
                 The denoised latents using provided inputs as conditioning.
         """
-        height, width = hidden_states.shape[-2:]
-        text_seq_length = encoder_hidden_states.shape[1]
+        batch_size, channel, height, width = hidden_states.shape
+        patch_height, patch_width = height // self.config.patch_size, width // self.config.patch_size
+        do_cfg = negative_prompt_embeds is not None
 
-        hidden_states = self.patch_embed(
-            hidden_states, encoder_hidden_states
-        )  # takes care of adding positional embeddings too.
+        if do_cfg:
+            assert batch_size == prompt_embeds.shape[0] + negative_prompt_embeds.shape[0], "batch size mismatch in CFG mode"
+        else:
+            assert batch_size == prompt_embeds.shape[0], "batch size mismatch in non-CFG mode"
+
+        hidden_states, prompt_embeds, negative_prompt_embeds = self.patch_embed(
+            hidden_states, prompt_embeds, negative_prompt_embeds
+        )
+
+        encoder_hidden_states = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
+
+        # prepare image_rotary__emb
+        image_rotary_emb = self.get_rope_embedding(
+            patch_height, patch_width, target_h=patch_height, target_w=patch_width, device=hidden_states.device
+        )
+
         emb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
-
-        encoder_hidden_states = hidden_states[:, :text_seq_length]
-        hidden_states = hidden_states[:, text_seq_length:]
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -363,7 +421,8 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
                     create_custom_forward(block),
                     hidden_states,
                     encoder_hidden_states,
-                    emb,
+                    emb=emb,
+                    image_rotary_emb=image_rotary_emb,
                     **ckpt_kwargs,
                 )
             else:
@@ -371,9 +430,10 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     emb=emb,
+                    image_rotary_emb=image_rotary_emb,
                 )
 
-        hidden_states = self.norm_out(hidden_states, emb)
+        hidden_states = self.norm_out(hidden_states, emb)  # 结果对应于megatron里的final_layer_input
         hidden_states = self.proj_out(hidden_states)  # (batch_size, height*width, patch_size*patch_size*out_channels)
 
         # unpatchify
