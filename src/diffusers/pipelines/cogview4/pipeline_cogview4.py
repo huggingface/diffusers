@@ -314,23 +314,6 @@ class CogView4Pipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
-        # TODO: 先pad 0 ，后续再处理不同长度的问题  (lhy: 这里改为pad padding token试试)
-        seq_len_prompt = prompt_embeds.shape[1]
-        seq_len_neg = negative_prompt_embeds.shape[1]
-        if seq_len_neg < seq_len_prompt:
-            # 创建一个新的张量，大小为 [batch_size, seq_len_prompt, hidden_size]
-            batch_size, seq_len, hidden_size = negative_prompt_embeds.shape
-            # 填充后的张量
-            padded_negative_prompt = torch.full(
-                (batch_size, seq_len_prompt - seq_len_neg),
-                fill_value=self.tokenizer.pad_token_id,
-                device=negative_prompt_embeds.device,
-            )
-            padded_negative_prompt_embeds = self.text_encoder.model.embed_tokens(
-                padded_negative_prompt.to(self.text_encoder.model.device)
-            )
-            negative_prompt_embeds = torch.cat([padded_negative_prompt_embeds, negative_prompt_embeds], dim=1)
-            assert negative_prompt_embeds.shape == prompt_embeds.shape
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
@@ -680,7 +663,7 @@ class CogView4Pipeline(DiffusionPipeline):
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
+                    noise_pred_cond, noise_pred_uncond = noise_pred
                     noise_pred_guided = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
 
                 ###########################

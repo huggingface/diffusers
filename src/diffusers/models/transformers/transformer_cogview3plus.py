@@ -397,59 +397,62 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states, prompt_embeds, negative_prompt_embeds = self.patch_embed(
             hidden_states, prompt_embeds, negative_prompt_embeds
         )
+        emb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
 
-        encoder_hidden_states = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
+        encoder_hidden_states_cond = prompt_embeds
+        encoder_hidden_states_uncond = negative_prompt_embeds
+        hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
+        emb_cond, emb_uncond = emb.chunk(2)
 
         # prepare image_rotary__emb
         image_rotary_emb = self.get_rope_embedding(
             patch_height, patch_width, target_h=patch_height, target_w=patch_width, device=hidden_states.device
         )
 
-        emb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
-
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    emb=emb,
-                    image_rotary_emb=image_rotary_emb,
-                    **ckpt_kwargs,
-                )
+                ...
             else:
-                hidden_states, encoder_hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    emb=emb,
+                hidden_states_cond, encoder_hidden_states_cond = block(
+                    hidden_states=hidden_states_cond,
+                    encoder_hidden_states=encoder_hidden_states_cond,
+                    emb=emb_cond,  # refactor later
+                    image_rotary_emb=image_rotary_emb,
+                )
+                hidden_states_uncond, encoder_hidden_states_uncond = block(
+                    hidden_states=hidden_states_uncond,
+                    encoder_hidden_states=encoder_hidden_states_uncond,
+                    emb=emb_uncond,  # refactor later
                     image_rotary_emb=image_rotary_emb,
                 )
 
-        hidden_states = self.norm_out(hidden_states, emb)  # 结果对应于megatron里的final_layer_input
-        hidden_states = self.proj_out(hidden_states)  # (batch_size, height*width, patch_size*patch_size*out_channels)
+        hidden_states_cond = self.norm_out(hidden_states_cond, emb)  # 结果对应于megatron里的final_layer_input
+        hidden_states_uncond = self.norm_out(hidden_states_uncond, emb)  # 结果对应于megatron里的final_layer_input
+        hidden_states_cond = self.proj_out(hidden_states_cond)  # (batch_size, height*width, patch_size*patch_size*out_channels)
+        hidden_states_uncond = self.proj_out(hidden_states_uncond)  # (batch_size, height*width, patch_size*patch_size*out_channels)
 
         # unpatchify
         patch_size = self.config.patch_size
         height = height // patch_size
         width = width // patch_size
 
-        hidden_states = hidden_states.reshape(
-            shape=(hidden_states.shape[0], height, width, self.out_channels, patch_size, patch_size)
+        hidden_states_cond = hidden_states_cond.reshape(
+            shape=(hidden_states_cond.shape[0], height, width, self.out_channels, patch_size, patch_size)
         )
-        hidden_states = torch.einsum("nhwcpq->nchpwq", hidden_states)
-        output = hidden_states.reshape(
-            shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
+        hidden_states_cond = torch.einsum("nhwcpq->nchpwq", hidden_states_cond)
+        output_cond = hidden_states_cond.reshape(
+            shape=(hidden_states_cond.shape[0], self.out_channels, height * patch_size, width * patch_size)
+        )
+
+        hidden_states_uncond = hidden_states_uncond.reshape(
+            shape=(hidden_states_uncond.shape[0], height, width, self.out_channels, patch_size, patch_size)
+        )
+        hidden_states_uncond = torch.einsum("nhwcpq->nchpwq", hidden_states_uncond)
+        output_uncond = hidden_states_uncond.reshape(
+            shape=(hidden_states_uncond.shape[0], self.out_channels, height * patch_size, width * patch_size)
         )
 
         if not return_dict:
-            return (output,)
+            return (output_cond, output_uncond)
 
-        return Transformer2DModelOutput(sample=output)
+        return Transformer2DModelOutput(sample=output_cond), Transformer2DModelOutput(sample=output_uncond)
