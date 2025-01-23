@@ -432,7 +432,7 @@ def _func_optionally_disable_offloading(_pipeline):
     is_model_cpu_offload = False
     is_sequential_cpu_offload = False
 
-    if _pipeline is not None and hasattr(_pipeline, hf_device_map) and _pipeline.hf_device_map is None:
+    if _pipeline is not None and hasattr(_pipeline, "hf_device_map") and _pipeline.hf_device_map is None:
         for _, component in _pipeline.components.items():
             if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
                 if not is_model_cpu_offload:
