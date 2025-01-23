@@ -795,8 +795,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
-        state_dict = kwargs.pop("state_dict", None)
-        config = kwargs.pop("config", None)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -867,9 +865,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
                 raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
 
-        if (not config and state_dict) or (config and not state_dict):
-            raise ValueError("You need to pass both the config and the state dict to initalize the model.")
-
         user_agent = {
             "diffusers": __version__,
             "file_type": "model",
@@ -877,29 +872,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         }
         unused_kwargs = {}
 
-        if config is None:
-            # Load config if we don't provide a configuration
-            config_path = pretrained_model_name_or_path
+        # Load config if we don't provide a configuration
+        config_path = pretrained_model_name_or_path
 
-            # TODO: We need to let the user pass a config in from_pretrained
-            # load config
-            config, unused_kwargs, commit_hash = cls.load_config(
-                config_path,
-                cache_dir=cache_dir,
-                return_unused_kwargs=True,
-                return_commit_hash=True,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-                dduf_entries=dduf_entries,
-                **kwargs,
-            )
-            # no in-place modification of the original config.
-            config = copy.deepcopy(config)
+        # TODO: We need to let the user pass a config in from_pretrained
+        # load config
+        config, unused_kwargs, commit_hash = cls.load_config(
+            config_path,
+            cache_dir=cache_dir,
+            return_unused_kwargs=True,
+            return_commit_hash=True,
+            force_download=force_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            dduf_entries=dduf_entries,
+            **kwargs,
+        )
+        # no in-place modification of the original config.
+        config = copy.deepcopy(config)
 
         # determine initial quantization config.
         #######################################
@@ -951,103 +945,79 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         is_sharded = False
         resolved_archive_file = None
-        if state_dict is None:
-            # Determine if we're loading from a directory of sharded checkpoints.
-            sharded_metadata = None
-            index_file = None
-            is_local = os.path.isdir(pretrained_model_name_or_path)
-            index_file_kwargs = {
-                "is_local": is_local,
-                "pretrained_model_name_or_path": pretrained_model_name_or_path,
-                "subfolder": subfolder or "",
-                "use_safetensors": use_safetensors,
-                "cache_dir": cache_dir,
-                "variant": variant,
-                "force_download": force_download,
-                "proxies": proxies,
-                "local_files_only": local_files_only,
-                "token": token,
-                "revision": revision,
-                "user_agent": user_agent,
-                "commit_hash": commit_hash,
-                "dduf_entries": dduf_entries,
-            }
-            index_file = _fetch_index_file(**index_file_kwargs)
-            # In case the index file was not found we still have to consider the legacy format.
-            # this becomes applicable when the variant is not None.
-            if variant is not None and (index_file is None or not os.path.exists(index_file)):
-                index_file = _fetch_index_file_legacy(**index_file_kwargs)
-            if index_file is not None and (dduf_entries or index_file.is_file()):
-                is_sharded = True
 
-            if is_sharded and from_flax:
-                raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")
+        # Determine if we're loading from a directory of sharded checkpoints.
+        sharded_metadata = None
+        index_file = None
+        is_local = os.path.isdir(pretrained_model_name_or_path)
+        index_file_kwargs = {
+            "is_local": is_local,
+            "pretrained_model_name_or_path": pretrained_model_name_or_path,
+            "subfolder": subfolder or "",
+            "use_safetensors": use_safetensors,
+            "cache_dir": cache_dir,
+            "variant": variant,
+            "force_download": force_download,
+            "proxies": proxies,
+            "local_files_only": local_files_only,
+            "token": token,
+            "revision": revision,
+            "user_agent": user_agent,
+            "commit_hash": commit_hash,
+            "dduf_entries": dduf_entries,
+        }
+        index_file = _fetch_index_file(**index_file_kwargs)
+        # In case the index file was not found we still have to consider the legacy format.
+        # this becomes applicable when the variant is not None.
+        if variant is not None and (index_file is None or not os.path.exists(index_file)):
+            index_file = _fetch_index_file_legacy(**index_file_kwargs)
+        if index_file is not None and (dduf_entries or index_file.is_file()):
+            is_sharded = True
 
-            # load model
-            if from_flax:
-                resolved_archive_file = _get_model_file(
+        if is_sharded and from_flax:
+            raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")
+
+        # load model
+        if from_flax:
+            resolved_archive_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=FLAX_WEIGHTS_NAME,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+                commit_hash=commit_hash,
+            )
+            model = cls.from_config(config, **unused_kwargs)
+
+            # Convert the weights
+            from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
+
+            model = load_flax_checkpoint_in_pytorch_model(model, resolved_archive_file)
+        else:
+            # in the case it is sharded, we have already the index
+            if is_sharded:
+                resolved_archive_file, sharded_metadata = _get_checkpoint_shard_files(
                     pretrained_model_name_or_path,
-                    weights_name=FLAX_WEIGHTS_NAME,
+                    index_file,
                     cache_dir=cache_dir,
-                    force_download=force_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,
-                    revision=revision,
-                    subfolder=subfolder,
                     user_agent=user_agent,
-                    commit_hash=commit_hash,
+                    revision=revision,
+                    subfolder=subfolder or "",
+                    dduf_entries=dduf_entries,
                 )
-                model = cls.from_config(config, **unused_kwargs)
-
-                # Convert the weights
-                from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
-
-                model = load_flax_checkpoint_in_pytorch_model(model, resolved_archive_file)
-            else:
-                # in the case it is sharded, we have already the index
-                if is_sharded:
-                    resolved_archive_file, sharded_metadata = _get_checkpoint_shard_files(
-                        pretrained_model_name_or_path,
-                        index_file,
-                        cache_dir=cache_dir,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        token=token,
-                        user_agent=user_agent,
-                        revision=revision,
-                        subfolder=subfolder or "",
-                        dduf_entries=dduf_entries,
-                    )
-                elif use_safetensors:
-                    try:
-                        resolved_archive_file = _get_model_file(
-                            pretrained_model_name_or_path,
-                            weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
-                            cache_dir=cache_dir,
-                            force_download=force_download,
-                            proxies=proxies,
-                            local_files_only=local_files_only,
-                            token=token,
-                            revision=revision,
-                            subfolder=subfolder,
-                            user_agent=user_agent,
-                            commit_hash=commit_hash,
-                            dduf_entries=dduf_entries,
-                        )
-
-                    except IOError as e:
-                        logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
-                        if not allow_pickle:
-                            raise
-                        logger.warning(
-                            "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
-                        )
-
-                if resolved_archive_file is None and not is_sharded:
+            elif use_safetensors:
+                try:
                     resolved_archive_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=_add_variant(WEIGHTS_NAME, variant),
+                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
                         cache_dir=cache_dir,
                         force_download=force_download,
                         proxies=proxies,
@@ -1059,6 +1029,30 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         commit_hash=commit_hash,
                         dduf_entries=dduf_entries,
                     )
+
+                except IOError as e:
+                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                    if not allow_pickle:
+                        raise
+                    logger.warning(
+                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
+                    )
+
+            if resolved_archive_file is None and not is_sharded:
+                resolved_archive_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=_add_variant(WEIGHTS_NAME, variant),
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                    commit_hash=commit_hash,
+                    dduf_entries=dduf_entries,
+                )
 
         if not isinstance(resolved_archive_file, list):
             resolved_archive_file = [resolved_archive_file]
@@ -1084,7 +1078,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if dtype_orig is not None:
             torch.set_default_dtype(dtype_orig)
 
-        if not is_sharded and state_dict is None:
+        state_dict = None
+        if not is_sharded:
             # Time to load the checkpoint
             state_dict = load_state_dict(
                 resolved_archive_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries
