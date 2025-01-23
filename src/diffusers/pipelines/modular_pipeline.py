@@ -228,27 +228,26 @@ def format_intermediates_short(intermediates_inputs: List[InputParam], required_
     output_parts.extend(outputs)
     
     # Combine with arrow notation if both inputs and outputs exist
-    if input_parts and output_parts:
-        return f"{', '.join(input_parts)} -> {', '.join(output_parts)}"
+    if output_parts:
+        return f"-> {', '.join(output_parts)}" if not input_parts else f"{', '.join(input_parts)} -> {', '.join(output_parts)}"
     elif input_parts:
         return ', '.join(input_parts)
-    elif output_parts:
-        return ', '.join(output_parts)
     return ""
 
 
-def format_input_params(input_params: List[InputParam], indent_level: int = 4, max_line_length: int = 115) -> str:
-    """Format a list of InputParam objects into a readable string representation.
+def format_params(params: List[Union[InputParam, OutputParam]], header: str = "Args", indent_level: int = 4, max_line_length: int = 115) -> str:
+    """Format a list of InputParam or OutputParam objects into a readable string representation.
 
     Args:
-        input_params: List of InputParam objects to format
+        params: List of InputParam or OutputParam objects to format
+        header: Header text to use (e.g. "Args" or "Returns")
         indent_level: Number of spaces to indent each parameter line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
 
     Returns:
-        A formatted string representing all input parameters
+        A formatted string representing all parameters
     """
-    if not input_params:
+    if not params:
         return ""
         
     base_indent = " " * indent_level
@@ -270,10 +269,8 @@ def format_input_params(input_params: List[InputParam], indent_level: int = 4, m
         current_length = 0
 
         for word in words:
-            # Calculate word length including space
             word_length = len(word) + (1 if current_line else 0)
             
-            # Check if adding this word would exceed the max length
             if current_line and current_length + word_length > max_length:
                 lines.append(" ".join(current_line))
                 current_line = [word]
@@ -285,22 +282,22 @@ def format_input_params(input_params: List[InputParam], indent_level: int = 4, m
         if current_line:
             lines.append(" ".join(current_line))
             
-        # Join lines with proper indentation
         return f"\n{indent}".join(lines)
     
-    # Add the "Args:" header
-    formatted_params.append(f"{base_indent}Args:")
+    # Add the header
+    formatted_params.append(f"{base_indent}{header}:")
     
-    for param in input_params:
+    for param in params:
         # Format parameter name and type
         type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
         param_str = f"{param_indent}{param.name} (`{type_str}`"
         
-        # Add optional tag and default value if parameter is optional
-        if not param.required:
-            param_str += ", *optional*"
-            if param.default is not None:
-                param_str += f", defaults to {param.default}"
+        # Add optional tag and default value if parameter is an InputParam and optional
+        if isinstance(param, InputParam):
+            if not param.required:
+                param_str += ", *optional*"
+                if param.default is not None:
+                    param_str += f", defaults to {param.default}"
         param_str += "):"
             
         # Add description on a new line with additional indentation and wrapping
@@ -317,76 +314,49 @@ def format_input_params(input_params: List[InputParam], indent_level: int = 4, m
     
     return "\n\n".join(formatted_params)
 
+# Then update the original functions to use this combined version:
+def format_input_params(input_params: List[InputParam], indent_level: int = 4, max_line_length: int = 115) -> str:
+    return format_params(input_params, "Args", indent_level, max_line_length)
 
 def format_output_params(output_params: List[OutputParam], indent_level: int = 4, max_line_length: int = 115) -> str:
-    """Format a list of OutputParam objects into a readable string representation.
+    return format_params(output_params, "Returns", indent_level, max_line_length)
 
-    Args:
-        output_params: List of OutputParam objects to format
-        indent_level: Number of spaces to indent each parameter line (default: 4)
-        max_line_length: Maximum length for each line before wrapping (default: 115)
 
-    Returns:
-        A formatted string representing all output parameters
+
+def make_doc_string(inputs, intermediates_inputs, intermediates_outputs, final_intermediates_outputs=None, description=""):
     """
-    if not output_params:
-        return ""
-        
-    base_indent = " " * indent_level
-    param_indent = " " * (indent_level + 4)
-    desc_indent = " " * (indent_level + 8)
-    formatted_params = []
+    Generates a formatted documentation string describing the pipeline block's parameters and structure.
     
-    def get_type_str(type_hint):
-        if hasattr(type_hint, "__origin__") and type_hint.__origin__ is Union:
-            types = [t.__name__ if hasattr(t, "__name__") else str(t) for t in type_hint.__args__]
-            return f"Union[{', '.join(types)}]"
-        return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
-    
-    def wrap_text(text: str, indent: str, max_length: int) -> str:
-        """Wrap text while preserving markdown links and maintaining indentation."""
-        words = text.split()
-        lines = []
-        current_line = []
-        current_length = 0
+    Returns:
+        str: A formatted string containing information about call parameters, intermediate inputs/outputs,
+            and final intermediate outputs.
+    """
+    output = ""
 
-        for word in words:
-            word_length = len(word) + (1 if current_line else 0)
-            
-            if current_line and current_length + word_length > max_length:
-                lines.append(" ".join(current_line))
-                current_line = [word]
-                current_length = len(word)
-            else:
-                current_line.append(word)
-                current_length += word_length
-        
-        if current_line:
-            lines.append(" ".join(current_line))
-            
-        return f"\n{indent}".join(lines)
+    if description:
+        desc_lines = description.strip().split('\n')
+        aligned_desc = '\n'.join('  ' + line for line in desc_lines)
+        output += aligned_desc + "\n\n"
+
+    output += format_input_params(inputs + intermediates_inputs, indent_level=2)
     
-    # Add the "Returns:" header
-    formatted_params.append(f"{base_indent}Returns:")
+    # YiYi TODO: refactor to remove this and `outputs` attribute instead
+    if final_intermediates_outputs:
+        output += "\n\n"
+        output += format_output_params(final_intermediates_outputs, indent_level=2)
+
+        if intermediates_outputs:
+            output += "\n\n------------------------\n"
+            intermediates_str = format_params(intermediates_outputs, "Intermediates Outputs", indent_level=2)
+            output += intermediates_str
     
-    for param in output_params:
-        # Format parameter name and type
-        type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
-        param_str = f"{param_indent}{param.name} (`{type_str}`):"
-            
-        # Add description on a new line with additional indentation and wrapping
-        if param.description:
-            desc = re.sub(
-                r'\[(.*?)\]\((https?://[^\s\)]+)\)',
-                r'[\1](\2)',
-                param.description
-            )
-            wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
-            param_str += f"\n{desc_indent}{wrapped_desc}"
-            
-        formatted_params.append(param_str)
-    
-    return "\n\n".join(formatted_params)
+    elif intermediates_outputs:
+        output +="\n\n"
+        output += format_output_params(intermediates_outputs, indent_level=2)
+
+
+    return output
+
 
 class PipelineBlock:
     # YiYi Notes: do we need this?
@@ -394,7 +364,11 @@ class PipelineBlock:
     expected_components = []
     expected_configs = []
     model_name = None
-
+    
+    @property
+    def description(self) -> str:
+        return ""
+    
     @property
     def inputs(self) -> List[InputParam]:
         return []
@@ -472,7 +446,7 @@ class PipelineBlock:
 
         # Intermediates section
         intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
-        intermediates = f"Intermediates:\n    {intermediates_str}"
+        intermediates = f"Intermediates(`*` = modified):\n    {intermediates_str}"
 
         return (
             f"{class_name}(\n"
@@ -484,33 +458,11 @@ class PipelineBlock:
             f")"
         )
 
-    def get_doc_string(self):
-        """
-        Generates a formatted documentation string describing the pipeline block's parameters and structure.
-        
-        Returns:
-            str: A formatted string containing information about call parameters, intermediate inputs/outputs,
-                and final intermediate outputs.
-        """
-        output = "Call Parameters:\n"
-        output += "------------------------\n"
-        output += format_input_params(self.inputs, indent_level=2)
 
-        output += "\n\nIntermediate inputs:\n"
-        output += "--------------------------\n"
-        output += format_input_params(self.intermediates_inputs, indent_level=2)
+    @property
+    def doc(self):
+        return make_doc_string(self.inputs, self.intermediates_inputs, self.intermediates_outputs, None, self.description)
 
-        if hasattr(self, "intermediates_outputs"):
-            output += "\n\nIntermediate outputs:\n"
-            output += "--------------------------\n"
-            output += format_output_params(self.intermediates_outputs, indent_level=2)
-
-        if hasattr(self, "final_intermediates_outputs"):
-            output += "\nFinal intermediate outputs:\n"
-            output += "--------------------------\n"
-            output += format_output_params(self.final_intermediates_outputs, indent_level=2)
-
-        return output
 
     def get_block_state(self, state: PipelineState) -> dict:
         """Get all inputs and intermediates in one dictionary"""
@@ -643,6 +595,10 @@ class AutoPipelineBlocks:
     @property
     def model_name(self):
         return next(iter(self.blocks.values())).model_name
+    
+    @property
+    def description(self):
+        return ""
 
     @property
     def expected_components(self):
@@ -849,7 +805,7 @@ class AutoPipelineBlocks:
             inputs_str = format_inputs_short(block.inputs)
             sections.append(f"      inputs:\n        {inputs_str}")
 
-            intermediates_str = f"      intermediates:\n        {format_intermediates_short(block.intermediates_inputs, block.required_intermediates_inputs, block.intermediates_outputs)}"
+            intermediates_str = f"      intermediates(`*` = modified):\n        {format_intermediates_short(block.intermediates_inputs, block.required_intermediates_inputs, block.intermediates_outputs)}"
             sections.append(intermediates_str)
             
             sections.append("") 
@@ -861,33 +817,9 @@ class AutoPipelineBlocks:
             f")"
         )
 
-    def get_doc_string(self):
-        """
-        Generates a formatted documentation string describing the pipeline block's parameters and structure.
-        
-        Returns:
-            str: A formatted string containing information about call parameters, intermediate inputs/outputs,
-                and final intermediate outputs.
-        """
-        output = "Call Parameters:\n"
-        output += "------------------------\n"
-        output += format_input_params(self.inputs, indent_level=2)
-
-        output += "\n\nIntermediate inputs:\n"
-        output += "--------------------------\n"
-        output += format_input_params(self.intermediates_inputs, indent_level=2)
-
-        if hasattr(self, "intermediates_outputs"):
-            output += "\n\nIntermediate outputs:\n"
-            output += "--------------------------\n"
-            output += format_output_params(self.intermediates_outputs, indent_level=2)
-
-        if hasattr(self, "final_intermediates_outputs"):
-            output += "\nFinal intermediate outputs:\n"
-            output += "--------------------------\n"
-            output += format_output_params(self.final_intermediates_outputs, indent_level=2)
-
-        return output
+    @property
+    def doc(self):
+        return make_doc_string(self.inputs, self.intermediates_inputs, self.intermediates_outputs, None, self.description)
 
 class SequentialPipelineBlocks:
     """
@@ -899,6 +831,10 @@ class SequentialPipelineBlocks:
     @property
     def model_name(self):
         return next(iter(self.blocks.values())).model_name
+    
+    @property
+    def description(self):
+        return ""
 
     @property
     def expected_components(self):
@@ -1192,7 +1128,7 @@ class SequentialPipelineBlocks:
             intermediates_str = format_intermediates_short(block.intermediates_inputs, block.required_intermediates_inputs, block.intermediates_outputs)
 
             if intermediates_str:
-                blocks_str += f"       intermediates: {intermediates_str}\n"
+                blocks_str += f"       intermediates(`*` = modified): {intermediates_str}\n"
             blocks_str += "\n"
 
         inputs_str = format_inputs_short(self.inputs)
@@ -1220,33 +1156,9 @@ class SequentialPipelineBlocks:
             f")"
         )
 
-    def get_doc_string(self):
-        """
-        Generates a formatted documentation string describing the pipeline block's parameters and structure.
-        
-        Returns:
-            str: A formatted string containing information about call parameters, intermediate inputs/outputs,
-                and final intermediate outputs.
-        """
-        output = "Call Parameters:\n"
-        output += "------------------------\n"
-        output += format_input_params(self.inputs, indent_level=2)
-
-        output += "\n\nIntermediate inputs:\n"
-        output += "--------------------------\n"
-        output += format_input_params(self.intermediates_inputs, indent_level=2)
-
-        if hasattr(self, "intermediates_outputs"):
-            output += "\n\nIntermediate outputs:\n"
-            output += "--------------------------\n"
-            output += format_output_params(self.intermediates_outputs, indent_level=2)
-
-        if hasattr(self, "final_intermediates_outputs"):
-            output += "\nFinal intermediate outputs:\n"
-            output += "--------------------------\n"
-            output += format_output_params(self.final_intermediates_outputs, indent_level=2)
-
-        return output
+    @property
+    def doc(self):
+        return make_doc_string(self.inputs, self.intermediates_inputs, self.intermediates_outputs, self.final_intermediates_outputs, self.description)
 
 class ModularPipeline(ConfigMixin):
     """
@@ -1467,8 +1379,9 @@ class ModularPipeline(ConfigMixin):
     def __repr__(self):
         output = "ModularPipeline:\n"
         output += "==============================\n\n"
-        
+
         block = self.pipeline_block
+        
         if hasattr(block, "trigger_inputs") and block.trigger_inputs:
             output += "\n"
             output += "  Trigger Inputs:\n"
@@ -1514,7 +1427,10 @@ class ModularPipeline(ConfigMixin):
         output += "\n"
 
         # List the call parameters
-        output += self.pipeline_block.get_doc_string()
+        full_doc = self.pipeline_block.doc
+        if "------------------------" in full_doc:
+            full_doc = full_doc.split("------------------------")[0].rstrip()
+        output += full_doc
 
         return output
 

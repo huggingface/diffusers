@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union, Dict
 
 import PIL
 import torch
 from collections import OrderedDict
 
 from ...guider import CFGGuider
-from ...image_processor import VaeImageProcessor
+from ...image_processor import VaeImageProcessor, PipelineImageInput
 from ...loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin, ModularIPAdapterMixin
 from ...models import ControlNetModel, ImageProjection
 from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
@@ -47,6 +47,7 @@ from .pipeline_output import (
     StableDiffusionXLPipelineOutput,
 )
 
+import numpy as np
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -126,8 +127,433 @@ def retrieve_latents(
 
 
 
+class StableDiffusionXLLoraStep(PipelineBlock):
+    expected_components = ["text_encoder", "text_encoder_2", "unet"]
+    model_name = "stable-diffusion-xl"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Lora step that handles all the lora related tasks: load/unload lora weights into unet and text encoders, manage lora adapters etc"
+            " See [StableDiffusionXLLoraLoaderMixin](https://huggingface.co/docs/diffusers/api/loaders/lora#diffusers.loaders.StableDiffusionXLLoraLoaderMixin)"
+            " for more details"
+        )
+
+    def __init__(self):
+        super().__init__()
+        self.components["text_encoder"] = None
+        self.components["text_encoder_2"] = None
+        self.components["unet"] = None
+    
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        raise EnvironmentError("StableDiffusionXLLoraStep is desgined to be used to load lora weights, __call__ is not implemented")
+
+
+class StableDiffusionXLIPAdapterStep(PipelineBlock):
+    expected_components = ["image_encoder", "feature_extractor", "unet"]
+    model_name = "stable-diffusion-xl"
+
+    
+    @property
+    def description(self) -> str:
+        return (
+            "IP Adapter step that handles all the ip adapter related tasks: Load/unload ip adapter weights into unet, prepare ip adapter image embeddings, etc"
+            " See [ModularIPAdapterMixin](https://huggingface.co/docs/diffusers/api/loaders/ip_adapter#diffusers.loaders.ModularIPAdapterMixin)"
+            " for more details"
+        )
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                "ip_adapter_image", 
+                required=True, 
+                type_hint=PipelineImageInput, 
+                description="The image(s) to be used as ip adapter"
+            ), 
+            InputParam(
+                "guidance_scale", 
+                default=5.0, 
+                description="Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598). Guidance scale is enabled by setting `guidance_scale > 1`."
+            ),
+        ]
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return [OutputParam("ip_adapter_embeds", type_hint=torch.Tensor, description="IP adapter image embeddings"), 
+                OutputParam("negative_ip_adapter_embeds", type_hint=torch.Tensor, description="Negative IP adapter image embeddings")]
+    
+    def __init__(self):
+        super().__init__()
+        self.components["image_encoder"] = None
+        self.components["feature_extractor"] = None
+        self.components["unet"] = None
+    
+
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        data = self.get_block_state(state)
+
+        data.do_classifier_free_guidance = data.guidance_scale > 1.0
+        data.device = pipeline._execution_device
+
+        data.ip_adapter_embeds = pipeline.prepare_ip_adapter_image_embeds(
+            ip_adapter_image=data.ip_adapter_image,
+            ip_adapter_image_embeds=None,
+            device=data.device,
+            num_images_per_prompt=1,
+            do_classifier_free_guidance=data.do_classifier_free_guidance,
+        )
+        if data.do_classifier_free_guidance:
+            data.negative_ip_adapter_embeds = []
+            for i, image_embeds in enumerate(data.ip_adapter_embeds):
+                negative_image_embeds, image_embeds = image_embeds.chunk(2)
+                data.negative_ip_adapter_embeds.append(negative_image_embeds)
+                data.ip_adapter_embeds[i] = image_embeds
+
+        self.add_block_state(state, data)
+        return pipeline, state
+
+
+class StableDiffusionXLTextEncoderStep(PipelineBlock):
+    expected_components = ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
+    expected_configs = ["force_zeros_for_empty_prompt"]
+    model_name = "stable-diffusion-xl"
+
+    @property
+    def description(self) -> str:
+        return(
+            "Text Encoder step that generate text_embeddings to guide the image generation"
+        )
+
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                name="prompt",
+                type_hint=Union[str, List[str]],
+                description="The prompt or prompts to guide the image generation.",
+            ),
+            InputParam(
+                name="prompt_2",
+                type_hint=Union[str, List[str]],
+                description="The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is used in both text-encoders",
+            ),
+            InputParam(
+                name="negative_prompt",
+                type_hint=Union[str, List[str]],
+                description="The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).",
+            ),
+            InputParam(
+                name="negative_prompt_2",
+                type_hint=Union[str, List[str]],
+                description="The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders",
+            ),
+            InputParam(
+                name="cross_attention_kwargs",
+                type_hint=Optional[dict],
+                description="A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under `self.processor` in [diffusers.models.attention_processor]",
+            ),
+            InputParam(
+                name="guidance_scale",
+                type_hint=float,
+                default=5.0,
+                description="Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598). `guidance_scale` is defined as `w` of equation 2. of [Imagen Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`, usually at the expense of lower image quality.",
+            ),
+            InputParam(
+                name="clip_skip",
+                type_hint=Optional[int],
+            ),
+        ]
+
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return [
+            OutputParam("prompt_embeds", type_hint=torch.Tensor, description="text embeddings used to guide the image generation"),
+            OutputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="negative text embeddings used to guide the image generation"),
+            OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor, description="pooled text embeddings used to guide the image generation"),
+            OutputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, description="negative pooled text embeddings used to guide the image generation"),
+        ]
+
+    def __init__(self):
+        super().__init__()
+        self.configs["force_zeros_for_empty_prompt"] = True
+        self.components["text_encoder"] = None
+        self.components["text_encoder_2"] = None
+        self.components["tokenizer"] = None
+        self.components["tokenizer_2"] = None
+
+    def check_inputs(self, pipeline, data):
+
+        if data.prompt is not None and (not isinstance(data.prompt, str) and not isinstance(data.prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(data.prompt)}")
+        elif data.prompt_2 is not None and (not isinstance(data.prompt_2, str) and not isinstance(data.prompt_2, list)):
+            raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(data.prompt_2)}")
+
+
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        # Get inputs and intermediates
+        data = self.get_block_state(state)
+        self.check_inputs(pipeline, data)
+
+        data.do_classifier_free_guidance = data.guidance_scale > 1.0
+        data.device = pipeline._execution_device
+
+
+        # Encode input prompt
+        data.text_encoder_lora_scale = (
+            data.cross_attention_kwargs.get("scale", None) if data.cross_attention_kwargs is not None else None
+        )
+        (
+            data.prompt_embeds,
+            data.negative_prompt_embeds,
+            data.pooled_prompt_embeds,
+            data.negative_pooled_prompt_embeds,
+        ) = pipeline.encode_prompt(
+            data.prompt,
+            data.prompt_2,
+            data.device,
+            1,
+            data.do_classifier_free_guidance,
+            data.negative_prompt,
+            data.negative_prompt_2,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
+            pooled_prompt_embeds=None,
+            negative_pooled_prompt_embeds=None,
+            lora_scale=data.text_encoder_lora_scale,
+            clip_skip=data.clip_skip,
+        )
+        # Add outputs
+        self.add_block_state(state, data)
+        return pipeline, state
+
+
+class StableDiffusionXLVaeEncoderStep(PipelineBlock):
+    expected_components = ["vae"]
+    model_name = "stable-diffusion-xl"
+
+    
+    @property
+    def description(self) -> str:
+        return (
+            "Vae Encoder step that encode the input image into a latent representation"
+        )
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                name="image", 
+                type_hint=PipelineImageInput, 
+                required=True, 
+                description="The image(s) to modify with the pipeline, for img2img or inpainting task. When using for inpainting task, parts of the image will be masked out with `mask_image` and repainted according to `prompt`."
+            ),
+            InputParam(
+                name="generator", 
+                type_hint=Optional[Union[torch.Generator, List[torch.Generator]]], 
+                description="One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)"
+                            "to make generation deterministic."
+            ),
+            InputParam(
+                name="height", 
+                type_hint=Optional[int], 
+                description="The height in pixels of the generated image. This is set to 1024 by default for the best results. "
+                            "Anything below 512 pixels won't work well for [stabilityai/stable-diffusion-xl-base-1.0]"
+                            "(https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and checkpoints that are not "
+                            "specifically fine-tuned on low resolutions.",
+            ),
+            InputParam(
+                name="width", 
+                type_hint=Optional[int], 
+                description="The width in pixels of the generated image. This is set to 1024 by default for the best results. "
+                            "Anything below 512 pixels won't work well for [stabilityai/stable-diffusion-xl-base-1.0]"
+                            "(https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and checkpoints that are not "
+                            "specifically fine-tuned on low resolutions.",
+            ),
+        ]
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return [
+            InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"), 
+            InputParam("preprocess_kwargs", type_hint=Optional[dict], description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]")]
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return [OutputParam("image_latents", type_hint=torch.Tensor, description="The latents representing the reference image for image-to-image/inpainting generation")]
+
+    def __init__(self):
+        super().__init__()
+        self.components["vae"] = None
+        self.auxiliaries["image_processor"] = VaeImageProcessor()
+
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        data = self.get_block_state(state)
+        data.preprocess_kwargs = data.preprocess_kwargs or {}
+        data.device = pipeline._execution_device
+        data.dtype = data.dtype if data.dtype is not None else pipeline.vae.dtype
+        
+        data.image = pipeline.image_processor.preprocess(data.image, height=data.height, width=data.width, **data.preprocess_kwargs)
+        data.image = data.image.to(device=data.device, dtype=data.dtype)
+
+        data.batch_size = data.image.shape[0]
+
+        # if generator is a list, make sure the length of it matches the length of images (both should be batch_size)
+        if isinstance(data.generator, list) and len(data.generator) != data.batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(data.generator)}, but requested an effective batch"
+                f" size of {data.batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+
+        data.image_latents = pipeline._encode_vae_image(image=data.image, generator=data.generator)
+
+        self.add_block_state(state, data)
+
+        return pipeline, state
+
+
+class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
+    expected_components = ["vae"]
+    model_name = "stable-diffusion-xl"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Vae encoder step that prepares the image and mask for the inpainting process"
+        )
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                "height", 
+                type_hint=Optional[int], 
+                description="The height in pixels of the generated image. This is set to 1024 by default for the best results. "
+                           "Anything below 512 pixels won't work well for [stabilityai/stable-diffusion-xl-base-1.0]"
+                           "(https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and checkpoints that are not "
+                           "specifically fine-tuned on low resolutions.",
+            ),
+            InputParam(
+                "width", 
+                type_hint=Optional[int], 
+                description="The width in pixels of the generated image. This is set to 1024 by default for the best results. "
+                           "Anything below 512 pixels won't work well for [stabilityai/stable-diffusion-xl-base-1.0]"
+                           "(https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and checkpoints that are not "
+                           "specifically fine-tuned on low resolutions.",
+            ),
+            InputParam(
+                "generator", 
+                type_hint=Optional[Union[torch.Generator, List[torch.Generator]]], 
+                description="One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html) "
+                           "to make generation deterministic."
+            ),
+            InputParam(
+                "image", 
+                required=True, 
+                type_hint=PipelineImageInput, 
+                description="The image(s) to modify with the pipeline, for img2img or inpainting task. When using for inpainting task, parts of the image will be masked out with `mask_image` and repainted according to `prompt`."
+            ),
+            InputParam(
+                "mask_image", 
+                required=True, 
+                type_hint=PipelineImageInput, 
+                description="`Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be "
+                           "repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted "
+                           "to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L) "
+                           "instead of 3, so the expected shape would be `(B, H, W, 1)`."
+            ),
+            InputParam(
+                "padding_mask_crop", 
+                type_hint=Optional[Tuple[int, int]], 
+                description="The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to "
+                           "image and mask_image. If `padding_mask_crop` is not `None`, it will first find a rectangular region "
+                           "with the same aspect ratio of the image and contains all masked area, and then expand that area based "
+                           "on `padding_mask_crop`. The image and mask_image will then be cropped based on the expanded area before "
+                           "resizing to the original image size for inpainting. This is useful when the masked area is small while "
+                           "the image is large and contain information irrelevant for inpainting, such as background."
+            ),
+        ]
+
+    @property
+    def intermediates_inputs(self) -> List[InputParam]:
+        return [InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs")]
+
+    @property
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [OutputParam("image_latents", type_hint=torch.Tensor, description="The latents representation of the input image"), 
+                OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for the inpainting process"), 
+                OutputParam("masked_image_latents", type_hint=torch.Tensor, description="The masked image latents to use for the inpainting process (only for inpainting-specifid unet)"), 
+                OutputParam("crops_coords", type_hint=Optional[Tuple[int, int]], description="The crop coordinates to use for the preprocess/postprocess of the image and mask")]
+    
+    def __init__(self):
+        super().__init__()
+        self.auxiliaries["image_processor"] = VaeImageProcessor()
+        self.auxiliaries["mask_processor"] = VaeImageProcessor(do_normalize=False, do_binarize=True, do_convert_grayscale=True)
+        self.components["vae"] = None
+
+    @torch.no_grad()
+    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
+
+        data = self.get_block_state(state)
+
+        data.dtype = data.dtype if data.dtype is not None else pipeline.vae.dtype
+        data.device = pipeline._execution_device
+
+        if data.padding_mask_crop is not None:
+            data.crops_coords = pipeline.mask_processor.get_crop_region(data.mask_image, data.width, data.height, pad=data.padding_mask_crop)
+            data.resize_mode = "fill"
+        else:
+            data.crops_coords = None
+            data.resize_mode = "default"
+        
+        data.image = pipeline.image_processor.preprocess(data.image, height=data.height, width=data.width, crops_coords=data.crops_coords, resize_mode=data.resize_mode)
+        data.image = data.image.to(dtype=torch.float32)
+
+        data.mask = pipeline.mask_processor.preprocess(data.mask_image, height=data.height, width=data.width, resize_mode=data.resize_mode, crops_coords=data.crops_coords)
+        data.masked_image = data.image * (data.mask < 0.5)
+
+        data.batch_size = data.image.shape[0]
+        data.image = data.image.to(device=data.device, dtype=data.dtype)
+        data.image_latents = pipeline._encode_vae_image(image=data.image, generator=data.generator)
+
+        # 7. Prepare mask latent variables
+        data.mask, data.masked_image_latents = pipeline.prepare_mask_latents(
+            data.mask,
+            data.masked_image,
+            data.batch_size,
+            data.height,
+            data.width,
+            data.dtype,
+            data.device,
+            data.generator,
+        )
+
+        self.add_block_state(state, data)
+
+
+        return pipeline, state
+
+
 class StableDiffusionXLInputStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Input processing step that:\n"
+            "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
+            "  2. Adjusts input tensor shapes based on `batch_size` (number of prompts) and `num_images_per_prompt`\n\n"
+            "All input tensors are expected to have either batch_size=1 or match the batch_size\n"
+            "of prompt_embeds. The tensors will be duplicated across the batch dimension to\n"
+            "have a final batch_size of batch_size * num_images_per_prompt."
+        )
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -143,25 +569,25 @@ class StableDiffusionXLInputStep(PipelineBlock):
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam("prompt_embeds", required=True),
-            InputParam("negative_prompt_embeds"),
-            InputParam("pooled_prompt_embeds", required=True),
-            InputParam("negative_pooled_prompt_embeds"),
-            InputParam("ip_adapter_embeds"),
-            InputParam("negative_ip_adapter_embeds"),
+            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor, description="Pre-generated text embeddings. Can be generated from text_encoder step."),
+            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative text embeddings. Can be generated from text_encoder step."),
+            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor, description="Pre-generated pooled text embeddings. Can be generated from text_encoder step."),
+            InputParam("negative_pooled_prompt_embeds", description="Pre-generated negative pooled text embeddings. Can be generated from text_encoder step."),
+            InputParam("ip_adapter_embeds", type_hint=List[torch.Tensor], description="Pre-generated image embeddings for IP-Adapter. Can be generated from ip_adapter step."),
+            InputParam("negative_ip_adapter_embeds", type_hint=List[torch.Tensor], description="Pre-generated negative image embeddings for IP-Adapter. Can be generated from ip_adapter step."),
         ]
     
     @property
     def intermediates_outputs(self) -> List[str]:
         return [
-            OutputParam("batch_size"),
-            OutputParam("dtype"),
-            OutputParam("prompt_embeds"),
-            OutputParam("negative_prompt_embeds"),
-            OutputParam("pooled_prompt_embeds"),
-            OutputParam("negative_pooled_prompt_embeds"),
-            OutputParam("ip_adapter_embeds"),
-            OutputParam("negative_ip_adapter_embeds"),
+            OutputParam("batch_size", type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt"),
+            OutputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs (determined by `prompt_embeds`)"),
+            OutputParam("prompt_embeds", type_hint=torch.Tensor, description="text embeddings used to guide the image generation"),
+            OutputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="negative text embeddings used to guide the image generation"),
+            OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor, description="pooled text embeddings used to guide the image generation"),
+            OutputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, description="negative pooled text embeddings used to guide the image generation"),
+            OutputParam("ip_adapter_embeds", type_hint=List[torch.Tensor], description="image embeddings for IP-Adapter"),
+            OutputParam("negative_ip_adapter_embeds", type_hint=List[torch.Tensor], description="negative image embeddings for IP-Adapter"),
         ]
     
     def check_inputs(self, pipeline, data):
@@ -237,257 +663,79 @@ class StableDiffusionXLInputStep(PipelineBlock):
         return pipeline, state
 
 
-class StableDiffusionXLTextEncoderStep(PipelineBlock):
-    expected_components = ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
-    expected_configs = ["force_zeros_for_empty_prompt"]
-    model_name = "stable-diffusion-xl"
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam(
-                name="prompt",
-                type_hint=Union[str, List[str]],
-                description="The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds` instead.",
-            ),
-            InputParam(
-                name="prompt_2",
-                type_hint=Union[str, List[str]],
-                description="The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is used in both text-encoders",
-            ),
-            InputParam(
-                name="negative_prompt",
-                type_hint=Union[str, List[str]],
-                description="The prompt or prompts not to guide the image generation. If not defined, one has to pass `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).",
-            ),
-            InputParam(
-                name="negative_prompt_2",
-                type_hint=Union[str, List[str]],
-                description="The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders",
-            ),
-            InputParam(
-                name="cross_attention_kwargs",
-                type_hint=Optional[dict],
-                description="A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under `self.processor` in [diffusers.models.attention_processor]",
-            ),
-            InputParam(
-                name="guidance_scale",
-                type_hint=float,
-                default=5.0,
-                description="Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598). `guidance_scale` is defined as `w` of equation 2. of [Imagen Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`, usually at the expense of lower image quality.",
-            ),
-            InputParam(
-                name="clip_skip",
-                type_hint=Optional[int],
-            ),
-        ]
-
-    
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return [
-            OutputParam("prompt_embeds"),
-            OutputParam("negative_prompt_embeds"),
-            OutputParam("pooled_prompt_embeds"),
-            OutputParam("negative_pooled_prompt_embeds"),
-        ]
-
-    def __init__(self):
-        super().__init__()
-        self.configs["force_zeros_for_empty_prompt"] = True
-        self.components["text_encoder"] = None
-        self.components["text_encoder_2"] = None
-        self.components["tokenizer"] = None
-        self.components["tokenizer_2"] = None
-
-    def check_inputs(self, pipeline, data):
-
-        if data.prompt is not None and (not isinstance(data.prompt, str) and not isinstance(data.prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(data.prompt)}")
-        elif data.prompt_2 is not None and (not isinstance(data.prompt_2, str) and not isinstance(data.prompt_2, list)):
-            raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(data.prompt_2)}")
-
-
-    @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        # Get inputs and intermediates
-        data = self.get_block_state(state)
-        self.check_inputs(pipeline, data)
-
-        data.do_classifier_free_guidance = data.guidance_scale > 1.0
-        data.device = pipeline._execution_device
-
-
-        # Encode input prompt
-        data.text_encoder_lora_scale = (
-            data.cross_attention_kwargs.get("scale", None) if data.cross_attention_kwargs is not None else None
-        )
-        (
-            data.prompt_embeds,
-            data.negative_prompt_embeds,
-            data.pooled_prompt_embeds,
-            data.negative_pooled_prompt_embeds,
-        ) = pipeline.encode_prompt(
-            data.prompt,
-            data.prompt_2,
-            data.device,
-            1,
-            data.do_classifier_free_guidance,
-            data.negative_prompt,
-            data.negative_prompt_2,
-            prompt_embeds=None,
-            negative_prompt_embeds=None,
-            pooled_prompt_embeds=None,
-            negative_pooled_prompt_embeds=None,
-            lora_scale=data.text_encoder_lora_scale,
-            clip_skip=data.clip_skip,
-        )
-        # Add outputs
-        self.add_block_state(state, data)
-        return pipeline, state
-
-
-class StableDiffusionXLVaeEncoderStep(PipelineBlock):
-    expected_components = ["vae"]
-    model_name = "stable-diffusion-xl"
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam(name="image", required=True),
-            InputParam(name="generator"),
-            InputParam(name="height"),
-            InputParam(name="width"),
-        ]
-
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        return [
-            InputParam("dtype"), 
-            InputParam("preprocess_kwargs")]
-
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("image_latents")]
-
-    def __init__(self):
-        super().__init__()
-        self.components["vae"] = None
-        self.auxiliaries["image_processor"] = VaeImageProcessor()
-
-    @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        data = self.get_block_state(state)
-        data.preprocess_kwargs = data.preprocess_kwargs or {}
-        data.device = pipeline._execution_device
-        data.dtype = data.dtype if data.dtype is not None else pipeline.vae.dtype
-        
-        data.image = pipeline.image_processor.preprocess(data.image, height=data.height, width=data.width, **data.preprocess_kwargs)
-        data.image = data.image.to(device=data.device, dtype=data.dtype)
-
-        data.batch_size = data.image.shape[0]
-
-        # if generator is a list, make sure the length of it matches the length of images (both should be batch_size)
-        if isinstance(data.generator, list) and len(data.generator) != data.batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(data.generator)}, but requested an effective batch"
-                f" size of {data.batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-
-        data.image_latents = pipeline._encode_vae_image(image=data.image, generator=data.generator)
-
-        self.add_block_state(state, data)
-
-        return pipeline, state
-
-
-class StableDiffusionXLLoraStep(PipelineBlock):
-    expected_components = ["text_encoder", "text_encoder_2", "unet"]
-    model_name = "stable-diffusion-xl"
-
-    def __init__(self):
-        super().__init__()
-        self.components["text_encoder"] = None
-        self.components["text_encoder_2"] = None
-        self.components["unet"] = None
-    
-    @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        raise EnvironmentError("StableDiffusionXLLoraStep is desgined to be used to load lora weights, __call__ is not implemented")
-
-
-class StableDiffusionXLIPAdapterStep(PipelineBlock):
-    expected_components = ["image_encoder", "feature_extractor", "unet"]
-    model_name = "stable-diffusion-xl"
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("ip_adapter_image", required=True), 
-            InputParam("guidance_scale", default=5.0),
-        ]
-    
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("ip_adapter_embeds"), OutputParam("negative_ip_adapter_embeds")]
-    
-    def __init__(self):
-        super().__init__()
-        self.components["image_encoder"] = None
-        self.components["feature_extractor"] = None
-        self.components["unet"] = None
-    
-
-    @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        data = self.get_block_state(state)
-
-        data.do_classifier_free_guidance = data.guidance_scale > 1.0
-        data.device = pipeline._execution_device
-
-        data.ip_adapter_embeds = pipeline.prepare_ip_adapter_image_embeds(
-            ip_adapter_image=data.ip_adapter_image,
-            ip_adapter_image_embeds=None,
-            device=data.device,
-            num_images_per_prompt=1,
-            do_classifier_free_guidance=data.do_classifier_free_guidance,
-        )
-        if data.do_classifier_free_guidance:
-            data.negative_ip_adapter_embeds = []
-            for i, image_embeds in enumerate(data.ip_adapter_embeds):
-                negative_image_embeds, image_embeds = image_embeds.chunk(2)
-                data.negative_ip_adapter_embeds.append(negative_image_embeds)
-                data.ip_adapter_embeds[i] = image_embeds
-
-        self.add_block_state(state, data)
-        return pipeline, state
-
-
-
 class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     expected_components = ["scheduler"]
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return (
+            "Step that sets the timesteps for the scheduler and determines the initial noise level (latent_timestep) for image-to-image/inpainting generation."
+            "The latent_timestep is calculated from the `strength` parameter - higher strength means starting from a noisier version of the input image."
+        )
+
+    @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("num_inference_steps", default=50),
-            InputParam("timesteps"),
-            InputParam("sigmas"),
-            InputParam("denoising_end"),
-            InputParam("strength", default=0.3),
-            InputParam("denoising_start"),
-            InputParam("num_images_per_prompt", default=1),
+            InputParam(
+                "num_inference_steps", 
+                default=50, 
+                type_hint=int, 
+                description="The number of denoising steps. More denoising steps usually lead to a higher quality image at the"
+                " expense of slower inference."
+            ),
+            InputParam(
+                "timesteps", 
+                type_hint=Optional[torch.Tensor], 
+                description="Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed will be used. Must be in descending order."
+            ),
+            InputParam(
+                "sigmas", 
+                type_hint=Optional[torch.Tensor], 
+                description="Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed will be used."
+            ),
+            InputParam(
+                "denoising_end", 
+                type_hint=Optional[float], 
+                description="When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be completed before it is intentionally prematurely terminated. As a result, the returned sample will still retain a substantial amount of noise as determined by the discrete timesteps selected by the scheduler. The denoising_end parameter should ideally be utilized when this pipeline forms a part of a 'Mixture of Denoisers' multi-pipeline setup."
+            ),
+            InputParam(
+                "strength",
+                default=0.3,
+                type_hint=float,
+                description="Conceptually, indicates how much to transform the reference `image` (the masked portion of image for inpainting). Must be between 0 and 1. `image` "
+                "will be used as a starting point, adding more noise to it the larger the `strength`. The number of "
+                "denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will "
+                "be maximum and the denoising process will run for the full number of iterations specified in "
+                "`num_inference_steps`. A value of 1, therefore, essentially ignores `image`. Note that in the case of "
+                "`denoising_start` being declared as an integer, the value of `strength` will be ignored."
+            ),
+            InputParam(
+                "denoising_start",
+                type_hint=Optional[float],
+                description="The denoising start value to use for the scheduler. Determines the starting point of the denoising process."
+            ),
+            InputParam(
+                "num_images_per_prompt",
+                default=1,
+                type_hint=int,
+                description="The number of images to generate per prompt. Defaults to 1."
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return [InputParam("batch_size", required=True)]
+        return [
+            InputParam("batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt"), 
+        ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("timesteps"), OutputParam("num_inference_steps"), OutputParam("latent_timestep")]
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"), 
+            OutputParam("num_inference_steps", type_hint=int, description="The number of denoising steps to perform at inference time"), 
+            OutputParam("latent_timestep", type_hint=torch.Tensor, description="The timestep that represents the initial noise level for image-to-image generation")
+        ]
 
     def __init__(self):
         super().__init__()
@@ -532,19 +780,43 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
 class StableDiffusionXLSetTimestepsStep(PipelineBlock):
     expected_components = ["scheduler"]
     model_name = "stable-diffusion-xl"
+    
+    @property
+    def description(self) -> str:
+        return (
+            "Step that sets the scheduler's timesteps for inference"
+        )
 
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("num_inference_steps", default=50),
-            InputParam("timesteps"),
-            InputParam("sigmas"),
-            InputParam("denoising_end"),
+            InputParam(
+                "num_inference_steps", 
+                default=50, 
+                type_hint=int, 
+                description="The number of denoising steps. More denoising steps usually lead to a higher quality image at the expense of slower inference."
+            ),
+            InputParam(
+                "timesteps", 
+                type_hint=Optional[torch.Tensor], 
+                description="Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed will be used. Must be in descending order."
+            ),
+            InputParam(
+                "sigmas", 
+                type_hint=Optional[torch.Tensor], 
+                description="Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed will be used."
+            ),
+            InputParam(
+                "denoising_end", 
+                type_hint=Optional[float], 
+                description="When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be completed before it is intentionally prematurely terminated. As a result, the returned sample will still retain a substantial amount of noise as determined by the discrete timesteps selected by the scheduler. The denoising_end parameter should ideally be utilized when this pipeline forms a part of a 'Mixture of Denoisers' multi-pipeline setup."
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("timesteps"), OutputParam("num_inference_steps")]
+        return [OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"), 
+                OutputParam("num_inference_steps", type_hint=int, description="The number of denoising steps to perform at inference time")]
 
     def __init__(self):
         super().__init__()
@@ -574,105 +846,98 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         return pipeline, state
 
 
-class StableDiffusionXLInpaintVaeEncoderStep(PipelineBlock):
-    expected_components = ["vae"]
-    model_name = "stable-diffusion-xl"
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("height"),
-            InputParam("width"),
-            InputParam("generator"),
-            InputParam("image", required=True),
-            InputParam("mask_image", required=True),
-            InputParam("padding_mask_crop"),
-        ]
-
-    @property
-    def intermediates_inputs(self) -> List[InputParam]:
-        return [InputParam("dtype")]
-
-    @property
-    def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("image_latents"), OutputParam("mask"), OutputParam("masked_image_latents"), OutputParam("crops_coords")]
-
-    def __init__(self):
-        super().__init__()
-        self.auxiliaries["image_processor"] = VaeImageProcessor()
-        self.auxiliaries["mask_processor"] = VaeImageProcessor(do_normalize=False, do_binarize=True, do_convert_grayscale=True)
-        self.components["vae"] = None
-
-    @torch.no_grad()
-    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
-
-        data = self.get_block_state(state)
-
-        data.dtype = data.dtype if data.dtype is not None else pipeline.vae.dtype
-        data.device = pipeline._execution_device
-
-        if data.padding_mask_crop is not None:
-            data.crops_coords = pipeline.mask_processor.get_crop_region(data.mask_image, data.width, data.height, pad=data.padding_mask_crop)
-            data.resize_mode = "fill"
-        else:
-            data.crops_coords = None
-            data.resize_mode = "default"
-        
-        data.image = pipeline.image_processor.preprocess(data.image, height=data.height, width=data.width, crops_coords=data.crops_coords, resize_mode=data.resize_mode)
-        data.image = data.image.to(dtype=torch.float32)
-
-        data.mask = pipeline.mask_processor.preprocess(data.mask_image, height=data.height, width=data.width, resize_mode=data.resize_mode, crops_coords=data.crops_coords)
-        data.masked_image = data.image * (data.mask < 0.5)
-
-        data.batch_size = data.image.shape[0]
-        data.image = data.image.to(device=data.device, dtype=data.dtype)
-        data.image_latents = pipeline._encode_vae_image(image=data.image, generator=data.generator)
-
-        # 7. Prepare mask latent variables
-        data.mask, data.masked_image_latents = pipeline.prepare_mask_latents(
-            data.mask,
-            data.masked_image,
-            data.batch_size,
-            data.height,
-            data.width,
-            data.dtype,
-            data.device,
-            data.generator,
-        )
-
-        self.add_block_state(state, data)
-
-
-        return pipeline, state
-
-
 class StableDiffusionXLInpaintPrepareLatentsStep(PipelineBlock):
     expected_components = ["scheduler"]
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return (
+            "Step that prepares the latents for the inpainting process"
+        )
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("generator"),
-            InputParam("latents"),
-            InputParam("num_images_per_prompt", default=1),
-            InputParam("denoising_start"),
-            InputParam("strength", default=0.9999),
+            InputParam(
+                "generator", 
+                type_hint=Optional[Union[torch.Generator, List[torch.Generator]]], 
+                description="One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html) "
+                           "to make generation deterministic."),
+            InputParam(
+                "latents", 
+                type_hint=Optional[torch.Tensor], 
+                description="Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image generation. Can be used to tweak the same generation with different prompts. If not provided, a latents tensor will ge generated by sampling using the supplied random `generator`."
+            ),
+            InputParam(
+                "num_images_per_prompt", 
+                default=1, 
+                type_hint=int, 
+                description="The number of images to generate per prompt"
+            ),
+            InputParam(
+                "denoising_start",
+                type_hint=Optional[float],
+                description="When specified, indicates the fraction (between 0.0 and 1.0) of the total denoising process to be bypassed before it is initiated. The initial part of the denoising process is skipped and it is assumed that the passed `image` is a partly denoised image. Note that when this is specified, strength will be ignored. Useful for 'Mixture of Denoisers' multi-pipeline setups."
+            ),
+            InputParam(
+                "strength", 
+                default=0.9999, 
+                type_hint=float, 
+                description="Conceptually, indicates how much to transform the reference `image` (the masked portion of image for inpainting). Must be between 0 and 1. `image` "
+                "will be used as a starting point, adding more noise to it the larger the `strength`. The number of "
+                "denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will "
+                "be maximum and the denoising process will run for the full number of iterations specified in "
+                "`num_inference_steps`. A value of 1, therefore, essentially ignores `image`. Note that in the case of "
+                "`denoising_start` being declared as an integer, the value of `strength` will be ignored."
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam("batch_size", required=True), 
-            InputParam("latent_timestep", required=True), 
-            InputParam("image_latents", required=True), 
-            InputParam("mask", required=True), 
-            InputParam("masked_image_latents"), # only for inpainting-specific unet
-            InputParam("dtype")]
+            InputParam(
+                "batch_size", 
+                required=True, 
+                type_hint=int, 
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+            ), 
+            InputParam(
+                "latent_timestep", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step."
+            ), 
+            InputParam(
+                "image_latents", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step."
+            ), 
+            InputParam(
+                "mask", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The mask for the inpainting generation. Can be generated in vae_encode step."
+            ), 
+            InputParam(
+                "masked_image_latents", 
+                type_hint=torch.Tensor, 
+                description="The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be generated in vae_encode step."
+            ),
+            InputParam(
+                "dtype", 
+                type_hint=torch.dtype, 
+                description="The dtype of the model inputs"
+            )
+        ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("latents"), OutputParam("mask"), OutputParam("masked_image_latents"), OutputParam("noise")]
+        return [OutputParam("latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"), 
+                OutputParam("mask", type_hint=torch.Tensor, description="The mask to use for inpainting generation"), 
+                OutputParam("masked_image_latents", type_hint=torch.Tensor, description="The masked image latents to use for the inpainting generation (only for inpainting-specific unet)"), 
+                OutputParam("noise", type_hint=torch.Tensor, description="The noise added to the image latents, used for inpainting generation")]
 
     def __init__(self):
         super().__init__()
@@ -736,25 +1001,49 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return (
+            "Step that prepares the latents for the image-to-image generation process"
+        )
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("generator"),
-            InputParam("latents"),
-            InputParam("num_images_per_prompt", default=1),
-            InputParam("denoising_start"),
+            InputParam(
+                "generator", 
+                type_hint=Optional[Union[torch.Generator, List[torch.Generator]]], 
+                description="One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html) "
+                           "to make generation deterministic."
+            ),
+            InputParam(
+                "latents", 
+                type_hint=Optional[torch.Tensor], 
+                description="Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image generation. Can be used to tweak the same generation with different prompts. If not provided, a latents tensor will ge generated by sampling using the supplied random `generator`."
+            ),
+            InputParam(
+                "num_images_per_prompt", 
+                default=1, 
+                type_hint=int, 
+                description="The number of images to generate per prompt"
+            ),
+            InputParam(
+                "denoising_start", 
+                type_hint=Optional[float], 
+                description="When specified, indicates the fraction (between 0.0 and 1.0) of the total denoising process to be bypassed before it is initiated. The initial part of the denoising process is skipped and it is assumed that the passed `image` is a partly denoised image. Note that when this is specified, strength will be ignored. Useful for 'Mixture of Denoisers' multi-pipeline setups."
+            ),
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediates_inputs(self) -> List[InputParam]:
         return [
-            InputParam("latent_timestep", required=True), 
-            InputParam("image_latents", required=True), 
-            InputParam("batch_size", required=True), 
-            InputParam("dtype")]
+            InputParam("latent_timestep", required=True, type_hint=torch.Tensor, description="The timestep that represents the initial noise level for image-to-image/inpainting generation. Can be generated in set_timesteps step."), 
+            InputParam("image_latents", required=True, type_hint=torch.Tensor, description="The latents representing the reference image for image-to-image/inpainting generation. Can be generated in vae_encode step."), 
+            InputParam("batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."), 
+            InputParam("dtype", required=True, type_hint=torch.dtype, description="The dtype of the model inputs")]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("latents")]
+        return [OutputParam("latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process")]
 
     def __init__(self):
         super().__init__()
@@ -789,22 +1078,72 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def description(self) -> str:
+        return (
+            "Prepare latents step that prepares the latents for the text-to-image generation process"
+        )
+
+    @property
+    def inputs(self) -> List[InputParam]:
         return [
-            InputParam("height"),
-            InputParam("width"),
-            InputParam("generator"),
-            InputParam("latents"),
-            InputParam("num_images_per_prompt", default=1),
+            InputParam(
+                "height", 
+                type_hint=Optional[int], 
+                description="The height in pixels of the generated image. This is set to 1024 by default for the best results. "
+                           "Anything below 512 pixels won't work well for [stabilityai/stable-diffusion-xl-base-1.0]"
+                           "(https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and checkpoints that are not "
+                           "specifically fine-tuned on low resolutions."),
+            InputParam(
+                "width", 
+                type_hint=Optional[int], 
+                description="The width in pixels of the generated image. This is set to 1024 by default for the best results. "
+                           "Anything below 512 pixels won't work well for [stabilityai/stable-diffusion-xl-base-1.0]"
+                           "(https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and checkpoints that are not "
+                           "specifically fine-tuned on low resolutions."),
+            InputParam(
+                "generator", 
+                type_hint=Optional[Union[torch.Generator, List[torch.Generator]]], 
+                description="One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html) "
+                           "to make generation deterministic."
+            ),
+            InputParam(
+                "latents", 
+                type_hint=Optional[torch.Tensor], 
+                description="Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image generation. Can be used to tweak the same generation with different prompts. If not provided, a latents tensor will ge generated by sampling using the supplied random `generator`."
+            ),
+            InputParam(
+                "num_images_per_prompt", 
+                default=1, 
+                type_hint=int, 
+                description="The number of images to generate per prompt"
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[InputParam]:
-        return [InputParam("batch_size", required=True), InputParam("dtype")]
+        return [
+            InputParam(
+                "batch_size", 
+                required=True, 
+                type_hint=int, 
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+            ), 
+            InputParam(
+                "dtype", 
+                type_hint=torch.dtype, 
+                description="The dtype of the model inputs"
+            )
+        ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("latents")]
+        return [
+            OutputParam(
+                "latents", 
+                type_hint=torch.Tensor, 
+                description="The initial latents to use for the denoising process"
+            )
+        ]
 
     def __init__(self):
         super().__init__()
@@ -857,31 +1196,98 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return (
+            "Step that prepares the additional conditioning for the image-to-image/inpainting generation process"
+        )
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("original_size"),
-            InputParam("target_size"),
-            InputParam("negative_original_size"),
-            InputParam("negative_target_size"),
-            InputParam("crops_coords_top_left", default=(0, 0)),
-            InputParam("negative_crops_coords_top_left", default=(0, 0)),
-            InputParam("num_images_per_prompt", default=1),
-            InputParam("guidance_scale", default=5.0),
-            InputParam("aesthetic_score", default=6.0),
-            InputParam("negative_aesthetic_score", default=2.0),
+            InputParam(
+                "original_size", 
+                type_hint=Optional[Tuple[int]], 
+                description="If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled. "
+                           "`original_size` defaults to `(height, width)` if not specified. Part of SDXL's micro-conditioning as "
+                           "explained in section 2.2 of https://huggingface.co/papers/2307.01952"
+            ),
+            InputParam(
+                "target_size", 
+                type_hint=Optional[Tuple[int]], 
+                description="For most cases, `target_size` should be set to the desired height and width of the generated image. If "
+                           "not specified it will default to `(height, width)`. Part of SDXL's micro-conditioning as explained in "
+                           "section 2.2 of https://huggingface.co/papers/2307.01952"
+            ),
+            InputParam(
+                "negative_original_size", 
+                type_hint=Optional[Tuple[int]], 
+                description="To negatively condition the generation process based on a specific image resolution. Part of SDXL's "
+                           "micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952"
+            ),
+            InputParam(
+                "negative_target_size", 
+                type_hint=Optional[Tuple[int]], 
+                description="To negatively condition the generation process based on a target image resolution. It should be as same "
+                           "as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of "
+                           "https://huggingface.co/papers/2307.01952"
+            ),
+            InputParam(
+                "crops_coords_top_left", 
+                default=(0, 0), 
+                type_hint=Tuple[int], 
+                description="`crops_coords_top_left` can be used to generate an image that appears to be \"cropped\" from the position "
+                           "`crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning"
+            ),
+            InputParam(
+                "negative_crops_coords_top_left", 
+                default=(0, 0), 
+                type_hint=Tuple[int], 
+                description="To negatively condition the generation process based on a specific crop coordinates. Part of SDXL's "
+                            "micro-conditioning"
+            ),
+            InputParam(
+                "num_images_per_prompt", 
+                default=1, 
+                type_hint=int, 
+                description="The number of images to generate per prompt."
+            ),
+            InputParam(
+                "guidance_scale", 
+                default=5.0, 
+                type_hint=float, 
+                description="Guidance scale as defined in Classifier-Free Diffusion Guidance. `guidance_scale` is defined as `w` of equation 2. "
+                           "Higher guidance scale encourages to generate images that are closely linked to the text `prompt`, "
+                           "usually at the expense of lower image quality."
+            ),
+            InputParam(
+                "aesthetic_score", 
+                default=6.0, 
+                type_hint=float,
+                description="Used to simulate an aesthetic score of the generated image by influencing the positive text condition. "
+                           "Part of SDXL's micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952"
+            ),
+            InputParam(
+                "negative_aesthetic_score", 
+                default=2.0, 
+                type_hint=float, 
+                description="Part of SDXL's micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952. "
+                           "Can be used to simulate an aesthetic score of the generated image by influencing the negative text condition."
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents", required=True), 
-            InputParam("pooled_prompt_embeds", required=True),
-            InputParam("batch_size", required=True),
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."), 
+            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor, description="The pooled prompt embeddings to use for the denoising process (used to determine shapes and dtypes for other additional conditioning inputs). Can be generated in text_encoder step."),
+            InputParam("batch_size", required=True, type_hint=int, description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."),
         ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("add_time_ids"), OutputParam("negative_add_time_ids"), OutputParam("timestep_cond")]
+        return [OutputParam("add_time_ids", type_hint=torch.Tensor, description="The time ids to condition the denoising process"), 
+                OutputParam("negative_add_time_ids", type_hint=torch.Tensor, description="The negative time ids to condition the denoising process"), 
+                OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM")]
 
     def __init__(self):
         super().__init__()
@@ -943,29 +1349,93 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return (
+            "Step that prepares the additional conditioning for the text-to-image generation process"
+        )
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("original_size"),
-            InputParam("target_size"),
-            InputParam("negative_original_size"),
-            InputParam("negative_target_size"),
-            InputParam("crops_coords_top_left", default=(0, 0)),
-            InputParam("negative_crops_coords_top_left", default=(0, 0)),
-            InputParam("num_images_per_prompt", default=1),
-            InputParam("guidance_scale", default=5.0),
+            InputParam(
+                "original_size",
+                type_hint=Tuple[int, int],
+                default=(1024, 1024),
+                description="The original size (height, width) of the image that conditions the generation process. If different from target_size, the image will appear to be down- or upsampled. Part of SDXL's micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952"
+            ),
+            InputParam(
+                "target_size",
+                type_hint=Tuple[int, int],
+                default=(1024, 1024),
+                description="The target size (height, width) of the generated image. For most cases, this should be set to the desired output dimensions. Part of SDXL's micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952"
+            ),
+            InputParam(
+                "negative_original_size",
+                type_hint=Tuple[int, int],
+                default=(1024, 1024),
+                description="The negative original size to condition against during generation. Part of SDXL's micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952. See: https://github.com/huggingface/diffusers/issues/4208"
+            ),
+            InputParam(
+                "negative_target_size",
+                type_hint=Tuple[int, int],
+                default=(1024, 1024),
+                description="The negative target size to condition against during generation. Should typically match target_size. Part of SDXL's micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952. See: https://github.com/huggingface/diffusers/issues/4208"
+            ),
+            InputParam(
+                "crops_coords_top_left", 
+                default=(0, 0), 
+                type_hint=Tuple[int, int], 
+                description="The top-left coordinates (x, y) used to condition the generation process. Setting this to (0, 0) typically produces well-centered images. Part of SDXL's micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952"
+            ),
+            InputParam(
+                "negative_crops_coords_top_left", 
+                default=(0, 0), 
+                type_hint=Tuple[int, int], 
+                description="The top-left coordinates (x, y) used to negatively condition the generation process. Part of SDXL's micro-conditioning as explained in section 2.2 of https://huggingface.co/papers/2307.01952. For more information, see: https://github.com/huggingface/diffusers/issues/4208"
+            ),
+            InputParam(
+                "num_images_per_prompt", 
+                default=1, 
+                type_hint=int, 
+                description="The number of images to generate per prompt"
+            ),
+            InputParam(
+                "guidance_scale", 
+                default=5.0, 
+                type_hint=float, 
+                description="Guidance scale as defined in Classifier-Free Diffusion Guidance. `guidance_scale` is defined as `w` of equation 2. "
+                           "Higher guidance scale encourages to generate images that are closely linked to the text `prompt`, "
+                      "usually at the expense of lower image quality."),
         ]
 
     @property
     def intermediates_inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents", required=True), 
-            InputParam("pooled_prompt_embeds", required=True),
-            InputParam("batch_size", required=True),
+            InputParam(
+                "latents", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+            ), 
+            InputParam(
+                "pooled_prompt_embeds", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The pooled prompt embeddings to use for the denoising process (used to determine shapes and dtypes for other additional conditioning inputs). Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "batch_size", 
+                required=True, 
+                type_hint=int, 
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("add_time_ids"), OutputParam("negative_add_time_ids"), OutputParam("timestep_cond")]
+        return [OutputParam("add_time_ids", type_hint=torch.Tensor, description="The time ids to condition the denoising process"), 
+                OutputParam("negative_add_time_ids", type_hint=torch.Tensor, description="The negative time ids to condition the denoising process"), 
+                OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM")]
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -1023,42 +1493,157 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return (
+            "Step that iteratively denoise the latents for the text-to-image/image-to-image/inpainting generation process"
+        )
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("guidance_scale", default=5.0),
-            InputParam("guidance_rescale", default=0.0),
-            InputParam("cross_attention_kwargs", default=None),
-            InputParam("generator", default=None),
-            InputParam("eta", default=0.0),
-            InputParam("guider_kwargs", default=None),
-            InputParam("num_images_per_prompt", default=1),
+            InputParam(
+                "guidance_scale", 
+                type_hint=float,
+                default=5.0,
+                description="Guidance scale as defined in Classifier-Free Diffusion Guidance. Higher values encourage images closely linked to the text prompt, potentially at the expense of image quality. Enabled when > 1."
+            ),
+            InputParam(
+                "guidance_rescale",
+                type_hint=float,
+                default=0.0,
+                description="Guidance rescale factor (φ) to fix overexposure when using zero terminal SNR, as proposed in 'Common Diffusion Noise Schedules and Sample Steps are Flawed'."
+            ),
+            InputParam(
+                "cross_attention_kwargs",
+                type_hint=Optional[Dict[str, Any]],
+                default=None,
+                description="Optional kwargs dictionary passed to the AttentionProcessor."
+            ),
+            InputParam(
+                "generator",
+                type_hint=Optional[Union[torch.Generator, List[torch.Generator]]],
+                description="One or a list of torch generator(s) to make generation deterministic."
+            ),
+            InputParam(
+                "eta",
+                type_hint=float,
+                default=0.0,
+                description="Parameter η in the DDIM paper. Only applies to DDIMScheduler, ignored for others."
+            ),
+            InputParam(
+                "guider_kwargs",
+                type_hint=Optional[Dict[str, Any]],
+                default=None,
+                description="Optional kwargs dictionary passed to the Guider."
+            ),
+            InputParam(
+                "num_images_per_prompt",
+                type_hint=int,
+                default=1,
+                description="The number of images to generate per prompt."
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam("latents", required=True),
-            InputParam("batch_size", required=True),
-            InputParam("timesteps", required=True),
-            InputParam("num_inference_steps", required=True),
-            InputParam("pooled_prompt_embeds", required=True),
-            InputParam("negative_pooled_prompt_embeds"),
-            InputParam("add_time_ids", required=True),
-            InputParam("negative_add_time_ids"),
-            InputParam("prompt_embeds", required=True),
-            InputParam("negative_prompt_embeds"),
-            InputParam("timestep_cond"), # LCM 
-            InputParam("mask"), # inpainting
-            InputParam("masked_image_latents"), # inpainting
-            InputParam("noise"), # inpainting
-            InputParam("image_latents"), # inpainting
-            InputParam("ip_adapter_embeds"), # ip adapter
-            InputParam("negative_ip_adapter_embeds"), # ip adapter
+            InputParam(
+                "latents", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+            ),
+            InputParam(
+                "batch_size", 
+                required=True, 
+                type_hint=int, 
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+            ),
+            InputParam(
+                "timesteps", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+            ),
+            InputParam(
+                "num_inference_steps", 
+                required=True, 
+                type_hint=int, 
+                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
+            ),
+            InputParam(
+                "pooled_prompt_embeds", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The pooled prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "negative_pooled_prompt_embeds", 
+                type_hint=Optional[torch.Tensor], 
+                description="The negative pooled prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step.    "
+            ),
+            InputParam(
+                "add_time_ids", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The time ids to use as additional conditioning for the denoising process. Can be generated in prepare_additional_conditioning step."
+            ),
+            InputParam(
+                "negative_add_time_ids", 
+                type_hint=Optional[torch.Tensor], 
+                description="The negative time ids to use as additional conditioning for the denoising process. Can be generated in prepare_additional_conditioning step."
+            ),
+            InputParam(
+                "prompt_embeds", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "negative_prompt_embeds", 
+                type_hint=Optional[torch.Tensor], 
+                description="The negative prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step.   "
+            ),
+            InputParam(
+                "timestep_cond", 
+                type_hint=Optional[torch.Tensor], 
+                description="The guidance scale embedding to use for Latent Consistency Models(LCMs). Can be generated in prepare_additional_conditioning step."
+            ),
+            InputParam(
+                "mask", 
+                type_hint=Optional[torch.Tensor], 
+                description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "masked_image_latents", 
+                type_hint=Optional[torch.Tensor], 
+                description="The masked image latents to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "noise", 
+                type_hint=Optional[torch.Tensor], 
+                description="The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step."
+            ),
+            InputParam(
+                "image_latents", 
+                type_hint=Optional[torch.Tensor], 
+                description="The image latents to use for the denoising process, for inpainting/image-to-image task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "ip_adapter_embeds", 
+                type_hint=Optional[torch.Tensor], 
+                description="The ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
+            ),
+            InputParam(
+                "negative_ip_adapter_embeds", 
+                type_hint=Optional[torch.Tensor], 
+                description="The negative ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("latents")]
+        return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     def __init__(self):
         super().__init__()
@@ -1195,48 +1780,191 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return "step that iteratively denoise the latents for the text-to-image/image-to-image/inpainting generation process. Using ControlNet to condition the denoising process"
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("control_image", required=True),
-            InputParam("control_guidance_start", default=0.0),
-            InputParam("control_guidance_end", default=1.0),
-            InputParam("controlnet_conditioning_scale", default=1.0),
-            InputParam("guess_mode", default=False),
-            InputParam("num_images_per_prompt", default=1),
-            InputParam("guidance_scale", default=5.0),
-            InputParam("guidance_rescale", default=0.0),
-            InputParam("cross_attention_kwargs", default=None),
-            InputParam("generator", default=None),
-            InputParam("eta", default=0.0),
-            InputParam("guider_kwargs", default=None),
+            InputParam(
+                "control_image",
+                required=True,
+                type_hint=PipelineImageInput,
+                description="The ControlNet input condition to provide guidance to the unet for generation. If passed as torch.Tensor, it is used as-is. PIL.Image.Image inputs are accepted and default to image dimensions. For multiple ControlNets, pass images as a list for proper batching."
+            ),
+            InputParam(
+                "control_guidance_start",
+                default=0.0,
+                type_hint=Union[float, List[float]],
+                description="The percentage of total steps at which the ControlNet starts applying."
+            ),
+            InputParam(
+                "control_guidance_end",
+                default=1.0,
+                type_hint=Union[float, List[float]],
+                description="The percentage of total steps at which the ControlNet stops applying."
+            ),
+            InputParam(
+                "controlnet_conditioning_scale",
+                default=1.0,
+                type_hint=Union[float, List[float]],
+                description="Scale factor for ControlNet outputs before adding to unet residual. For multiple ControlNets, can be set as a list of scales."
+            ),
+            InputParam(
+                "guess_mode",
+                default=False,
+                type_hint=bool,
+                description="Enables ControlNet encoder to recognize input image content without prompts. Recommended guidance_scale: 3.0-5.0."
+            ),
+            InputParam(
+                "num_images_per_prompt",
+                default=1,
+                type_hint=int,
+                description="The number of images to generate per prompt."
+            ),
+            InputParam(
+                "guidance_scale",
+                default=5.0,
+                type_hint=float,
+                description="Guidance scale as defined in Classifier-Free Diffusion Guidance. Higher values encourage images closely linked to the text prompt, potentially at the expense of image quality. Enabled when > 1."
+            ),
+            InputParam(
+                "guidance_rescale",
+                default=0.0,
+                type_hint=float,
+                description="Guidance rescale factor (φ) to fix overexposure when using zero terminal SNR, as proposed in 'Common Diffusion Noise Schedules and Sample Steps are Flawed'."
+            ),
+            InputParam(
+                "cross_attention_kwargs",
+                default=None,
+                type_hint=Optional[Dict[str, Any]],
+                description="Optional kwargs dictionary passed to the AttentionProcessor."
+            ),
+            InputParam(
+                "generator",
+                default=None,
+                type_hint=Optional[Union[torch.Generator, List[torch.Generator]]],
+                description="One or a list of torch generator(s) to make generation deterministic."
+            ),
+            InputParam(
+                "eta",
+                default=0.0,
+                type_hint=float,
+                description="Parameter η in the DDIM paper. Only applies to DDIMScheduler, ignored for others."
+            ),
+            InputParam(
+                "guider_kwargs",
+                default=None,
+                type_hint=Optional[Dict[str, Any]],
+                description="Optional kwargs dictionary passed to the Guider."
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam("latents", required=True),
-            InputParam("batch_size", required=True),
-            InputParam("timesteps", required=True),
-            InputParam("num_inference_steps", required=True),
-            InputParam("prompt_embeds", required=True),
-            InputParam("negative_prompt_embeds"),
-            InputParam("add_time_ids", required=True),
-            InputParam("negative_add_time_ids"),
-            InputParam("pooled_prompt_embeds", required=True),
-            InputParam("negative_pooled_prompt_embeds"),
-            InputParam("timestep_cond"), # LCM 
-            InputParam("mask"), # inpainting
-            InputParam("masked_image_latents"), # inpainting
-            InputParam("noise"), # inpainting
-            InputParam("image_latents"), # inpainting
-            InputParam("crops_coords"), # inpainting
-            InputParam("ip_adapter_embeds"), # ip adapter
-            InputParam("negative_ip_adapter_embeds"), # ip adapter
+            InputParam(
+                "latents", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+            ),
+            InputParam(
+                "batch_size", 
+                required=True, 
+                type_hint=int, 
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+            ),
+            InputParam(
+                "timesteps", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+            ),
+            InputParam(
+                "num_inference_steps", 
+                required=True, 
+                type_hint=int, 
+                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
+            ),
+            InputParam(
+                "prompt_embeds", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The prompt embeddings used to condition the denoising process. Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "negative_prompt_embeds", 
+                type_hint=Optional[torch.Tensor], 
+                description="The negative prompt embeddings used to condition the denoising process. Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "add_time_ids", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The time ids used to condition the denoising process. Can be generated in parepare_additional_conditioning step."
+            ),
+            InputParam(
+                "negative_add_time_ids", 
+                type_hint=Optional[torch.Tensor], 
+                description="The negative time ids used to condition the denoising process. Can be generated in parepare_additional_conditioning step."
+            ),
+            InputParam(
+                "pooled_prompt_embeds", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The pooled prompt embeddings used to condition the denoising process. Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "negative_pooled_prompt_embeds", 
+                type_hint=Optional[torch.Tensor], 
+                description="The negative pooled prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "timestep_cond", 
+                type_hint=Optional[torch.Tensor], 
+                description="The guidance scale embedding to use for Latent Consistency Models(LCMs), can be generated by prepare_additional_conditioning step"
+            ),
+            InputParam(
+                "mask", 
+                type_hint=Optional[torch.Tensor], 
+                description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "masked_image_latents", 
+                type_hint=Optional[torch.Tensor], 
+                description="The masked image latents to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "noise", 
+                type_hint=Optional[torch.Tensor], 
+                description="The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step."
+            ),
+            InputParam(
+                "image_latents", 
+                type_hint=Optional[torch.Tensor], 
+                description="The image latents to use for the denoising process, for inpainting/image-to-image task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "crops_coords", 
+                type_hint=Optional[Tuple[int]], 
+                description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step."
+            ),
+            InputParam(
+                "ip_adapter_embeds", 
+                type_hint=Optional[torch.Tensor], 
+                description="The ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
+            ),
+            InputParam(
+                "negative_ip_adapter_embeds", 
+                type_hint=Optional[torch.Tensor], 
+                description="The negative ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return [OutputParam("latents")]
+        return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     def __init__(self):
         super().__init__()
@@ -1506,49 +2234,187 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return " The denoising step for the controlnet union model, works for inpainting, image-to-image, and text-to-image tasks"
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            (InputParam("control_image", required=True)),
-            (InputParam("control_guidance_start", default=0.0)),
-            (InputParam("control_guidance_end", default=1.0)),
-            (InputParam("controlnet_conditioning_scale", default=1.0)),
-            (InputParam("control_mode", required=True)),
-            (InputParam("guess_mode", default=False)),
-            (InputParam("num_images_per_prompt", default=1)),
-            (InputParam("guidance_scale", default=5.0)),
-            (InputParam("guidance_rescale", default=0.0)),
-            (InputParam("cross_attention_kwargs")),
-            (InputParam("generator")),
-            (InputParam("eta", default=0.0)),
-            (InputParam("guider_kwargs")),
+            InputParam(
+                "control_image", 
+                required=True,
+                type_hint=PipelineImageInput,
+                description="The ControlNet input condition to provide guidance to the unet for generation. If passed as torch.Tensor, it is used as-is. PIL.Image.Image inputs are accepted and default to image dimensions. For multiple ControlNets, pass images as a list for proper batching."),
+            InputParam(
+                "control_guidance_start",
+                default=0.0,
+                type_hint=Union[float, List[float]],
+                description="The percentage of total steps at which the ControlNet starts applying."),
+            InputParam(
+                "control_guidance_end",
+                default=1.0,
+                type_hint=Union[float, List[float]],
+                description="The percentage of total steps at which the ControlNet stops applying."),
+            InputParam(
+                "control_mode", 
+                required=True, 
+                type_hint=List[int], 
+                description="The control mode for union controlnet, 0 for openpose, 1 for depth, 2 for hed/pidi/scribble/ted, 3 for canny/lineart/anime_lineart/mlsd, 4 for normal and 5 for segment"
+            ),
+            InputParam(
+                "controlnet_conditioning_scale",
+                default=1.0,
+                type_hint=Union[float, List[float]],
+                description="Scale factor for ControlNet outputs before adding to unet residual. For multiple ControlNets, can be set as a list of scales."
+            ),
+            InputParam(
+                "guess_mode",
+                default=False,
+                type_hint=bool,
+                description="Enables ControlNet encoder to recognize input image content without prompts. Recommended guidance_scale: 3.0-5.0."
+            ),
+            InputParam(
+                "num_images_per_prompt",
+                default=1,
+                type_hint=int,
+                description="The number of images to generate per prompt."
+            ),
+            InputParam(
+                "guidance_scale",
+                default=5.0,
+                type_hint=float,
+                description="Guidance scale as defined in Classifier-Free Diffusion Guidance. Higher values encourage images closely linked to the text prompt, potentially at the expense of image quality. Enabled when > 1."),
+            InputParam(
+                "guidance_rescale",
+                default=0.0,
+                type_hint=float,
+                description="Guidance rescale factor (φ) to fix overexposure when using zero terminal SNR, as proposed in 'Common Diffusion Noise Schedules and Sample Steps are Flawed'."),
+            InputParam(
+                "cross_attention_kwargs",
+                default=None,
+                type_hint=Optional[Dict[str, Any]],
+                description="Optional kwargs dictionary passed to the AttentionProcessor."),
+            InputParam(
+                "generator",
+                default=None,
+                type_hint=Optional[Union[torch.Generator, List[torch.Generator]]],
+                description="One or a list of torch generator(s) to make generation deterministic."),
+            InputParam(
+                "eta",
+                default=0.0,
+                type_hint=float,
+                description="Parameter η in the DDIM paper. Only applies to DDIMScheduler, ignored for others."),
+            InputParam(
+                "guider_kwargs",
+                default=None,
+                type_hint=Optional[Dict[str, Any]],
+                description="Optional kwargs dictionary passed to the Guider."),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
-            InputParam("latents", required=True),
-            InputParam("batch_size", required=True),
-            InputParam("timesteps", required=True),
-            InputParam("num_inference_steps", required=True),
-            InputParam("prompt_embeds", required=True),
-            InputParam("negative_prompt_embeds"),
-            InputParam("add_time_ids", required=True),
-            InputParam("negative_add_time_ids"),
-            InputParam("pooled_prompt_embeds", required=True),
-            InputParam("negative_pooled_prompt_embeds"),
-            InputParam("timestep_cond"), # LCM 
-            InputParam("mask"), # inpainting
-            InputParam("masked_image_latents"), # inpainting
-            InputParam("noise"), # inpainting
-            InputParam("image_latents"), # inpainting
-            InputParam("crops_coords"), # inpainting
-            InputParam("ip_adapter_embeds"), # ip adapter
-            InputParam("negative_ip_adapter_embeds"), # ip adapter
+            InputParam(
+                "latents", 
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+            ),
+            InputParam(
+                "batch_size", 
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step."
+            ),
+            InputParam(
+                "timesteps", 
+                required=True,
+                type_hint=torch.Tensor,
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+            ),
+            InputParam(
+                "num_inference_steps", 
+                required=True,
+                type_hint=int,
+                description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step."
+            ),
+            InputParam(
+                "prompt_embeds", 
+                required=True,
+                type_hint=torch.Tensor,
+                description="The prompt embeddings used to condition the denoising process. Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "negative_prompt_embeds",
+                type_hint=Optional[torch.Tensor],
+                description="The negative prompt embeddings used to condition the denoising process. Can be generated in text_encoder step. See: https://github.com/huggingface/diffusers/issues/4208"
+            ),
+            InputParam(
+                "add_time_ids", 
+                required=True,
+                type_hint=torch.Tensor,
+                description="The time ids used to condition the denoising process. Can be generated in prepare_additional_conditioning step."
+            ),
+            InputParam(
+                "negative_add_time_ids",
+                type_hint=Optional[torch.Tensor],
+                description="The negative time ids used to condition the denoising process. Can be generated in prepare_additional_conditioning step.   "
+            ),
+            InputParam(
+                "pooled_prompt_embeds", 
+                required=True,
+                type_hint=torch.Tensor,
+                description="The pooled prompt embeddings used to condition the denoising process. Can be generated in text_encoder step."
+            ),
+            InputParam(
+                "negative_pooled_prompt_embeds",
+                type_hint=Optional[torch.Tensor],
+                description="The negative pooled prompt embeddings to use to condition the denoising process. Can be generated in text_encoder step. See: https://github.com/huggingface/diffusers/issues/4208"
+            ),
+            InputParam(
+                "timestep_cond",
+                type_hint=Optional[torch.Tensor],
+                description="The guidance scale embedding to use for Latent Consistency Models(LCMs). Can be generated in prepare_additional_conditioning step."
+            ),
+            InputParam(
+                "mask",
+                type_hint=Optional[torch.Tensor],
+                description="The mask to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "masked_image_latents",
+                type_hint=Optional[torch.Tensor],
+                description="The masked image latents to use for the denoising process, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "noise",
+                type_hint=Optional[torch.Tensor],
+                description="The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step."
+            ),
+            InputParam(
+                "image_latents",
+                type_hint=Optional[torch.Tensor],
+                description="The image latents to use for the denoising process, for inpainting/image-to-image task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "crops_coords",
+                type_hint=Optional[Tuple[int]],
+                description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode or prepare_latent step."
+            ),
+            InputParam(
+                "ip_adapter_embeds",
+                type_hint=Optional[torch.Tensor],
+                description="The ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
+            ),
+            InputParam(
+                "negative_ip_adapter_embeds",
+                type_hint=Optional[torch.Tensor],
+                description="The negative ip adapter embeddings to use to condition the denoising process, need to have ip adapter model loaded. Can be generated in ip_adapter step."
+            ),
         ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("latents")]
+        return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     def __init__(self):
         super().__init__()
@@ -1805,24 +2671,33 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
 
         return pipeline, state
 
+
 class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
     expected_components = ["vae"]
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return "Step that decodes the denoised latents into images"
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            (InputParam("output_type", default="pil")),
-            (InputParam("return_dict", default=True)),
+            InputParam(
+                "output_type",
+                type_hint=str,
+                default="pil",
+                description="The output format of the generated image. Choose between PIL (PIL.Image.Image), torch.Tensor or np.array."
+            ),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return [InputParam("latents", required=True)]
+        return [InputParam("latents", required=True, type_hint=torch.Tensor, description="The denoised latents from the denoising step")]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("images")]
+        return [OutputParam("images", type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]], description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array")]
 
     def __init__(self):
         super().__init__()
@@ -1887,20 +2762,43 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return "A post-processing step that overlays the mask on the image (inpainting task only)" + \
+               "only needed when you are using the `padding_mask_crop` option when pre-processing the image and mask"
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            (InputParam("image", required=True)),
-            (InputParam("mask_image", required=True)),
-            (InputParam("padding_mask_crop", default=None)),
+            InputParam(
+                "image", 
+                type_hint=PipelineImageInput,
+                required=True, 
+                description="The image(s) to modify with the pipeline, for img2img or inpainting task. When using for inpainting task, parts of the image will be masked out with `mask_image` and repainted according to `prompt`."
+            ),
+            InputParam(
+                "mask_image", 
+                type_hint=PipelineImageInput,
+                required=True, 
+                description="The mask image(s) to use for inpainting, white pixels in the mask will be repainted, while black pixels will be preserved. If mask_image is a PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L) instead of 3, so the expected shape would be (B, H, W, 1). Must be a `PIL.Image.Image`"
+            ),
+            InputParam(
+                "padding_mask_crop", 
+                type_hint=Optional[Tuple[int, int]],
+                default=None, 
+                description="The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied. If set, it will find a rectangular region with the same aspect ratio as the image that contains all masked areas, then expand that area by this margin. The image and mask_image are cropped to this expanded area before resizing to the original size for inpainting. Useful when the masked area is small in a large image with irrelevant background information."
+            ),
         ]
     
     @property
     def intermediates_inputs(self) -> List[str]:
-        return [InputParam("images", required=True), InputParam("crops_coords")]
+        return [
+            InputParam("images", required=True, type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]], description="The generated images from the decode step"),
+            InputParam("crops_coords", required=True, type_hint=Tuple[int, int], description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.")
+        ]
 
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("images")]
+        return [OutputParam("images", type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]], description="The generated images with the mask overlayed")]
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1918,20 +2816,24 @@ class StableDiffusionXLOutputStep(PipelineBlock):
     model_name = "stable-diffusion-xl"
 
     @property
+    def description(self) -> str:
+        return "final step to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or a plain tuple."
+
+    @property
     def inputs(self) -> List[Tuple[str, Any]]:
-        return [(InputParam("return_dict", default=True))] 
+        return [(InputParam("return_dict", type_hint=bool, default=True, description="Whether or not to return a StableDiffusionXLPipelineOutput instead of a plain tuple."))] 
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return [InputParam("images", required=True)]
+        return [InputParam("images", required=True, type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]], description="The generated images from the decode step.")]
     
     @property
     def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("images")]
+        return [OutputParam("images", description="The final images output, can be a tuple or a `StableDiffusionXLPipelineOutput`")]
     
     @property
     def outputs(self) -> List[Tuple[str, Any]]:
-        return [(OutputParam("images"))]
+        return [(OutputParam("images", type_hint=Union[Tuple[PIL.Image.Image], StableDiffusionXLPipelineOutput], description="The final images output, can be a tuple or a `StableDiffusionXLPipelineOutput`"))]
     
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1945,33 +2847,59 @@ class StableDiffusionXLOutputStep(PipelineBlock):
         return pipeline, state
 
 
-class StableDiffusionXLDecodeStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLOutputStep]
-    block_names = ["decode", "output"]
-
-
-class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
-    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLInpaintOverlayMaskStep, StableDiffusionXLOutputStep]
-    block_names = ["decode", "mask_overlay", "output"]
-
-
-class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks):
+# Encode
+class StableDiffusionXLAutoVaeEncoderStep(AutoPipelineBlocks): 
     block_classes = [StableDiffusionXLInpaintVaeEncoderStep, StableDiffusionXLVaeEncoderStep]
     block_names = ["inpaint", "img2img"]
     block_trigger_inputs = ["mask_image", "image"]
 
+    @property
+    def description(self):
+        return "Vae encoder step that encode the image inputs into their latent representations.\n" + \
+               "This is an auto pipeline block that works for both inpainting and img2img tasks.\n" + \
+               " - `StableDiffusionXLInpaintVaeEncoderStep` (inpaint) is used when both `mask_image` and `image` are provided.\n" + \
+               " - `StableDiffusionXLVaeEncoderStep` (img2img) is used when only `image` is provided."
 
+
+# Before denoise
 class StableDiffusionXLBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [StableDiffusionXLInputStep, StableDiffusionXLSetTimestepsStep, StableDiffusionXLPrepareLatentsStep, StableDiffusionXLPrepareAdditionalConditioningStep]
     block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
+
+    @property
+    def description(self):
+        return "Before denoise step that prepare the inputs for the denoise step.\n" + \
+               "This is a sequential pipeline blocks:\n" + \
+               " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n" + \
+               " - `StableDiffusionXLSetTimestepsStep` is used to set the timesteps\n" + \
+               " - `StableDiffusionXLPrepareLatentsStep` is used to prepare the latents\n" + \
+               " - `StableDiffusionXLPrepareAdditionalConditioningStep` is used to prepare the additional conditioning"
 
 class StableDiffusionXLImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [StableDiffusionXLInputStep, StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLImg2ImgPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep]
     block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
 
+    @property
+    def description(self):
+        return "Before denoise step that prepare the inputs for the denoise step for img2img task.\n" + \
+               "This is a sequential pipeline blocks:\n" + \
+               " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n" + \
+               " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n" + \
+               " - `StableDiffusionXLImg2ImgPrepareLatentsStep` is used to prepare the latents\n" + \
+               " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning"
+
 class StableDiffusionXLInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [StableDiffusionXLInputStep, StableDiffusionXLImg2ImgSetTimestepsStep, StableDiffusionXLInpaintPrepareLatentsStep, StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep]
     block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
+
+    @property
+    def description(self):
+        return "Before denoise step that prepare the inputs for the denoise step for inpainting task.\n" + \
+               "This is a sequential pipeline blocks:\n" + \
+               " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n" + \
+               " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n" + \
+               " - `StableDiffusionXLInpaintPrepareLatentsStep` is used to prepare the latents\n" + \
+               " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning"
 
 
 class StableDiffusionXLAutoBeforeDenoiseStep(AutoPipelineBlocks):
@@ -1979,12 +2907,55 @@ class StableDiffusionXLAutoBeforeDenoiseStep(AutoPipelineBlocks):
     block_names = ["inpaint", "img2img", "text2img"]
     block_trigger_inputs = ["mask", "image_latents", None]
 
+    @property
+    def description(self):
+        return "Before denoise step that prepare the inputs for the denoise step.\n" + \
+               "This is an auto pipeline block that works for text2img, img2img and inpainting tasks.\n" + \
+               " - `StableDiffusionXLInpaintBeforeDenoiseStep` (inpaint) is used when both `mask` and `image_latents` are provided.\n" + \
+               " - `StableDiffusionXLImg2ImgBeforeDenoiseStep` (img2img) is used when only `image_latents` is provided.\n" + \
+               " - `StableDiffusionXLBeforeDenoiseStep` (text2img) is used when both `image_latents` and `mask` are not provided."
 
 
+# Denoise
 class StableDiffusionXLAutoDenoiseStep(AutoPipelineBlocks):
     block_classes = [StableDiffusionXLControlNetUnionDenoiseStep, StableDiffusionXLControlNetDenoiseStep, StableDiffusionXLDenoiseStep]
     block_names = ["controlnet_union", "controlnet", "unet"]
     block_trigger_inputs = ["control_mode", "control_image", None]
+
+    @property
+    def description(self):
+        return "Denoise step that denoise the latents.\n" + \
+               "This is an auto pipeline block that works for controlnet, controlnet_union and no controlnet.\n" + \
+               " - `StableDiffusionXLControlNetUnionDenoiseStep` (controlnet_union) is used when both `control_mode` and `control_image` are provided.\n" + \
+               " - `StableDiffusionXLControlNetDenoiseStep` (controlnet) is used when `control_image` is provided.\n" + \
+               " - `StableDiffusionXLDenoiseStep` (unet only) is used when both `control_mode` and `control_image` are not provided."
+
+# After denoise
+
+class StableDiffusionXLDecodeStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLOutputStep]
+    block_names = ["decode", "output"]
+
+    @property
+    def description(self):
+        return "Decode step that decode the denoised latents into images outputs.\n" + \
+               "This is a sequential pipeline blocks:\n" + \
+               " - `StableDiffusionXLDecodeLatentsStep` is used to decode the denoised latents into images\n" + \
+               " - `StableDiffusionXLOutputStep` is used to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or a plain tuple."
+
+
+class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLDecodeLatentsStep, StableDiffusionXLInpaintOverlayMaskStep, StableDiffusionXLOutputStep]
+    block_names = ["decode", "mask_overlay", "output"]
+
+    @property
+    def description(self):
+        return "Inpaint decode step that decode the denoised latents into images outputs.\n" + \
+               "This is a sequential pipeline blocks:\n" + \
+               " - `StableDiffusionXLDecodeLatentsStep` is used to decode the denoised latents into images\n" + \
+               " - `StableDiffusionXLInpaintOverlayMaskStep` is used to overlay the mask on the image\n" + \
+               " - `StableDiffusionXLOutputStep` is used to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or a plain tuple."
+
 
 
 class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
@@ -1992,7 +2963,15 @@ class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
     block_names = ["inpaint", "non-inpaint"]
     block_trigger_inputs = ["padding_mask_crop", None]
 
+    @property
+    def description(self):
+        return "Decode step that decode the denoised latents into images outputs.\n" + \
+               "This is an auto pipeline block that works for inpainting and non-inpainting tasks.\n" + \
+               " - `StableDiffusionXLInpaintDecodeStep` (inpaint) is used when `padding_mask_crop` is provided.\n" + \
+               " - `StableDiffusionXLDecodeStep` (non-inpaint) is used when `padding_mask_crop` is not provided."
 
+
+# block mapping 
 TEXT2IMAGE_BLOCKS = OrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
     ("input", StableDiffusionXLInputStep),
