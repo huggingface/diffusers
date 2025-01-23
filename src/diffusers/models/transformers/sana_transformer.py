@@ -120,13 +120,6 @@ class SanaTransformerBlock(nn.Module):
         # 2. Cross Attention
         if cross_attention_dim is not None:
             self.norm2 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
-
-            # if NPU is available, will use NPU fused attention instead
-            if is_torch_npu_available():
-                attn_processor = AttnProcessorNPU()
-            else:
-                attn_processor = AttnProcessor2_0()
-
             self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim,
@@ -135,7 +128,7 @@ class SanaTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=True,
                 out_bias=attention_out_bias,
-                processor=attn_processor,
+                processor=AttnProcessor2_0(),
             )
 
         # 3. Feed-forward
