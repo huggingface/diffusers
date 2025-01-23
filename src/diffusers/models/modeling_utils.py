@@ -1089,13 +1089,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             state_dict = load_state_dict(
                 resolved_archive_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries
             )
+            # We only fix it for non sharded checkpoints as we don't need it yet for sharded one.
+            model._fix_state_dict_keys_on_load(state_dict)
 
         if is_sharded:
             loaded_keys = sharded_metadata["all_checkpoint_keys"]
         else:
             loaded_keys = list(state_dict.keys())
-        # TODO: hacky solution
-        loaded_keys = list(model._fix_state_dict_keys_on_load({key: "" for key in loaded_keys}))
 
         if hf_quantizer is not None:
             hf_quantizer.preprocess_model(
@@ -1305,7 +1305,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         for shard_file in resolved_archive_file:
             state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
-            model._fix_state_dict_keys_on_load(state_dict)
 
             def _find_mismatched_keys(
                 state_dict,
@@ -1578,7 +1577,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         This function fix the state dict of the model to take into account some changes that were made in the model
         architecture:
-        - depretated attention blocks
+        - deprecated attention blocks (happened before we introduced sharded checkpoint,
+        so this is why we apply this method only when loading non sharded checkpoints for now)
         """
         deprecated_attention_block_paths = []
 
