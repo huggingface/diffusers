@@ -295,6 +295,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
     """
 
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["norm"]
 
     @register_to_config
     def __init__(

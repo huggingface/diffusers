@@ -32,6 +32,7 @@ class SanaTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = SanaTransformer2DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
+    model_split_percents = [0.7, 0.7, 0.9]
 
     @property
     def dummy_input(self):
