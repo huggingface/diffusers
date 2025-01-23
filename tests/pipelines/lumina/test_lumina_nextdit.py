@@ -32,6 +32,7 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
     batch_params = frozenset(["prompt", "negative_prompt"])
 
     supports_dduf = False
+    test_layerwise_casting = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)

@@ -212,6 +212,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             Scaling factor to apply in 3D positional embeddings across temporal dimensions.
     """
 
+    _skip_layerwise_casting_patterns = ["patch_embed", "norm"]
     _supports_gradient_checkpointing = True
     _no_split_modules = ["CogVideoXBlock", "CogVideoXPatchEmbed"]
 
