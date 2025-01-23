@@ -362,12 +362,14 @@ class FromOriginalModelMixin:
 
         if is_accelerate_available():
             param_device = torch.device(device) if device else torch.device("cpu")
-            unexpected_keys = [param_name for param_name in diffusers_format_checkpoint if param_name not in model.state_dict()]
+            unexpected_keys = [
+                param_name for param_name in diffusers_format_checkpoint if param_name not in model.state_dict()
+            ]
             load_model_dict_into_meta(
                 model,
                 diffusers_format_checkpoint,
                 dtype=torch_dtype,
-                device_map={"":param_device},
+                device_map={"": param_device},
                 hf_quantizer=hf_quantizer,
                 keep_in_fp32_modules=keep_in_fp32_modules,
                 unexpected_keys=unexpected_keys,
