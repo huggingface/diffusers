@@ -859,7 +859,7 @@ class CogView4PatchEmbed(nn.Module):
         prompt_embeds = self.text_proj(prompt_embeds)  # embed_dim: 4096 -> 4096
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = self.text_proj(negative_prompt_embeds)  # embed_dim: 4096 -> 4096
-
+        breakpoint()
         return hidden_states, prompt_embeds, negative_prompt_embeds
 
 

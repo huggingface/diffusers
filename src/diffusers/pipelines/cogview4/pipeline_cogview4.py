@@ -174,7 +174,6 @@ class CogView4Pipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_factor = 16
-        self.text_projector = torch.nn.Linear(4096, 4096)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def _get_glm_embeds(
@@ -218,9 +217,6 @@ class CogView4Pipeline(DiffusionPipeline):
             )
             text_input_ids = torch.cat([pad_ids, text_input_ids], dim=1)
         prompt_embeds = self.text_encoder(text_input_ids.to(self.text_encoder.model.device), output_hidden_states=True).hidden_states[-2]
-        self.text_projector.to(dtype=dtype, device=device)
-        prompt_embeds = self.text_projector(prompt_embeds)
-        breakpoint()
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         _, seq_len, _= prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
