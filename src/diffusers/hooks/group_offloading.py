@@ -455,41 +455,40 @@ def _apply_group_offloading_leaf_level(
     buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
 
     # Find closest module parent for each parameter and buffer, and attach group hooks
-    common_kwargs = {
-        "modules": [],
-        "offload_device": offload_device,
-        "onload_device": onload_device,
-        "non_blocking": non_blocking,
-        "stream": stream,
-        "cpu_param_dict": cpu_param_dict,
-        "onload_self": True,
-    }
-
+    parent_to_parameters = {}
     for name, param in parameters:
         parent_name = _find_parent_module_in_module_dict(name, module_dict)
-        parent_module = module_dict[parent_name]
-        logger.info(f"TODO: REMOVETHIS Found parameter {name} with parent module {parent_name}")
-        assert getattr(parent_module, "_diffusers_hook", None) is None
-        group = ModuleGroup(
-            offload_leader=parent_module,
-            onload_leader=parent_module,
-            parameters=[param],
-            buffers=None,
-            **common_kwargs,
-        )
-        _apply_group_offloading_hook(parent_module, group, True, None)
+        if parent_name in parent_to_parameters:
+            parent_to_parameters[parent_name].append(param)
+        else:
+            parent_to_parameters[parent_name] = [param]
 
+    parent_to_buffers = {}
     for name, buffer in buffers:
         parent_name = _find_parent_module_in_module_dict(name, module_dict)
-        parent_module = module_dict[parent_name]
-        logger.info(f"TODO: REMOVETHIS Found buffer {name} with parent module {parent_name}")
+        if parent_name in parent_to_buffers:
+            parent_to_buffers[parent_name].append(buffer)
+        else:
+            parent_to_buffers[parent_name] = [buffer]
+
+    parent_names = set(parent_to_parameters.keys()) | set(parent_to_buffers.keys())
+    for name in parent_names:
+        parameters = parent_to_parameters.get(name, [])
+        buffers = parent_to_buffers.get(name, [])
+        parent_module = module_dict[name]
         assert getattr(parent_module, "_diffusers_hook", None) is None
         group = ModuleGroup(
+            modules=[],
+            offload_device=offload_device,
+            onload_device=onload_device,
             offload_leader=parent_module,
             onload_leader=parent_module,
-            parameters=None,
-            buffers=[buffer],
-            **common_kwargs,
+            parameters=parameters,
+            buffers=buffers,
+            non_blocking=non_blocking,
+            stream=stream,
+            cpu_param_dict=cpu_param_dict,
+            onload_self=True,
         )
         _apply_group_offloading_hook(parent_module, group, True, None)
 
@@ -557,7 +556,6 @@ def _gather_parameters_with_no_group_offloading_parent(
             atoms.pop()
 
         if not has_parent_with_group_offloading:
-            logger.info(f"TODO: REMOVETHIS Found parameter {name} with no parent module with group offloading")
             parameters.append((name, parameter))
     return parameters
 
@@ -578,7 +576,6 @@ def _gather_buffers_with_no_group_offloading_parent(
             atoms.pop()
 
         if not has_parent_with_group_offloading:
-            logger.info(f"TODO: REMOVETHIS Found buffer {name} with no parent module with group offloading")
             buffers.append((name, buffer))
     return buffers
 
