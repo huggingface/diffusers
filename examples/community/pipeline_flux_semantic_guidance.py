@@ -85,6 +85,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
