@@ -82,11 +82,23 @@ def parse_args():
         help="Base checkpoint path from which the model was finetuned. Can be a model ID on the Hub.",
     )
     parser.add_argument(
+        "--base_subfolder",
+        default="transformer",
+        type=str,
+        help="subfolder to load the base checkpoint from if any.",
+    )
+    parser.add_argument(
         "--finetune_ckpt_path",
         default=None,
         type=str,
         required=True,
         help="Fully fine-tuned checkpoint path. Can be a model ID on the Hub.",
+    )
+    parser.add_argument(
+        "--finetune_subfolder",
+        default=None,
+        type=str,
+        help="subfolder to load the fulle finetuned checkpoint from if any.",
     )
     parser.add_argument("--rank", default=64, type=int)
     parser.add_argument("--lora_out_path", default=None, type=str, required=True)
@@ -100,14 +112,14 @@ def parse_args():
 
 @torch.no_grad()
 def main(args):
-    # Fully fine-tuned checkpoints usually don't have any other components. So, we
-    # don't need the `subfolder`. You can add that if needed.
-    model_finetuned = CogVideoXTransformer3DModel.from_pretrained(args.finetune_ckpt_path, torch_dtype=torch.bfloat16)
+    model_finetuned = CogVideoXTransformer3DModel.from_pretrained(
+        args.finetune_ckpt_path, subfolder=args.finetune_subfolder, torch_dtype=torch.bfloat16
+    )
     state_dict_ft = model_finetuned.state_dict()
 
     # Change the `subfolder` as needed.
     base_model = CogVideoXTransformer3DModel.from_pretrained(
-        args.base_ckpt_path, subfolder="transformer", torch_dtype=torch.bfloat16
+        args.base_ckpt_path, subfolder=args.base_subfolder, torch_dtype=torch.bfloat16
     )
     state_dict = base_model.state_dict()
     output_dict = {}
@@ -135,4 +147,5 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)
