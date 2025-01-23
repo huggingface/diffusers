@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from contextlib import nullcontext
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import torch
 from accelerate.utils import send_to_device
@@ -284,6 +284,8 @@ def apply_group_offloading(
         _apply_group_offloading_leaf_level(
             module, offload_device, onload_device, force_offload, non_blocking, stream=stream
         )
+    else:
+        raise ValueError(f"Unsupported offload_type: {offload_type}")
 
 
 def _apply_group_offloading_block_level(
@@ -325,12 +327,15 @@ def _apply_group_offloading_block_level(
         cpu_param_dict = {param: param.data for param in module.parameters()}
 
     # Create module groups for ModuleList and Sequential blocks
+    modules_with_group_offloading = set()
     unmatched_modules = []
     matched_module_groups = []
     for name, submodule in module.named_children():
         if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
             unmatched_modules.append((name, submodule))
+            modules_with_group_offloading.add(name)
             continue
+
         for i in range(0, len(submodule), num_blocks_per_group):
             current_modules = submodule[i : i + num_blocks_per_group]
             group = ModuleGroup(
@@ -345,6 +350,8 @@ def _apply_group_offloading_block_level(
                 onload_self=stream is None,
             )
             matched_module_groups.append(group)
+            for j in range(i, i + len(current_modules)):
+                modules_with_group_offloading.add(f"{name}.{j}")
 
     # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):
@@ -359,15 +366,10 @@ def _apply_group_offloading_block_level(
     # Parameters and Buffers of the top-level module need to be offloaded/onloaded separately
     # when the forward pass of this module is called. This is because the top-level module is not
     # part of any group (as doing so would lead to no VRAM savings).
-    parameters = []
-    for name, parameter in module.named_parameters(recurse=False):
-        if not any(name.startswith(unmatched_name) for unmatched_name, _ in unmatched_modules):
-            parameters.append(parameter)
-
-    buffers = []
-    for name, buffer in module.named_buffers(recurse=False):
-        if not any(name.startswith(unmatched_name) for unmatched_name, _ in unmatched_modules):
-            buffers.append(buffer)
+    parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
+    buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
+    parameters = [param for _, param in parameters]
+    buffers = [buffer for _, buffer in buffers]
 
     # Create a group for the unmatched submodules of the top-level module so that they are on the correct
     # device when the forward pass is called.
@@ -428,7 +430,8 @@ def _apply_group_offloading_leaf_level(
         cpu_param_dict = {param: param.data for param in module.parameters()}
 
     # Create module groups for leaf modules and apply group offloading hooks
-    for submodule in module.modules():
+    modules_with_group_offloading = set()
+    for name, submodule in module.named_modules():
         if not isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
             continue
         group = ModuleGroup(
@@ -443,38 +446,65 @@ def _apply_group_offloading_leaf_level(
             onload_self=True,
         )
         _apply_group_offloading_hook(submodule, group, True, None)
+        modules_with_group_offloading.add(name)
 
     # Parameters and Buffers at all non-leaf levels need to be offloaded/onloaded separately when the forward pass
     # of the module is called
-    parameters = []
-    buffers = []
     module_dict = dict(module.named_modules())
+    parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
+    buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
 
-    for name, parameter in module.named_parameters():
-        atoms = name.split(".")
-        parent_name = ".".join(atoms[:-1])
-        if parent_name in module_dict and isinstance(module_dict[parent_name], _SUPPORTED_PYTORCH_LAYERS):
-            continue
-        parameters.append(parameter)
+    # Find closest module parent for each parameter and buffer, and attach group hooks
+    common_kwargs = {
+        "modules": [],
+        "offload_device": offload_device,
+        "onload_device": onload_device,
+        "non_blocking": non_blocking,
+        "stream": stream,
+        "cpu_param_dict": cpu_param_dict,
+        "onload_self": True,
+    }
 
-    for name, buffer in module.named_buffers():
-        atoms = name.split(".")
-        parent_name = ".".join(atoms[:-1])
-        if parent_name in module_dict and isinstance(module_dict[parent_name], _SUPPORTED_PYTORCH_LAYERS):
-            continue
-        buffers.append(buffer)
+    for name, param in parameters:
+        parent_name = _find_parent_module_in_module_dict(name, module_dict)
+        parent_module = module_dict[parent_name]
+        logger.info(f"TODO: REMOVETHIS Found parameter {name} with parent module {parent_name}")
+        assert getattr(parent_module, "_diffusers_hook", None) is None
+        group = ModuleGroup(
+            offload_leader=parent_module,
+            onload_leader=parent_module,
+            parameters=[param],
+            buffers=None,
+            **common_kwargs,
+        )
+        _apply_group_offloading_hook(parent_module, group, True, None)
 
+    for name, buffer in buffers:
+        parent_name = _find_parent_module_in_module_dict(name, module_dict)
+        parent_module = module_dict[parent_name]
+        logger.info(f"TODO: REMOVETHIS Found buffer {name} with parent module {parent_name}")
+        assert getattr(parent_module, "_diffusers_hook", None) is None
+        group = ModuleGroup(
+            offload_leader=parent_module,
+            onload_leader=parent_module,
+            parameters=None,
+            buffers=[buffer],
+            **common_kwargs,
+        )
+        _apply_group_offloading_hook(parent_module, group, True, None)
+
+    # This is a dummy group that will handle lazy prefetching from the top-level module to the first leaf module
     unmatched_group = ModuleGroup(
         modules=[],
         offload_device=offload_device,
         onload_device=onload_device,
         offload_leader=module,
         onload_leader=module,
-        parameters=parameters,
-        buffers=buffers,
+        parameters=None,
+        buffers=None,
         non_blocking=False,
         stream=None,
-        cpu_param_dict=cpu_param_dict,
+        cpu_param_dict=None,
         onload_self=True,
     )
 
@@ -509,3 +539,55 @@ def _apply_lazy_group_offloading_hook(
     registry = HookRegistry.check_if_exists_or_initialize(module)
     registry.register_hook(hook, _GROUP_OFFLOADING)
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
+
+
+def _gather_parameters_with_no_group_offloading_parent(
+    module: torch.nn.Module, modules_with_group_offloading: Set[str]
+) -> List[torch.nn.Parameter]:
+    parameters = []
+    for name, parameter in module.named_parameters():
+        has_parent_with_group_offloading = False
+        atoms = name.split(".")
+
+        while len(atoms) > 0:
+            parent_name = ".".join(atoms)
+            if parent_name in modules_with_group_offloading:
+                has_parent_with_group_offloading = True
+                break
+            atoms.pop()
+
+        if not has_parent_with_group_offloading:
+            logger.info(f"TODO: REMOVETHIS Found parameter {name} with no parent module with group offloading")
+            parameters.append((name, parameter))
+    return parameters
+
+
+def _gather_buffers_with_no_group_offloading_parent(
+    module: torch.nn.Module, modules_with_group_offloading: Set[str]
+) -> List[torch.Tensor]:
+    buffers = []
+    for name, buffer in module.named_buffers():
+        has_parent_with_group_offloading = False
+        atoms = name.split(".")
+
+        while len(atoms) > 0:
+            parent_name = ".".join(atoms)
+            if parent_name in modules_with_group_offloading:
+                has_parent_with_group_offloading = True
+                break
+            atoms.pop()
+
+        if not has_parent_with_group_offloading:
+            logger.info(f"TODO: REMOVETHIS Found buffer {name} with no parent module with group offloading")
+            buffers.append((name, buffer))
+    return buffers
+
+
+def _find_parent_module_in_module_dict(name: str, module_dict: Dict[str, torch.nn.Module]) -> str:
+    atoms = name.split(".")
+    while len(atoms) > 0:
+        parent_name = ".".join(atoms)
+        if parent_name in module_dict:
+            return parent_name
+        atoms.pop()
+    return ""
