@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -99,7 +99,7 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class DDIMPipelineIntegrationTests(unittest.TestCase):
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
