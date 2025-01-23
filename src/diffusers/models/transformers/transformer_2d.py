@@ -66,6 +66,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["BasicTransformerBlock"]
+    _skip_layerwise_casting_patterns = ["latent_image_embedding", "norm"]
 
     @register_to_config
     def __init__(
