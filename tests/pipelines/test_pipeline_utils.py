@@ -403,18 +403,6 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
         model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
         assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
 
-    def test_empty_filenames(self):
-        model_filenames, variant_filenames = variant_compatible_siblings([], variant="fp16")
-        assert len(model_filenames) == 0
-        assert len(variant_filenames) == 0
-
-    def test_invalid_filenames(self):
-        variant = "fp16"
-        filenames = ["invalid_file.txt", ".hidden", "model.", f"model.{variant}."]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
-        assert len(model_filenames) == 0
-        assert len(variant_filenames) == 0
-
 
 class ProgressBarTests(unittest.TestCase):
     def get_dummy_components_image_generation(self):

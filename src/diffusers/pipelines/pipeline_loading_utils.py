@@ -201,7 +201,6 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
         component = find_component(filename)
         component = component + "/" if component else ""
 
-        # Check for any variant file in this component
         return any(f.startswith(component) for f in variant_filenames)
 
     for filename in non_variant_filenames:
