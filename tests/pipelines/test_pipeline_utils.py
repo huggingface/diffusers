@@ -403,6 +403,12 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
         model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
         assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
 
+    def test_downloading_when_no_variant_exists(self):
+        variant = "fp16"
+        filenames = ["model.safetensors", "diffusion_pytorch_model.safetensors"]
+        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        assert len(model_filenames) != 0
+
 
 class ProgressBarTests(unittest.TestCase):
     def get_dummy_components_image_generation(self):
