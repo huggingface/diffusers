@@ -966,3 +966,6 @@ class FluxFillPipeline(
             return (image,)
 
         return FluxPipelineOutput(images=image)
+
+    def parameters(self):
+        return list(self.transformer.parameters()) + list(self.vae.parameters()) + list(self.text_encoder.parameters()) + list(self.text_encoder_2.parameters())
