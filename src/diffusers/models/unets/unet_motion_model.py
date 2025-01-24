@@ -1301,6 +1301,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
     """
 
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["norm"]
 
     @register_to_config
     def __init__(
