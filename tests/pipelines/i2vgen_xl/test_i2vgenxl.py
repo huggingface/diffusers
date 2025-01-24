@@ -61,6 +61,7 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
     required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
 
     supports_dduf = False
+    test_layerwise_casting = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
