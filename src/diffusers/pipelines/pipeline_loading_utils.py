@@ -197,29 +197,16 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
         component = filename.split("/")[0]
         return component
 
-    def has_sharded_variant(component, variant, variant_filenames):
-        # If component exists check for sharded variant index filename
-        # If component doesn't exist check main dir for sharded variant index filename
+    def has_variant(filename, variant_filenames):
+        component = find_component(filename)
         component = component + "/" if component else ""
-        variant_index_re = re.compile(
-            rf"{component}({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
-        )
-        return any(f for f in variant_filenames if variant_index_re.match(f) is not None)
 
-    def has_variant(component, variant_filenames):
-        component = component + "/" if component else ""
         # Check for any variant file in this component
         return any(f.startswith(component) for f in variant_filenames)
 
     for filename in non_variant_filenames:
-        component = find_component(filename)
-
-        # Determine if sharded variant exists based on index file
-        if has_sharded_variant(component, variant, variant_filenames):
-            continue
-
         # If a variant exists skip adding to allowed patterns
-        if has_variant(component, variant_filenames):
+        if has_variant(filename, variant_filenames):
             continue
 
         usable_filenames.add(filename)
