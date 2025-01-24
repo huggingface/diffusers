@@ -232,7 +232,8 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
             embedding_dim=self.inner_dim,
             conditioning_embedding_dim=time_embed_dim,
             elementwise_affine=False,
-            eps=1e-6,
+            # eps=1e-6,
+            eps=1e-5,
         )
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
@@ -399,8 +400,6 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         )
         emb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
 
-        encoder_hidden_states_cond = prompt_embeds
-        encoder_hidden_states_uncond = negative_prompt_embeds
         hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
         emb_cond, emb_uncond = emb.chunk(2)
 
@@ -408,6 +407,22 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         image_rotary_emb = self.get_rope_embedding(
             patch_height, patch_width, target_h=patch_height, target_w=patch_width, device=hidden_states.device
         )
+
+        ######################
+        # prompt_embeds = torch.load("/home/lhy/code/cogview/c_condition_embedding.pt")
+        # negative_prompt_embeds = torch.load("/home/lhy/code/cogview/uc_condition_embedding.pt")
+        prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_0_16.pt")[None, ::]
+        negative_prompt_embeds = torch.load("/home/lhy/code/cogview/cp_uncondition_16_32.pt")[None, ::]
+
+        hidden_states_cond = torch.load("/home/lhy/code/cogview/cp_vision_input_0_4096.pt")
+        hidden_states_uncond = torch.load("/home/lhy/code/cogview/cp_vision_input_4096:8192.pt")
+
+        emb_cond = torch.load("/home/lhy/code/cogview/time_embedding_0_1.pt")
+        emb_uncond = torch.load("/home/lhy/code/cogview/time_embedding_1_2.pt")
+        ######################
+
+        encoder_hidden_states_cond = prompt_embeds
+        encoder_hidden_states_uncond = negative_prompt_embeds
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -418,16 +433,31 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states_cond,
                     emb=emb_cond,  # refactor later
                     image_rotary_emb=image_rotary_emb,
+                    # image_rotary_emb=None,
                 )
+                ###########################
+                # hidden_states_cond, encoder_hidden_states_cond = (
+                #     self.norm_out.norm(hidden_states_cond),
+                #     self.norm_out.norm(encoder_hidden_states_cond),
+                # )
+                ###########################
+
                 hidden_states_uncond, encoder_hidden_states_uncond = block(
                     hidden_states=hidden_states_uncond,
                     encoder_hidden_states=encoder_hidden_states_uncond,
                     emb=emb_uncond,  # refactor later
                     image_rotary_emb=image_rotary_emb,
+                    # image_rotary_emb=None,
                 )
+                ###########################
+                # hidden_states_uncond, encoder_hidden_states_uncond = (
+                #     self.norm_out.norm(hidden_states_uncond),
+                #     self.norm_out.norm(encoder_hidden_states_uncond),
+                # )
+                ###########################
 
-        hidden_states_cond = self.norm_out(hidden_states_cond, emb)  # 结果对应于megatron里的final_layer_input
-        hidden_states_uncond = self.norm_out(hidden_states_uncond, emb)  # 结果对应于megatron里的final_layer_input
+        hidden_states_cond = self.norm_out(hidden_states_cond, emb_cond)  # 结果对应于megatron里的final_layer_input
+        hidden_states_uncond = self.norm_out(hidden_states_uncond, emb_uncond)  # 结果对应于megatron里的final_layer_input
         hidden_states_cond = self.proj_out(hidden_states_cond)  # (batch_size, height*width, patch_size*patch_size*out_channels)
         hidden_states_uncond = self.proj_out(hidden_states_uncond)  # (batch_size, height*width, patch_size*patch_size*out_channels)
 

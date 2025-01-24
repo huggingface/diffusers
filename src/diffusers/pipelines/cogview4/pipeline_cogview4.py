@@ -216,7 +216,9 @@ class CogView4Pipeline(DiffusionPipeline):
                 device=text_input_ids.device,
             )
             text_input_ids = torch.cat([pad_ids, text_input_ids], dim=1)
-        prompt_embeds = self.text_encoder(text_input_ids.to(self.text_encoder.model.device), output_hidden_states=True).hidden_states[-2]
+        prompt_embeds = self.text_encoder(
+            text_input_ids.to(self.text_encoder.model.device), output_hidden_states=True
+        ).hidden_states[-2]
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         _, seq_len, _= prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -592,6 +594,7 @@ class CogView4Pipeline(DiffusionPipeline):
 
         # Prepare latents.
         latent_channels = self.transformer.config.in_channels
+        #########################
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
@@ -602,6 +605,8 @@ class CogView4Pipeline(DiffusionPipeline):
             generator,
             latents,
         )
+        latents = torch.ones_like(latents)
+        #########################
 
         # Prepare additional timestep conditions
         original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype)
