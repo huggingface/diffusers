@@ -87,7 +87,7 @@ EXAMPLE_DOC_STRING = """
         >>> from torchvision.transforms.functional import to_tensor, gaussian_blur
 
         >>> dtype = torch.float16
-        >>> device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu") 
+        >>> device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         >>> scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 
         >>> pipeline = DiffusionPipeline.from_pretrained(
@@ -120,7 +120,7 @@ EXAMPLE_DOC_STRING = """
         ...     return mask
 
         >>> prompt = "" # Set prompt to null
-        >>> seed=123 
+        >>> seed=123
         >>> generator = torch.Generator(device=device).manual_seed(seed)
         >>> source_image_path = "https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/an1024.png"
         >>> mask_path = "https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/an1024_mask.png"
@@ -128,7 +128,7 @@ EXAMPLE_DOC_STRING = """
         >>> mask = preprocess_mask(mask_path, device)
 
         >>> image = pipeline(
-        ...     prompt=prompt, 
+        ...     prompt=prompt,
         ...     image=source_image,
         ...     mask_image=mask,
         ...     height=1024,
@@ -251,6 +251,7 @@ class AAS_XL(AttentionBase):
         Attention forward function
         """
         if is_cross or self.cur_step not in self.step_idx or self.cur_att_layer // 2 not in self.layer_idx:
+            return super().forward(q, k, v, sim, attn, is_cross, place_in_unet, num_heads, **kwargs)
         H = int(np.sqrt(q.shape[1]))
         if H == 16:
             mask = self.mask_16.to(sim.device)
