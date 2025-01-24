@@ -81,27 +81,72 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLInpaintPipeline
+        >>> from diffusers import DDIMScheduler, DiffusionPipeline
         >>> from diffusers.utils import load_image
+        >>> import torch.nn.functional as F
+        >>> from torchvision.transforms.functional import to_tensor, gaussian_blur
 
-        >>> pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0",
-        ...     torch_dtype=torch.float16,
-        ...     variant="fp16",
-        ...     use_safetensors=True,
-        ... )
-        >>> pipe.to("cuda")
+        >>> dtype = torch.float16
+        >>> device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu") 
+        >>> scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 
-        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+        >>> pipeline = DiffusionPipeline.from_pretrained(
+        ...    "stabilityai/stable-diffusion-xl-base-1.0",
+        ...    custom_pipeline="pipeline_stable_diffusion_xl_attentive_eraser",
+        ...    scheduler=scheduler,
+        ...    variant="fp16",
+        ...    use_safetensors=True,
+        ...    torch_dtype=dtype,
+        ... ).to(device)
 
-        >>> init_image = load_image(img_url).convert("RGB")
-        >>> mask_image = load_image(mask_url).convert("RGB")
 
-        >>> prompt = "A majestic tiger sitting on a bench"
-        >>> image = pipe(
-        ...     prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=50, strength=0.80
+        >>> def preprocess_image(image_path, device):
+        ...     image = to_tensor((load_image(image_path)))
+        ...     image = image.unsqueeze_(0).float() * 2 - 1 # [0,1] --> [-1,1]
+        ...     if image.shape[1] != 3:
+        ...         image = image.expand(-1, 3, -1, -1)
+        ...         image = F.interpolate(image, (1024, 1024))
+        ...         image = image.to(dtype).to(device)
+        ...         return image
+
+        >>> def preprocess_mask(mask_path, device):
+        ...     mask = to_tensor((load_image(mask_path, convert_method=lambda img: img.convert('L'))))
+        ...     mask = mask.unsqueeze_(0).float()  # 0 or 1
+        ...     mask = F.interpolate(mask, (1024, 1024))
+        ...     mask = gaussian_blur(mask, kernel_size=(77, 77))
+        ...     mask[mask < 0.1] = 0
+        ...     mask[mask >= 0.1] = 1
+        ...     mask = mask.to(dtype).to(device)
+        ...     return mask
+
+        >>> prompt = "" # Set prompt to null
+        >>> seed=123 
+        >>> generator = torch.Generator(device=device).manual_seed(seed)
+        >>> source_image_path = "https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/an1024.png"
+        >>> mask_path = "https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/an1024_mask.png"
+        >>> source_image = preprocess_image(source_image_path, device)
+        >>> mask = preprocess_mask(mask_path, device)
+
+        >>> image = pipeline(
+        ...     prompt=prompt, 
+        ...     image=source_image,
+        ...     mask_image=mask,
+        ...     height=1024,
+        ...     width=1024,
+        ...     AAS=True, # enable AAS
+        ...     strength=0.8, # inpainting strength
+        ...     rm_guidance_scale=9, # removal guidance scale
+        ...     ss_steps = 9, # similarity suppression steps
+        ...     ss_scale = 0.3, # similarity suppression scale
+        ...     AAS_start_step=0, # AAS start step
+        ...     AAS_start_layer=34, # AAS start layer
+        ...     AAS_end_layer=70, # AAS end layer
+        ...     num_inference_steps=50, # number of inference steps # AAS_end_step = int(strength*num_inference_steps)
+        ...     generator=generator,
+        ...     guidance_scale=1,
         ... ).images[0]
+        >>> image.save('./removed_img.png')
+        >>> print("Object removal completed")
         ```
 """
 
@@ -174,9 +219,6 @@ class AAS_XL(AttentionBase):
         self.mask = mask  # mask with shape (1, 1 ,h, w)
         self.ss_steps = ss_steps
         self.ss_scale = ss_scale
-        print("AAS at denoising steps: ", self.step_idx)
-        print("AAS at U-Net layers: ", self.layer_idx)
-        print("start AAS")
         self.mask_16 = F.max_pool2d(mask, (1024 // 16, 1024 // 16)).round().squeeze().squeeze()
         self.mask_32 = F.max_pool2d(mask, (1024 // 32, 1024 // 32)).round().squeeze().squeeze()
         self.mask_64 = F.max_pool2d(mask, (1024 // 64, 1024 // 64)).round().squeeze().squeeze()
@@ -209,10 +251,7 @@ class AAS_XL(AttentionBase):
         Attention forward function
         """
         if is_cross or self.cur_step not in self.step_idx or self.cur_att_layer // 2 not in self.layer_idx:
-            return super().forward(q, k, v, sim, attn, is_cross, place_in_unet, num_heads, **kwargs)
-        # B = q.shape[0] // num_heads // 2
         H = int(np.sqrt(q.shape[1]))
-        # H = W = int(np.sqrt(q.shape[1]))
         if H == 16:
             mask = self.mask_16.to(sim.device)
         elif H == 32:
@@ -317,13 +356,6 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
             dimensions: ``batch x channels x height x width``.
     """
 
-    # checkpoint. TOD(Yiyi) - need to clean this up later
-    deprecation_message = "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please use VaeImageProcessor.preprocess instead"
-    deprecate(
-        "prepare_mask_and_masked_image",
-        "0.30.0",
-        deprecation_message,
-    )
     if image is None:
         raise ValueError("`image` input cannot be undefined.")
 
