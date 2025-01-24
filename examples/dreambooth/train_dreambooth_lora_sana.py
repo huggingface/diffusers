@@ -605,6 +605,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument("--enable_vae_tiling", action="store_true", help="Enabla vae tiling in log validation")
+    parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -990,6 +991,13 @@ def main(args):
     transformer.to(accelerator.device, dtype=weight_dtype)
     # because Gemma2 is particularly suited for bfloat16.
     text_encoder.to(dtype=torch.bfloat16)
+
+    if args.enable_npu_flash_attention:
+        if is_torch_npu_available():
+            logger.info("npu flash attention enabled.")
+            transformer.enable_npu_flash_attention()
+        else:
+            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
     text_encoding_pipeline = SanaPipeline.from_pretrained(
