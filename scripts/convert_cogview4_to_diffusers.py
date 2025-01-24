@@ -8,7 +8,7 @@ Example usage:
     python scripts/convert_cogview4_to_diffusers.py \
         --transformer_checkpoint_path 'your path/cogview4_6b/1/mp_rank_00_model_states.pt' \
         --vae_checkpoint_path 'your path/cogview4_6b/imagekl_ch16.pt' \
-        --output_path "/raid/yiyi/CogBiew4-6B" \
+        --output_path "THUDM/CogView4-6B" \
         --dtype "bf16"
 
 Arguments:
@@ -209,12 +209,21 @@ def main(args):
         if dtype is not None:
             vae = vae.to(dtype=dtype)
 
-    text_encoder_id = "THUDM/glm-4-9b-hf"
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
-    text_encoder = GlmForCausalLM.from_pretrained(
+    # text_encoder_id = "THUDM/glm-4-9b-hf"
+    # tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
+    # text_encoder = GlmForCausalLM.from_pretrained(
+    #     text_encoder_id,
+    #     cache_dir=args.text_encoder_cache_dir,
+    #     torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
+    # )
+    from transformers import AutoTokenizer,AutoModel
+    text_encoder_id = "/share/home/zyx/Models/Megatron-VLM/examples/dit/ckpts/glm-4-9b"
+    tokenizer = AutoTokenizer.from_pretrained(text_encoder_id,trust_remote_code=True)
+    text_encoder = AutoModel.from_pretrained(
         text_encoder_id,
         cache_dir=args.text_encoder_cache_dir,
         torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
+        trust_remote_code = True
     )
     # Apparently, the conversion does not work anymore without this :shrug:
     for param in text_encoder.parameters():
