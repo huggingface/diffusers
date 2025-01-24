@@ -3165,12 +3165,6 @@ class AttnProcessorNPU:
             else:
                 attention_mask = attention_mask.bool()
 
-            if attention_mask.dtype != torch.uint8:
-                if attention_mask.dtype == torch.bool:
-                    attention_mask = torch.logical_not(attention_mask.bool())
-                else:
-                    attention_mask = attention_mask.to(torch.uint8)
-
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
