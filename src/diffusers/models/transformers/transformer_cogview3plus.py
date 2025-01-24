@@ -106,8 +106,8 @@ class CogView3PlusTransformerBlock(nn.Module):
             hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states
         )
 
-        hidden_states = hidden_states + gate_msa.unsqueeze(1) * attn_hidden_states
-        encoder_hidden_states = encoder_hidden_states + c_gate_msa.unsqueeze(1) * attn_encoder_hidden_states
+        hidden_states.add_(gate_msa.unsqueeze(1) * attn_hidden_states)
+        encoder_hidden_states.add_(c_gate_msa.unsqueeze(1) * attn_encoder_hidden_states)
 
         # norm & modulate
         norm_hidden_states = self.norm2(hidden_states)
@@ -120,8 +120,8 @@ class CogView3PlusTransformerBlock(nn.Module):
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
         ff_output = self.ff(norm_hidden_states)
 
-        hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output[:, text_seq_length:]
-        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * ff_output[:, :text_seq_length]
+        hidden_states.add_(gate_mlp.unsqueeze(1) * ff_output[:, text_seq_length:])
+        encoder_hidden_states.add_(c_gate_mlp.unsqueeze(1) * ff_output[:, :text_seq_length])
 
         if hidden_states.dtype == torch.float16:
             hidden_states = hidden_states.clip(-65504, 65504)
