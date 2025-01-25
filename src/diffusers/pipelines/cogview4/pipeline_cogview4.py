@@ -22,7 +22,7 @@ from transformers import GlmModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, CogView3PlusTransformer2DModel
+from ...models import AutoencoderKL, CogView4Transformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogView4DDIMScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -164,7 +164,7 @@ class CogView4Pipeline(DiffusionPipeline):
         tokenizer: GlmModel,
         text_encoder: GlmModel,
         vae: AutoencoderKL,
-        transformer: CogView3PlusTransformer2DModel,
+        transformer: CogView4Transformer2DModel,
         scheduler: CogView4DDIMScheduler,
     ):
         super().__init__()
@@ -219,8 +219,15 @@ class CogView4Pipeline(DiffusionPipeline):
         prompt_embeds = self.text_encoder(
             text_input_ids.to(self.text_encoder.model.device), output_hidden_states=True
         ).hidden_states[-2]
+
+        # TODO: This is for Older GLM-4 as https://huggingface.co/THUDM/glm-4-9b, will use https://huggingface.co/THUDM/glm-4-9b-hf for new transformers version format.
+        # TODO: Remove it later
+        # prompt_embeds = self.text_encoder(
+        #     text_input_ids.to(self.text_encoder.transformer.device), output_hidden_states=True
+        # ).hidden_states[-2]
+
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        _, seq_len, _= prompt_embeds.shape
+        _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         return prompt_embeds
@@ -539,8 +546,8 @@ class CogView4Pipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.cogview4.pipeline_CogView4.CogView3PipelineOutput`] or `tuple`:
-            [`~pipelines.cogview4.pipeline_CogView4.CogView3PipelineOutput`] if `return_dict` is True, otherwise a
+            [`~pipelines.cogview4.pipeline_CogView4.CogView4PipelineOutput`] or `tuple`:
+            [`~pipelines.cogview4.pipeline_CogView4.CogView4PipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
@@ -592,9 +599,8 @@ class CogView4Pipeline(DiffusionPipeline):
             device=device,
         )
 
-        # Prepare latents.
+        # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
-        #########################
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
@@ -605,8 +611,6 @@ class CogView4Pipeline(DiffusionPipeline):
             generator,
             latents,
         )
-        latents = torch.ones_like(latents)
-        #########################
 
         # Prepare additional timestep conditions
         original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype)
@@ -626,7 +630,7 @@ class CogView4Pipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device)  # 记得确认把scheduler.config的timestep_spacing是linspace
+        self.scheduler.set_timesteps(num_inference_steps, device)
         timesteps = self.scheduler.timesteps
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
             self.transformer.config.patch_size**2
@@ -634,23 +638,19 @@ class CogView4Pipeline(DiffusionPipeline):
         mu = calculate_shift(image_seq_len)
         sigmas = timesteps / self.scheduler.config.num_train_timesteps
         sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])  # Append zero at the end
-
-        self.sigmas = time_shift(mu, 1.0, sigmas).to("cpu")  # This is for noisy control of cogview4
+        self.sigmas = time_shift(mu, 1.0, sigmas).to("cpu")
         self._num_timesteps = len(timesteps)
 
-        # Denoising loop
+        # 6. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
                 timestep = t.reshape((1,))
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 timestep = torch.cat([timestep] * 2) if do_classifier_free_guidance else t
-
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-                # predict noise model_output using sigma
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     prompt_embeds=prompt_embeds,
@@ -660,10 +660,7 @@ class CogView4Pipeline(DiffusionPipeline):
                     target_size=target_size,
                     crop_coords=crops_coords_top_left,
                     return_dict=False,
-                )[0]
-
-                noise_pred = noise_pred.float()
-
+                )
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_cond, noise_pred_uncond = noise_pred
@@ -687,7 +684,6 @@ class CogView4Pipeline(DiffusionPipeline):
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
                     callback_outputs = callback_on_step_end(self, i, sigma, callback_kwargs)
-
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)

@@ -31,7 +31,7 @@ import torch
 from accelerate import init_empty_weights
 from transformers import PreTrainedTokenizerFast, GlmForCausalLM
 
-from diffusers import AutoencoderKL, CogView4DDIMScheduler, CogView4Pipeline, CogView3PlusTransformer2DModel
+from diffusers import AutoencoderKL, CogView4DDIMScheduler, CogView4Pipeline, CogView4Transformer2DModel
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 from diffusers.utils.import_utils import is_accelerate_available
 
@@ -168,7 +168,7 @@ def main(args):
         converted_transformer_state_dict = convert_cogview4_transformer_checkpoint_to_diffusers(
             args.transformer_checkpoint_path
         )
-        transformer = CogView3PlusTransformer2DModel(
+        transformer = CogView4Transformer2DModel(
             patch_size=2,
             in_channels=16,
             num_layers=28,
@@ -209,23 +209,27 @@ def main(args):
         if dtype is not None:
             vae = vae.to(dtype=dtype)
 
-    # text_encoder_id = "THUDM/glm-4-9b-hf"
-    # tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
-    # text_encoder = GlmForCausalLM.from_pretrained(
-    #     text_encoder_id,
-    #     cache_dir=args.text_encoder_cache_dir,
-    #     torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
-    # )
-    from transformers import AutoTokenizer,AutoModel
-    text_encoder_id = "/share/home/zyx/Models/Megatron-VLM/examples/dit/ckpts/glm-4-9b"
-    tokenizer = AutoTokenizer.from_pretrained(text_encoder_id,trust_remote_code=True)
-    text_encoder = AutoModel.from_pretrained(
+    text_encoder_id = "/share/home/zyx/Models/glm-4-9b-hf"
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
+    text_encoder = GlmForCausalLM.from_pretrained(
         text_encoder_id,
         cache_dir=args.text_encoder_cache_dir,
         torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
-        trust_remote_code = True
     )
-    # Apparently, the conversion does not work anymore without this :shrug:
+
+    # TODO: This is for Older GLM-4 as https://huggingface.co/THUDM/glm-4-9b, will use https://huggingface.co/THUDM/glm-4-9b-hf for new transformers version format.
+    # TODO: Remove it later
+
+    # from transformers import AutoTokenizer,AutoModel
+    # text_encoder_id = "/share/home/zyx/Models/Megatron-VLM/examples/dit/ckpts/glm-4-9b"
+    # tokenizer = AutoTokenizer.from_pretrained(text_encoder_id,trust_remote_code=True)
+    # text_encoder = AutoModel.from_pretrained(
+    #     text_encoder_id,
+    #     cache_dir=args.text_encoder_cache_dir,
+    #     torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
+    #     trust_remote_code = True
+    # )
+
     for param in text_encoder.parameters():
         param.data = param.data.contiguous()
 
