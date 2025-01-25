@@ -138,8 +138,8 @@ class CogVideoXBlock(nn.Module):
             **attention_kwargs,
         )
 
-        hidden_states.add_(gate_msa * attn_hidden_states)
-        encoder_hidden_states.add_(enc_gate_msa * attn_encoder_hidden_states)
+        hidden_states += gate_msa * attn_hidden_states
+        encoder_hidden_states += enc_gate_msa * attn_encoder_hidden_states
 
         # norm & modulate
         norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(
@@ -150,8 +150,8 @@ class CogVideoXBlock(nn.Module):
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
         ff_output = self.ff(norm_hidden_states)
 
-        hidden_states.add_(gate_ff * ff_output[:, text_seq_length:])
-        encoder_hidden_states.add_(enc_gate_ff * ff_output[:, :text_seq_length])
+        hidden_states += gate_ff * ff_output[:, text_seq_length:]
+        encoder_hidden_states += enc_gate_ff * ff_output[:, :text_seq_length]
 
         return hidden_states, encoder_hidden_states
 
