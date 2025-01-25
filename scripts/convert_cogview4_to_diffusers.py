@@ -209,7 +209,7 @@ def main(args):
         if dtype is not None:
             vae = vae.to(dtype=dtype)
 
-    text_encoder_id = "/share/home/zyx/Models/glm-4-9b-hf"
+    text_encoder_id = "THUDM/glm-4-9b-hf"
     tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
     text_encoder = GlmForCausalLM.from_pretrained(
         text_encoder_id,
