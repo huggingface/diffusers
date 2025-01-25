@@ -133,10 +133,18 @@ def apply_memory_optimized_feedforward(module: torch.nn.Module, num_splits: Opti
         num_splits = submodule._mult if num_splits is None else num_splits
 
         # remap net.0.proj.weight
-        net_0_proj = state_dict.pop("net.0.proj.weight")
-        net_0_proj = net_0_proj.chunk(num_splits, dim=0)
-        for i in range(num_splits):
-            state_dict[f"proj_in.{i}.proj.weight"] = net_0_proj[i]
+        if isinstance(submodule.net[0], (GEGLU, SwiGLU)):
+            net_0_proj = state_dict.pop("net.0.proj.weight")
+            proj, gate = net_0_proj.chunk(2, dim=0)
+            proj = proj.chunk(num_splits, dim=0)
+            gate = gate.chunk(num_splits, dim=0)
+            for i in range(num_splits):
+                state_dict[f"proj_in.{i}.proj.weight"] = torch.cat([proj[i], gate[i]], dim=0)
+        else:
+            net_0_proj = state_dict.pop("net.0.proj.weight")
+            net_0_proj = net_0_proj.chunk(num_splits, dim=0)
+            for i in range(num_splits):
+                state_dict[f"proj_in.{i}.proj.weight"] = net_0_proj[i]
 
         # remap net.0.proj.bias
         if "net.0.proj.bias" in state_dict:
