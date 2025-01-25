@@ -85,11 +85,7 @@ class Lumina2TransformerBlock(nn.Module):
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
         
-        self.norm1 = LuminaRMSNormZero(
-            embedding_dim=dim,
-            norm_eps=norm_eps,
-            modulation=modulation,
-        )
+        self.norm1 = LuminaRMSNormZero() if modulation else RMSNorm(...)
         self.ffn_norm1 = RMSNorm(dim, eps=norm_eps)
 
         self.norm2 = RMSNorm(dim, eps=norm_eps)
