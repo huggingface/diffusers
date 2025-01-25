@@ -739,11 +739,7 @@ class UNetMidBlock2D(nn.Module):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 if attn is not None:
                     hidden_states = attn(hidden_states, temb=temb)
-                hidden_states = self._gradient_checkpointing_func(
-                    resnet,
-                    hidden_states,
-                    temb,
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 if attn is not None:
                     hidden_states = attn(hidden_states, temb=temb)
