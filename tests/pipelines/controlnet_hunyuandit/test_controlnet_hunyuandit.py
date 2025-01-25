@@ -57,6 +57,7 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
+    test_layerwise_casting = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
