@@ -953,23 +953,14 @@ class ModelTesterMixin:
             init_dict["block_out_channels"] = block_out_channels
 
         model_class_copy = copy.copy(self.model_class)
-
-        modules_with_gc_enabled = {}
-
-        # now monkey patch the following function:
-        #     def _set_gradient_checkpointing(self, module, value=False):
-        #         if hasattr(module, "gradient_checkpointing"):
-        #             module.gradient_checkpointing = value
-
-        def _set_gradient_checkpointing_new(self, module, value=False):
-            if hasattr(module, "gradient_checkpointing"):
-                module.gradient_checkpointing = value
-                modules_with_gc_enabled[module.__class__.__name__] = True
-
-        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
-
         model = model_class_copy(**init_dict)
         model.enable_gradient_checkpointing()
+
+        modules_with_gc_enabled = {}
+        for submodule in model.modules():
+            if hasattr(submodule, "gradient_checkpointing"):
+                self.assertTrue(submodule.gradient_checkpointing)
+                modules_with_gc_enabled[submodule.__class__.__name__] = True
 
         assert set(modules_with_gc_enabled.keys()) == expected_set
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"

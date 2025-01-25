@@ -1007,10 +1007,12 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
             )[0]
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = self._gradient_checkpointing_func(motion_module, hidden_states, temb)
+                hidden_states = self._gradient_checkpointing_func(
+                    motion_module, hidden_states, None, None, None, num_frames, None
+                )
                 hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)
+                hidden_states = motion_module(hidden_states, None, None, None, num_frames, None)
                 hidden_states = resnet(input_tensor=hidden_states, temb=temb)
 
         return hidden_states
