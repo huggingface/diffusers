@@ -211,16 +211,14 @@ class LuminaRMSNormZero(nn.Module):
         embedding_dim (`int`): The size of each embedding vector.
     """
 
-    def __init__(self, embedding_dim: int, norm_eps: float, modulation: bool):
+    def __init__(self, embedding_dim: int, norm_eps: float, norm_elementwise_affine: bool):
         super().__init__()
-        self.modulation = modulation
-        if modulation:
-            self.silu = nn.SiLU()
-            self.linear = nn.Linear(
-                min(embedding_dim, 1024),
-                4 * embedding_dim,
-                bias=True,
-            )
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(
+            min(embedding_dim, 1024),
+            4 * embedding_dim,
+            bias=True,
+        )
         self.norm = RMSNorm(embedding_dim, eps=norm_eps)
 
     def forward(
@@ -228,14 +226,9 @@ class LuminaRMSNormZero(nn.Module):
         x: torch.Tensor,
         emb: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # emb = self.emb(timestep, encoder_hidden_states, encoder_mask)
-        if self.modulation:
-            emb = self.linear(self.silu(emb))
-            scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
-            x = self.norm(x) * (1 + scale_msa[:, None])
-        else:
-            gate_msa, scale_mlp, gate_mlp = None, None, None
-            x = self.norm(x)
+        emb = self.linear(self.silu(emb))
+        scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
+        x = self.norm(x) * (1 + scale_msa[:, None])
 
         return x, gate_msa, scale_mlp, gate_mlp
 
