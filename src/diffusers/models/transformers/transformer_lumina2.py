@@ -89,6 +89,7 @@ class Lumina2TransformerBlock(nn.Module):
             self.norm1 = LuminaRMSNormZero(
                 embedding_dim=dim,
                 norm_eps=norm_eps,
+                norm_elementwise_affine=True,
             )
         else:
             self.norm1 = RMSNorm(dim, eps=norm_eps)
