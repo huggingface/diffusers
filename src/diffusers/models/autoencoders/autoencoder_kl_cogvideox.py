@@ -303,7 +303,7 @@ class CogVideoXResnetBlock3D(nn.Module):
         hidden_states, new_conv_cache["conv1"] = self.conv1(hidden_states, conv_cache=conv_cache.get("conv1"))
 
         if temb is not None:
-            hidden_states += self.temb_proj(self.nonlinearity(temb))[:, :, None, None, None]
+            hidden_states = hidden_states + self.temb_proj(self.nonlinearity(temb))[:, :, None, None, None]
 
         if zq is not None:
             hidden_states, new_conv_cache["norm2"] = self.norm2(hidden_states, zq, conv_cache=conv_cache.get("norm2"))
@@ -322,7 +322,7 @@ class CogVideoXResnetBlock3D(nn.Module):
             else:
                 inputs = self.conv_shortcut(inputs)
 
-        hidden_states += inputs
+        hidden_states = hidden_states + inputs
         return hidden_states, new_conv_cache
 
 
