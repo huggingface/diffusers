@@ -19,13 +19,12 @@ import gc
 import logging
 import math
 import os
-import random
 import shutil
 from pathlib import Path
 
 import accelerate
-import numpy as np
 import lpips
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -38,9 +37,7 @@ from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
-from taming.modules.losses.vqperceptual import (
-    hinge_d_loss, vanilla_d_loss, weights_init, NLayerDiscriminator
-)
+from taming.modules.losses.vqperceptual import NLayerDiscriminator, hinge_d_loss, vanilla_d_loss, weights_init
 from torchvision import transforms
 from tqdm.auto import tqdm
 
@@ -93,22 +90,22 @@ def log_validation(
 
         with inference_ctx:
             reconstructions = vae(targets).sample
-        
+
         images.append(
             torch.cat([targets.cpu(), reconstructions.cpu()], axis=0)
         )
-    
+
     tracker_key = "test" if is_final_validation else "validation"
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
             tracker.writer.add_images(
-                "Original (left), Reconstruction (right)", np_images, step
+                f"{tracker_key}: Original (left), Reconstruction (right)", np_images, step
             )
         elif tracker.name == "wandb":
             tracker.log(
                 {
-                    "Original (left), Reconstruction (right)": [
+                    f"{tracker_key}: Original (left), Reconstruction (right)": [
                         wandb.Image(torchvision.utils.make_grid(image))
                         for _, image in enumerate(images)
                     ]
@@ -127,8 +124,8 @@ def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None)
     img_str = ""
     if images is not None:
         img_str = "You can find some example images below.\n\n"
-        make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images.png"))
-        img_str += f"![images](./images.png)\n"
+        make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, "images.png"))
+        img_str += "![images](./images.png)\n"
 
     model_description = f"""
 # autoencoderkl-{repo_id}
@@ -529,7 +526,7 @@ def make_train_dataset(args, accelerator):
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
     column_names = dataset["train"].column_names
-    
+
     # 6. Get the column names for input/target.
     if args.image_column is None:
         image_column = column_names[0]
@@ -540,7 +537,7 @@ def make_train_dataset(args, accelerator):
             raise ValueError(
                 f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
             )
-    
+
     image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
@@ -580,7 +577,7 @@ def main(args):
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
             " Please use `huggingface-cli login` to authenticate with the Hub."
         )
-    
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -591,7 +588,7 @@ def main(args):
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
-    
+
     # Disable AMP for MPS.
     if torch.backends.mps.is_available():
         accelerator.native_amp = False
@@ -623,7 +620,7 @@ def main(args):
             repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
-    
+
     # Load AutoencoderKL
     if args.pretrained_model_name_or_path is None and args.model_config_name_or_path is None:
         config = AutoencoderKL.load_config("stabilityai/sd-vae-ft-mse")
@@ -637,7 +634,13 @@ def main(args):
         ema_vae = EMAModel(vae.parameters(), model_cls=AutoencoderKL, model_config=vae.config)
     perceptual_loss = lpips.LPIPS(net="vgg").eval()
     discriminator = NLayerDiscriminator(input_nc=3, n_layers=3, use_actnorm=False).apply(weights_init)
-    
+
+    # Taken from [Sayak Paul's Diffusers PR #6511](https://github.com/huggingface/diffusers/pull/6511/files)
+    def unwrap_model(model):
+        model = accelerator.unwrap_model(model)
+        model = model._orig_mod if is_compiled_module(model) else model
+        return model
+
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
@@ -677,7 +680,7 @@ def main(args):
                 load_model = NLayerDiscriminator(input_nc=3, n_layers=3, use_actnorm=False).load_state_dict(os.path.join(input_dir, "discriminator", "pytorch_model.bin"))
                 model.load_state_dict(load_model.state_dict())
                 del load_model
-                
+
                 model = models.pop()
                 load_model = AutoencoderKL.from_pretrained(input_dir, subfolder="autoencoderkl")
                 model.register_to_config(**load_model.config)
@@ -686,8 +689,8 @@ def main(args):
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
-    
-    
+
+
     vae.requires_grad_(True)
     if args.decoder_only:
         vae.encoder.requires_grad_(False)
@@ -696,7 +699,7 @@ def main(args):
     vae.train()
     discriminator.requires_grad_(True)
     discriminator.train()
-    
+
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
@@ -709,16 +712,21 @@ def main(args):
             vae.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
-    
+
     if args.gradient_checkpointing:
         vae.enable_gradient_checkpointing()
-    
+
     # Check that all trainable models are in full precision
     low_precision_error_string = (
         " Please make sure to always have all model weights in full float32 precision when starting training - even if"
         " doing mixed precision training, copy of the weights should still be float32."
     )
-    
+
+    if unwrap_model(vae).dtype != torch.float32:
+        raise ValueError(
+            f"VAE loaded as datatype {unwrap_model(vae).dtype}. {low_precision_error_string}"
+        )
+
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
@@ -728,7 +736,7 @@ def main(args):
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
-    
+
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
         try:
@@ -741,7 +749,7 @@ def main(args):
         optimizer_class = bnb.optim.AdamW8bit
     else:
         optimizer_class = torch.optim.AdamW
-    
+
     params_to_optimize = filter(lambda p: p.requires_grad, vae.parameters())
     disc_params_to_optimize = filter(lambda p: p.requires_grad, discriminator.parameters())
     optimizer = optimizer_class(
@@ -760,7 +768,7 @@ def main(args):
     )
 
     train_dataset = make_train_dataset(args, accelerator)
-    
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
@@ -768,14 +776,14 @@ def main(args):
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
-    
+
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
-    
+
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
@@ -792,12 +800,12 @@ def main(args):
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
-    
+
     # Prepare everything with our `accelerator`.
     vae, discriminator, optimizer, disc_optimizer, train_dataloader, lr_scheduler, disc_lr_scheduler = accelerator.prepare(
         vae, discriminator, optimizer, disc_optimizer, train_dataloader, lr_scheduler, disc_lr_scheduler
     )
-    
+
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -805,14 +813,14 @@ def main(args):
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
-    
+
     # Move VAE, perceptual loss and discriminator to device and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
     perceptual_loss.to(accelerator.device, dtype=weight_dtype)
     discriminator.to(accelerator.device, dtype=weight_dtype)
     if args.use_ema:
         ema_vae.to(accelerator.device, dtype=weight_dtype)
-    
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -850,7 +858,7 @@ def main(args):
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1] if len(dirs) > 0 else None
-        
+
         if path is None:
             accelerator.print(
                 f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
@@ -866,7 +874,7 @@ def main(args):
             first_epoch = global_step // num_update_steps_per_epoch
     else:
         initial_global_step = 0
-    
+
     progress_bar = tqdm(
         range(0, args.max_train_steps),
         initial=initial_global_step,
@@ -898,7 +906,7 @@ def main(args):
                     # perceptual loss. The high level feature mean squared error loss
                     with torch.no_grad():
                         p_loss = perceptual_loss(reconstructions, targets)
-                
+
                     rec_loss = rec_loss + args.perceptual_scale * p_loss
                     nll_loss = rec_loss
                     nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
@@ -915,9 +923,9 @@ def main(args):
                     disc_weight = torch.clamp(disc_weight, 0.0, 1e4).detach()
                     disc_weight = disc_weight * args.disc_scale
                     disc_factor = args.disc_factor if global_step >= args.disc_start else 0.0
-                
+
                     loss = nll_loss + args.kl_scale * kl_loss + disc_weight * disc_factor * g_loss
-                    
+
                     logs = {
                         "loss": loss.detach().mean().item(),
                         "nll_loss": nll_loss.detach().mean().item(),
@@ -929,7 +937,7 @@ def main(args):
                         "g_loss": g_loss.detach().mean().item(),
                         "lr": lr_scheduler.get_last_lr()[0]
                     }
-                
+
                     accelerator.backward(loss)
                     if accelerator.sync_gradients:
                         params_to_clip = vae.parameters()
@@ -1002,7 +1010,7 @@ def main(args):
 
             if global_step >= args.max_train_steps:
                 break
-    
+
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1036,7 +1044,7 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
-    
+
     accelerator.end_training()
 
 
