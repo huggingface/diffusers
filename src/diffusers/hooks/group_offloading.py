@@ -218,10 +218,10 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         registries = [submodule._diffusers_hook for _, submodule in self.execution_order]
 
         for i in range(num_executed):
-            registries[i].remove_hook(_LAYER_EXECUTION_TRACKER)
+            registries[i].remove_hook(_LAYER_EXECUTION_TRACKER, recurse=False)
 
         # Remove the current lazy prefetch group offloading hook so that it doesn't interfere with the next forward pass
-        base_module_registry.remove_hook(_LAZY_PREFETCH_GROUP_OFFLOADING)
+        base_module_registry.remove_hook(_LAZY_PREFETCH_GROUP_OFFLOADING, recurse=False)
 
         # Apply lazy prefetching by setting required attributes
         group_offloading_hooks = [registry.get_hook(_GROUP_OFFLOADING) for registry in registries]
@@ -536,7 +536,10 @@ def _apply_lazy_group_offloading_hook(
     hook = GroupOffloadingHook(group, offload_on_init, next_group)
     lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook()
     registry = HookRegistry.check_if_exists_or_initialize(module)
-    registry.register_hook(hook, _GROUP_OFFLOADING)
+    # We may have already registered a group offloading hook if the module had a torch.nn.Parameter whose parent
+    # is the current module. In such cases, we don't want to overwrite the existing group offloading hook.
+    if registry.get_hook(_GROUP_OFFLOADING) is None:
+        registry.register_hook(hook, _GROUP_OFFLOADING)
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
 
 

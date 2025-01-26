@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import functools
-import gc
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -186,8 +185,6 @@ class HookRegistry:
                     continue
                 if hasattr(module, "_diffusers_hook"):
                     module._diffusers_hook.remove_hook(name, recurse=False)
-
-        gc.collect()
 
     def reset_stateful_hooks(self, recurse: bool = True) -> None:
         for hook_name in reversed(self._hook_order):
