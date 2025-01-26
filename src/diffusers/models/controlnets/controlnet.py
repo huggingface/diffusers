@@ -768,7 +768,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         if self.config.addition_embed_type is not None:
             if self.config.addition_embed_type == "text":
-                # thesea modified
+                # thesea modified for text prompt mask
                 if len(encoder_hidden_states.shape) == 3:
                     aug_emb = self.add_embedding(encoder_hidden_states)
                 else: 
