@@ -23,32 +23,60 @@ You should install 🤗 Diffusers in a [virtual environment](https://docs.python
 If you're unfamiliar with Python virtual environments, take a look at this [guide](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
 A virtual environment makes it easier to manage different projects and avoid compatibility issues between dependencies.
 
-Start by creating a virtual environment in your project directory:
+Create a virtual environment with Python or [uv](https://docs.astral.sh/uv/) (refer to [Installation](https://docs.astral.sh/uv/getting-started/installation/) for installation instructions), a fast Rust-based Python package and project manager.
+
+<hfoptions id="install">
+<hfoption id="uv">
 
 ```bash
-python -m venv .env
+uv venv my-env
+source my-env/bin/activate
 ```
 
-Activate the virtual environment:
+</hfoption>
+<hfoption id="Python">
 
 ```bash
-source .env/bin/activate
+python -m venv my-env
+source my-env/bin/activate
 ```
 
-You should also install 🤗 Transformers because 🤗 Diffusers relies on its models:
+</hfoption>
+</hfoptions>
+
+You should also install 🤗 Transformers because 🤗 Diffusers relies on its models.
 
 
 <frameworkcontent>
 <pt>
-Note - PyTorch only supports Python 3.8 - 3.11 on Windows.
+
+PyTorch only supports Python 3.8 - 3.11 on Windows. Install Diffusers with uv.
+
+```bash
+uv install diffusers["torch"] transformers
+```
+
+You can also install Diffusers with pip.
+
 ```bash
 pip install diffusers["torch"] transformers
 ```
+
 </pt>
 <jax>
+
+Install Diffusers with uv.
+
+```bash
+uv pip install diffusers["flax"] transformers
+```
+
+You can also install Diffusers with pip.
+
 ```bash
 pip install diffusers["flax"] transformers
 ```
+
 </jax>
 </frameworkcontent>
 
