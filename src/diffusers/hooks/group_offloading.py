@@ -16,10 +16,13 @@ from contextlib import nullcontext
 from typing import Dict, List, Optional, Set, Tuple
 
 import torch
-from accelerate.utils import send_to_device
 
-from ..utils import get_logger
+from ..utils import get_logger, is_accelerate_available
 from .hooks import HookRegistry, ModelHook
+
+
+if is_accelerate_available():
+    from accelerate.utils import send_to_device
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -34,6 +37,7 @@ _SUPPORTED_PYTORCH_LAYERS = (
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
     torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
     torch.nn.Linear,
+    torch.nn.LayerNorm, torch.nn.GroupNorm,
 )
 # fmt: on
 
