@@ -14,14 +14,17 @@
 
 from collections import OrderedDict
 from itertools import combinations
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 
 import torch
+import time
+from dataclasses import dataclass
 
 from ..utils import (
     is_accelerate_available,
     logging,
 )
+from ..models.modeling_utils import ModelMixin
 
 
 if is_accelerate_available():
@@ -95,9 +98,6 @@ class CustomOffloadHook(ModelHook):
             if self.other_hooks is not None:
                 hooks_to_offload = [hook for hook in self.other_hooks if hook.model.device == self.execution_device]
                 # offload all other hooks
-                import time
-
-                # YiYi Notes: only logging time for now to monitor the overhead of offloading strategy (remove later)
                 start_time = time.perf_counter()
                 if self.offload_strategy is not None:
                     hooks_to_offload = self.offload_strategy(
@@ -231,17 +231,27 @@ class AutoOffloadStrategy:
 class ComponentsManager:
     def __init__(self):
         self.components = OrderedDict()
+        self.added_time = OrderedDict()  # Store when components were added
         self.model_hooks = None
         self._auto_offload_enabled = False
 
     def add(self, name, component):
-        if name not in self.components:
-            self.components[name] = component
-            if self._auto_offload_enabled:
-                self.enable_auto_cpu_offload(self._auto_offload_device)
+        if name in self.components:
+            logger.warning(f"Overriding existing component '{name}' in ComponentsManager")
+        self.components[name] = component
+        self.added_time[name] = time.time()
+        
+        if self._auto_offload_enabled:
+            self.enable_auto_cpu_offload(self._auto_offload_device)
 
     def remove(self, name):
+        if name not in self.components:
+            logger.warning(f"Component '{name}' not found in ComponentsManager")
+            return
+            
         self.components.pop(name)
+        self.added_time.pop(name)
+        
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)
 
@@ -294,6 +304,61 @@ class ComponentsManager:
         self.model_hooks = None
         self._auto_offload_enabled = False
 
+    def get_model_info(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get comprehensive information about a model component.
+        
+        Args:
+            name: Name of the component to get info for
+            
+        Returns:
+            Dictionary containing model metadata including:
+            - model_id: Name of the model
+            - class_name: Class name of the model
+            - device: Device the model is on
+            - dtype: Data type of the model
+            - size_gb: Size of the model in GB
+            - added_time: Timestamp when model was added
+            - active_adapters: List of active adapters (if applicable)
+            - attn_proc: List of attention processor types (if applicable)
+            Returns None if component is not a torch.nn.Module
+        """
+        if name not in self.components:
+            raise ValueError(f"Component '{name}' not found in ComponentsManager")
+
+        component = self.components[name]
+        
+        # Only process torch.nn.Module components
+        if not isinstance(component, torch.nn.Module):
+            return None
+
+        info = {
+            "model_id": name,
+            "class_name": component.__class__.__name__,
+            "device": str(getattr(component, "device", "N/A")),
+            "dtype": str(component.dtype) if hasattr(component, "dtype") else None,
+            "added_time": self.added_time[name],
+            "size_gb": get_memory_footprint(component) / (1024**3),
+            "active_adapters": None,  # Default to None
+        }
+
+        # Get active adapters if applicable
+        if isinstance(component, ModelMixin):
+            from peft.tuners.tuners_utils import BaseTunerLayer
+            for module in component.modules():
+                if isinstance(module, BaseTunerLayer):
+                    info["active_adapters"] = module.active_adapters
+                    break
+
+        # Get attention processors if applicable
+        if hasattr(component, "attn_processors"):
+            processors = component.attn_processors
+            # Get unique processor types
+            processor_types = list(set(str(v.__class__.__name__) for v in processors.values()))
+            if processor_types:
+                info["attn_proc"] = processor_types
+
+        return info
+
     def __repr__(self):
         col_widths = {
             "id": max(15, max(len(id) for id in self.components.keys())),
@@ -323,14 +388,12 @@ class ComponentsManager:
 
             # Model entries
             for name, component in models.items():
-                device = component.device
-                dtype = component.dtype
-                size_bytes = get_memory_footprint(component)
-                size_gb = size_bytes / (1024**3)
-
-                output += f"{name:<{col_widths['id']}} | {component.__class__.__name__:<{col_widths['class']}} | "
+                info = self.get_model_info(name)
+                output += f"{name:<{col_widths['id']}} | {info['class_name']:<{col_widths['class']}} | "
                 output += (
-                    f"{str(device):<{col_widths['device']}} | {str(dtype):<{col_widths['dtype']}} | {size_gb:.2f}\n"
+                    f"{info['device']:<{col_widths['device']}} | "
+                    f"{info['dtype']:<{col_widths['dtype']}} | "
+                    f"{info['size_gb']:.2f}\n"
                 )
             output += dash_line
 
@@ -348,6 +411,18 @@ class ComponentsManager:
                 output += f"{name:<{col_widths['id']}} | {component.__class__.__name__:<{col_widths['class']}}\n"
             output += dash_line
 
+        # Add additional component info
+        output += "\nAdditional Component Info:\n" + "=" * 50 + "\n"
+        for name in self.components:
+            info = self.get_model_info(name)
+            if info is not None and (info.get("active_adapters") is not None or info.get("attn_proc")):
+                output += f"\n{name}:\n"
+                if info.get("active_adapters") is not None:
+                    output += f"  Active Adapters: {info['active_adapters']}\n"
+                if info.get("attn_proc"):
+                    output += f"  Attention Processors: {info['attn_proc']}\n"
+                output += f"  Added Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(info['added_time']))}\n"
+        
         return output
 
     def add_from_pretrained(self, pretrained_model_name_or_path, **kwargs):

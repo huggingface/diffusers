@@ -586,6 +586,9 @@ class ModularIPAdapterMixin:
         """
 
         # remove hidden encoder
+        if self.unet is None:
+            return
+
         self.unet.encoder_hid_proj = None
         self.unet.config.encoder_hid_dim_type = None
 
