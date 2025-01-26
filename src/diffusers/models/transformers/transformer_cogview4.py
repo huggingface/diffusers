@@ -224,7 +224,6 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
             embedding_dim=self.inner_dim,
             conditioning_embedding_dim=time_embed_dim,
             elementwise_affine=False,
-            # eps=1e-6, # For CogView4 is 1e-5
         )
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
