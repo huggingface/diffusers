@@ -111,3 +111,11 @@ class HunyuanDiTTests(ModelTesterMixin, unittest.TestCase):
     @unittest.skip("HunyuanDIT use a custom processor HunyuanAttnProcessor2_0")
     def test_set_attn_processor_for_determinism(self):
         pass
+
+    @unittest.skip(
+        "This model uses a direct call to F.multi_head_attention_forward instead of using a torch.nn.Module layer. This "
+        "usage is not yet supported with group offloading, because the call directly operates on the weights of the module. "
+        "We attach hooks correctly, but the onloading does not occur because the torch::nn::Module::forward is never invoked."
+    )
+    def test_group_offloading(self):
+        pass

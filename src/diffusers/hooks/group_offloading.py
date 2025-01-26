@@ -387,7 +387,8 @@ def _apply_group_offloading_block_level(
         cpu_param_dict=None,
         onload_self=True,
     )
-    _apply_group_offloading_hook(module, unmatched_group, force_offload, matched_module_groups[0])
+    next_group = matched_module_groups[0] if len(matched_module_groups) > 0 else None
+    _apply_group_offloading_hook(module, unmatched_group, force_offload, next_group)
 
 
 def _apply_group_offloading_leaf_level(
@@ -522,9 +523,13 @@ def _apply_group_offloading_hook(
     offload_on_init: bool,
     next_group: Optional[ModuleGroup] = None,
 ) -> None:
-    hook = GroupOffloadingHook(group, offload_on_init, next_group)
     registry = HookRegistry.check_if_exists_or_initialize(module)
-    registry.register_hook(hook, _GROUP_OFFLOADING)
+
+    # We may have already registered a group offloading hook if the module had a torch.nn.Parameter whose parent
+    # is the current module. In such cases, we don't want to overwrite the existing group offloading hook.
+    if registry.get_hook(_GROUP_OFFLOADING) is None:
+        hook = GroupOffloadingHook(group, offload_on_init, next_group)
+        registry.register_hook(hook, _GROUP_OFFLOADING)
 
 
 def _apply_lazy_group_offloading_hook(
@@ -533,13 +538,15 @@ def _apply_lazy_group_offloading_hook(
     offload_on_init: bool,
     next_group: Optional[ModuleGroup] = None,
 ) -> None:
-    hook = GroupOffloadingHook(group, offload_on_init, next_group)
-    lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook()
     registry = HookRegistry.check_if_exists_or_initialize(module)
+
     # We may have already registered a group offloading hook if the module had a torch.nn.Parameter whose parent
     # is the current module. In such cases, we don't want to overwrite the existing group offloading hook.
     if registry.get_hook(_GROUP_OFFLOADING) is None:
+        hook = GroupOffloadingHook(group, offload_on_init, next_group)
         registry.register_hook(hook, _GROUP_OFFLOADING)
+
+    lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook()
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
 
 

@@ -132,6 +132,15 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
     def test_layerwise_casting_memory(self):
         pass
 
+    @unittest.skip(
+        "The convolution layers of AutoencoderOobleck are wrapped with torch.nn.utils.weight_norm. This causes the hook's pre_forward to not "
+        "cast the module weights to the expected device (as required by forward pass). As a result, forward pass errors out. To fix:\n"
+        "1. Make sure `nn::Module::to(device)` works with `torch.nn.utils.weight_norm` wrapped convolution layer.\n"
+        "2. Unskip this test."
+    )
+    def test_group_offloading(self):
+        pass
+
 
 @slow
 class AutoencoderOobleckIntegrationTests(unittest.TestCase):

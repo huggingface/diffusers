@@ -120,7 +120,10 @@ class HookRegistry:
 
     def register_hook(self, hook: ModelHook, name: str) -> None:
         if name in self.hooks.keys():
-            logger.warning(f"Hook with name {name} already exists, replacing it.")
+            raise ValueError(
+                f"Hook with name {name} already exists in the registry. Please use a different name or "
+                f"first remove the existing hook and then add a new one."
+            )
 
         self._module_ref = hook.initialize_hook(self._module_ref)
 
