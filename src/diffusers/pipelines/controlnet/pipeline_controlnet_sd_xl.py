@@ -1528,7 +1528,7 @@ class StableDiffusionXLControlNetPipeline(
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            if isinstance(prompt, list): # modified
+            if isinstance(prompt, list): # thesea modified for text prompt mask
                 prompt_embeds_list = torch.cat([negative_prompt_embeds_list, prompt_embeds_list], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
