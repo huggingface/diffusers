@@ -28,6 +28,7 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
+from diffusers.hooks import apply_group_offloading
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
@@ -45,6 +46,7 @@ from diffusers.utils.testing_utils import (
     require_accelerator,
     require_hf_hub_version_greater,
     require_torch,
+    require_torch_gpu,
     require_transformers_version_greater,
     skip_mps,
     torch_device,
@@ -988,6 +990,7 @@ class PipelineTesterMixin:
 
     test_xformers_attention = True
     test_layerwise_casting = False
+    test_group_offloading = False
     supports_dduf = True
 
     def get_generator(self, seed):
@@ -2041,6 +2044,70 @@ class PipelineTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         _ = pipe(**inputs)[0]
+
+    @require_torch_gpu
+    def test_group_offloading_inference(self):
+        if not self.test_group_offloading:
+            return
+
+        def create_pipe():
+            torch.manual_seed(0)
+            components = self.get_dummy_components()
+            pipe = self.pipeline_class(**components)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def enable_group_offloading_on_component(pipe, group_offloading_kwargs):
+            # We intentionally don't test VAE's here. This is because some tests enable tiling on the VAE. If
+            # tiling is enabled and a forward pass is run, when cuda streams are used, the execution order of
+            # the layers is not traced correctly. This causes errors. For apply group offloading to VAE, a
+            # warmup forward pass (even with dummy small inputs) is recommended.
+            for component_name in [
+                "text_encoder",
+                "text_encoder_2",
+                "text_encoder_3",
+                "transformer",
+                "unet",
+                "controlnet",
+            ]:
+                if not hasattr(pipe, component_name):
+                    continue
+                component = getattr(pipe, component_name)
+                apply_group_offloading(component, **group_offloading_kwargs)
+                self.assertTrue(
+                    all(
+                        module._diffusers_hook.get_hook("group_offloading") is not None
+                        for module in component.modules()
+                        if hasattr(module, "_diffusers_hook")
+                    )
+                )
+            for component_name in ["vae", "vqvae"]:
+                if hasattr(pipe, component_name):
+                    getattr(pipe, component_name).to(torch_device)
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(torch_device)
+            return pipe(**inputs)[0]
+
+        pipe = create_pipe().to(torch_device)
+        output_without_group_offloading = run_forward(pipe)
+
+        pipe = create_pipe()
+        enable_group_offloading_on_component(pipe, {"offload_type": "block_level", "num_blocks_per_group": 1})
+        output_with_group_offloading1 = run_forward(pipe)
+
+        pipe = create_pipe()
+        enable_group_offloading_on_component(pipe, {"offload_type": "leaf_level"})
+        output_with_group_offloading2 = run_forward(pipe)
+
+        if torch.is_tensor(output_without_group_offloading):
+            output_without_group_offloading = output_without_group_offloading.detach().cpu().numpy()
+            output_with_group_offloading1 = output_with_group_offloading1.detach().cpu().numpy()
+            output_with_group_offloading2 = output_with_group_offloading2.detach().cpu().numpy()
+
+        self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-4))
+        self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-4))
 
 
 @is_staging_test

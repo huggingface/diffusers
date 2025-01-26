@@ -1440,6 +1440,13 @@ class ModelTesterMixin:
         torch.manual_seed(0)
 
         def run_forward(model):
+            self.assertTrue(
+                all(
+                    module._diffusers_hook.get_hook("group_offloading") is not None
+                    for module in model.modules()
+                    if hasattr(module, "_diffusers_hook")
+                )
+            )
             model.eval()
             with torch.no_grad():
                 return model(**inputs_dict)[0]

@@ -140,6 +140,7 @@ class ControlNetXSPipelineFastTests(
 
     test_attention_slicing = False
     test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)

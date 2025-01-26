@@ -76,6 +76,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)

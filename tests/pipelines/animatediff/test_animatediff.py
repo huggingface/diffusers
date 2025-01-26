@@ -61,6 +61,7 @@ class AnimateDiffPipelineFastTests(
         ]
     )
     test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         cross_attention_dim = 8

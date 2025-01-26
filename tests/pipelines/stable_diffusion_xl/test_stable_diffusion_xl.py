@@ -76,6 +76,7 @@ class StableDiffusionXLPipelineFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"add_text_embeds", "add_time_ids"})
     test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)

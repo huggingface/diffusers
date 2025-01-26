@@ -60,6 +60,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
     test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(
         self, num_controlnet_layers: int = 3, qk_norm: Optional[str] = "rms_norm", use_dual_attention=False
