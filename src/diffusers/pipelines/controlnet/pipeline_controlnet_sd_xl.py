@@ -764,7 +764,7 @@ class StableDiffusionXLControlNetPipeline(
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
         
-        ## thesea modified
+        # thesea modified for text prompt mask
         #if isinstance(self.controlnet, MultiControlNetModel):
         #    if isinstance(prompt, list):
         #        logger.warning(
@@ -1331,7 +1331,7 @@ class StableDiffusionXLControlNetPipeline(
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = 1 #len(prompt), thesea modified
+            batch_size = 1 #len(prompt), thesea modified for text prompt mask
         else:
             batch_size = prompt_embeds.shape[0]
 
@@ -1352,7 +1352,7 @@ class StableDiffusionXLControlNetPipeline(
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
 
-        ## thesea modified
+        ## thesea modified for text prompt mask
         prompt_embeds_list = []
         negative_prompt_embeds_list = []
         pooled_prompt_embeds_list = []
@@ -1373,10 +1373,6 @@ class StableDiffusionXLControlNetPipeline(
                     self.do_classifier_free_guidance,
                     negative_prompt,
                     negative_prompt_2,
-                    #prompt_embeds=prompt_embeds,
-                    #negative_prompt_embeds=negative_prompt_embeds,
-                    #pooled_prompt_embeds=pooled_prompt_embeds,
-                    #negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
                     lora_scale=text_encoder_lora_scale,
                     clip_skip=self.clip_skip,
                 )
@@ -1590,7 +1586,7 @@ class StableDiffusionXLControlNetPipeline(
                     }
                 else:
                     control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds_list if isinstance(prompt, list) else prompt_embeds #prompt_embeds, thesea modified
+                    controlnet_prompt_embeds = prompt_embeds_list if isinstance(prompt, list) else prompt_embeds #prompt_embeds, thesea modified for text prompt mask
                     controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
@@ -1606,7 +1602,7 @@ class StableDiffusionXLControlNetPipeline(
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=image,
-                    cross_attention_kwargs=self.cross_attention_kwargs, # thesea modified
+                    cross_attention_kwargs=self.cross_attention_kwargs, # thesea modified for text prompt mask
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,

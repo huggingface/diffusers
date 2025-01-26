@@ -720,12 +720,14 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
-        if isinstance(self.controlnet, MultiControlNetModel):
-            if isinstance(prompt, list):
-                logger.warning(
-                    f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
-                    " prompts. The conditionings will be fixed across the prompts."
-                )
+
+        # thesea modified for text prompt mask
+        #if isinstance(self.controlnet, MultiControlNetModel):
+        #    if isinstance(prompt, list):
+        #        logger.warning(
+        #            f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
+        #            " prompts. The conditionings will be fixed across the prompts."
+        #        )
 
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
@@ -1366,7 +1368,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+            batch_size = 1 #len(prompt), thesea modified for text prompt mask
         else:
             batch_size = prompt_embeds.shape[0]
 
@@ -1386,26 +1388,60 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = self.encode_prompt(
-            prompt,
-            prompt_2,
-            device,
-            num_images_per_prompt,
-            self.do_classifier_free_guidance,
-            negative_prompt,
-            negative_prompt_2,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
-            clip_skip=self.clip_skip,
-        )
+
+        ## thesea modified for text prompt mask
+        prompt_embeds_list = []
+        negative_prompt_embeds_list = []
+        pooled_prompt_embeds_list = []
+        negative_pooled_prompt_embeds_list = []
+        
+        if isinstance(prompt, list):
+            for pmt in prompt:
+                (
+                    prompt_embeds,
+                    negative_prompt_embeds,
+                    pooled_prompt_embeds,
+                    negative_pooled_prompt_embeds,
+                ) = self.encode_prompt(
+                    pmt,
+                    prompt_2,
+                    device,
+                    num_images_per_prompt,
+                    self.do_classifier_free_guidance,
+                    negative_prompt,
+                    negative_prompt_2,
+                    lora_scale=text_encoder_lora_scale,
+                    clip_skip=self.clip_skip,
+                )
+                prompt_embeds_list.append(prompt_embeds)
+                negative_prompt_embeds_list.append(negative_prompt_embeds)
+                pooled_prompt_embeds_list.append(pooled_prompt_embeds)
+                negative_pooled_prompt_embeds_list.append(negative_pooled_prompt_embeds)
+            prompt_embeds_list = torch.stack(prompt_embeds_list,dim=1)
+            negative_prompt_embeds_list = torch.stack(negative_prompt_embeds_list,dim=1)
+            pooled_prompt_embeds_list = torch.stack(pooled_prompt_embeds_list,dim=1)
+            negative_pooled_prompt_embeds_list = torch.stack(negative_pooled_prompt_embeds_list,dim=1)
+        else:
+            (
+                prompt_embeds,
+                negative_prompt_embeds,
+                pooled_prompt_embeds,
+                negative_pooled_prompt_embeds,
+            ) = self.encode_prompt(
+                prompt,
+                prompt_2,
+                device,
+                num_images_per_prompt,
+                self.do_classifier_free_guidance,
+                negative_prompt,
+                negative_prompt_2,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                pooled_prompt_embeds=pooled_prompt_embeds,
+                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                lora_scale=text_encoder_lora_scale,
+                clip_skip=self.clip_skip,
+            )
 
         # 3.2 Encode ip_adapter_image
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
@@ -1554,7 +1590,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                     }
                 else:
                     control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
+                    controlnet_prompt_embeds = prompt_embeds_list if isinstance(prompt, list) else prompt_embeds #prompt_embeds, thesea modified for text prompt mask
                     controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
@@ -1569,6 +1605,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=control_image,
+                    cross_attention_kwargs=self.cross_attention_kwargs, # thesea modified for text prompt mask
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
@@ -1589,7 +1626,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=prompt_embeds_list if isinstance(prompt, list) else prompt_embeds, #prompt_embeds, thesea modified for multiple text promts
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     down_block_additional_residuals=down_block_res_samples,
                     mid_block_additional_residual=mid_block_res_sample,
