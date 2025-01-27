@@ -304,59 +304,66 @@ class ComponentsManager:
         self.model_hooks = None
         self._auto_offload_enabled = False
 
-    def get_model_info(self, name: str) -> Optional[Dict[str, Any]]:
-        """Get comprehensive information about a model component.
+    def get_model_info(self, name: str, fields: Optional[Union[str, List[str]]] = None) -> Optional[Dict[str, Any]]:
+        """Get comprehensive information about a component.
         
         Args:
             name: Name of the component to get info for
-            
+            fields: Optional field(s) to return. Can be a string for single field or list of fields.
+                   If None, returns all fields.
+                   
         Returns:
-            Dictionary containing model metadata including:
-            - model_id: Name of the model
-            - class_name: Class name of the model
-            - device: Device the model is on
-            - dtype: Data type of the model
-            - size_gb: Size of the model in GB
-            - added_time: Timestamp when model was added
-            - active_adapters: List of active adapters (if applicable)
-            - attn_proc: List of attention processor types (if applicable)
-            Returns None if component is not a torch.nn.Module
+            Dictionary containing requested component metadata.
+            If fields is specified, returns only those fields.
+            If a single field is requested as string, returns just that field's value.
         """
         if name not in self.components:
             raise ValueError(f"Component '{name}' not found in ComponentsManager")
 
         component = self.components[name]
         
-        # Only process torch.nn.Module components
-        if not isinstance(component, torch.nn.Module):
-            return None
-
+        # Build complete info dict first
         info = {
             "model_id": name,
-            "class_name": component.__class__.__name__,
-            "device": str(getattr(component, "device", "N/A")),
-            "dtype": str(component.dtype) if hasattr(component, "dtype") else None,
             "added_time": self.added_time[name],
-            "size_gb": get_memory_footprint(component) / (1024**3),
-            "active_adapters": None,  # Default to None
         }
+        
+        # Additional info for torch.nn.Module components
+        if isinstance(component, torch.nn.Module):
+            info.update({
+                "class_name": component.__class__.__name__,
+                "size_gb": get_memory_footprint(component) / (1024**3),
+                "adapters": None,  # Default to None
+            })
 
-        # Get active adapters if applicable
-        if isinstance(component, ModelMixin):
-            from peft.tuners.tuners_utils import BaseTunerLayer
-            for module in component.modules():
-                if isinstance(module, BaseTunerLayer):
-                    info["active_adapters"] = module.active_adapters
-                    break
+            # Get adapters if applicable
+            if hasattr(component, "peft_config"):
+                info["adapters"] = list(component.peft_config.keys())
 
-        # Get attention processors if applicable
-        if hasattr(component, "attn_processors"):
-            processors = component.attn_processors
-            # Get unique processor types
-            processor_types = list(set(str(v.__class__.__name__) for v in processors.values()))
-            if processor_types:
-                info["attn_proc"] = processor_types
+            # Check for IP-Adapter scales
+            if hasattr(component, "_load_ip_adapter_weights") and hasattr(component, "attn_processors"):
+                processors = component.attn_processors
+                # First check if any processor is an IP-Adapter
+                processor_types = [v.__class__.__name__ for v in processors.values()]
+                if any("IPAdapter" in ptype for ptype in processor_types):
+                    # Then get scales only from IP-Adapter processors
+                    scales = {
+                        k: v.scale 
+                        for k, v in processors.items() 
+                        if hasattr(v, "scale") and "IPAdapter" in v.__class__.__name__
+                    }
+                    if scales:
+                        info["ip_adapter"] = summarize_dict_by_value_and_parts(scales)
 
+        # If fields specified, filter info
+        if fields is not None:
+            if isinstance(fields, str):
+                # Single field requested, return just that value
+                return {fields: info.get(fields)}
+            else:
+                # List of fields requested, return dict with just those fields
+                return {k: v for k, v in info.items() if k in fields}
+            
         return info
 
     def __repr__(self):
@@ -383,18 +390,16 @@ class ComponentsManager:
             output += "Models:\n" + dash_line
             # Column headers
             output += f"{'Model ID':<{col_widths['id']}} | {'Class':<{col_widths['class']}} | "
-            output += f"{'Device':<{col_widths['device']}} | {'Dtype':<{col_widths['dtype']}} | Size (GB) \n"
+            output += f"{'Device':<{col_widths['device']}} | {'Dtype':<{col_widths['dtype']}} | Size (GB)\n"
             output += dash_line
 
             # Model entries
             for name, component in models.items():
                 info = self.get_model_info(name)
+                device = str(getattr(component, "device", "N/A"))
+                dtype = str(component.dtype) if hasattr(component, "dtype") else "N/A"
                 output += f"{name:<{col_widths['id']}} | {info['class_name']:<{col_widths['class']}} | "
-                output += (
-                    f"{info['device']:<{col_widths['device']}} | "
-                    f"{info['dtype']:<{col_widths['dtype']}} | "
-                    f"{info['size_gb']:.2f}\n"
-                )
+                output += f"{device:<{col_widths['device']}} | {dtype:<{col_widths['dtype']}} | {info['size_gb']:.2f}\n"
             output += dash_line
 
         # Other components section
@@ -415,12 +420,12 @@ class ComponentsManager:
         output += "\nAdditional Component Info:\n" + "=" * 50 + "\n"
         for name in self.components:
             info = self.get_model_info(name)
-            if info is not None and (info.get("active_adapters") is not None or info.get("attn_proc")):
+            if info is not None and (info.get("adapters") is not None or info.get("ip_adapter")):
                 output += f"\n{name}:\n"
-                if info.get("active_adapters") is not None:
-                    output += f"  Active Adapters: {info['active_adapters']}\n"
-                if info.get("attn_proc"):
-                    output += f"  Attention Processors: {info['attn_proc']}\n"
+                if info.get("adapters") is not None:
+                    output += f"  Adapters: {info['adapters']}\n"
+                if info.get("ip_adapter"):
+                    output += f"  IP-Adapter: Enabled\n"
                 output += f"  Added Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(info['added_time']))}\n"
         
         return output
@@ -438,3 +443,64 @@ class ComponentsManager:
                     f"1. remove the existing component with remove('{name}')\n"
                     f"2. Use a different name: add('{name}_2', component)"
                 )
+
+def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Summarizes a dictionary by finding common prefixes that share the same value.
+    
+    For a dictionary with dot-separated keys like:
+    {
+        'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor': [0.6],
+        'down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor': [0.6],
+        'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor': [0.3],
+    }
+    
+    Returns a dictionary where keys are the shortest common prefixes and values are their shared values:
+    {
+        'down_blocks': [0.6],
+        'up_blocks': [0.3]
+    }
+    """
+    # First group by values - convert lists to tuples to make them hashable
+    value_to_keys = {}
+    for key, value in d.items():
+        value_tuple = tuple(value) if isinstance(value, list) else value
+        if value_tuple not in value_to_keys:
+            value_to_keys[value_tuple] = []
+        value_to_keys[value_tuple].append(key)
+    
+    def find_common_prefix(keys: List[str]) -> str:
+        """Find the shortest common prefix among a list of dot-separated keys."""
+        if not keys:
+            return ""
+        if len(keys) == 1:
+            return keys[0]
+            
+        # Split all keys into parts
+        key_parts = [k.split('.') for k in keys]
+        
+        # Find how many initial parts are common
+        common_length = 0
+        for parts in zip(*key_parts):
+            if len(set(parts)) == 1:  # All parts at this position are the same
+                common_length += 1
+            else:
+                break
+                
+        if common_length == 0:
+            return ""
+            
+        # Return the common prefix
+        return '.'.join(key_parts[0][:common_length])
+
+    # Create summary by finding common prefixes for each value group
+    summary = {}
+    for value_tuple, keys in value_to_keys.items():
+        prefix = find_common_prefix(keys)
+        if prefix:  # Only add if we found a common prefix
+            # Convert tuple back to list if it was originally a list
+            value = list(value_tuple) if isinstance(d[keys[0]], list) else value_tuple
+            summary[prefix] = value
+        else:
+            summary[""] = value  # Use empty string if no common prefix
+            
+    return summary
