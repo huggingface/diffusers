@@ -177,28 +177,25 @@ class HookRegistry:
         return self.hooks.get(name, None)
 
     def remove_hook(self, name: str, recurse: bool = True) -> None:
-        if name not in self.hooks.keys():
-            logger.warning(f"hook: {name} was not found in HookRegistry")
-            return
+        if name in self.hooks.keys():
+            num_hooks = len(self._hook_order)
+            hook = self.hooks[name]
+            index = self._hook_order.index(name)
+            fn_ref = self._fn_refs[index]
 
-        num_hooks = len(self._hook_order)
-        hook = self.hooks[name]
-        index = self._hook_order.index(name)
-        fn_ref = self._fn_refs[index]
+            old_forward = fn_ref.forward
+            if fn_ref.original_forward is not None:
+                old_forward = fn_ref.original_forward
 
-        old_forward = fn_ref.forward
-        if fn_ref.original_forward is not None:
-            old_forward = fn_ref.original_forward
+            if index == num_hooks - 1:
+                self._module_ref.forward = old_forward
+            else:
+                self._fn_refs[index + 1].forward = old_forward
 
-        if index == num_hooks - 1:
-            self._module_ref.forward = old_forward
-        else:
-            self._fn_refs[index + 1].forward = old_forward
-
-        self._module_ref = hook.deinitalize_hook(self._module_ref)
-        del self.hooks[name]
-        self._hook_order.pop(index)
-        self._fn_refs.pop(index)
+            self._module_ref = hook.deinitalize_hook(self._module_ref)
+            del self.hooks[name]
+            self._hook_order.pop(index)
+            self._fn_refs.pop(index)
 
         if recurse:
             for module_name, module in self._module_ref.named_modules():
