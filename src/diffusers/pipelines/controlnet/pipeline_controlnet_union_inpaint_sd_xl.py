@@ -1350,6 +1350,8 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
 
         if not isinstance(control_image, list):
             control_image = [control_image]
+        else:
+            control_image = control_image.copy()
 
         if not isinstance(control_mode, list):
             control_mode = [control_mode]
