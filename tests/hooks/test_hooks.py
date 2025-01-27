@@ -126,7 +126,7 @@ class SkipLayerHook(ModelHook):
         logger.debug("SkipLayerHook new_forward")
         if self.skip_layer:
             return args[0]
-        return self.fn_ref.overwritten_forward(*args, **kwargs)
+        return self.fn_ref.original_forward(*args, **kwargs)
 
     def post_forward(self, module, output):
         logger.debug("SkipLayerHook post_forward")
@@ -174,14 +174,12 @@ class HookTests(unittest.TestCase):
 
         self.assertEqual(len(registry.hooks), 2)
         self.assertEqual(registry._hook_order, ["add_hook", "multiply_hook"])
-        self.assertEqual(len(registry._fn_refs), 2)
         self.assertEqual(registry_repr, expected_repr)
 
         registry.remove_hook("add_hook")
 
         self.assertEqual(len(registry.hooks), 1)
         self.assertEqual(registry._hook_order, ["multiply_hook"])
-        self.assertEqual(len(registry._fn_refs), 1)
 
     def test_stateful_hook(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model)
