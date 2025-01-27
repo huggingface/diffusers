@@ -61,9 +61,7 @@ logger = get_logger(__name__)
 
 
 @torch.no_grad()
-def log_validation(
-    vae, args, accelerator, weight_dtype, step, is_final_validation=False
-):
+def log_validation(vae, args, accelerator, weight_dtype, step, is_final_validation=False):
     logger.info("Running validation... ")
 
     if not is_final_validation:
@@ -91,23 +89,18 @@ def log_validation(
         with inference_ctx:
             reconstructions = vae(targets).sample
 
-        images.append(
-            torch.cat([targets.cpu(), reconstructions.cpu()], axis=0)
-        )
+        images.append(torch.cat([targets.cpu(), reconstructions.cpu()], axis=0))
 
     tracker_key = "test" if is_final_validation else "validation"
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images(
-                f"{tracker_key}: Original (left), Reconstruction (right)", np_images, step
-            )
+            tracker.writer.add_images(f"{tracker_key}: Original (left), Reconstruction (right)", np_images, step)
         elif tracker.name == "wandb":
             tracker.log(
                 {
                     f"{tracker_key}: Original (left), Reconstruction (right)": [
-                        wandb.Image(torchvision.utils.make_grid(image))
-                        for _, image in enumerate(images)
+                        wandb.Image(torchvision.utils.make_grid(image)) for _, image in enumerate(images)
                     ]
                 }
             )
@@ -677,7 +670,9 @@ def main(args):
 
                 # pop models so that they are not loaded again
                 model = models.pop()
-                load_model = NLayerDiscriminator(input_nc=3, n_layers=3, use_actnorm=False).load_state_dict(os.path.join(input_dir, "discriminator", "pytorch_model.bin"))
+                load_model = NLayerDiscriminator(input_nc=3, n_layers=3, use_actnorm=False).load_state_dict(
+                    os.path.join(input_dir, "discriminator", "pytorch_model.bin")
+                )
                 model.load_state_dict(load_model.state_dict())
                 del load_model
 
@@ -689,7 +684,6 @@ def main(args):
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
-
 
     vae.requires_grad_(True)
     if args.decoder_only:
@@ -723,9 +717,7 @@ def main(args):
     )
 
     if unwrap_model(vae).dtype != torch.float32:
-        raise ValueError(
-            f"VAE loaded as datatype {unwrap_model(vae).dtype}. {low_precision_error_string}"
-        )
+        raise ValueError(f"VAE loaded as datatype {unwrap_model(vae).dtype}. {low_precision_error_string}")
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -802,7 +794,15 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    vae, discriminator, optimizer, disc_optimizer, train_dataloader, lr_scheduler, disc_lr_scheduler = accelerator.prepare(
+    (
+        vae,
+        discriminator,
+        optimizer,
+        disc_optimizer,
+        train_dataloader,
+        lr_scheduler,
+        disc_lr_scheduler,
+    ) = accelerator.prepare(
         vae, discriminator, optimizer, disc_optimizer, train_dataloader, lr_scheduler, disc_lr_scheduler
     )
 
@@ -935,7 +935,7 @@ def main(args):
                         "disc_weight": disc_weight.detach().mean().item(),
                         "disc_factor": disc_factor,
                         "g_loss": g_loss.detach().mean().item(),
-                        "lr": lr_scheduler.get_last_lr()[0]
+                        "lr": lr_scheduler.get_last_lr()[0],
                     }
 
                     accelerator.backward(loss)
@@ -956,7 +956,7 @@ def main(args):
                         "disc_loss": disc_loss.detach().mean().item(),
                         "logits_real": logits_real.detach().mean().item(),
                         "logits_fake": logits_fake.detach().mean().item(),
-                        "disc_lr": disc_lr_scheduler.get_last_lr()[0]
+                        "disc_lr": disc_lr_scheduler.get_last_lr()[0],
                     }
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
