@@ -103,10 +103,20 @@ class ModelHook:
 
 class HookFunctionReference:
     def __init__(self) -> None:
-        """
-        Holding class for forward functions references used in Diffusers hooks. This struct allows you to easily swap
-        out the forward function in the when a hook is removed from a modules hook registry.
+        """A container class that maintains mutable references to forward pass functions in a hook chain.
 
+        Its mutable nature allows the hook system to modify the execution chain dynamically without rebuilding the
+        entire forward pass structure.
+
+        Attributes:
+            pre_forward: A callable that processes inputs before the main forward pass.
+            post_forward: A callable that processes outputs after the main forward pass.
+            forward: The current forward function in the hook chain.
+            original_forward: The original forward function, stored when a hook provides a custom new_forward.
+
+        The class enables hook removal by allowing updates to the forward chain through reference modification rather
+        than requiring reconstruction of the entire chain. When a hook is removed, only the relevant references need to
+        be updated, preserving the execution order of the remaining hooks.
         """
         self.pre_forward = None
         self.post_forward = None
