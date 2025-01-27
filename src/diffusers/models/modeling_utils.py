@@ -875,7 +875,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
 
-        # TODO: We need to let the user pass a config in from_pretrained
         # load config
         config, unused_kwargs, commit_hash = cls.load_config(
             config_path,
@@ -1239,17 +1238,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         state_dict: OrderedDict,
         resolved_archive_file: List[str],
         pretrained_model_name_or_path: Union[str, os.PathLike],
-        loaded_keys,
+        loaded_keys: List[str],
         ignore_mismatched_sizes: bool = False,
         assign_to_params_buffers: bool = False,
-        hf_quantizer=None,
-        low_cpu_mem_usage=None,
-        dtype=None,
-        keep_in_fp32_modules=None,
-        device_map=None,
-        offload_state_dict=None,
-        offload_folder=None,
-        dduf_entries=None,
+        hf_quantizer: Optional[DiffusersQuantizer] = None,
+        low_cpu_mem_usage: bool = True,
+        dtype: Optional[Union[str, torch.dtype]] = None,
+        keep_in_fp32_modules: Optional[List[str]] = None,
+        device_map: Dict[str, Union[int, str, torch.device]] = None,
+        offload_state_dict: Optional[bool] = None,
+        offload_folder: Optional[Union[str, os.PathLike]] = None,
+        dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1289,7 +1288,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             state_dict_folder = None
             state_dict_index = None
 
-        # TODO: not sure if this is the most elegant way of dealing with this case
         if state_dict is not None:
             # load_state_dict will manage the case where we pass a dict instead of a file
             # if state dict is not None, it means that we don't need to read the files from resolved_archive_file also
@@ -1333,7 +1331,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
             if low_cpu_mem_usage:
-                new_error_msgs, offload_index, state_dict_index = load_model_dict_into_meta(
+                offload_index, state_dict_index = load_model_dict_into_meta(
                     model,
                     state_dict,
                     device_map=device_map,
@@ -1346,7 +1344,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     state_dict_index=state_dict_index,
                     state_dict_folder=state_dict_folder,
                 )
-                error_msgs += new_error_msgs
             else:
                 if assign_to_params_buffers is None:
                     assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)

@@ -28,6 +28,7 @@ import torch
 from huggingface_hub import DDUFEntry
 from huggingface_hub.utils import EntryNotFoundError
 
+from ..quantizers import DiffusersQuantizer
 from ..utils import (
     GGUF_FILE_EXTENSION,
     SAFE_WEIGHTS_INDEX_NAME,
@@ -212,21 +213,20 @@ def load_model_dict_into_meta(
     state_dict: OrderedDict,
     dtype: Optional[Union[str, torch.dtype]] = None,
     model_name_or_path: Optional[str] = None,
-    hf_quantizer=None,
-    keep_in_fp32_modules=None,
-    device_map=None,
-    unexpected_keys=None,
-    offload_folder=None,
-    offload_index=None,
-    state_dict_index=None,
-    state_dict_folder=None,
+    hf_quantizer: Optional[DiffusersQuantizer] = None,
+    keep_in_fp32_modules: Optional[List] = None,
+    device_map: Dict[str, Union[int, str, torch.device]] = None,
+    unexpected_keys: Optional[List[str]] = None,
+    offload_folder: Optional[Union[str, os.PathLike]] = None,
+    offload_index: Optional[Dict] = None,
+    state_dict_index: Optional[Dict] = None,
+    state_dict_folder: Optional[Union[str, os.PathLike]] = None,
 ) -> List[str]:
     """
     This is somewhat similar to `_load_state_dict_into_model`, but deals with a model that has some or all of its
     params on a `meta` device. It replaces the model params with the data from the `state_dict`
     """
 
-    error_msgs = []
     is_quantized = hf_quantizer is not None
     empty_state_dict = model.state_dict()
 
@@ -310,7 +310,7 @@ def load_model_dict_into_meta(
         else:
             set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
 
-    return error_msgs, offload_index, state_dict_index
+    return offload_index, state_dict_index
 
 
 def _load_state_dict_into_model(
