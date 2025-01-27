@@ -24,6 +24,7 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
 from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
+from ..cache_utils import CacheMixin
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -156,7 +157,7 @@ class CogVideoXBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, CacheMixin):
     """
     A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 
