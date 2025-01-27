@@ -741,26 +741,6 @@ class StableDiffusionXLControlNetUnionPipeline(
         else:
             assert False
 
-        # Check `controlnet_conditioning_scale`
-        if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
-        ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-
-        elif (
-            isinstance(self.controlnet, ControlNetUnionModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetUnionModel)
-        ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-
-        else:
-            assert False
-
         if not isinstance(control_guidance_start, (tuple, list)):
             control_guidance_start = [control_guidance_start]
 
