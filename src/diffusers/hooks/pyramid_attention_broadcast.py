@@ -162,7 +162,7 @@ class PyramidAttentionBroadcastHook(ModelHook):
         )
 
         if should_compute_attention:
-            output = self.fn_ref.overwritten_forward(*args, **kwargs)
+            output = self.fn_ref.original_forward(*args, **kwargs)
         else:
             output = self.state.cache
 
