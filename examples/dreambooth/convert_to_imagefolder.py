@@ -2,6 +2,7 @@ import argparse
 import json
 import pathlib
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--path",
@@ -9,9 +10,7 @@ parser.add_argument(
     required=True,
     help="Path to folder with image-text pairs.",
 )
-parser.add_argument(
-    "--caption_column", type=str, default="prompt", help="Name of caption column."
-)
+parser.add_argument("--caption_column", type=str, default="prompt", help="Name of caption column.")
 args = parser.parse_args()
 
 path = pathlib.Path(args.path)
@@ -22,11 +21,7 @@ all_files = list(path.glob("*"))
 captions = list(path.glob("*.txt"))
 images = set(all_files) - set(captions)
 images = {image.stem: image for image in images}
-caption_image = {
-    caption: images.get(caption.stem)
-    for caption in captions
-    if images.get(caption.stem)
-}
+caption_image = {caption: images.get(caption.stem) for caption in captions if images.get(caption.stem)}
 
 metadata = path.joinpath("metadata.jsonl")
 
