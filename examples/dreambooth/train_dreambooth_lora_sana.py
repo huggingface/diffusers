@@ -63,6 +63,7 @@ from diffusers.utils import (
     is_wandb_available,
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
@@ -73,6 +74,9 @@ if is_wandb_available():
 check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
+
+if is_torch_npu_available():
+    torch.npu.config.allow_internal_format = False
 
 
 def save_model_card(
@@ -601,6 +605,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument("--enable_vae_tiling", action="store_true", help="Enabla vae tiling in log validation")
+    parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -924,8 +929,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -987,6 +991,13 @@ def main(args):
     transformer.to(accelerator.device, dtype=weight_dtype)
     # because Gemma2 is particularly suited for bfloat16.
     text_encoder.to(dtype=torch.bfloat16)
+
+    if args.enable_npu_flash_attention:
+        if is_torch_npu_available():
+            logger.info("npu flash attention enabled.")
+            transformer.enable_npu_flash_attention()
+        else:
+            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
     text_encoding_pipeline = SanaPipeline.from_pretrained(
