@@ -177,7 +177,7 @@ class PyramidAttentionBroadcastHook(ModelHook):
 
 def apply_pyramid_attention_broadcast(
     module: torch.nn.Module,
-    config: PyramidAttentionBroadcastConfig,
+    config: PyramidAttentionBroadcastConfig
 ):
     r"""
     Apply [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588) to a given pipeline.

@@ -75,7 +75,7 @@ class LattePipelineFastTests(
         cross_attention_block_identifiers=["transformer_blocks"],
     )
 
-    fastercache_config = FasterCacheConfig(
+    faster_cache_config = FasterCacheConfig(
         spatial_attention_block_skip_range=2,
         temporal_attention_block_skip_range=2,
         spatial_attention_timestep_skip_range=(-1, 901),

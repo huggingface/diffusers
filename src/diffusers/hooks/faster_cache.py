@@ -31,11 +31,12 @@ _FASTER_CACHE_DENOISER_HOOK = "faster_cache_denoiser"
 _FASTER_CACHE_BLOCK_HOOK = "faster_cache_block"
 _ATTENTION_CLASSES = (Attention, MochiAttention)
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = (
-    "blocks.*attn",
-    "transformer_blocks.*attn",
-    "single_transformer_blocks.*attn",
+    "^blocks.*attn",
+    "^transformer_blocks.*attn",
+    "^single_transformer_blocks.*attn"
 )
-_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks.*attn",)
+_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("^temporal_transformer_blocks.*attn",)
+_TRANSFORMER_BLOCK_IDENTIFIERS = _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS + _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS
 _UNCOND_COND_INPUT_KWARGS_IDENTIFIERS = (
     "hidden_states",
     "encoder_hidden_states",
@@ -276,9 +277,10 @@ class FasterCacheDenoiserHook(ModelHook):
             self.state.iteration > 0
             and is_within_timestep_range
             and self.state.iteration % self.unconditional_batch_skip_range != 0
+            and not self.is_guidance_distilled
         )
 
-        if should_skip_uncond and not self.is_guidance_distilled:
+        if should_skip_uncond:
             is_any_kwarg_uncond = any(k in self.uncond_cond_input_kwargs_identifiers for k in kwargs.keys())
             if is_any_kwarg_uncond:
                 logger.debug("FasterCache - Skipping unconditional branch computation")
@@ -483,7 +485,7 @@ class FasterCacheBlockHook(ModelHook):
 
 def apply_faster_cache(
     module: torch.nn.Module,
-    config: Optional[FasterCacheConfig] = None,
+    config: FasterCacheConfig
 ) -> None:
     r"""
     Applies [FasterCache](https://huggingface.co/papers/2410.19355) to a given pipeline.
@@ -514,10 +516,6 @@ def apply_faster_cache(
     >>> apply_faster_cache(pipe.transformer, config)
     ```
     """
-
-    if config is None:
-        logger.warning("No FasterCacheConfig provided. Using default configuration.")
-        config = FasterCacheConfig()
 
     if config.attention_weight_callback is None:
         # If the user has not provided a weight callback, we default to 0.5 for all timesteps.
@@ -568,7 +566,8 @@ def apply_faster_cache(
     for name, submodule in module.named_modules():
         if not isinstance(submodule, _ATTENTION_CLASSES):
             continue
-        _apply_faster_cache_on_attention_class(name, submodule, config)
+        if any(re.search(identifier, name) is not None for identifier in _TRANSFORMER_BLOCK_IDENTIFIERS):
+            _apply_faster_cache_on_attention_class(name, submodule, config)
 
 
 def _apply_faster_cache_on_denoiser(module: torch.nn.Module, config: FasterCacheConfig) -> None:
@@ -590,13 +589,10 @@ def _apply_faster_cache_on_attention_class(name: str, module: Attention, config:
     is_spatial_self_attention = (
         any(re.search(identifier, name) is not None for identifier in config.spatial_attention_block_identifiers)
         and config.spatial_attention_block_skip_range is not None
-        and not module.is_cross_attention
+        and not getattr(module, "is_cross_attention", False)
     )
     is_temporal_self_attention = (
-        any(
-            f"{identifier}." in name or identifier == name
-            for identifier in config.temporal_attention_block_identifiers
-        )
+        any(re.search(identifier, name) is not None for identifier in config.temporal_attention_block_identifiers)
         and config.temporal_attention_block_skip_range is not None
         and not module.is_cross_attention
     )
@@ -633,7 +629,7 @@ def _apply_faster_cache_on_attention_class(name: str, module: Attention, config:
     registry.register_hook(hook, _FASTER_CACHE_BLOCK_HOOK)
 
 
-# Reference: https://github.com/Vchitect/FasterCache/blob/fab32c15014636dc854948319c0a9a8d92c7acb4/scripts/latte/fastercache_sample_latte.py#L127C1-L143C39
+# Reference: https://github.com/Vchitect/FasterCache/blob/fab32c15014636dc854948319c0a9a8d92c7acb4/scripts/latte/faster_cache_sample_latte.py#L127C1-L143C39
 @torch.no_grad()
 def _split_low_high_freq(x):
     fft = torch.fft.fft2(x)

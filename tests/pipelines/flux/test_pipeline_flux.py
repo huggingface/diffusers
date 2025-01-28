@@ -7,7 +7,13 @@ import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
+from diffusers import (
+    AutoencoderKL,
+    FasterCacheConfig,
+    FlowMatchEulerDiscreteScheduler,
+    FluxPipeline,
+    FluxTransformer2DModel,
+)
 from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
@@ -40,6 +46,14 @@ class FluxPipelineFastTests(
     # there is no xformers processor for Flux
     test_xformers_attention = False
     test_layerwise_casting = True
+
+    faster_cache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
+        is_guidance_distilled=True,
+    )
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
