@@ -788,7 +788,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         if transcription is None:
             if self.text_encoder_2.config.model_type == "vits":
-                raise ValueError("Cannot forward without transcription. Please make sure to have transcription")
+                raise ValueError("Cannot forward without transcription. Please make sure to" " have transcription")
         elif transcription is not None and (
             not isinstance(transcription, str) and not isinstance(transcription, list)
         ):

@@ -413,7 +413,8 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
             if timesteps[0] >= self.config.num_train_timesteps:
                 raise ValueError(
-                    f"`timesteps` must start before `self.config.train_timesteps`: {self.config.num_train_timesteps}."
+                    f"`timesteps` must start before `self.config.train_timesteps`:"
+                    f" {self.config.num_train_timesteps}."
                 )
 
             # Raise warning if timestep schedule does not start with self.config.num_train_timesteps - 1
