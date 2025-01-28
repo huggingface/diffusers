@@ -30,7 +30,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 _FASTER_CACHE_DENOISER_HOOK = "faster_cache_denoiser"
 _FASTER_CACHE_BLOCK_HOOK = "faster_cache_block"
 _ATTENTION_CLASSES = (Attention, MochiAttention)
-
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = (
     "blocks.*attn",
     "transformer_blocks.*attn",

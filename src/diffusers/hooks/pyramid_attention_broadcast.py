@@ -26,8 +26,8 @@ from .hooks import HookRegistry, ModelHook
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+_PYRAMID_ATTENTION_BROADCAST_HOOK = "pyramid_attention_broadcast"
 _ATTENTION_CLASSES = (Attention, MochiAttention)
-
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks")
 _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
 _CROSS_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks")
@@ -311,4 +311,4 @@ def _apply_pyramid_attention_broadcast_hook(
     """
     registry = HookRegistry.check_if_exists_or_initialize(module)
     hook = PyramidAttentionBroadcastHook(timestep_skip_range, block_skip_range, current_timestep_callback)
-    registry.register_hook(hook, "pyramid_attention_broadcast")
+    registry.register_hook(hook, _PYRAMID_ATTENTION_BROADCAST_HOOK)
