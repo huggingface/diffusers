@@ -2609,7 +2609,6 @@ class FasterCacheTesterMixin:
             if not hasattr(module, "_diffusers_hook"):
                 continue
 
-
             if name == "":
                 # Root denoiser module
                 state = module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state

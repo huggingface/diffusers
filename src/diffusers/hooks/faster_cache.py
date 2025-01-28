@@ -33,7 +33,7 @@ _ATTENTION_CLASSES = (Attention, MochiAttention)
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = (
     "^blocks.*attn",
     "^transformer_blocks.*attn",
-    "^single_transformer_blocks.*attn"
+    "^single_transformer_blocks.*attn",
 )
 _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("^temporal_transformer_blocks.*attn",)
 _TRANSFORMER_BLOCK_IDENTIFIERS = _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS + _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS
@@ -483,10 +483,7 @@ class FasterCacheBlockHook(ModelHook):
         return module
 
 
-def apply_faster_cache(
-    module: torch.nn.Module,
-    config: FasterCacheConfig
-) -> None:
+def apply_faster_cache(module: torch.nn.Module, config: FasterCacheConfig) -> None:
     r"""
     Applies [FasterCache](https://huggingface.co/papers/2410.19355) to a given pipeline.
 
