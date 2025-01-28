@@ -17,7 +17,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...utils import logging
 from ..attention import BasicTransformerBlock
 from ..attention_processor import Attention, AttentionProcessor, AttnProcessor, FusedAttnProcessor2_0
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
@@ -79,6 +79,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["BasicTransformerBlock", "PatchEmbed"]
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm", "adaln_single"]
 
     @register_to_config
     def __init__(
@@ -182,10 +183,6 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
             self.caption_projection = PixArtAlphaTextProjection(
                 in_features=self.config.caption_channels, hidden_size=self.inner_dim
             )
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -387,19 +384,8 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         # 2. Blocks
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     attention_mask,
                     encoder_hidden_states,
@@ -407,7 +393,6 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
                     timestep,
                     cross_attention_kwargs,
                     None,
-                    **ckpt_kwargs,
                 )
             else:
                 hidden_states = block(

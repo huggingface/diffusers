@@ -338,16 +338,7 @@ class LTXVideoDownBlock3D(nn.Module):
 
         for i, resnet in enumerate(self.resnets):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, generator
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb, generator)
             else:
                 hidden_states = resnet(hidden_states, temb, generator)
 
@@ -438,16 +429,7 @@ class LTXVideoMidBlock3d(nn.Module):
 
         for i, resnet in enumerate(self.resnets):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, generator
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb, generator)
             else:
                 hidden_states = resnet(hidden_states, temb, generator)
 
@@ -573,16 +555,7 @@ class LTXVideoUpBlock3d(nn.Module):
 
         for i, resnet in enumerate(self.resnets):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, generator
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb, generator)
             else:
                 hidden_states = resnet(hidden_states, temb, generator)
 
@@ -697,17 +670,10 @@ class LTXVideoEncoder3d(nn.Module):
         hidden_states = self.conv_in(hidden_states)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def create_forward(*inputs):
-                    return module(*inputs)
-
-                return create_forward
-
             for down_block in self.down_blocks:
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), hidden_states)
+                hidden_states = self._gradient_checkpointing_func(down_block, hidden_states)
 
-            hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), hidden_states)
+            hidden_states = self._gradient_checkpointing_func(self.mid_block, hidden_states)
         else:
             for down_block in self.down_blocks:
                 hidden_states = down_block(hidden_states)
@@ -838,19 +804,10 @@ class LTXVideoDecoder3d(nn.Module):
         hidden_states = self.conv_in(hidden_states)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def create_forward(*inputs):
-                    return module(*inputs)
-
-                return create_forward
-
-            hidden_states = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.mid_block), hidden_states, temb
-            )
+            hidden_states = self._gradient_checkpointing_func(self.mid_block, hidden_states, temb)
 
             for up_block in self.up_blocks:
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), hidden_states, temb)
+                hidden_states = self._gradient_checkpointing_func(up_block, hidden_states, temb)
         else:
             hidden_states = self.mid_block(hidden_states, temb)
 
@@ -1016,10 +973,6 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_sample_stride_height = 448
         self.tile_sample_stride_width = 448
         self.tile_sample_stride_num_frames = 8
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (LTXVideoEncoder3d, LTXVideoDecoder3d)):
-            module.gradient_checkpointing = value
 
     def enable_tiling(
         self,

@@ -23,11 +23,15 @@ from diffusers import IFInpaintingSuperResolutionPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     floats_tensor,
     load_numpy,
     require_accelerator,
     require_hf_hub_version_greater,
-    require_torch_gpu,
+    require_torch_accelerator,
     require_transformers_version_greater,
     skip_mps,
     slow,
@@ -108,31 +112,31 @@ class IFInpaintingSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipeli
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class IFInpaintingSuperResolutionPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_if_inpainting_superresolution(self):
         pipe = IFInpaintingSuperResolutionPipeline.from_pretrained(
             "DeepFloyd/IF-II-L-v1.0", variant="fp16", torch_dtype=torch.float16
         )
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         # Super resolution test
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 
@@ -154,7 +158,7 @@ class IFInpaintingSuperResolutionPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (256, 256, 3)
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         assert mem_bytes < 12 * 10**9
 
         expected_image = load_numpy(
