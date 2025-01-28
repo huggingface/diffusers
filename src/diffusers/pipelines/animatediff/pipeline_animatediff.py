@@ -790,7 +790,7 @@ class AnimateDiffPipeline(
             height,
             width,
             prompt_embeds.dtype,
-            device,
+            'cpu',
             generator,
             latents,
         )
