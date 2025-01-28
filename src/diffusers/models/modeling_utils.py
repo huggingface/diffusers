@@ -21,12 +21,13 @@ import json
 import os
 import re
 from collections import OrderedDict
-from functools import partial, wraps
+from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import safetensors
 import torch
+import torch.utils.checkpoint
 from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
@@ -168,6 +169,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def __init__(self):
         super().__init__()
 
+        self._gradient_checkpointing_func = None
+
     def __getattr__(self, name: str) -> Any:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
         config attributes directly. See https://github.com/huggingface/diffusers/pull/3129 We need to overwrite
@@ -193,14 +196,35 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         return any(hasattr(m, "gradient_checkpointing") and m.gradient_checkpointing for m in self.modules())
 
-    def enable_gradient_checkpointing(self) -> None:
+    def enable_gradient_checkpointing(self, gradient_checkpointing_func: Optional[Callable] = None) -> None:
         """
         Activates gradient checkpointing for the current model (may be referred to as *activation checkpointing* or
         *checkpoint activations* in other frameworks).
+
+        Args:
+            gradient_checkpointing_func (`Callable`, *optional*):
+                The function to use for gradient checkpointing. If `None`, the default PyTorch checkpointing function
+                is used (`torch.utils.checkpoint.checkpoint`).
         """
         if not self._supports_gradient_checkpointing:
-            raise ValueError(f"{self.__class__.__name__} does not support gradient checkpointing.")
-        self.apply(partial(self._set_gradient_checkpointing, value=True))
+            raise ValueError(
+                f"{self.__class__.__name__} does not support gradient checkpointing. Please make sure to set the boolean attribute "
+                f"`_supports_gradient_checkpointing` to `True` in the class definition."
+            )
+
+        if gradient_checkpointing_func is None:
+
+            def _gradient_checkpointing_func(module, *args):
+                ckpt_kwargs = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                return torch.utils.checkpoint.checkpoint(
+                    module.__call__,
+                    *args,
+                    **ckpt_kwargs,
+                )
+
+            gradient_checkpointing_func = _gradient_checkpointing_func
+
+        self._set_gradient_checkpointing(enable=True, gradient_checkpointing_func=gradient_checkpointing_func)
 
     def disable_gradient_checkpointing(self) -> None:
         """
@@ -208,7 +232,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         *checkpoint activations* in other frameworks).
         """
         if self._supports_gradient_checkpointing:
-            self.apply(partial(self._set_gradient_checkpointing, value=False))
+            self._set_gradient_checkpointing(enable=False)
 
     def set_use_npu_flash_attention(self, valid: bool) -> None:
         r"""
@@ -1451,6 +1475,24 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             mem_bufs = sum([buf.nelement() * buf.element_size() for buf in self.buffers()])
             mem = mem + mem_bufs
         return mem
+
+    def _set_gradient_checkpointing(
+        self, enable: bool = True, gradient_checkpointing_func: Callable = torch.utils.checkpoint.checkpoint
+    ) -> None:
+        is_gradient_checkpointing_set = False
+
+        for name, module in self.named_modules():
+            if hasattr(module, "gradient_checkpointing"):
+                logger.debug(f"Setting `gradient_checkpointing={enable}` for '{name}'")
+                module._gradient_checkpointing_func = gradient_checkpointing_func
+                module.gradient_checkpointing = enable
+                is_gradient_checkpointing_set = True
+
+        if not is_gradient_checkpointing_set:
+            raise ValueError(
+                f"The module {self.__class__.__name__} does not support gradient checkpointing. Please make sure to "
+                f"use a module that supports gradient checkpointing by creating a boolean attribute `gradient_checkpointing`."
+            )
 
     def _convert_deprecated_attention_blocks(self, state_dict: OrderedDict) -> None:
         deprecated_attention_block_paths = []

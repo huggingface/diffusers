@@ -166,9 +166,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
 
         self.gradient_checkpointing = False
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        self.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -243,7 +240,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
             zip(self.transformer_blocks, self.temporal_transformer_blocks)
         ):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = torch.utils.checkpoint.checkpoint(
+                hidden_states = self._gradient_checkpointing_func(
                     spatial_block,
                     hidden_states,
                     None,  # attention_mask
@@ -252,7 +249,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                     timestep_spatial,
                     None,  # cross_attention_kwargs
                     None,  # class_labels
-                    use_reentrant=False,
                 )
             else:
                 hidden_states = spatial_block(
@@ -276,7 +272,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                     hidden_states = hidden_states + self.temp_pos_embed
 
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
+                    hidden_states = self._gradient_checkpointing_func(
                         temp_block,
                         hidden_states,
                         None,  # attention_mask
@@ -285,7 +281,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                         timestep_temp,
                         None,  # cross_attention_kwargs
                         None,  # class_labels
-                        use_reentrant=False,
                     )
                 else:
                     hidden_states = temp_block(
