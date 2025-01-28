@@ -592,6 +592,10 @@ class AnimateDiffPipeline(
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        context_frames: int = -1,
+        context_stride: int = 3,
+        context_overlap: int = 4,
+        context_schedule: str = "uniform"
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -793,6 +797,18 @@ class AnimateDiffPipeline(
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+
+        # 6.5 - Infinite context loop shenanigans
+        context_scheduler = get_context_scheduler(context_schedule)
+        total_steps = get_total_steps(
+            context_scheduler,
+            timesteps,
+            num_inference_steps,
+            latents.shape[2],
+            context_frames,
+            context_stride,
+            context_overlap,
+        )
 
         # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = (
