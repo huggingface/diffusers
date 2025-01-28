@@ -1417,7 +1417,7 @@ class ModelTesterMixin:
         self.assertTrue(fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint < fp32_memory_footprint)
         # NOTE: the following assertion will fail on our CI (running Tesla T4) due to bf16 using more memory than fp32.
         # On other devices, such as DGX (Ampere) and Audace (Ada), the test passes.
-        if compute_capability < 8.9:
+        if compute_capability >= 8.9:
             self.assertTrue(fp8_e4m3_bf16_max_memory < fp8_e4m3_fp32_max_memory)
         # On this dummy test case with a small model, sometimes fp8_e4m3_fp32 max memory usage is higher than fp32 by a few
         # bytes. This only happens for some models, so we allow a small tolerance.
