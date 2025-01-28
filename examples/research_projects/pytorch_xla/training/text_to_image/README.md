@@ -141,6 +141,7 @@ def main():
     mesh = xs.get_1d_mesh("data");
     xs.set_global_mesh(mesh);
     xr.initialize_cache("/tmp/", readonly=False);
+    xr.use_spmd();
     device = xm.xla_device()
     model_path = "jffacevedo/pxla_trained_model"
     pipe = StableDiffusionPipeline.from_pretrained(
