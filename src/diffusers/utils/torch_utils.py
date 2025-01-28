@@ -159,4 +159,3 @@ def get_torch_cuda_device_capability():
         return float(compute_capability)
     else:
         return None
-
