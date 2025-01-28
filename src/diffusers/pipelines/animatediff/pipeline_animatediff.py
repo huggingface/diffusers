@@ -46,6 +46,7 @@ from ..free_init_utils import FreeInitMixin
 from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
+from .context import get_context_scheduler, get_total_steps
 
 
 if is_torch_xla_available():
