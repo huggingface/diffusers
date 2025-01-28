@@ -444,23 +444,21 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
 
         ######################
         # 2. Conditional embeddings
-        # temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
-        # temb_cond, temb_uncond = temb.chunk(2)
-        # hidden_states, prompt_embeds, negative_prompt_embeds = self.patch_embed(
-        #     hidden_states, prompt_embeds, negative_prompt_embeds
-        # )
-        # hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
-        # encoder_hidden_states_cond = prompt_embeds
-        # encoder_hidden_states_uncond = negative_prompt_embeds
+        temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
+        temb_cond, temb_uncond = temb.chunk(2)
+        hidden_states, prompt_embeds, negative_prompt_embeds = self.patch_embed(
+            hidden_states, prompt_embeds, negative_prompt_embeds
+        )
+        hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
 
-        prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_0_16.pt")[None, ::]
-        negative_prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_16_32.pt")[None, ::]
-
-        hidden_states_cond = torch.load("/home/lhy/code/cogview/cp_vision_input_0_4096.pt")[None, ::]
-        hidden_states_uncond = torch.load("/home/lhy/code/cogview/cp_vision_input_4096:8192.pt")[None, ::]
-
-        temb_cond = torch.load("/home/lhy/code/cogview/time_embedding_0_1.pt")[None, ::]
-        temb_uncond = torch.load("/home/lhy/code/cogview/time_embedding_1_2.pt")[None, ::]
+        # prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_0_16.pt")[None, ::]
+        # negative_prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_16_32.pt")[None, ::]
+        #
+        # hidden_states_cond = torch.load("/home/lhy/code/cogview/cp_vision_input_0_4096.pt")[None, ::]
+        # hidden_states_uncond = torch.load("/home/lhy/code/cogview/cp_vision_input_4096:8192.pt")[None, ::]
+        #
+        # temb_cond = torch.load("/home/lhy/code/cogview/time_embedding_0_1.pt")[None, ::]
+        # temb_uncond = torch.load("/home/lhy/code/cogview/time_embedding_1_2.pt")[None, ::]
 
         encoder_hidden_states_cond = prompt_embeds
         encoder_hidden_states_uncond = negative_prompt_embeds
