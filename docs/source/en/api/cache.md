@@ -38,6 +38,33 @@ config = PyramidAttentionBroadcastConfig(
 pipe.transformer.enable_cache(config)
 ```
 
+## Faster Cache
+
+[FasterCache](https://huggingface.co/papers/2410.19355) from Zhengyao Lv, Chenyang Si, Junhao Song, Zhenyu Yang, Yu Qiao, Ziwei Liu, Kwan-Yee K. Wong.
+
+FasterCache is a method that speeds up inference in diffusion transformers by:
+- Reusing attention states between successive inference steps, due to high similarity between them
+- Skipping unconditional branch prediction used in classifier-free guidance by revealing redundancies between unconditional and conditional branch outputs for the same timestep, and therefore approximating the unconditional branch output using the conditional branch output
+
+```python
+import torch
+from diffusers import CogVideoXPipeline, FasterCacheConfig
+
+pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+config = FasterCacheConfig(
+    spatial_attention_block_skip_range=2,
+    spatial_attention_timestep_skip_range=(-1, 681),
+    current_timestep_callback=lambda: pipe.current_timestep,
+    attention_weight_callback=lambda _: 0.3,
+    unconditional_batch_skip_range=5,
+    unconditional_batch_timestep_skip_range=(-1, 781),
+    tensor_format="BFCHW",
+)
+pipe.transformer.enable_cache(config)
+```
+
 ### CacheMixin
 
 [[autodoc]] CacheMixin
@@ -47,3 +74,9 @@ pipe.transformer.enable_cache(config)
 [[autodoc]] PyramidAttentionBroadcastConfig
 
 [[autodoc]] apply_pyramid_attention_broadcast
+
+### FasterCacheConfig
+
+[[autodoc]] FasterCacheConfig
+
+[[autodoc]] apply_faster_cache
