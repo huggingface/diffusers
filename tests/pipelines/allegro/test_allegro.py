@@ -27,20 +27,20 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_hf_hub_version_greater,
-    require_torch_gpu,
+    require_torch_accelerator,
     require_transformers_version_greater,
     slow,
     torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class AllegroPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, unittest.TestCase):
     pipeline_class = AllegroPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -57,15 +57,16 @@ class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
     test_xformers_attention = False
+    test_layerwise_casting = True
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1):
         torch.manual_seed(0)
         transformer = AllegroTransformer3DModel(
             num_attention_heads=2,
             attention_head_dim=12,
             in_channels=4,
             out_channels=4,
-            num_layers=1,
+            num_layers=num_layers,
             cross_attention_dim=24,
             sample_width=8,
             sample_height=8,
@@ -332,7 +333,7 @@ class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class AllegroPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
@@ -350,7 +351,7 @@ class AllegroPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = AllegroPipeline.from_pretrained("rhymes-ai/Allegro", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         videos = pipe(

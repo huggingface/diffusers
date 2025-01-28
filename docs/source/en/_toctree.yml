@@ -79,6 +79,8 @@
 - sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
+  - local: using-diffusers/consisid
+    title: ConsisID
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
@@ -270,6 +272,8 @@
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
+      - local: api/models/consisid_transformer3d
+        title: ConsisIDTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
         title: CogView3PlusTransformer2DModel
       - local: api/models/dit_transformer2d
@@ -372,6 +376,8 @@
       title: CogVideoX
     - local: api/pipelines/cogview3
       title: CogView3
+    - local: api/pipelines/consisid
+      title: ConsisID
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
@@ -592,6 +598,8 @@
       title: Attention Processor
     - local: api/activations
       title: Custom activation functions
+    - local: api/cache
+      title: Caching methods
     - local: api/normalization
       title: Custom normalization layers
     - local: api/utilities

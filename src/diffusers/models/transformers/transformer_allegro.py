@@ -24,6 +24,7 @@ from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import AllegroAttnProcessor2_0, Attention
+from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -172,7 +173,7 @@ class AllegroTransformerBlock(nn.Module):
         return hidden_states
 
 
-class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
+class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
 
     """
@@ -222,6 +223,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm", "adaln_single"]
 
     @register_to_config
     def __init__(

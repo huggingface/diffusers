@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from typing import Optional
 
 import torch
@@ -19,13 +20,14 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.embeddings import PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..attention import BasicTransformerBlock
+from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
 
 
-class LatteTransformer3DModel(ModelMixin, ConfigMixin):
+class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
 
     """
@@ -64,6 +66,8 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         video_length (`int`, *optional*):
             The number of frames in the video-like data.
     """
+
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
 
     @register_to_config
     def __init__(

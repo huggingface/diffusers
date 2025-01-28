@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ import re
 from collections import OrderedDict
 from functools import partial, wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import safetensors
 import torch
@@ -32,6 +32,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
+from ..hooks import apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -48,6 +49,7 @@ from ..utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
+    is_peft_available,
     is_torch_version,
     logging,
 )
@@ -102,6 +104,17 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     """
     Returns the first found floating dtype in parameters if there is one, otherwise returns the last dtype it found.
     """
+    # 1. Check if we have attached any dtype modifying hooks (eg. layerwise casting)
+    if isinstance(parameter, nn.Module):
+        for name, submodule in parameter.named_modules():
+            if not hasattr(submodule, "_diffusers_hook"):
+                continue
+            registry = submodule._diffusers_hook
+            hook = registry.get_hook("layerwise_casting")
+            if hook is not None:
+                return hook.compute_dtype
+
+    # 2. If no dtype modifying hooks are attached, return the dtype of the first floating point parameter/buffer
     last_dtype = None
     for param in parameter.parameters():
         last_dtype = param.dtype
@@ -150,6 +163,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _keys_to_ignore_on_load_unexpected = None
     _no_split_modules = None
     _keep_in_fp32_modules = None
+    _skip_layerwise_casting_patterns = None
 
     def __init__(self):
         super().__init__()
@@ -313,6 +327,90 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
         """
         self.set_use_memory_efficient_attention_xformers(False)
+
+    def enable_layerwise_casting(
+        self,
+        storage_dtype: torch.dtype = torch.float8_e4m3fn,
+        compute_dtype: Optional[torch.dtype] = None,
+        skip_modules_pattern: Optional[Tuple[str, ...]] = None,
+        skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+        non_blocking: bool = False,
+    ) -> None:
+        r"""
+        Activates layerwise casting for the current model.
+
+        Layerwise casting is a technique that casts the model weights to a lower precision dtype for storage but
+        upcasts them on-the-fly to a higher precision dtype for computation. This process can significantly reduce the
+        memory footprint from model weights, but may lead to some quality degradation in the outputs. Most degradations
+        are negligible, mostly stemming from weight casting in normalization and modulation layers.
+
+        By default, most models in diffusers set the `_skip_layerwise_casting_patterns` attribute to ignore patch
+        embedding, positional embedding and normalization layers. This is because these layers are most likely
+        precision-critical for quality. If you wish to change this behavior, you can set the
+        `_skip_layerwise_casting_patterns` attribute to `None`, or call
+        [`~hooks.layerwise_casting.apply_layerwise_casting`] with custom arguments.
+
+        Example:
+            Using [`~models.ModelMixin.enable_layerwise_casting`]:
+
+            ```python
+            >>> from diffusers import CogVideoXTransformer3DModel
+
+            >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
+            ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
+            ... )
+
+            >>> # Enable layerwise casting via the model, which ignores certain modules by default
+            >>> transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+            ```
+
+        Args:
+            storage_dtype (`torch.dtype`):
+                The dtype to which the model should be cast for storage.
+            compute_dtype (`torch.dtype`):
+                The dtype to which the model weights should be cast during the forward pass.
+            skip_modules_pattern (`Tuple[str, ...]`, *optional*):
+                A list of patterns to match the names of the modules to skip during the layerwise casting process. If
+                set to `None`, default skip patterns are used to ignore certain internal layers of modules and PEFT
+                layers.
+            skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
+                A list of module classes to skip during the layerwise casting process.
+            non_blocking (`bool`, *optional*, defaults to `False`):
+                If `True`, the weight casting operations are non-blocking.
+        """
+
+        user_provided_patterns = True
+        if skip_modules_pattern is None:
+            from ..hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
+
+            skip_modules_pattern = DEFAULT_SKIP_MODULES_PATTERN
+            user_provided_patterns = False
+        if self._keep_in_fp32_modules is not None:
+            skip_modules_pattern += tuple(self._keep_in_fp32_modules)
+        if self._skip_layerwise_casting_patterns is not None:
+            skip_modules_pattern += tuple(self._skip_layerwise_casting_patterns)
+        skip_modules_pattern = tuple(set(skip_modules_pattern))
+
+        if is_peft_available() and not user_provided_patterns:
+            # By default, we want to skip all peft layers because they have a very low memory footprint.
+            # If users want to apply layerwise casting on peft layers as well, they can utilize the
+            # `~diffusers.hooks.layerwise_casting.apply_layerwise_casting` function which provides
+            # them with more flexibility and control.
+
+            from peft.tuners.loha.layer import LoHaLayer
+            from peft.tuners.lokr.layer import LoKrLayer
+            from peft.tuners.lora.layer import LoraLayer
+
+            for layer in (LoHaLayer, LoKrLayer, LoraLayer):
+                skip_modules_pattern += tuple(layer.adapter_layer_names)
+
+        if compute_dtype is None:
+            logger.info("`compute_dtype` not provided when enabling layerwise casting. Using dtype of the model.")
+            compute_dtype = self.dtype
+
+        apply_layerwise_casting(
+            self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
+        )
 
     def save_pretrained(
         self,

@@ -28,6 +28,7 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "hooks": [],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
@@ -75,6 +76,13 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
+    _import_structure["hooks"].extend(
+        [
+            "HookRegistry",
+            "PyramidAttentionBroadcastConfig",
+            "apply_pyramid_attention_broadcast",
+        ]
+    )
     _import_structure["models"].extend(
         [
             "AllegroTransformer3DModel",
@@ -90,8 +98,10 @@ else:
             "AutoencoderKLTemporalDecoder",
             "AutoencoderOobleck",
             "AutoencoderTiny",
+            "CacheMixin",
             "CogVideoXTransformer3DModel",
             "CogView3PlusTransformer2DModel",
+            "ConsisIDTransformer3DModel",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ControlNetUnionModel",
@@ -275,6 +285,7 @@ else:
             "CogVideoXPipeline",
             "CogVideoXVideoToVideoPipeline",
             "CogView3PlusPipeline",
+            "ConsisIDPipeline",
             "CycleDiffusionPipeline",
             "FluxControlImg2ImgPipeline",
             "FluxControlInpaintPipeline",
@@ -586,6 +597,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .hooks import HookRegistry, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -600,8 +612,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
             AutoencoderTiny,
+            CacheMixin,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
+            ConsisIDTransformer3DModel,
             ConsistencyDecoderVAE,
             ControlNetModel,
             ControlNetUnionModel,
@@ -764,6 +778,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXPipeline,
             CogVideoXVideoToVideoPipeline,
             CogView3PlusPipeline,
+            ConsisIDPipeline,
             CycleDiffusionPipeline,
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
