@@ -1283,6 +1283,40 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
     x = torch.cat([t, h, w], dim=-1)
     return x
 
+def apply_rotary_emb_megatron(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+    """Apply rotary position embeddings to input tensor.
+
+    Args:
+        x: Input tensor of shape [seq_len, batch_size, n_heads, head_dim]
+        freqs: Frequency tensor of shape [seq_len, 1, 1, head_dim//2]
+
+    Returns:
+        Tensor with rotary position embeddings applied
+    """
+    batch_size, n_heads, seq_len, rot_dim = x.shape
+
+    # Reshape x to have rot_dim as the last dimension
+    x_rot, x_pass = x.chunk(2, dim=-1)
+
+    # Apply rotary embeddings
+    # First calculate cos and sin
+    cos, sin = freqs.chunk(2, dim=-1)
+    cos, sin = torch.cos(cos), torch.sin(sin)
+
+    # Rotate x_rot
+    x_rot_cos = x_rot * cos
+    # Create rotated version of x_rot by shifting rot_dim/2 positions
+    x_rot_shifted = torch.cat([-x_rot[..., rot_dim//2:], x_rot[..., :rot_dim//2]], dim=-1)
+    x_rot_sin = x_rot_shifted * sin
+
+    # Combine
+    x_rot = x_rot_cos + x_rot_sin
+
+    # Concatenate back with x_pass
+    x_out = torch.cat([x_rot, x_pass], dim=-1)
+
+    return x_out
+
 
 class FluxPosEmbed(nn.Module):
     # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
