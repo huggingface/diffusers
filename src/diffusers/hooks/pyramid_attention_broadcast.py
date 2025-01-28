@@ -87,7 +87,7 @@ class PyramidAttentionBroadcastConfig:
 
     def __repr__(self) -> str:
         return (
-            f"PyramidAttentionBroadcastConfig("
+            f"PyramidAttentionBroadcastConfig(\n"
             f"  spatial_attention_block_skip_range={self.spatial_attention_block_skip_range},\n"
             f"  temporal_attention_block_skip_range={self.temporal_attention_block_skip_range},\n"
             f"  cross_attention_block_skip_range={self.cross_attention_block_skip_range},\n"

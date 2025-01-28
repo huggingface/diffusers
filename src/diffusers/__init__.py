@@ -78,8 +78,10 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["hooks"].extend(
         [
+            "FasterCacheConfig",
             "HookRegistry",
             "PyramidAttentionBroadcastConfig",
+            "apply_faster_cache",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -287,7 +289,6 @@ else:
             "CogView3PlusPipeline",
             "ConsisIDPipeline",
             "CycleDiffusionPipeline",
-            "FasterCacheConfig",
             "FluxControlImg2ImgPipeline",
             "FluxControlInpaintPipeline",
             "FluxControlNetImg2ImgPipeline",
@@ -434,7 +435,6 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
-            "apply_fastercache",
         ]
     )
 
@@ -599,7 +599,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .hooks import HookRegistry, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+        from .hooks import (
+            FasterCacheConfig,
+            HookRegistry,
+            PyramidAttentionBroadcastConfig,
+            apply_faster_cache,
+            apply_pyramid_attention_broadcast,
+        )
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -782,7 +788,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView3PlusPipeline,
             ConsisIDPipeline,
             CycleDiffusionPipeline,
-            FasterCacheConfig,
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
             FluxControlNetImg2ImgPipeline,
@@ -927,7 +932,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-            apply_fastercache,
         )
 
     try:
