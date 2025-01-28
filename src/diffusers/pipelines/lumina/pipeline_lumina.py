@@ -396,8 +396,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}."
+            )
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -806,10 +808,11 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                     # This would be a good case for the `match` statement (Python 3.10+)
                     is_mps = latent_model_input.device.type == "mps"
+                    is_npu = latent_model_input.device.type == "npu"
                     if isinstance(current_timestep, float):
-                        dtype = torch.float32 if is_mps else torch.float64
+                        dtype = torch.float32 if (is_mps or is_npu) else torch.float64
                     else:
-                        dtype = torch.int32 if is_mps else torch.int64
+                        dtype = torch.int32 if (is_mps or is_npu) else torch.int64
                     current_timestep = torch.tensor(
                         [current_timestep],
                         dtype=dtype,
