@@ -31,7 +31,7 @@ class ModelHook:
     _is_stateful = False
 
     def __init__(self):
-        self.fn_ref: "FunctionReference" = None
+        self.fn_ref: "HookFunctionReference" = None
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
@@ -100,12 +100,27 @@ class ModelHook:
         return module
 
 
-class FunctionReference:
+class HookFunctionReference:
     def __init__(self) -> None:
+        """A container class that maintains mutable references to forward pass functions in a hook chain.
+
+        Its mutable nature allows the hook system to modify the execution chain dynamically without rebuilding the
+        entire forward pass structure.
+
+        Attributes:
+            pre_forward: A callable that processes inputs before the main forward pass.
+            post_forward: A callable that processes outputs after the main forward pass.
+            forward: The current forward function in the hook chain.
+            original_forward: The original forward function, stored when a hook provides a custom new_forward.
+
+        The class enables hook removal by allowing updates to the forward chain through reference modification rather
+        than requiring reconstruction of the entire chain. When a hook is removed, only the relevant references need to
+        be updated, preserving the execution order of the remaining hooks.
+        """
         self.pre_forward = None
         self.post_forward = None
-        self.old_forward = None
-        self.overwritten_forward = None
+        self.forward = None
+        self.original_forward = None
 
 
 class HookRegistry:
@@ -127,24 +142,24 @@ class HookRegistry:
 
         self._module_ref = hook.initialize_hook(self._module_ref)
 
-        def create_new_forward(function_reference: FunctionReference):
+        def create_new_forward(function_reference: HookFunctionReference):
             def new_forward(module, *args, **kwargs):
                 args, kwargs = function_reference.pre_forward(module, *args, **kwargs)
-                output = function_reference.old_forward(*args, **kwargs)
+                output = function_reference.forward(*args, **kwargs)
                 return function_reference.post_forward(module, output)
 
             return new_forward
 
         forward = self._module_ref.forward
 
-        fn_ref = FunctionReference()
+        fn_ref = HookFunctionReference()
         fn_ref.pre_forward = hook.pre_forward
         fn_ref.post_forward = hook.post_forward
-        fn_ref.old_forward = forward
+        fn_ref.forward = forward
 
         if hasattr(hook, "new_forward"):
-            fn_ref.overwritten_forward = forward
-            fn_ref.old_forward = functools.update_wrapper(
+            fn_ref.original_forward = forward
+            fn_ref.forward = functools.update_wrapper(
                 functools.partial(hook.new_forward, self._module_ref), hook.new_forward
             )
 
@@ -164,18 +179,19 @@ class HookRegistry:
     def remove_hook(self, name: str, recurse: bool = True) -> None:
         num_hooks = len(self._hook_order)
         if name in self.hooks.keys():
+            num_hooks = len(self._hook_order)
             hook = self.hooks[name]
             index = self._hook_order.index(name)
             fn_ref = self._fn_refs[index]
 
-            old_forward = fn_ref.old_forward
-            if fn_ref.overwritten_forward is not None:
-                old_forward = fn_ref.overwritten_forward
+            old_forward = fn_ref.forward
+            if fn_ref.original_forward is not None:
+                old_forward = fn_ref.original_forward
 
             if index == num_hooks - 1:
                 self._module_ref.forward = old_forward
             else:
-                self._fn_refs[index + 1].old_forward = old_forward
+                self._fn_refs[index + 1].forward = old_forward
 
             self._module_ref = hook.deinitalize_hook(self._module_ref)
             del self.hooks[name]
