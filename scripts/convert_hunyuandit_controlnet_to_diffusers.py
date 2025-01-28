@@ -21,9 +21,9 @@ def main(args):
     model_config = HunyuanDiT2DControlNetModel.load_config(
         "Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers", subfolder="transformer"
     )
-    model_config["use_style_cond_and_image_meta_size"] = (
-        args.use_style_cond_and_image_meta_size
-    )  ### version <= v1.1: True; version >= v1.2: False
+    model_config[
+        "use_style_cond_and_image_meta_size"
+    ] = args.use_style_cond_and_image_meta_size  ### version <= v1.1: True; version >= v1.2: False
     print(model_config)
 
     for key in state_dict:

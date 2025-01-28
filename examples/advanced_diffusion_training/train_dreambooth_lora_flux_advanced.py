@@ -818,9 +818,9 @@ class TokenEmbeddingsHandler:
         idx = 0
         for tokenizer, text_encoder in zip(self.tokenizers, self.text_encoders):
             assert isinstance(inserting_toks, list), "inserting_toks should be a list of strings."
-            assert all(isinstance(tok, str) for tok in inserting_toks), (
-                "All elements in inserting_toks should be strings."
-            )
+            assert all(
+                isinstance(tok, str) for tok in inserting_toks
+            ), "All elements in inserting_toks should be strings."
 
             self.inserting_toks = inserting_toks
             special_tokens_dict = {"additional_special_tokens": self.inserting_toks}
@@ -1683,7 +1683,7 @@ def main(args):
         lora_state_dict = FluxPipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
-            f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
+            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
         }
         transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
         incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")

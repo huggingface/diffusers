@@ -13,14 +13,15 @@ def main(args):
             state_dict = state_dict[args.load_key]
         except KeyError:
             raise KeyError(
-                f"{args.load_key} not found in the checkpoint.Please load from the following keys:{state_dict.keys()}"
+                f"{args.load_key} not found in the checkpoint."
+                f"Please load from the following keys:{state_dict.keys()}"
             )
 
     device = "cuda"
     model_config = HunyuanDiT2DModel.load_config("Tencent-Hunyuan/HunyuanDiT-Diffusers", subfolder="transformer")
-    model_config["use_style_cond_and_image_meta_size"] = (
-        args.use_style_cond_and_image_meta_size
-    )  ### version <= v1.1: True; version >= v1.2: False
+    model_config[
+        "use_style_cond_and_image_meta_size"
+    ] = args.use_style_cond_and_image_meta_size  ### version <= v1.1: True; version >= v1.2: False
 
     # input_size -> sample_size, text_dim -> cross_attention_dim
     for key in state_dict:

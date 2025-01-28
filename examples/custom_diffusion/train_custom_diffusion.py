@@ -731,18 +731,18 @@ def main(args):
             if not class_images_dir.exists():
                 class_images_dir.mkdir(parents=True, exist_ok=True)
             if args.real_prior:
-                assert (class_images_dir / "images").exists(), (
-                    f'Please run: python retrieve.py --class_prompt "{concept["class_prompt"]}" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}'
-                )
-                assert len(list((class_images_dir / "images").iterdir())) == args.num_class_images, (
-                    f'Please run: python retrieve.py --class_prompt "{concept["class_prompt"]}" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}'
-                )
-                assert (class_images_dir / "caption.txt").exists(), (
-                    f'Please run: python retrieve.py --class_prompt "{concept["class_prompt"]}" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}'
-                )
-                assert (class_images_dir / "images.txt").exists(), (
-                    f'Please run: python retrieve.py --class_prompt "{concept["class_prompt"]}" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}'
-                )
+                assert (
+                    class_images_dir / "images"
+                ).exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
+                assert (
+                    len(list((class_images_dir / "images").iterdir())) == args.num_class_images
+                ), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
+                assert (
+                    class_images_dir / "caption.txt"
+                ).exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
+                assert (
+                    class_images_dir / "images.txt"
+                ).exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
                 concept["class_prompt"] = os.path.join(class_images_dir, "caption.txt")
                 concept["class_data_dir"] = os.path.join(class_images_dir, "images.txt")
                 args.concepts_list[i] = concept
