@@ -33,7 +33,6 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
-from ..hooks import apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -402,6 +401,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
         """
+        from ..hooks import apply_layerwise_casting
 
         user_provided_patterns = True
         if skip_modules_pattern is None:
