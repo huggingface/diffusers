@@ -27,7 +27,12 @@ from ..test_pipelines_common import (
 
 
 class FluxPipelineFastTests(
-    unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin):
+    unittest.TestCase,
+    PipelineTesterMixin,
+    FluxIPAdapterTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    FasterCacheTesterMixin,
+):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])

@@ -737,7 +737,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
         # Offload all models
         self.maybe_free_model_hooks()
-        reset_stateful_hooks(self.transformer, recurse=True)
 
         if not return_dict:
             return (video,)

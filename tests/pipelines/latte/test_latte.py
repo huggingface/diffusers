@@ -40,13 +40,20 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import FasterCacheTesterMixin, PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, to_np
+from ..test_pipelines_common import (
+    FasterCacheTesterMixin,
+    PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    to_np,
+)
 
 
 enable_full_determinism()
 
 
-class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase):
+class LattePipelineFastTests(
+    PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase
+):
     pipeline_class = LattePipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
