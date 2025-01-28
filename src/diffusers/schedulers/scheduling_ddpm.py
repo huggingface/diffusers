@@ -142,7 +142,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             The final `beta` value.
         beta_schedule (`str`, defaults to `"linear"`):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+            `linear`, `scaled_linear`, `squaredcos_cap_v2`, or `sigmoid`.
         trained_betas (`np.ndarray`, *optional*):
             An array of betas to pass directly to the constructor without using `beta_start` and `beta_end`.
         variance_type (`str`, defaults to `"fixed_small"`):

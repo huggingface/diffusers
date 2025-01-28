@@ -31,8 +31,6 @@ from ..attention_processor import (
 from ..embeddings import TextImageProjection, TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..unets.unet_2d_blocks import (
-    CrossAttnDownBlock2D,
-    DownBlock2D,
     UNetMidBlock2D,
     UNetMidBlock2DCrossAttn,
     get_down_block,
@@ -658,10 +656,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         reversed_slice_size = list(reversed(slice_size))
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
-
-    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-            module.gradient_checkpointing = value
 
     def forward(
         self,

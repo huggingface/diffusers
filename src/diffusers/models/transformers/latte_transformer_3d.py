@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from typing import Optional
 
 import torch
@@ -19,13 +20,14 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.embeddings import PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..attention import BasicTransformerBlock
+from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
 
 
-class LatteTransformer3DModel(ModelMixin, ConfigMixin):
+class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
 
     """
@@ -164,9 +166,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.gradient_checkpointing = False
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        self.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -241,7 +240,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
             zip(self.transformer_blocks, self.temporal_transformer_blocks)
         ):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = torch.utils.checkpoint.checkpoint(
+                hidden_states = self._gradient_checkpointing_func(
                     spatial_block,
                     hidden_states,
                     None,  # attention_mask
@@ -250,7 +249,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                     timestep_spatial,
                     None,  # cross_attention_kwargs
                     None,  # class_labels
-                    use_reentrant=False,
                 )
             else:
                 hidden_states = spatial_block(
@@ -274,7 +272,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states = hidden_states + self.temp_pos_embed
 
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
+                    hidden_states = self._gradient_checkpointing_func(
                         temp_block,
                         hidden_states,
                         None,  # attention_mask
@@ -283,7 +281,6 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                         timestep_temp,
                         None,  # cross_attention_kwargs
                         None,  # class_labels
-                        use_reentrant=False,
                     )
                 else:
                     hidden_states = temp_block(
