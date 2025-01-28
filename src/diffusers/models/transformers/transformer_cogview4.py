@@ -170,8 +170,8 @@ class CogView4TransformerBlock(nn.Module):
 
         ##############################################################
         hidden_states, encoder_hidden_states = (
-            hidden_states[:, :encoder_hidden_states_len],
             hidden_states[:, encoder_hidden_states_len:],
+            hidden_states[:, :encoder_hidden_states_len],
         )
         return hidden_states, encoder_hidden_states
 
@@ -240,6 +240,8 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
             embed_dim=self.config.attention_head_dim, max_h=self.max_h, max_w=self.max_w, rotary_base=10000
         )
 
+        self.layernorm = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-5)
+
         self.patch_embed = CogView4PatchEmbed(
             in_channels=in_channels,
             hidden_size=self.inner_dim,
@@ -267,11 +269,15 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
             ]
         )
 
+        ######################################
         self.norm_out = AdaLayerNormContinuous(
             embedding_dim=self.inner_dim,
             conditioning_embedding_dim=time_embed_dim,
             elementwise_affine=False,
         )
+        self.adaln_final = self.norm_out.linear
+        ######################################
+
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
@@ -484,14 +490,28 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
                     image_rotary_emb=image_rotary_emb,
                 )
 
-        hidden_states_cond, encoder_hidden_states_cond = (
-            self.norm_out(hidden_states_cond, temb_cond),
-            self.norm_out(encoder_hidden_states_cond, temb_cond),
-        )
-        hidden_states_uncond, encoder_hidden_states_uncond = (
-            self.norm_out(hidden_states_uncond, temb_uncond),
-            self.norm_out(encoder_hidden_states_uncond, temb_uncond),
-        )
+        #################################################
+        # hidden_states_cond, encoder_hidden_states_cond = (
+        #     self.norm_out(hidden_states_cond, temb_cond),
+        #     self.norm_out(encoder_hidden_states_cond, temb_cond),
+        # )
+        # hidden_states_uncond, encoder_hidden_states_uncond = (
+        #     self.norm_out(hidden_states_uncond, temb_uncond),
+        #     self.norm_out(encoder_hidden_states_uncond, temb_uncond),
+        # )
+
+        hidden_states_cond = self.layernorm(hidden_states_cond)
+        hidden_states_uncond = self.layernorm(hidden_states_uncond)
+        encoder_hidden_states_cond = self.layernorm(encoder_hidden_states_cond)
+        encoder_hidden_states_uncond = self.layernorm(encoder_hidden_states_uncond)
+
+        shift_cond, scale_cond = self.adaln_final(temb_cond).chunk(2, dim=-1)
+        shift_uncond, scale_uncond = self.adaln_final(temb_uncond).chunk(2, dim=-1)
+
+        hidden_states_cond = hidden_states_cond * (1 + scale_cond) + shift_cond
+        hidden_states_uncond = hidden_states_uncond * (1 + scale_uncond) + shift_uncond
+        #################################################
+
         hidden_states_cond = self.proj_out(hidden_states_cond)
         hidden_states_uncond = self.proj_out(hidden_states_uncond)
 
