@@ -103,17 +103,40 @@ def convert_cogview4_transformer_checkpoint_to_diffusers(ckpt_path):
         new_state_dict[block_prefix + "norm1.linear.weight"] = original_state_dict.pop(adaln_prefix + "1.weight")
         new_state_dict[block_prefix + "norm1.linear.bias"] = original_state_dict.pop(adaln_prefix + "1.bias")
 
+        # qkv_weight = original_state_dict.pop(old_prefix + "attention.query_key_value.weight")
+        # qkv_bias = original_state_dict.pop(old_prefix + "attention.query_key_value.bias")
+        # q, k, v = qkv_weight.chunk(3, dim=0)
+        # q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
+        #
+        # new_state_dict[block_prefix + "attn1.to_q.weight"] = q
+        # new_state_dict[block_prefix + "attn1.to_q.bias"] = q_bias
+        # new_state_dict[block_prefix + "attn1.to_k.weight"] = k
+        # new_state_dict[block_prefix + "attn1.to_k.bias"] = k_bias
+        # new_state_dict[block_prefix + "attn1.to_v.weight"] = v
+        # new_state_dict[block_prefix + "attn1.to_v.bias"] = v_bias
+
         qkv_weight = original_state_dict.pop(old_prefix + "attention.query_key_value.weight")
         qkv_bias = original_state_dict.pop(old_prefix + "attention.query_key_value.bias")
+
+        num_heads = 32
+        hidden_dim = 4096
+        head_dim = qkv_weight.shape[0] // (3 * num_heads)
+        qkv_weight = qkv_weight.view(num_heads, 3, head_dim, hidden_dim)
+        qkv_bias = qkv_bias.view(num_heads, 3, head_dim)
+
+        qkv_weight = qkv_weight.permute(1, 0, 2, 3)  # (3, num_heads, head_dim, hidden_dim)
+        qkv_bias = qkv_bias.permute(1, 0, 2)  # (3, num_heads, head_dim)
+
         q, k, v = qkv_weight.chunk(3, dim=0)
         q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
 
-        new_state_dict[block_prefix + "attn1.to_q.weight"] = q
-        new_state_dict[block_prefix + "attn1.to_q.bias"] = q_bias
-        new_state_dict[block_prefix + "attn1.to_k.weight"] = k
-        new_state_dict[block_prefix + "attn1.to_k.bias"] = k_bias
-        new_state_dict[block_prefix + "attn1.to_v.weight"] = v
-        new_state_dict[block_prefix + "attn1.to_v.bias"] = v_bias
+        new_state_dict[block_prefix + "attn1.to_q.weight"] = q.squeeze(0).reshape(num_heads * head_dim, hidden_dim)
+        new_state_dict[block_prefix + "attn1.to_q.bias"] = q_bias.squeeze(0).reshape(num_heads * head_dim)
+        new_state_dict[block_prefix + "attn1.to_k.weight"] = k.squeeze(0).reshape(num_heads * head_dim, hidden_dim)
+        new_state_dict[block_prefix + "attn1.to_k.bias"] = k_bias.squeeze(0).reshape(num_heads * head_dim)
+        new_state_dict[block_prefix + "attn1.to_v.weight"] = v.squeeze(0).reshape(num_heads * head_dim, hidden_dim)
+        new_state_dict[block_prefix + "attn1.to_v.bias"] = v_bias.squeeze(0).reshape(num_heads * head_dim)
+
 
         new_state_dict[block_prefix + "attn1.to_out.0.weight"] = original_state_dict.pop(
             old_prefix + "attention.dense.weight"
