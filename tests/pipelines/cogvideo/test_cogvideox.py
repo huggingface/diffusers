@@ -24,7 +24,7 @@ from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransf
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -33,6 +33,7 @@ from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PA
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
     PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
     to_np,
@@ -42,7 +43,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class CogVideoXPipelineFastTests(PipelineTesterMixin, FasterCacheTesterMixin, unittest.TestCase):
+class CogVideoXPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase):
     pipeline_class = CogVideoXPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -59,6 +60,7 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, FasterCacheTesterMixin, un
         ]
     )
     test_xformers_attention = False
+    test_layerwise_casting = True
 
     def get_dummy_components(self, num_layers: int = 1):
         torch.manual_seed(0)
@@ -322,7 +324,7 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, FasterCacheTesterMixin, un
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class CogVideoXPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
@@ -340,7 +342,7 @@ class CogVideoXPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         videos = pipe(

@@ -310,7 +310,7 @@ class PixArtAlphaControlnetPipeline(DiffusionPipeline):
             controlnet=controlnet,
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.control_image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
@@ -1031,10 +1031,11 @@ class PixArtAlphaControlnetPipeline(DiffusionPipeline):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                     # This would be a good case for the `match` statement (Python 3.10+)
                     is_mps = latent_model_input.device.type == "mps"
+                    is_npu = latent_model_input.device.type == "npu"
                     if isinstance(current_timestep, float):
-                        dtype = torch.float32 if is_mps else torch.float64
+                        dtype = torch.float32 if (is_mps or is_npu) else torch.float64
                     else:
-                        dtype = torch.int32 if is_mps else torch.int64
+                        dtype = torch.int32 if (is_mps or is_npu) else torch.int64
                     current_timestep = torch.tensor([current_timestep], dtype=dtype, device=latent_model_input.device)
                 elif len(current_timestep.shape) == 0:
                     current_timestep = current_timestep[None].to(latent_model_input.device)

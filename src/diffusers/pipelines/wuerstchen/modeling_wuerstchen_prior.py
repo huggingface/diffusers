@@ -29,7 +29,6 @@ from ...models.attention_processor import (
     AttnProcessor,
 )
 from ...models.modeling_utils import ModelMixin
-from ...utils import is_torch_version
 from .modeling_wuerstchen_common import AttnBlock, ResBlock, TimestepBlock, WuerstchenLayerNorm
 
 
@@ -138,9 +137,6 @@ class WuerstchenPrior(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
 
         self.set_attn_processor(processor)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        self.gradient_checkpointing = value
-
     def gen_r_embedding(self, r, max_positions=10000):
         r = r * max_positions
         half_dim = self.c_r // 2
@@ -159,33 +155,13 @@ class WuerstchenPrior(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         r_embed = self.gen_r_embedding(r)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module(*inputs)
-
-                return custom_forward
-
-            if is_torch_version(">=", "1.11.0"):
-                for block in self.blocks:
-                    if isinstance(block, AttnBlock):
-                        x = torch.utils.checkpoint.checkpoint(
-                            create_custom_forward(block), x, c_embed, use_reentrant=False
-                        )
-                    elif isinstance(block, TimestepBlock):
-                        x = torch.utils.checkpoint.checkpoint(
-                            create_custom_forward(block), x, r_embed, use_reentrant=False
-                        )
-                    else:
-                        x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), x, use_reentrant=False)
-            else:
-                for block in self.blocks:
-                    if isinstance(block, AttnBlock):
-                        x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), x, c_embed)
-                    elif isinstance(block, TimestepBlock):
-                        x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), x, r_embed)
-                    else:
-                        x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), x)
+            for block in self.blocks:
+                if isinstance(block, AttnBlock):
+                    x = self._gradient_checkpointing_func(block, x, c_embed)
+                elif isinstance(block, TimestepBlock):
+                    x = self._gradient_checkpointing_func(block, x, r_embed)
+                else:
+                    x = self._gradient_checkpointing_func(block, x)
         else:
             for block in self.blocks:
                 if isinstance(block, AttnBlock):

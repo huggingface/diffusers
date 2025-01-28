@@ -206,9 +206,6 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        slice = [round(x, 4) for x in image_slice.flatten().tolist()]
-        print(",".join([str(x) for x in slice]))
-
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.7417, 0.3842, 0.4732, 0.5776, 0.5891, 0.5139, 0.4052, 0.5673, 0.4986])
 

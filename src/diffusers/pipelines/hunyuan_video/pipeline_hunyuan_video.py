@@ -24,14 +24,22 @@ from ...loaders import HunyuanVideoLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
 from ...models.hooks import reset_stateful_hooks
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HunyuanVideoPipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -185,12 +193,8 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
             tokenizer_2=tokenizer_2,
         )
 
-        self.vae_scale_factor_temporal = (
-            self.vae.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
-        )
-        self.vae_scale_factor_spatial = (
-            self.vae.spatial_compression_ratio if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     def _get_llama_prompt_embeds(
@@ -454,6 +458,10 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
         return self._attention_kwargs
 
     @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -673,6 +681,9 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         self._current_timestep = None
 

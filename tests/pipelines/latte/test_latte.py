@@ -28,6 +28,7 @@ from diffusers import (
     FasterCacheConfig,
     LattePipeline,
     LatteTransformer3DModel,
+    PyramidAttentionBroadcastConfig,
 )
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
@@ -39,13 +40,13 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import FasterCacheTesterMixin, PipelineTesterMixin, to_np
+from ..test_pipelines_common import FasterCacheTesterMixin, PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class LattePipelineFastTests(PipelineTesterMixin, FasterCacheTesterMixin, unittest.TestCase):
+class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase):
     pipeline_class = LattePipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -53,6 +54,19 @@ class LattePipelineFastTests(PipelineTesterMixin, FasterCacheTesterMixin, unitte
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     required_optional_params = PipelineTesterMixin.required_optional_params
+    test_layerwise_casting = True
+
+    pab_config = PyramidAttentionBroadcastConfig(
+        spatial_attention_block_skip_range=2,
+        temporal_attention_block_skip_range=2,
+        cross_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(100, 700),
+        temporal_attention_timestep_skip_range=(100, 800),
+        cross_attention_timestep_skip_range=(100, 800),
+        spatial_attention_block_identifiers=["transformer_blocks"],
+        temporal_attention_block_identifiers=["temporal_transformer_blocks"],
+        cross_attention_block_identifiers=["transformer_blocks"],
+    )
 
     fastercache_config = FasterCacheConfig(
         spatial_attention_block_skip_range=2,

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -122,7 +122,6 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
 
         for _ in range(args.num_validation_images):
             with autocast_ctx:
-                # need to fix in pipeline_flux_controlnet
                 image = pipeline(
                     prompt=validation_prompt,
                     control_image=validation_image,
@@ -159,7 +158,7 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
                 images = log["images"]
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
-                formatted_images.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
+                formatted_images.append(wandb.Image(validation_image, caption="Conditioning"))
                 for image in images:
                     image = wandb.Image(image, caption=validation_prompt)
                     formatted_images.append(image)
@@ -188,7 +187,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     model_description = f"""
-# control-lora-{repo_id}
+# flux-control-{repo_id}
 
 These are Control weights trained on {base_model} with new type of conditioning.
 {img_str}
@@ -434,7 +433,7 @@ def parse_args(input_args=None):
         "--conditioning_image_column",
         type=str,
         default="conditioning_image",
-        help="The column of the dataset containing the controlnet conditioning image.",
+        help="The column of the dataset containing the control conditioning image.",
     )
     parser.add_argument(
         "--caption_column",
@@ -442,6 +441,7 @@ def parse_args(input_args=None):
         default="text",
         help="The column of the dataset containing a caption or a list of captions.",
     )
+    parser.add_argument("--log_dataset_samples", action="store_true", help="Whether to log somple dataset samples.")
     parser.add_argument(
         "--max_train_samples",
         type=int,
@@ -468,7 +468,7 @@ def parse_args(input_args=None):
         default=None,
         nargs="+",
         help=(
-            "A set of paths to the controlnet conditioning image be evaluated every `--validation_steps`"
+            "A set of paths to the control conditioning image be evaluated every `--validation_steps`"
             " and logged to `--report_to`. Provide either a matching number of `--validation_prompt`s, a"
             " a single `--validation_prompt` to be used with all `--validation_image`s, or a single"
             " `--validation_image` that will be used with all `--validation_prompt`s."
@@ -505,7 +505,11 @@ def parse_args(input_args=None):
         default=None,
         help="Path to the jsonl file containing the training data.",
     )
-
+    parser.add_argument(
+        "--only_target_transformer_blocks",
+        action="store_true",
+        help="If we should only target the transformer blocks to train along with the input layer (`x_embedder`).",
+    )
     parser.add_argument(
         "--guidance_scale",
         type=float,
@@ -581,7 +585,7 @@ def parse_args(input_args=None):
 
     if args.resolution % 8 != 0:
         raise ValueError(
-            "`--resolution` must be divisible by 8 for consistently sized encoded images between the VAE and the controlnet encoder."
+            "`--resolution` must be divisible by 8 for consistently sized encoded images between the VAE and the Flux transformer."
         )
 
     return args
@@ -665,7 +669,12 @@ def prepare_train_dataset(dataset, accelerator):
         conditioning_images = [image_transforms(image) for image in conditioning_images]
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
-        examples["captions"] = list(examples[args.caption_column])
+
+        is_caption_list = isinstance(examples[args.caption_column][0], list)
+        if is_caption_list:
+            examples["captions"] = [max(example, key=len) for example in examples[args.caption_column]]
+        else:
+            examples["captions"] = list(examples[args.caption_column])
 
         return examples
 
@@ -765,7 +774,8 @@ def main(args):
         subfolder="scheduler",
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    flux_transformer.requires_grad_(True)
+    if not args.only_target_transformer_blocks:
+        flux_transformer.requires_grad_(True)
     vae.requires_grad_(False)
 
     # cast down and move to the CPU
@@ -796,6 +806,14 @@ def main(args):
 
     assert torch.all(flux_transformer.x_embedder.weight[:, initial_input_channels:].data == 0)
     flux_transformer.register_to_config(in_channels=initial_input_channels * 2, out_channels=initial_input_channels)
+
+    if args.only_target_transformer_blocks:
+        flux_transformer.x_embedder.requires_grad_(True)
+        for name, module in flux_transformer.named_modules():
+            if "transformer_blocks" in name:
+                module.requires_grad_(True)
+            else:
+                module.requirs_grad_(False)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -973,6 +991,32 @@ def main(args):
             first_epoch = global_step // num_update_steps_per_epoch
     else:
         initial_global_step = 0
+
+    if accelerator.is_main_process and args.report_to == "wandb" and args.log_dataset_samples:
+        logger.info("Logging some dataset samples.")
+        formatted_images = []
+        formatted_control_images = []
+        all_prompts = []
+        for i, batch in enumerate(train_dataloader):
+            images = (batch["pixel_values"] + 1) / 2
+            control_images = (batch["conditioning_pixel_values"] + 1) / 2
+            prompts = batch["captions"]
+
+            if len(formatted_images) > 10:
+                break
+
+            for img, control_img, prompt in zip(images, control_images, prompts):
+                formatted_images.append(img)
+                formatted_control_images.append(control_img)
+                all_prompts.append(prompt)
+
+        logged_artifacts = []
+        for img, control_img, prompt in zip(formatted_images, formatted_control_images, all_prompts):
+            logged_artifacts.append(wandb.Image(control_img, caption="Conditioning"))
+            logged_artifacts.append(wandb.Image(img, caption=prompt))
+
+        wandb_tracker = [tracker for tracker in accelerator.trackers if tracker.name == "wandb"]
+        wandb_tracker[0].log({"dataset_samples": logged_artifacts})
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),
