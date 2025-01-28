@@ -149,7 +149,8 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
 
         for word, image in zip(words, images):
             expected_image = load_numpy(
-                f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/{word}_512.npy"
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                f"/dit/{word}_512.npy"
             )
 
             assert np.abs((expected_image - image).max()) < 1e-1

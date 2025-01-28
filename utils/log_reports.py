@@ -35,7 +35,7 @@ def main(slack_channel_name=None):
                 if line.get("nodeid", "") != "":
                     test = line["nodeid"]
                     if line.get("duration", None) is not None:
-                        duration = f"{line['duration']:.4f}"
+                        duration = f'{line["duration"]:.4f}'
                         if line.get("outcome", "") == "failed":
                             section_num_failed += 1
                             failed.append([test, duration, log.name.split("_")[0]])

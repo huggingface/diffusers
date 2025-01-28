@@ -296,9 +296,9 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.38793945, 0.4111328, 0.47924805, 0.39208984, 0.4165039, 0.41674805, 0.37060547, 0.36791992, 0.40625]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
-            f"output is different from expected, {image_slice.flatten()}"
-        )
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        ), f"output is different from expected, {image_slice.flatten()}"
 
     def test_pag_uncond(self):
         pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
@@ -313,6 +313,6 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.3876953, 0.40356445, 0.4934082, 0.39697266, 0.41674805, 0.41015625, 0.375, 0.36914062, 0.40649414]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
-            f"output is different from expected, {image_slice.flatten()}"
-        )
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        ), f"output is different from expected, {image_slice.flatten()}"

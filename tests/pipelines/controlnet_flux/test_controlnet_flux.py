@@ -174,9 +174,9 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             [0.47387695, 0.63134766, 0.5605469, 0.61621094, 0.7207031, 0.7089844, 0.70410156, 0.6113281, 0.64160156]
         )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
-            f"Expected: {expected_slice}, got: {image_slice.flatten()}"
-        )
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        ), f"Expected: {expected_slice}, got: {image_slice.flatten()}"
 
     @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
     def test_xformers_attention_forwardGenerator_pass(self):

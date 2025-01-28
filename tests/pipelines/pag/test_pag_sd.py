@@ -155,9 +155,9 @@ class StableDiffusionPAGPipelineFastTests(
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
-            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
-        )
+        assert (
+            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
+        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0
@@ -322,9 +322,9 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.58251953, 0.5722656, 0.5683594, 0.55029297, 0.52001953, 0.52001953, 0.49951172, 0.45410156, 0.50146484]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
-            f"output is different from expected, {image_slice.flatten()}"
-        )
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        ), f"output is different from expected, {image_slice.flatten()}"
 
     def test_pag_uncond(self):
         pipeline = AutoPipelineForText2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
@@ -339,6 +339,6 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.5986328, 0.52441406, 0.3972168, 0.4741211, 0.34985352, 0.22705078, 0.4128418, 0.2866211, 0.31713867]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
-            f"output is different from expected, {image_slice.flatten()}"
-        )
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        ), f"output is different from expected, {image_slice.flatten()}"

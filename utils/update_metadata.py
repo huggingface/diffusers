@@ -104,7 +104,8 @@ def update_metadata(commit_sha: str):
 
         if commit_sha is not None:
             commit_message = (
-                f"Update with commit {commit_sha}\n\nSee: https://github.com/huggingface/diffusers/commit/{commit_sha}"
+                f"Update with commit {commit_sha}\n\nSee: "
+                f"https://github.com/huggingface/diffusers/commit/{commit_sha}"
             )
         else:
             commit_message = "Update"

@@ -191,12 +191,12 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         expected_slice = np.array([0.7616304, 0.0, 1.0, 0.0, 1.0, 0.0, 0.05925313, 0.0, 0.951898])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
-            f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-        )
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2, (
-            f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
-        )
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        assert (
+            np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
     @require_torch_gpu
     def test_offloads(self):
