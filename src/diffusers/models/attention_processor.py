@@ -2837,9 +2837,9 @@ class CogView4AttnProcessor:
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, attn.heads, head_dim)
+        value = value.view(batch_size, -1, attn.heads, head_dim)
 
         ###############################################3
         # TODO: 直接用qkv_weight算出qkv（注意要先分出num_heads, head_dim），再在head_dims上拆出qkv
@@ -2849,7 +2849,6 @@ class CogView4AttnProcessor:
         qkv = torch.matmul(hidden_states, linear_qkv_weight.T) + linear_qkv_bias
         qkv = qkv.view(batch_size, -1, attn.heads, head_dim * 3)
         query, key, value = qkv.chunk(3, dim=-1)
-
 
         # TODO: 校验rope是否apply正确(目前有25%的误差)
         ###############################################3
