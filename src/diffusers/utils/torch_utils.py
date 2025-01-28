@@ -154,8 +154,11 @@ def apply_freeu(
 def get_torch_cuda_device_capability():
     if torch.cuda.is_available():
         device = torch.device("cuda")
+        gpu_name = torch.cuda.get_device_name(device)
         compute_capability = torch.cuda.get_device_capability(device)
         compute_capability = f"{compute_capability[0]}.{compute_capability[1]}"
+        print(f"{gpu_name=}, {compute_capability=}")
         return float(compute_capability)
     else:
         return None
+
