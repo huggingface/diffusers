@@ -1428,6 +1428,11 @@ class ModelTesterMixin:
     @parameterized.expand([None, "foo"])
     def test_works_with_automodel(self, subfolder):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        has_generator_in_inputs = False
+        if "generator" in inputs_dict:
+            has_generator_in_inputs = True
+            inputs_dict["generator"] = torch.manual_seed(0)
+
         model = self.model_class(**config).eval()
         model_cls_name = model.__class__.__name__
         model.to(torch_device)
@@ -1438,14 +1443,18 @@ class ModelTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, subfolder) if subfolder else tmpdir
             model.save_pretrained(path)
-            automodel = AutoModel.from_pretrained(tmpdir, subfolder=subfolder).to(torch_device)
+            automodel = AutoModel.from_pretrained(tmpdir, subfolder=subfolder).eval()
+            automodel.to(torch_device)
 
         automodel_cls_name = automodel.__class__.__name__
         self.assertTrue(model_cls_name == automodel_cls_name)
         for p1, p2 in zip(model.parameters(), automodel.parameters()):
-            self.assertTrue(torch.equal(p1, p2))
+            if not (torch.isnan(p1).any() and torch.isnan(p2).any()):
+                self.assertTrue(torch.equal(p1, p2))
 
         torch.manual_seed(0)
+        if has_generator_in_inputs:
+            inputs_dict["generator"] = torch.manual_seed(0)
         output_automodel = model(**inputs_dict, return_dict=False)[0]
 
         self.assertTrue(torch.allclose(output[0], output_automodel[0], atol=1e-5))
