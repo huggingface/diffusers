@@ -334,8 +334,6 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
             " `from_numpy` is no longer required."
             "  Pass `output_type='pt' to use the new version now."
         )
-        # TODO: Needs to be handled or errors out. Updated to 0.34.0 so that the benchmark code
-        # runs without issues, but this should be handled properly before merge.
         deprecate("output_type=='np'", "0.34.0", deprecation_message, standard_warn=False)
         return get_1d_sincos_pos_embed_from_grid_np(embed_dim=embed_dim, pos=pos)
     if embed_dim % 2 != 0:

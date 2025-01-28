@@ -858,7 +858,7 @@ class LattePipeline(DiffusionPipeline):
 
         self._current_timestep = None
 
-        if output_type == "latent":
+        if output_type == "latents":
             deprecation_message = (
                 "Passing `output_type='latents'` is deprecated. Please pass `output_type='latent'` instead."
             )
