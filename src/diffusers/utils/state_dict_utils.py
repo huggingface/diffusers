@@ -329,7 +329,7 @@ def convert_state_dict_to_kohya(state_dict, original_type=None, **kwargs):
         kohya_key = kohya_key.replace(peft_adapter_name, "")  # Kohya doesn't take names
         kohya_ss_state_dict[kohya_key] = weight
         if "lora_down" in kohya_key:
-            alpha_key = f"{kohya_key.split('.')[0]}.alpha"
+            alpha_key = f'{kohya_key.split(".")[0]}.alpha'
             kohya_ss_state_dict[alpha_key] = torch.tensor(len(weight))
 
     return kohya_ss_state_dict

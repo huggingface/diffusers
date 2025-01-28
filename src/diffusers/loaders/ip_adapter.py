@@ -292,7 +292,8 @@ class IPAdapterMixin:
             ):
                 if len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
-                        f"Cannot assign {len(scale_configs)} scale_configs to {len(attn_processor.scale)} IP-Adapter."
+                        f"Cannot assign {len(scale_configs)} scale_configs to "
+                        f"{len(attn_processor.scale)} IP-Adapter."
                     )
                 elif len(scale_configs) == 1:
                     scale_configs = scale_configs * len(attn_processor.scale)
@@ -591,7 +592,8 @@ class FluxIPAdapterMixin:
             if isinstance(attn_processor, (FluxIPAdapterJointAttnProcessor2_0)):
                 if len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
-                        f"Cannot assign {len(scale_configs)} scale_configs to {len(attn_processor.scale)} IP-Adapter."
+                        f"Cannot assign {len(scale_configs)} scale_configs to "
+                        f"{len(attn_processor.scale)} IP-Adapter."
                     )
                 elif len(scale_configs) == 1:
                     scale_configs = scale_configs * len(attn_processor.scale)
