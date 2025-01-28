@@ -27,11 +27,11 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pip install --upgrade pip uv
-          python -m uv pip install -e .
-          python -m uv pip install "jax[cpu]>=0.2.16,!=0.3.2"
-          python -m uv pip install "flax>=0.4.1"
-          python -m uv pip install "jaxlib>=0.1.65"
-          python -m uv pip install pytest
+          python -m uv pip install --prerelease=allow -e .
+          python -m uv pip install --prerelease=allow "jax[cpu]>=0.2.16,!=0.3.2"
+          python -m uv pip install --prerelease=allow "flax>=0.4.1"
+          python -m uv pip install --prerelease=allow "jaxlib>=0.1.65"
+          python -m uv pip install --prerelease=allow pytest
       - name: Check for soft dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"

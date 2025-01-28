@@ -119,8 +119,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate
+        python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow accelerate
 
     - name: Environment
       run: |
@@ -158,7 +158,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install peft timm
+        python -m uv pip install --prerelease=allow peft timm
         python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
@@ -208,7 +208,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        python -m uv pip install --prerelease=allow -e [quality,test]
 
     - name: Environment
       run: |
@@ -262,12 +262,12 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        python -m uv pip install --prerelease=allow -e [quality,test]
         # TODO (sayakpaul, DN6): revisit `--no-deps`
         python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
-        python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
-        python -m uv pip install -U tokenizers
-        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        python -m uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        python -m uv pip install --prerelease=allow -U tokenizers
+        pip uninstall accelerate -y && python -m uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
       run: |
