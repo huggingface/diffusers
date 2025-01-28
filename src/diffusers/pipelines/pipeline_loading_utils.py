@@ -287,7 +287,9 @@ def maybe_raise_or_warn(
         model_cls = unwrapped_sub_model.__class__
 
         if not issubclass(model_cls, expected_class_obj):
-            raise ValueError(f"{passed_class_obj[name]} is of type: {model_cls}, but should be {expected_class_obj}")
+            raise ValueError(
+                f"{passed_class_obj[name]} is of type: {model_cls}, but should be" f" {expected_class_obj}"
+            )
     else:
         logger.warning(
             f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
