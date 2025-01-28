@@ -17,13 +17,14 @@ from typing import Any, Dict, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.attention import FeedForward
 from ...models.attention_processor import (
     Attention,
     AttentionProcessor,
-    CogVideoXAttnProcessor2_0,
+    CogView4AttnProcessor,
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
@@ -31,6 +32,7 @@ from ...utils import is_torch_version, logging
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings, CogView4PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -60,6 +62,8 @@ class CogView4TransformerBlock(nn.Module):
         super().__init__()
 
         self.norm1 = CogView3PlusAdaLayerNormZeroTextImage(embedding_dim=time_embed_dim, dim=dim)
+        self.adaln = self.norm1.linear
+        self.layernorm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
 
         self.attn1 = Attention(
             query_dim=dim,
@@ -69,65 +73,108 @@ class CogView4TransformerBlock(nn.Module):
             bias=True,
             qk_norm="layer_norm",
             elementwise_affine=False,
-            eps=1e-6,
-            processor=CogVideoXAttnProcessor2_0(),
+            eps=1e-5,
+            processor=CogView4AttnProcessor(),
         )
 
-        self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
-        self.norm2_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
-
         self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
+
+    def multi_modulate(self, hidden_states, encoder_hidden_states, factors) -> torch.Tensor:
+        n_sample, n_type, h = factors[0].shape
+        shift_factor, scale_factor = factors[0].view(-1, h), factors[1].view(-1, h)
+
+        shift_factor_hidden_states, shift_factor_encoder_hidden_states = shift_factor.chunk(2, dim=0)
+        scale_factor_hidden_states, scale_factor_encoder_hidden_states = scale_factor.chunk(2, dim=0)
+
+        hidden_states = torch.addcmul(shift_factor_hidden_states, hidden_states, (1 + scale_factor_hidden_states))
+        encoder_hidden_states = torch.addcmul(
+            shift_factor_encoder_hidden_states, encoder_hidden_states, (1 + scale_factor_encoder_hidden_states)
+        )
+
+        return hidden_states, encoder_hidden_states
+
+    def multi_gate(self, hidden_states, encoder_hidden_states, factor):
+        batch_size, seq_len, hidden_dim = hidden_states.shape
+        gate_factor = factor.view(-1, hidden_dim)
+        gate_factor_hidden_states, gate_factor_encoder_hidden_states = gate_factor.chunk(2, dim=0)
+        hidden_states = gate_factor_hidden_states * hidden_states
+        encoder_hidden_states = gate_factor_encoder_hidden_states * encoder_hidden_states
+        return hidden_states, encoder_hidden_states
 
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        emb: torch.Tensor,
+        time_embedding: torch.Tensor = None,
+        image_rotary_emb: torch.Tensor = None,
         **kwargs,
     ) -> torch.Tensor:
-        text_seq_length = encoder_hidden_states.size(1)
+        batch_size, encoder_hidden_states_len, hidden_dim = encoder_hidden_states.shape
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
-        # norm & modulate
-        (
-            norm_hidden_states,
-            gate_msa,
-            shift_mlp,
-            scale_mlp,
-            gate_mlp,
-            norm_encoder_hidden_states,
-            c_gate_msa,
-            c_shift_mlp,
-            c_scale_mlp,
-            c_gate_mlp,
-        ) = self.norm1(hidden_states, encoder_hidden_states, emb)
+        residual = hidden_states
 
-        # attention
-        attn_hidden_states, attn_encoder_hidden_states = self.attn1(
-            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states, **kwargs
+        # time_embedding embedding, [n_sample, h]
+        assert time_embedding is not None
+
+        layernorm_factor = (
+            self.adaln(time_embedding)
+            .view(
+                time_embedding.shape[0],
+                6,
+                2,
+                hidden_states.shape[-1],
+            )
+            .permute(1, 2, 0, 3)
+            .contiguous()
         )
 
-        hidden_states = hidden_states + gate_msa.unsqueeze(1) * attn_hidden_states
-        encoder_hidden_states = encoder_hidden_states + c_gate_msa.unsqueeze(1) * attn_encoder_hidden_states
+        ##############################################################
+        # Optional Input Layer norm
+        hidden_states = self.layernorm(hidden_states)
+        hidden_states, encoder_hidden_states = self.multi_modulate(
+            hidden_states=hidden_states[:, encoder_hidden_states_len:],
+            encoder_hidden_states=hidden_states[:, :encoder_hidden_states_len],
+            factors=(layernorm_factor[0], layernorm_factor[1]),
+        )
+        hidden_states, encoder_hidden_states = self.attn1(
+            hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            image_rotary_emb=image_rotary_emb,
+        )
+        hidden_states, encoder_hidden_states = self.multi_gate(
+            hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            factor=layernorm_factor[2],
+        )
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+        hidden_states += residual
 
-        # norm & modulate
-        norm_hidden_states = self.norm2(hidden_states)
-        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        residual = hidden_states
+        ##############################################################
+        hidden_states = self.layernorm(hidden_states)
+        hidden_states, encoder_hidden_states = self.multi_modulate(
+            hidden_states=hidden_states[:, encoder_hidden_states_len:],
+            encoder_hidden_states=hidden_states[:, :encoder_hidden_states_len],
+            factors=(layernorm_factor[3], layernorm_factor[4]),
+        )
+        hidden_states = self.ff(hidden_states)
+        encoder_hidden_states = self.ff(encoder_hidden_states)
+        hidden_states, encoder_hidden_states = self.multi_gate(
+            hidden_states=hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            factor=layernorm_factor[5],
+        )
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+        hidden_states += residual
 
-        norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
-        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
-
-        # feed-forward
-        norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
-        ff_output = self.ff(norm_hidden_states)
-
-        hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output[:, text_seq_length:]
-        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * ff_output[:, :text_seq_length]
-
-        if hidden_states.dtype == torch.float16:
-            hidden_states = hidden_states.clip(-65504, 65504)
-        if encoder_hidden_states.dtype == torch.float16:
-            encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
+        ##############################################################
+        hidden_states, encoder_hidden_states = (
+            hidden_states[:, :encoder_hidden_states_len],
+            hidden_states[:, encoder_hidden_states_len:],
+        )
         return hidden_states, encoder_hidden_states
+
 
 class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
     r"""
@@ -335,7 +382,8 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         freqs = torch.cat([freqs, freqs], dim=-1)  # [height, width, dim]
         freqs = freqs.reshape(height * width, -1)
 
-        return freqs.cos(), freqs.sin()
+        return freqs
+        # return freqs.cos(), freqs.sin()
 
     def forward(
         self,
@@ -391,28 +439,31 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         image_rotary_emb = self.get_rope_embedding(
             patch_height, patch_width, target_h=patch_height, target_w=patch_width, device=hidden_states.device
         )
-
-        # 2. Conditional embeddings
-        temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
-        temb_cond, temb_uncond = temb.chunk(2)
-        hidden_states, prompt_embeds, negative_prompt_embeds = self.patch_embed(
-            hidden_states, prompt_embeds, negative_prompt_embeds
-        )
-        hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
-        encoder_hidden_states_cond = prompt_embeds
-        encoder_hidden_states_uncond = negative_prompt_embeds
+        # image_rotary_emb = torch.load("/home/lhy/code/cogview/rotary_pos_emb.pt")
+        # image_rotary_emb = image_rotary_emb[16:16+4096, 0, 0, :]
 
         ######################
-        # prompt_embeds = torch.load("/home/lhy/code/cogview/c_condition_embedding.pt")
-        # negative_prompt_embeds = torch.load("/home/lhy/code/cogview/uc_condition_embedding.pt")
-        # prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_0_16.pt")[None, ::]
-        # negative_prompt_embeds = torch.load("/home/lhy/code/cogview/cp_uncondition_16_32.pt")[None, ::]
-        #
-        # hidden_states_cond = torch.load("/home/lhy/code/cogview/cp_vision_input_0_4096.pt")
-        # hidden_states_uncond = torch.load("/home/lhy/code/cogview/cp_vision_input_4096:8192.pt")
-        #
-        # emb_cond = torch.load("/home/lhy/code/cogview/time_embedding_0_1.pt")
-        # emb_uncond = torch.load("/home/lhy/code/cogview/time_embedding_1_2.pt")
+        # 2. Conditional embeddings
+        # temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
+        # temb_cond, temb_uncond = temb.chunk(2)
+        # hidden_states, prompt_embeds, negative_prompt_embeds = self.patch_embed(
+        #     hidden_states, prompt_embeds, negative_prompt_embeds
+        # )
+        # hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
+        # encoder_hidden_states_cond = prompt_embeds
+        # encoder_hidden_states_uncond = negative_prompt_embeds
+
+        prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_0_16.pt")[None, ::]
+        negative_prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_16_32.pt")[None, ::]
+
+        hidden_states_cond = torch.load("/home/lhy/code/cogview/cp_vision_input_0_4096.pt")[None, ::]
+        hidden_states_uncond = torch.load("/home/lhy/code/cogview/cp_vision_input_4096:8192.pt")[None, ::]
+
+        temb_cond = torch.load("/home/lhy/code/cogview/time_embedding_0_1.pt")[None, ::]
+        temb_uncond = torch.load("/home/lhy/code/cogview/time_embedding_1_2.pt")[None, ::]
+
+        encoder_hidden_states_cond = prompt_embeds
+        encoder_hidden_states_uncond = negative_prompt_embeds
         ######################
 
         for index_block, block in enumerate(self.transformer_blocks):
@@ -423,13 +474,13 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states_cond, encoder_hidden_states_cond = block(
                     hidden_states=hidden_states_cond,
                     encoder_hidden_states=encoder_hidden_states_cond,
-                    emb=temb_cond,
+                    time_embedding=temb_cond,
                     image_rotary_emb=image_rotary_emb,
                 )
                 hidden_states_uncond, encoder_hidden_states_uncond = block(
                     hidden_states=hidden_states_uncond,
                     encoder_hidden_states=encoder_hidden_states_uncond,
-                    emb=temb_uncond,
+                    time_embedding=temb_uncond,
                     image_rotary_emb=image_rotary_emb,
                 )
 
