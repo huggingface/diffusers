@@ -828,23 +828,49 @@ class AnimateDiffPipeline(
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
             # 8. Denoising loop
-            with self.progress_bar(total=self._num_timesteps) as progress_bar:
+            with self.progress_bar(total=total_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     if self.interrupt:
                         continue
 
-                    # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                    noise_pred = torch.zeros(
+                        (latents.shape[0] * (2 if do_classifier_free_guidance else 1), *latents.shape[1:]),
+                        device=latents.device,
+                        dtype=latents.dtype,
+                    )
+                    counter = torch.zeros(
+                        (1, 1, latents.shape[2], 1, 1), device=latents.device, dtype=latents.dtype
+                    )
 
-                    # predict the noise residual
-                    noise_pred = self.unet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=prompt_embeds,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        added_cond_kwargs=added_cond_kwargs,
-                    ).sample
+                    for context in context_scheduler(
+                        i, num_inference_steps, latents.shape[2], context_frames, context_stride, context_overlap
+                    ):
+                        # expand the latents if we are doing classifier free guidance
+                        latent_model_input = (
+                            latents[:, :, context]
+                            .to(device)
+                            .repeat(2 if do_classifier_free_guidance else 1, 1, 1, 1, 1)
+                        )
+                        latent_model_input = self.scheduler.scale_model_input(latent_model_input, t).to(
+                            self.unet.device, self.unet.dtype
+                        )
+
+                        frame_embeds = get_frame_embeds(context).to(self.unet.device, self.unet.dtype)
+
+
+                        # predict the noise residual
+                        pred = self.unet(
+                            latent_model_input,
+                            t,
+                            encoder_hidden_states=frame_embeds,
+                            cross_attention_kwargs=cross_attention_kwargs,
+                            return_dict=False,
+                        )[0]
+
+                        pred = pred.to(dtype=latents.dtype, device=latents.device)
+                        noise_pred[:, :, context] = noise_pred[:, :, context] + pred
+                        counter[:, :, context] = counter[:, :, context] + 1
+                        progress_bar.update()
 
                     # perform guidance
                     if self.do_classifier_free_guidance:
