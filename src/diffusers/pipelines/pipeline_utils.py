@@ -1375,7 +1375,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 )
                 logger.warning(warn_msg)
 
-            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+            model_filenames, variant_filenames = variant_compatible_siblings(
+                filenames, variant=variant, use_safetensors=use_safetensors
+            )
 
             config_file = hf_hub_download(
                 pretrained_model_name,

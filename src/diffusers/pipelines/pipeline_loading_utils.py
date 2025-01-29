@@ -141,7 +141,7 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     return True
 
 
-def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLike], str]:
+def variant_compatible_siblings(filenames, variant=None, use_safetensors=True) -> Union[List[os.PathLike], str]:
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
@@ -188,24 +188,85 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     non_variant_indexes = {f for f in filenames if non_variant_index_re.match(f.split("/")[-1]) is not None}
     non_variant_filenames = non_variant_weights | non_variant_indexes
 
-    # all variant filenames will be used by default
-    usable_filenames = set(variant_filenames)
-
     def find_component(filename):
         if not len(filename.split("/")) == 2:
             return
         component = filename.split("/")[0]
         return component
 
-    def has_variant(filename, variant_filenames):
+    def convert_to_variant(filename):
+        if "index" in filename:
+            variant_filename = filename.replace("index", f"index.{variant}")
+        elif re.compile(f"^(.*?){transformers_index_format}").match(filename) is not None:
+            variant_filename = f"{filename.split('-')[0]}.{variant}-{'-'.join(filename.split('-')[1:])}"
+        else:
+            variant_filename = f"{filename.split('.')[0]}.{variant}.{filename.split('.')[1]}"
+        return variant_filename
+
+    def has_sharded_variant(filename, variant, variant_filenames):
+        component = find_component(filename)
+        # If component exists check for sharded variant index filename
+        # If component doesn't exist check main dir for sharded variant index filename
+        component = component + "/" if component else ""
+        variant_index_re = re.compile(
+            rf"{component}({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
+        )
+        return any(f for f in variant_filenames if variant_index_re.match(f) is not None)
+
+    def has_non_sharded_variant(filename, variant, variant_filenames):
         component = find_component(filename)
         component = component + "/" if component else ""
+        base_name = filename.split("/")[-1]
 
-        return any(f.startswith(component) for f in variant_filenames)
+        # Only apply to sharded files (those with the index format)
+        if not (non_variant_file_re.match(base_name) or non_variant_index_re.match(base_name)):
+            return False
+
+        # Check if there's a non-sharded variant in the same component
+        non_sharded_variants = [
+            f
+            for f in variant_filenames
+            if f.startswith(component) and not re.search(transformers_index_format, f.split("/")[-1])
+        ]
+        return any(non_sharded_variants)
+
+    if use_safetensors:
+        # Keep only safetensors and index files
+        non_variant_filenames = {
+            f
+            for f in non_variant_filenames
+            if f.endswith(".safetensors") or non_variant_index_re.match(f.split("/")[-1])
+        }
+        if variant is not None:
+            variant_filenames = {
+                f for f in variant_filenames if f.endswith(".safetensors") or variant_index_re.match(f.split("/")[-1])
+            }
+    else:
+        # Exclude safetensors files but keep index files
+        non_variant_filenames = {
+            f
+            for f in non_variant_filenames
+            if not f.endswith(".safetensors") or non_variant_index_re.match(f.split("/")[-1])
+        }
+        if variant is not None:
+            variant_filenames = {
+                f
+                for f in variant_filenames
+                if not f.endswith(".safetensors") or variant_index_re.match(f.split("/")[-1])
+            }
+
+    # all variant filenames will be used by default
+    usable_filenames = set(variant_filenames)
 
     for filename in non_variant_filenames:
-        # If a variant exists skip adding to allowed patterns
-        if has_variant(filename, variant_filenames):
+        if convert_to_variant(filename) in variant_filenames:
+            continue
+
+        # If a sharded variant exists skip adding to allowed patterns
+        if has_sharded_variant(filename, variant, variant_filenames):
+            continue
+
+        if has_non_sharded_variant(filename, variant, variant_filenames):
             continue
 
         usable_filenames.add(filename)

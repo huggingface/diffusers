@@ -212,6 +212,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
 
 class VariantCompatibleSiblingsTest(unittest.TestCase):
     def test_only_non_variants_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             f"vae/diffusion_pytorch_model.{variant}.safetensors",
@@ -222,10 +223,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "unet/diffusion_pytorch_model.safetensors",
         ]
 
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=None)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, use_safetensors=use_safetensors
+        )
         assert all(variant not in f for f in model_filenames)
 
     def test_only_variants_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             f"vae/diffusion_pytorch_model.{variant}.safetensors",
@@ -236,10 +240,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "unet/diffusion_pytorch_model.safetensors",
         ]
 
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f for f in model_filenames)
 
     def test_mixed_variants_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         non_variant_file = "text_encoder/model.safetensors"
         filenames = [
@@ -249,10 +256,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"unet/diffusion_pytorch_model.{variant}.safetensors",
             "unet/diffusion_pytorch_model.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f if f != non_variant_file else variant not in f for f in model_filenames)
 
     def test_non_variants_in_main_dir_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             f"diffusion_pytorch_model.{variant}.safetensors",
@@ -260,10 +270,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "model.safetensors",
             f"model.{variant}.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=None)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, use_safetensors=use_safetensors
+        )
         assert all(variant not in f for f in model_filenames)
 
     def test_variants_in_main_dir_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             f"diffusion_pytorch_model.{variant}.safetensors",
@@ -273,10 +286,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"diffusion_pytorch_model.{variant}.safetensors",
             "diffusion_pytorch_model.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f for f in model_filenames)
 
     def test_mixed_variants_in_main_dir_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         non_variant_file = "model.safetensors"
         filenames = [
@@ -284,10 +300,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "diffusion_pytorch_model.safetensors",
             "model.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f if f != non_variant_file else variant not in f for f in model_filenames)
 
     def test_sharded_variants_in_main_dir_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             "diffusion_pytorch_model.safetensors.index.json",
@@ -298,10 +317,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"diffusion_pytorch_model.{variant}-00002-of-00002.safetensors",
             f"diffusion_pytorch_model.safetensors.index.{variant}.json",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f for f in model_filenames)
 
     def test_mixed_sharded_and_variant_in_main_dir_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             "diffusion_pytorch_model.safetensors.index.json",
@@ -310,10 +332,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "diffusion_pytorch_model-00003-of-00003.safetensors",
             f"diffusion_pytorch_model.{variant}.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f for f in model_filenames)
 
     def test_mixed_sharded_non_variants_in_main_dir_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             f"diffusion_pytorch_model.safetensors.index.{variant}.json",
@@ -324,10 +349,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"diffusion_pytorch_model.{variant}-00001-of-00002.safetensors",
             f"diffusion_pytorch_model.{variant}-00002-of-00002.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=None)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, use_safetensors=use_safetensors
+        )
         assert all(variant not in f for f in model_filenames)
 
     def test_sharded_non_variants_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             f"unet/diffusion_pytorch_model.safetensors.index.{variant}.json",
@@ -338,10 +366,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"unet/diffusion_pytorch_model.{variant}-00001-of-00002.safetensors",
             f"unet/diffusion_pytorch_model.{variant}-00002-of-00002.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=None)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, use_safetensors=use_safetensors
+        )
         assert all(variant not in f for f in model_filenames)
 
     def test_sharded_variants_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             f"unet/diffusion_pytorch_model.safetensors.index.{variant}.json",
@@ -352,10 +383,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"unet/diffusion_pytorch_model.{variant}-00001-of-00002.safetensors",
             f"unet/diffusion_pytorch_model.{variant}-00002-of-00002.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f for f in model_filenames)
 
     def test_single_variant_with_sharded_non_variant_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = [
             "unet/diffusion_pytorch_model.safetensors.index.json",
@@ -364,10 +398,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "unet/diffusion_pytorch_model-00003-of-00003.safetensors",
             f"unet/diffusion_pytorch_model.{variant}.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f for f in model_filenames)
 
     def test_mixed_single_variant_with_sharded_non_variant_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         allowed_non_variant = "unet"
         filenames = [
@@ -381,10 +418,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "unet/diffusion_pytorch_model-00002-of-00003.safetensors",
             "unet/diffusion_pytorch_model-00003-of-00003.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
 
     def test_sharded_mixed_variants_downloaded(self):
+        use_safetensors = True
         variant = "fp16"
         allowed_non_variant = "unet"
         filenames = [
@@ -400,14 +440,71 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "vae/diffusion_pytorch_model-00002-of-00003.safetensors",
             "vae/diffusion_pytorch_model-00003-of-00003.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
 
+    def test_variant_ignored_if_use_safetensors(self):
+        use_safetensors = True
+        variant = "fp16"
+        filenames = [
+            f"vae/diffusion_pytorch_model.{variant}.bin",
+            f"text_encoder/model.{variant}.bin",
+            f"unet/diffusion_pytorch_model.{variant}.bin",
+            "vae/diffusion_pytorch_model.safetensors",
+            "text_encoder/model.safetensors",
+            "unet/diffusion_pytorch_model.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
+        assert all(variant not in f for f in model_filenames)
+
     def test_downloading_when_no_variant_exists(self):
+        use_safetensors = True
         variant = "fp16"
         filenames = ["model.safetensors", "diffusion_pytorch_model.safetensors"]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
         assert len(model_filenames) != 0
+
+    def test_downloading_use_safetensors_no_variant_exists(self):
+        use_safetensors = True
+        variant = "fp16"
+        filenames = ["text_encoder/model.bin", "unet/diffusion_pytorch_model.bin"]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
+        assert all(variant not in f for f in model_filenames)
+
+    def test_downloading_use_safetensors_false(self):
+        use_safetensors = False
+        variant = "fp16"
+        filenames = [
+            "text_encoder/model.bin",
+            "unet/diffusion_pytorch_model.bin",
+            "unet/diffusion_pytorch_model.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
+
+        assert all(".safetensors" not in f for f in model_filenames)
+
+    def test_non_variant_in_main_dir_with_variant_in_subfolder(self):
+        use_safetensors = True
+        variant = "fp16"
+        allowed_non_variant = "diffusion_pytorch_model.safetensors"
+        filenames = [
+            f"unet/diffusion_pytorch_model.{variant}.safetensors",
+            "diffusion_pytorch_model.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, use_safetensors=use_safetensors
+        )
+        assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
 
 
 class ProgressBarTests(unittest.TestCase):
