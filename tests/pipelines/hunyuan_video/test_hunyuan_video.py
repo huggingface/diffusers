@@ -132,7 +132,7 @@ class HunyuanVideoPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadca
 
         torch.manual_seed(0)
         text_encoder = LlamaModel(llama_text_encoder_config)
-        tokenizer = LlamaTokenizer.from_pretrained("hf-internal-testing/tiny-random-LlamaForCausalLM")
+        tokenizer = LlamaTokenizer.from_pretrained("finetrainers/dummy-hunyaunvideo", subfolder="tokenizer")
 
         torch.manual_seed(0)
         text_encoder_2 = CLIPTextModel(clip_text_encoder_config)
@@ -155,10 +155,8 @@ class HunyuanVideoPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadca
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        # Cannot test with dummy prompt because tokenizers are not configured correctly.
-        # TODO(aryan): create dummy tokenizers and using from hub
         inputs = {
-            "prompt": "",
+            "prompt": "dance monkey",
             "prompt_template": {
                 "template": "{}",
                 "crop_start": 0,
