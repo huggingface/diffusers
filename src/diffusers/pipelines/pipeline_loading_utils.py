@@ -104,7 +104,7 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
       extension is replaced with ".safetensors"
     """
     passed_components = passed_components or []
-    if folder_names is not None:
+    if folder_names:
         filenames = {f for f in filenames if os.path.split(f)[0] in folder_names}
 
     # extract all components of the pipeline and their associated files
