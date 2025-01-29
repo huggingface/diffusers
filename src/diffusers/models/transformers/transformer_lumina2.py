@@ -332,9 +332,6 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin):
             cap_freqs_cis[i, :cap_len] = freqs_cis[i, :cap_len]
             img_freqs_cis[i, :img_len] = freqs_cis[i, cap_len:cap_len+img_len]
         
-        for layer in self.context_refiner:
-            cap_feats = layer(cap_feats, cap_mask, cap_freqs_cis)
-        
         flat_x = []
         for i in range(bsz):
             img = x[i]
@@ -349,9 +346,19 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin):
             padded_img_mask[i, :l_effective_img_len[i]] = True
             
         padded_img_embed = self.x_embedder(padded_img_embed)
-        for layer in self.noise_refiner:
-            padded_img_embed = layer(padded_img_embed, padded_img_mask, img_freqs_cis, t)
-            
+    
+        return cap_feats, padded_img_embed, img_sizes, l_effective_cap_len, l_effective_img_len, freqs_cis, max_seq_len, cap_mask, padded_img_mask
+
+    def prepare_joint_input(
+        self,
+        cap_feats: torch.Tensor,
+        padded_img_embed: torch.Tensor,
+        max_seq_len: int,
+        l_effective_cap_len: list[int],
+        l_effective_img_len: list[int],
+    ) -> torch.Tensor:
+        bsz = cap_feats.size(0)
+        device = cap_feats.device
         mask = torch.zeros(bsz, max_seq_len, dtype=torch.bool, device=device)
         padded_full_embed = torch.zeros(bsz, max_seq_len, self.hidden_size, device=device, dtype=x[0].dtype)
         for i in range(bsz):
@@ -361,8 +368,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin):
             padded_full_embed[i, :cap_len] = cap_feats[i, :cap_len]
             padded_full_embed[i, cap_len:cap_len+img_len] = padded_img_embed[i, :img_len]
             
-        return padded_full_embed, mask, img_sizes, l_effective_cap_len, freqs_cis
-
+        return padded_full_embed, mask
 
     def forward(
         self,
@@ -383,8 +389,16 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin):
         """
         
         temb, encoder_hidden_states = self.time_caption_embed(timestep, encoder_hidden_states)
-        hidden_states, mask, img_size, cap_size, image_rotary_emb = self.patchify_and_embed(hidden_states, encoder_hidden_states, encoder_mask, temb)
+        cap_feats, padded_img_embed, img_size, l_effective_cap_len, l_effective_img_len, image_rotary_emb, max_seq_len, cap_mask, padded_img_mask = self.patchify_and_embed(hidden_states, encoder_hidden_states, encoder_mask, temb)
         image_rotary_emb = image_rotary_emb.to(hidden_states.device)
+        
+        for layer in self.context_refiner:
+            cap_feats = layer(cap_feats, cap_mask, cap_freqs_cis)
+            
+        for layer in self.noise_refiner:
+            padded_img_embed = layer(padded_img_embed, padded_img_mask, img_freqs_cis, t)
+        
+        hidden_states, mask = self.prepare_joint_input(cap_feats, padded_img_embed, max_seq_len, l_effective_cap_len, l_effective_img_len)
 
         for layer in self.layers:
             hidden_states = layer(
