@@ -15,6 +15,7 @@
 from collections import OrderedDict
 from itertools import combinations
 from typing import List, Optional, Union, Dict, Any
+import copy
 
 import torch
 import time
@@ -342,7 +343,7 @@ class ComponentsManager:
 
             # Check for IP-Adapter scales
             if hasattr(component, "_load_ip_adapter_weights") and hasattr(component, "attn_processors"):
-                processors = component.attn_processors
+                processors = copy.deepcopy(component.attn_processors)
                 # First check if any processor is an IP-Adapter
                 processor_types = [v.__class__.__name__ for v in processors.values()]
                 if any("IPAdapter" in ptype for ptype in processor_types):
