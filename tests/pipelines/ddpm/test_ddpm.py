@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
 
 
 enable_full_determinism()
@@ -88,7 +88,7 @@ class DDPMPipelineFastTests(unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class DDPMPipelineIntegrationTests(unittest.TestCase):
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"

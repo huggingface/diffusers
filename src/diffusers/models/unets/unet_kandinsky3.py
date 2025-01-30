@@ -205,10 +205,6 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         """
         self.set_attn_processor(AttnProcessor())
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
         if encoder_attention_mask is not None:
             encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0

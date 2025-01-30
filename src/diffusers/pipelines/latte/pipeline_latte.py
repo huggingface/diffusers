@@ -30,6 +30,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
     BaseOutput,
+    deprecate,
     is_bs4_available,
     is_ftfy_available,
     is_torch_xla_available,
@@ -602,6 +603,10 @@ class LattePipeline(DiffusionPipeline):
         return self._num_timesteps
 
     @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -632,7 +637,7 @@ class LattePipeline(DiffusionPipeline):
         clean_caption: bool = True,
         mask_feature: bool = True,
         enable_temporal_attentions: bool = True,
-        decode_chunk_size: Optional[int] = None,
+        decode_chunk_size: int = 14,
     ) -> Union[LattePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -728,6 +733,7 @@ class LattePipeline(DiffusionPipeline):
             negative_prompt_embeds,
         )
         self._guidance_scale = guidance_scale
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Default height and width to transformer
@@ -789,6 +795,7 @@ class LattePipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -797,10 +804,11 @@ class LattePipeline(DiffusionPipeline):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                     # This would be a good case for the `match` statement (Python 3.10+)
                     is_mps = latent_model_input.device.type == "mps"
+                    is_npu = latent_model_input.device.type == "npu"
                     if isinstance(current_timestep, float):
-                        dtype = torch.float32 if is_mps else torch.float64
+                        dtype = torch.float32 if (is_mps or is_npu) else torch.float64
                     else:
-                        dtype = torch.int32 if is_mps else torch.int64
+                        dtype = torch.int32 if (is_mps or is_npu) else torch.int64
                     current_timestep = torch.tensor([current_timestep], dtype=dtype, device=latent_model_input.device)
                 elif len(current_timestep.shape) == 0:
                     current_timestep = current_timestep[None].to(latent_model_input.device)
@@ -848,8 +856,17 @@ class LattePipeline(DiffusionPipeline):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        if not output_type == "latents":
-            video = self.decode_latents(latents, video_length, decode_chunk_size=14)
+        self._current_timestep = None
+
+        if output_type == "latents":
+            deprecation_message = (
+                "Passing `output_type='latents'` is deprecated. Please pass `output_type='latent'` instead."
+            )
+            deprecate("output_type_latents", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "latent"
+
+        if not output_type == "latent":
+            video = self.decode_latents(latents, video_length, decode_chunk_size=decode_chunk_size)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
