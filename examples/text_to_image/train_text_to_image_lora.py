@@ -515,10 +515,6 @@ def main():
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    # Freeze the unet parameters before adding adapters
-    for param in unet.parameters():
-        param.requires_grad_(False)
-
     unet_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,

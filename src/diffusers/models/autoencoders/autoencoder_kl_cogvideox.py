@@ -420,15 +420,8 @@ class CogVideoXDownBlock3D(nn.Module):
             conv_cache_key = f"resnet_{i}"
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    resnet,
                     hidden_states,
                     temb,
                     zq,
@@ -522,15 +515,8 @@ class CogVideoXMidBlock3D(nn.Module):
             conv_cache_key = f"resnet_{i}"
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, zq, conv_cache.get(conv_cache_key)
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    resnet, hidden_states, temb, zq, conv_cache.get(conv_cache_key)
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -636,15 +622,8 @@ class CogVideoXUpBlock3D(nn.Module):
             conv_cache_key = f"resnet_{i}"
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    resnet,
                     hidden_states,
                     temb,
                     zq,
@@ -773,18 +752,11 @@ class CogVideoXEncoder3D(nn.Module):
         hidden_states, new_conv_cache["conv_in"] = self.conv_in(sample, conv_cache=conv_cache.get("conv_in"))
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module(*inputs)
-
-                return custom_forward
-
             # 1. Down
             for i, down_block in enumerate(self.down_blocks):
                 conv_cache_key = f"down_block_{i}"
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(down_block),
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    down_block,
                     hidden_states,
                     temb,
                     None,
@@ -792,8 +764,8 @@ class CogVideoXEncoder3D(nn.Module):
                 )
 
             # 2. Mid
-            hidden_states, new_conv_cache["mid_block"] = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.mid_block),
+            hidden_states, new_conv_cache["mid_block"] = self._gradient_checkpointing_func(
+                self.mid_block,
                 hidden_states,
                 temb,
                 None,
@@ -939,16 +911,9 @@ class CogVideoXDecoder3D(nn.Module):
         hidden_states, new_conv_cache["conv_in"] = self.conv_in(sample, conv_cache=conv_cache.get("conv_in"))
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module(*inputs)
-
-                return custom_forward
-
             # 1. Mid
-            hidden_states, new_conv_cache["mid_block"] = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.mid_block),
+            hidden_states, new_conv_cache["mid_block"] = self._gradient_checkpointing_func(
+                self.mid_block,
                 hidden_states,
                 temb,
                 sample,
@@ -958,8 +923,8 @@ class CogVideoXDecoder3D(nn.Module):
             # 2. Up
             for i, up_block in enumerate(self.up_blocks):
                 conv_cache_key = f"up_block_{i}"
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(up_block),
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    up_block,
                     hidden_states,
                     temb,
                     sample,
@@ -1120,10 +1085,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # and so the tiling implementation has only been tested on those specific resolutions.
         self.tile_overlap_factor_height = 1 / 6
         self.tile_overlap_factor_width = 1 / 5
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (CogVideoXEncoder3D, CogVideoXDecoder3D)):
-            module.gradient_checkpointing = value
 
     def enable_tiling(
         self,
