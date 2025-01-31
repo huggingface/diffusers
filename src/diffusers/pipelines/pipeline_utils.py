@@ -1577,7 +1577,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 expected_modules.add(name)
                 optional_parameters.remove(name)
 
-        return expected_modules, optional_parameters
+        return sorted(expected_modules), sorted(optional_parameters)
 
     @classmethod
     def _get_signature_types(cls):
@@ -1619,10 +1619,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             k: getattr(self, k) for k in self.config.keys() if not k.startswith("_") and k not in optional_parameters
         }
 
-        if set(components.keys()) != expected_modules:
+        actual = sorted(set(components.keys()))
+        expected = sorted(expected_modules)
+        if actual != expected:
             raise ValueError(
                 f"{self} has been incorrectly initialized or {self.__class__} is incorrectly implemented. Expected"
-                f" {expected_modules} to be defined, but {components.keys()} are defined."
+                f" {expected} to be defined, but {actual} are defined."
             )
 
         return components
