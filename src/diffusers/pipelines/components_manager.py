@@ -266,7 +266,7 @@ class ComponentsManager:
         else:
             raise ValueError(f"Invalid type for names: {type(names)}")
 
-    def enable_auto_cpu_offload(self, device, memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device]="cuda", memory_reserve_margin="3GB"):
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "_hf_hook"):
                 remove_hook_from_module(component, recurse=True)
