@@ -19,6 +19,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import PeftAdapterMixin, ControlNetLoadersMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ..attention_processor import (
@@ -108,7 +109,7 @@ class ControlNetConditioningEmbedding(nn.Module):
         return embedding
 
 
-class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, ControlNetLoadersMixin, PeftAdapterMixin):
     """
     A ControlNet model.
 
