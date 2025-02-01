@@ -975,10 +975,16 @@ class SequentialPipelineBlocks:
         for block in self.blocks.values():
             # Add inputs that aren't in outputs yet
             inputs.extend(input_name for input_name in block.intermediates_inputs if input_name.name not in outputs)
-            # Add this block's outputs
-            block_intermediates_outputs = [out.name for out in block.intermediates_outputs]
-            outputs.update(block_intermediates_outputs)
 
+            # Only add outputs if the block cannot be skipped
+            should_add_outputs = True
+            if hasattr(block, "block_trigger_inputs") and None not in block.block_trigger_inputs:
+                should_add_outputs = False
+            
+            if should_add_outputs:
+                # Add this block's outputs
+                block_intermediates_outputs = [out.name for out in block.intermediates_outputs]
+                outputs.update(block_intermediates_outputs)
         return inputs
 
     @property
@@ -1035,47 +1041,59 @@ class SequentialPipelineBlocks:
         return self._get_trigger_inputs()
 
     def _traverse_trigger_blocks(self, trigger_inputs):
+        # Convert trigger_inputs to a set for easier manipulation
+        active_triggers = set(trigger_inputs)
 
-        def fn_recursive_traverse(block, block_name, trigger_inputs):
+        def fn_recursive_traverse(block, block_name, active_triggers):
             result_blocks = OrderedDict()
+            
             # sequential or PipelineBlock
             if not hasattr(block, 'block_trigger_inputs'):
                 if hasattr(block, 'blocks'):
                     # sequential
                     for block_name, block in block.blocks.items():
-                        blocks_to_update = fn_recursive_traverse(block, block_name, trigger_inputs)
+                        blocks_to_update = fn_recursive_traverse(block, block_name, active_triggers)
                         result_blocks.update(blocks_to_update)
                 else:
                     # PipelineBlock
                     result_blocks[block_name] = block
+                    # Add this block's output names to active triggers if defined
+                    if hasattr(block, 'outputs'):
+                        active_triggers.update(out.name for out in block.outputs)
                 return result_blocks
                 
             # auto
             else:
-                # Find first block_trigger_input that matches any value in our trigger_value tuple
+                # Find first block_trigger_input that matches any value in our active_triggers
                 this_block = None
+                matching_trigger = None
                 for trigger_input in block.block_trigger_inputs:
-                    if trigger_input is not None and trigger_input in trigger_inputs:
+                    if trigger_input is not None and trigger_input in active_triggers:
                         this_block = block.trigger_to_block_map[trigger_input]
+                        matching_trigger = trigger_input
                         break
                 
                 # If no matches found, try to get the default (None) block
                 if this_block is None and None in block.block_trigger_inputs:
                     this_block = block.trigger_to_block_map[None]
+                    matching_trigger = None
                 
                 if this_block is not None:
                     # sequential/auto
                     if hasattr(this_block, 'blocks'):
-                        result_blocks.update(fn_recursive_traverse(this_block, block_name, trigger_inputs))
+                        result_blocks.update(fn_recursive_traverse(this_block, block_name, active_triggers))
                     else:
                         # PipelineBlock
                         result_blocks[block_name] = this_block
+                        # Add this block's output names to active triggers if defined
+                        if hasattr(this_block, 'outputs'):
+                            active_triggers.update(out.name for out in this_block.outputs)
 
             return result_blocks
         
         all_blocks = OrderedDict()
         for block_name, block in self.blocks.items():
-            blocks_to_update = fn_recursive_traverse(block, block_name, trigger_inputs)
+            blocks_to_update = fn_recursive_traverse(block, block_name, active_triggers)
             all_blocks.update(blocks_to_update)
         return all_blocks
     

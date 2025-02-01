@@ -256,13 +256,99 @@ class ComponentsManager:
         if self._auto_offload_enabled:
             self.enable_auto_cpu_offload(self._auto_offload_device)
 
+    # YiYi TODO: looking into improving the search pattern
     def get(self, names: Union[str, List[str]]):
+        """
+        Get components by name with simple pattern matching.
+        
+        Args:
+            names: Component name(s) or pattern(s)
+                Patterns:
+                - "unet" : exact match
+                - "!unet" : everything except exact match "unet"
+                - "base_*" : everything starting with "base_"
+                - "!base_*" : everything NOT starting with "base_"
+                - "*unet*" : anything containing "unet"
+                - "!*unet*" : anything NOT containing "unet"
+                - "refiner|vae|unet" : anything containing any of these terms
+                - "!refiner|vae|unet" : anything NOT containing any of these terms
+        
+        Returns:
+            Single component if names is str and matches one component,
+            dict of components if names matches multiple components or is a list
+        """
         if isinstance(names, str):
-            if names not in self.components:
+            # Check if this is a "not" pattern
+            is_not_pattern = names.startswith('!')
+            if is_not_pattern:
+                names = names[1:]  # Remove the ! prefix
+            
+            # Handle OR patterns (containing |)
+            if '|' in names:
+                terms = names.split('|')
+                matches = {
+                    name: comp for name, comp in self.components.items() 
+                    if any((term in name) != is_not_pattern for term in terms)  # Flip condition if not pattern
+                }
+                if is_not_pattern:
+                    logger.info(f"Getting components NOT containing any of {terms}: {list(matches.keys())}")
+                else:
+                    logger.info(f"Getting components containing any of {terms}: {list(matches.keys())}")
+            
+            # Exact match
+            elif names in self.components:
+                if is_not_pattern:
+                    matches = {
+                        name: comp for name, comp in self.components.items() 
+                        if name != names
+                    }
+                    logger.info(f"Getting all components except '{names}': {list(matches.keys())}")
+                else:
+                    logger.info(f"Getting component: {names}")
+                    return self.components[names]
+            
+            # Prefix match (ends with *)
+            elif names.endswith('*'):
+                prefix = names[:-1]
+                matches = {
+                    name: comp for name, comp in self.components.items() 
+                    if name.startswith(prefix) != is_not_pattern  # Flip condition if not pattern
+                }
+                if is_not_pattern:
+                    logger.info(f"Getting components NOT starting with '{prefix}': {list(matches.keys())}")
+                else:
+                    logger.info(f"Getting components starting with '{prefix}': {list(matches.keys())}")
+            
+            # Contains match (starts with *)
+            elif names.startswith('*'):
+                search = names[1:-1] if names.endswith('*') else names[1:]
+                matches = {
+                    name: comp for name, comp in self.components.items() 
+                    if (search in name) != is_not_pattern  # Flip condition if not pattern
+                }
+                if is_not_pattern:
+                    logger.info(f"Getting components NOT containing '{search}': {list(matches.keys())}")
+                else:
+                    logger.info(f"Getting components containing '{search}': {list(matches.keys())}")
+            
+            else:
                 raise ValueError(f"Component '{names}' not found in ComponentsManager")
-            return self.components[names]
+            
+            if not matches:
+                raise ValueError(f"No components found matching pattern '{names}'")
+            return matches if len(matches) > 1 else next(iter(matches.values()))
+        
         elif isinstance(names, list):
-            return {n: self.components[n] for n in names}
+            results = {}
+            for name in names:
+                result = self.get(name)
+                if isinstance(result, dict):
+                    results.update(result)
+                else:
+                    results[name] = result
+            logger.info(f"Getting multiple components: {list(results.keys())}")
+            return results
+        
         else:
             raise ValueError(f"Invalid type for names: {type(names)}")
 
@@ -431,18 +517,34 @@ class ComponentsManager:
         
         return output
 
-    def add_from_pretrained(self, pretrained_model_name_or_path, **kwargs):
+    def add_from_pretrained(self, pretrained_model_name_or_path, prefix: Optional[str] = None, **kwargs):
+        """
+        Load components from a pretrained model and add them to the manager.
+        
+        Args:
+            pretrained_model_name_or_path (str): The path or identifier of the pretrained model
+            prefix (str, optional): Prefix to add to all component names loaded from this model.
+                                  If provided, components will be named as "{prefix}_{component_name}"
+            **kwargs: Additional arguments to pass to DiffusionPipeline.from_pretrained()
+        """
         from ..pipelines.pipeline_utils import DiffusionPipeline
 
         pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, **kwargs)
         for name, component in pipe.components.items():
-            if name not in self.components and component is not None:
-                self.add(name, component)
-            elif name in self.components:
+                
+            if component is None:
+                continue
+            
+            # Add prefix if specified
+            component_name = f"{prefix}_{name}" if prefix else name
+            
+            if component_name not in self.components:
+                self.add(component_name, component)
+            else:
                 logger.warning(
-                    f"Component '{name}' already exists in ComponentsManager and will not be added. To add it, either:\n"
-                    f"1. remove the existing component with remove('{name}')\n"
-                    f"2. Use a different name: add('{name}_2', component)"
+                    f"Component '{component_name}' already exists in ComponentsManager and will not be added. To add it, either:\n"
+                    f"1. remove the existing component with remove('{component_name}')\n"
+                    f"2. Use a different prefix: add_from_pretrained(..., prefix='{prefix}_2')"
                 )
 
 def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
