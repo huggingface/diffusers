@@ -21,8 +21,7 @@ from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import Mochi1LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKL
-from ...models.transformers import MochiTransformer3DModel
+from ...models import AutoencoderKLMochi, MochiTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     is_torch_xla_available,
@@ -60,19 +59,6 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_video(frames, "mochi.mp4")
         ```
 """
-
-
-def calculate_shift(
-    image_seq_len,
-    base_seq_len: int = 256,
-    max_seq_len: int = 4096,
-    base_shift: float = 0.5,
-    max_shift: float = 1.16,
-):
-    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-    b = base_shift - m * base_seq_len
-    mu = image_seq_len * m + b
-    return mu
 
 
 # from: https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
@@ -164,8 +150,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             Conditional Transformer architecture to denoise the encoded video latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        vae ([`AutoencoderKLMochi`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
@@ -184,7 +170,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKL,
+        vae: AutoencoderKLMochi,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
         transformer: MochiTransformer3DModel,
@@ -481,6 +467,10 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         return self._attention_kwargs
 
     @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -604,6 +594,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Define call parameters
@@ -673,6 +664,9 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                 if self.interrupt:
                     continue
 
+                # Note: Mochi uses reversed timesteps. To ensure compatibility with methods like FasterCache, we need
+                # to make sure we're using the correct non-reversed timestep values.
+                self._current_timestep = 1000 - t
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
@@ -717,6 +711,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
+        self._current_timestep = None
 
         if output_type == "latent":
             video = latents

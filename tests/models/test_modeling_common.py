@@ -14,9 +14,11 @@
 # limitations under the License.
 
 import copy
+import gc
 import inspect
 import json
 import os
+import re
 import tempfile
 import traceback
 import unittest
@@ -29,7 +31,7 @@ import numpy as np
 import requests_mock
 import torch
 import torch.nn as nn
-from accelerate.utils.modeling import _get_proper_dtype, dtype_byte_size
+from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
 from huggingface_hub import ModelCard, delete_repo, snapshot_download
 from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
@@ -56,7 +58,9 @@ from diffusers.utils.testing_utils import (
     CaptureLogger,
     get_python_version,
     is_torch_compile,
+    numpy_cosine_similarity_distance,
     require_torch_2,
+    require_torch_accelerator,
     require_torch_accelerator_with_training,
     require_torch_gpu,
     require_torch_multi_gpu,
@@ -64,6 +68,7 @@ from diffusers.utils.testing_utils import (
     torch_all_close,
     torch_device,
 )
+from diffusers.utils.torch_utils import get_torch_cuda_device_capability
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
@@ -179,6 +184,16 @@ def compute_module_persistent_sizes(
             module_sizes[".".join(name_parts[:idx])] += size
 
     return module_sizes
+
+
+def cast_maybe_tensor_dtype(maybe_tensor, current_dtype, target_dtype):
+    if torch.is_tensor(maybe_tensor):
+        return maybe_tensor.to(target_dtype) if maybe_tensor.dtype == current_dtype else maybe_tensor
+    if isinstance(maybe_tensor, dict):
+        return {k: cast_maybe_tensor_dtype(v, current_dtype, target_dtype) for k, v in maybe_tensor.items()}
+    if isinstance(maybe_tensor, list):
+        return [cast_maybe_tensor_dtype(v, current_dtype, target_dtype) for v in maybe_tensor]
+    return maybe_tensor
 
 
 class ModelUtilsTest(unittest.TestCase):
@@ -543,7 +558,7 @@ class ModelTesterMixin:
         assert torch.allclose(output, output_3, atol=self.base_precision)
         assert torch.allclose(output_2, output_3, atol=self.base_precision)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_set_attn_processor_for_determinism(self):
         if self.uses_custom_attn_processor:
             return
@@ -939,23 +954,14 @@ class ModelTesterMixin:
             init_dict["block_out_channels"] = block_out_channels
 
         model_class_copy = copy.copy(self.model_class)
-
-        modules_with_gc_enabled = {}
-
-        # now monkey patch the following function:
-        #     def _set_gradient_checkpointing(self, module, value=False):
-        #         if hasattr(module, "gradient_checkpointing"):
-        #             module.gradient_checkpointing = value
-
-        def _set_gradient_checkpointing_new(self, module, value=False):
-            if hasattr(module, "gradient_checkpointing"):
-                module.gradient_checkpointing = value
-                modules_with_gc_enabled[module.__class__.__name__] = True
-
-        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
-
         model = model_class_copy(**init_dict)
         model.enable_gradient_checkpointing()
+
+        modules_with_gc_enabled = {}
+        for submodule in model.modules():
+            if hasattr(submodule, "gradient_checkpointing"):
+                self.assertTrue(submodule.gradient_checkpointing)
+                modules_with_gc_enabled[submodule.__class__.__name__] = True
 
         assert set(modules_with_gc_enabled.keys()) == expected_set
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
@@ -1068,7 +1074,7 @@ class ModelTesterMixin:
 
             self.assertTrue(f"Adapter name {wrong_name} not found in the model." in str(err_context.exception))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_cpu_offload(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -1080,7 +1086,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1098,7 +1104,7 @@ class ModelTesterMixin:
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_disk_offload_without_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -1110,7 +1116,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
 
@@ -1132,7 +1138,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_disk_offload_with_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -1144,7 +1150,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
@@ -1172,7 +1178,7 @@ class ModelTesterMixin:
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
 
-        model_size = compute_module_persistent_sizes(model)[""]
+        model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1183,6 +1189,7 @@ class ModelTesterMixin:
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
                 # Making sure part of the model will actually end up offloaded
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, 1})
+                print(f" new_model.hf_device_map:{new_model.hf_device_map}")
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
 
@@ -1191,7 +1198,7 @@ class ModelTesterMixin:
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1223,7 +1230,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints_with_variant(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -1261,7 +1268,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints_device_map(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -1330,6 +1337,96 @@ class ModelTesterMixin:
                 shard_files = [file for file in os.listdir(tmp_dir) if file.endswith(extension)]
                 # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
                 assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
+
+    def test_layerwise_casting_inference(self):
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+        base_slice = model(**inputs_dict)[0].flatten().detach().cpu().numpy()
+
+        def check_linear_dtype(module, storage_dtype, compute_dtype):
+            patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+            if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
+                patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
+            for name, submodule in module.named_modules():
+                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                    continue
+                dtype_to_check = storage_dtype
+                if any(re.search(pattern, name) for pattern in patterns_to_check):
+                    dtype_to_check = compute_dtype
+                if getattr(submodule, "weight", None) is not None:
+                    self.assertEqual(submodule.weight.dtype, dtype_to_check)
+                if getattr(submodule, "bias", None) is not None:
+                    self.assertEqual(submodule.bias.dtype, dtype_to_check)
+
+        def test_layerwise_casting(storage_dtype, compute_dtype):
+            torch.manual_seed(0)
+            config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            model = self.model_class(**config).eval()
+            model = model.to(torch_device, dtype=compute_dtype)
+            model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+
+            check_linear_dtype(model, storage_dtype, compute_dtype)
+            output = model(**inputs_dict)[0].float().flatten().detach().cpu().numpy()
+
+            # The precision test is not very important for fast tests. In most cases, the outputs will not be the same.
+            # We just want to make sure that the layerwise casting is working as expected.
+            self.assertTrue(numpy_cosine_similarity_distance(base_slice, output) < 1.0)
+
+        test_layerwise_casting(torch.float16, torch.float32)
+        test_layerwise_casting(torch.float8_e4m3fn, torch.float32)
+        test_layerwise_casting(torch.float8_e5m2, torch.float32)
+        test_layerwise_casting(torch.float8_e4m3fn, torch.bfloat16)
+
+    @require_torch_gpu
+    def test_layerwise_casting_memory(self):
+        MB_TOLERANCE = 0.2
+        LEAST_COMPUTE_CAPABILITY = 8.0
+
+        def reset_memory_stats():
+            gc.collect()
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+
+        def get_memory_usage(storage_dtype, compute_dtype):
+            torch.manual_seed(0)
+            config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            model = self.model_class(**config).eval()
+            model = model.to(torch_device, dtype=compute_dtype)
+            model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+
+            reset_memory_stats()
+            model(**inputs_dict)
+            model_memory_footprint = model.get_memory_footprint()
+            peak_inference_memory_allocated_mb = torch.cuda.max_memory_allocated() / 1024**2
+
+            return model_memory_footprint, peak_inference_memory_allocated_mb
+
+        fp32_memory_footprint, fp32_max_memory = get_memory_usage(torch.float32, torch.float32)
+        fp8_e4m3_fp32_memory_footprint, fp8_e4m3_fp32_max_memory = get_memory_usage(torch.float8_e4m3fn, torch.float32)
+        fp8_e4m3_bf16_memory_footprint, fp8_e4m3_bf16_max_memory = get_memory_usage(
+            torch.float8_e4m3fn, torch.bfloat16
+        )
+
+        compute_capability = get_torch_cuda_device_capability()
+        self.assertTrue(fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint < fp32_memory_footprint)
+        # NOTE: the following assertion would fail on our CI (running Tesla T4) due to bf16 using more memory than fp32.
+        # On other devices, such as DGX (Ampere) and Audace (Ada), the test passes. So, we conditionally check it.
+        if compute_capability and compute_capability >= LEAST_COMPUTE_CAPABILITY:
+            self.assertTrue(fp8_e4m3_bf16_max_memory < fp8_e4m3_fp32_max_memory)
+        # On this dummy test case with a small model, sometimes fp8_e4m3_fp32 max memory usage is higher than fp32 by a few
+        # bytes. This only happens for some models, so we allow a small tolerance.
+        # For any real model being tested, the order would be fp8_e4m3_bf16 < fp8_e4m3_fp32 < fp32.
+        self.assertTrue(
+            fp8_e4m3_fp32_max_memory < fp32_max_memory
+            or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
+        )
 
 
 @is_staging_test
