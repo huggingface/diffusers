@@ -139,6 +139,19 @@ class StableDiffusionXLLoraStep(PipelineBlock):
             " for more details"
         )
 
+    
+    @property
+    def inputs(self) -> List[InputParam]:
+        return []
+
+    @property
+    def intermediates_inputs(self) -> List[InputParam]:
+        return []
+    
+    @property
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return []
+    
     def __init__(self):
         super().__init__()
         self.components["text_encoder"] = None
@@ -178,11 +191,17 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock):
                 description="Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598). Guidance scale is enabled by setting `guidance_scale > 1`."
             ),
         ]
-    
+
     @property
-    def intermediates_outputs(self) -> List[str]:
-        return [OutputParam("ip_adapter_embeds", type_hint=torch.Tensor, description="IP adapter image embeddings"), 
-                OutputParam("negative_ip_adapter_embeds", type_hint=torch.Tensor, description="Negative IP adapter image embeddings")]
+    def intermediates_inputs(self) -> List[InputParam]:
+        return []
+
+    @property
+    def intermediates_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("ip_adapter_embeds", type_hint=torch.Tensor, description="IP adapter image embeddings"),
+            OutputParam("negative_ip_adapter_embeds", type_hint=torch.Tensor, description="Negative IP adapter image embeddings")
+        ]
     
     def __init__(self):
         super().__init__()
@@ -270,7 +289,11 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
 
     
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediates_inputs(self) -> List[InputParam]:
+        return []
+
+    @property
+    def intermediates_outputs(self) -> List[OutputParam]:
         return [
             OutputParam("prompt_embeds", type_hint=torch.Tensor, description="text embeddings used to guide the image generation"),
             OutputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="negative text embeddings used to guide the image generation"),
@@ -378,13 +401,13 @@ class StableDiffusionXLVaeEncoderStep(PipelineBlock):
         ]
 
     @property
-    def intermediates_inputs(self) -> List[str]:
+    def intermediates_inputs(self) -> List[InputParam]:
         return [
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"), 
             InputParam("preprocess_kwargs", type_hint=Optional[dict], description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]")]
 
     @property
-    def intermediates_outputs(self) -> List[str]:
+    def intermediates_outputs(self) -> List[OutputParam]:
         return [OutputParam("image_latents", type_hint=torch.Tensor, description="The latents representing the reference image for image-to-image/inpainting generation")]
 
     def __init__(self):
@@ -818,6 +841,10 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
         return [OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"), 
                 OutputParam("num_inference_steps", type_hint=int, description="The number of denoising steps to perform at inference time")]
 
+    @property
+    def intermediates_inputs(self) -> List[InputParam]:
+        return []
+    
     def __init__(self):
         super().__init__()
         self.components["scheduler"] = None
@@ -2831,9 +2858,6 @@ class StableDiffusionXLOutputStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return [OutputParam("images", description="The final images output, can be a tuple or a `StableDiffusionXLPipelineOutput`")]
     
-    @property
-    def outputs(self) -> List[Tuple[str, Any]]:
-        return [(OutputParam("images", type_hint=Union[Tuple[PIL.Image.Image], StableDiffusionXLPipelineOutput], description="The final images output, can be a tuple or a `StableDiffusionXLPipelineOutput`"))]
     
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:

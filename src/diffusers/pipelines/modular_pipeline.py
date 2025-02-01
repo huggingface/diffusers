@@ -61,9 +61,6 @@ class PipelineState:
     def add_intermediate(self, key: str, value: Any):
         self.intermediates[key] = value
 
-    def add_output(self, key: str, value: Any):
-        self.outputs[key] = value
-
     def get_input(self, key: str, default: Any = None) -> Any:
         return self.inputs.get(key, default)
 
@@ -194,45 +191,45 @@ def format_intermediates_short(intermediates_inputs: List[InputParam], required_
     Formats intermediate inputs and outputs of a block into a string representation.
     
     Args:
-        block: Pipeline block with potential intermediates
+        intermediates_inputs: List of intermediate input parameters
+        required_intermediates_inputs: List of required intermediate input names
+        intermediates_outputs: List of intermediate output parameters
     
     Returns:
-        str: Formatted string like "input1, Required(input2) -> output1, output2"
+        str: Formatted string like:
+            Intermediates:
+                - inputs: Required(latents), dtype
+                - modified: latents  # variables that appear in both inputs and outputs
+                - outputs: images    # new outputs only
     """
     # Handle inputs
     input_parts = []
-
     for inp in intermediates_inputs:
-        parts = []
-        # Check if input is required
         if inp.name in required_intermediates_inputs:
-            parts.append("Required")
-        
-        # Get base name or modified name
-        name = inp.name
-        if name in {out.name for out in intermediates_outputs}:
-            name = f"*{name}"
-        
-        # Combine Required() wrapper with possibly starred name
-        if parts:
-            input_parts.append(f"Required({name})")
+            input_parts.append(f"Required({inp.name})")
         else:
-            input_parts.append(name)
+            input_parts.append(inp.name)
     
-    # Handle outputs
-    output_parts = []
-    outputs = [out.name for out in intermediates_outputs]
-    # Only show new outputs if we have inputs
+    # Handle modified variables (appear in both inputs and outputs)
     inputs_set = {inp.name for inp in intermediates_inputs}
-    outputs = [out for out in outputs if out not in inputs_set]
-    output_parts.extend(outputs)
+    modified_parts = []
+    new_output_parts = []
     
-    # Combine with arrow notation if both inputs and outputs exist
-    if output_parts:
-        return f"-> {', '.join(output_parts)}" if not input_parts else f"{', '.join(input_parts)} -> {', '.join(output_parts)}"
-    elif input_parts:
-        return ', '.join(input_parts)
-    return ""
+    for out in intermediates_outputs:
+        if out.name in inputs_set:
+            modified_parts.append(out.name)
+        else:
+            new_output_parts.append(out.name)
+    
+    result = []
+    if input_parts:
+        result.append(f"    - inputs: {', '.join(input_parts)}")
+    if modified_parts:
+        result.append(f"    - modified: {', '.join(modified_parts)}")
+    if new_output_parts:
+        result.append(f"    - outputs: {', '.join(new_output_parts)}")
+        
+    return "\n".join(result) if result else "    (none)"
 
 
 def format_params(params: List[Union[InputParam, OutputParam]], header: str = "Args", indent_level: int = 4, max_line_length: int = 115) -> str:
@@ -323,7 +320,7 @@ def format_output_params(output_params: List[OutputParam], indent_level: int = 4
 
 
 
-def make_doc_string(inputs, intermediates_inputs, intermediates_outputs, final_intermediates_outputs=None, description=""):
+def make_doc_string(inputs, intermediates_inputs, outputs, description=""):
     """
     Generates a formatted documentation string describing the pipeline block's parameters and structure.
     
@@ -340,20 +337,8 @@ def make_doc_string(inputs, intermediates_inputs, intermediates_outputs, final_i
 
     output += format_input_params(inputs + intermediates_inputs, indent_level=2)
     
-    # YiYi TODO: refactor to remove this and `outputs` attribute instead
-    if final_intermediates_outputs:
-        output += "\n\n"
-        output += format_output_params(final_intermediates_outputs, indent_level=2)
-
-        if intermediates_outputs:
-            output += "\n\n------------------------\n"
-            intermediates_str = format_params(intermediates_outputs, "Intermediates Outputs", indent_level=2)
-            output += intermediates_str
-    
-    elif intermediates_outputs:
-        output +="\n\n"
-        output += format_output_params(intermediates_outputs, indent_level=2)
-
+    output += "\n\n"
+    output += format_output_params(outputs, indent_level=2)
 
     return output
 
@@ -367,23 +352,28 @@ class PipelineBlock:
     
     @property
     def description(self) -> str:
-        return ""
+        """Description of the block. Must be implemented by subclasses."""
+        raise NotImplementedError("description method must be implemented in subclasses")
     
     @property
     def inputs(self) -> List[InputParam]:
-        return []
+        """List of input parameters. Must be implemented by subclasses."""
+        raise NotImplementedError("inputs method must be implemented in subclasses")
 
     @property
     def intermediates_inputs(self) -> List[InputParam]:
-        return []
+        """List of intermediate input parameters. Must be implemented by subclasses."""
+        raise NotImplementedError("intermediates_inputs method must be implemented in subclasses")
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
-        return []
-    
+        """List of intermediate output parameters. Must be implemented by subclasses."""
+        raise NotImplementedError("intermediates_outputs method must be implemented in subclasses")
+
+    # Adding outputs attributes here for consistency between PipelineBlock/AutoPipelineBlocks/SequentialPipelineBlocks
     @property
     def outputs(self) -> List[OutputParam]:
-        return []
+        return self.intermediates_outputs
 
     @property
     def required_inputs(self) -> List[str]:
@@ -413,7 +403,7 @@ class PipelineBlock:
         class_name = self.__class__.__name__
         base_class = self.__class__.__bases__[0].__name__
 
-        # Components section - group into main components and auxiliaries if needed
+        # Components section
         expected_components = set(getattr(self, "expected_components", []))
         loaded_components = set(self.components.keys())
         all_components = sorted(expected_components | loaded_components)
@@ -446,7 +436,7 @@ class PipelineBlock:
 
         # Intermediates section
         intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
-        intermediates = f"Intermediates(`*` = modified):\n    {intermediates_str}"
+        intermediates = f"Intermediates:\n{intermediates_str}"
 
         return (
             f"{class_name}(\n"
@@ -461,7 +451,7 @@ class PipelineBlock:
 
     @property
     def doc(self):
-        return make_doc_string(self.inputs, self.intermediates_inputs, self.intermediates_outputs, None, self.description)
+        return make_doc_string(self.inputs, self.intermediates_inputs, self.outputs, self.description)
 
 
     def get_block_state(self, state: PipelineState) -> dict:
@@ -489,11 +479,6 @@ class PipelineBlock:
             if not hasattr(block_state, output_param.name):
                 raise ValueError(f"Intermediate output '{output_param.name}' is missing in block state")
             state.add_intermediate(output_param.name, getattr(block_state, output_param.name))
-        
-        for output_param in self.outputs:
-            if not hasattr(block_state, output_param.name):
-                raise ValueError(f"Output '{output_param.name}' is missing in block state")
-            state.add_output(output_param.name, getattr(block_state, output_param.name))
 
 
 def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
@@ -704,6 +689,12 @@ class AutoPipelineBlocks:
         named_outputs = [(name, block.intermediates_outputs) for name, block in self.blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
+    
+    @property
+    def outputs(self) -> List[str]:
+        named_outputs = [(name, block.outputs) for name, block in self.blocks.items()]
+        combined_outputs = combine_outputs(*named_outputs)
+        return combined_outputs
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -803,10 +794,21 @@ class AutoPipelineBlocks:
             sections.append(f"    Block: {block.__class__.__name__}")
             
             inputs_str = format_inputs_short(block.inputs)
-            sections.append(f"      inputs:\n        {inputs_str}")
+            sections.append(f"      inputs: {inputs_str}")
 
-            intermediates_str = f"      intermediates(`*` = modified):\n        {format_intermediates_short(block.intermediates_inputs, block.required_intermediates_inputs, block.intermediates_outputs)}"
-            sections.append(intermediates_str)
+            # Format intermediates with proper indentation
+            intermediates_str = format_intermediates_short(
+                block.intermediates_inputs, 
+                block.required_intermediates_inputs, 
+                block.intermediates_outputs
+            )
+            if intermediates_str != "    (none)":  # Only add if there are intermediates
+                sections.append("      intermediates:")
+                # Add extra indentation to each line of intermediates
+                indented_intermediates = "\n".join(
+                    "        " + line for line in intermediates_str.split("\n")
+                )
+                sections.append(indented_intermediates)
             
             sections.append("") 
 
@@ -819,7 +821,7 @@ class AutoPipelineBlocks:
 
     @property
     def doc(self):
-        return make_doc_string(self.inputs, self.intermediates_inputs, self.intermediates_outputs, None, self.description)
+        return make_doc_string(self.inputs, self.intermediates_inputs, self.outputs, self.description)
 
 class SequentialPipelineBlocks:
     """
@@ -962,7 +964,7 @@ class SequentialPipelineBlocks:
         return combined_outputs
     
     @property
-    def final_intermediates_outputs(self) -> List[str]:
+    def outputs(self) -> List[str]:
         return next(reversed(self.blocks.values())).intermediates_outputs
     
     @torch.no_grad()
@@ -1121,28 +1123,34 @@ class SequentialPipelineBlocks:
         for i, (name, block) in enumerate(self.blocks.items()):
             blocks_str += f"    {i}. {name} ({block.__class__.__name__})\n"
 
+            # Format inputs
             inputs_str = format_inputs_short(block.inputs)
-
             blocks_str += f"       inputs: {inputs_str}\n"
 
-            intermediates_str = format_intermediates_short(block.intermediates_inputs, block.required_intermediates_inputs, block.intermediates_outputs)
-
-            if intermediates_str:
-                blocks_str += f"       intermediates(`*` = modified): {intermediates_str}\n"
+            # Format intermediates with proper indentation
+            intermediates_str = format_intermediates_short(
+                block.intermediates_inputs, 
+                block.required_intermediates_inputs, 
+                block.intermediates_outputs
+            )
+            if intermediates_str != "    (none)":  # Only add if there are intermediates
+                blocks_str += "       intermediates:\n"
+                # Add extra indentation to each line of intermediates
+                indented_intermediates = "\n".join(
+                    "        " + line for line in intermediates_str.split("\n")
+                )
+                blocks_str += f"{indented_intermediates}\n"
             blocks_str += "\n"
 
         inputs_str = format_inputs_short(self.inputs)
         inputs_str = "  Inputs:\n    " + inputs_str
-        final_intermediates_outputs = [out.name for out in self.final_intermediates_outputs]
+        outputs = [out.name for out in self.outputs]
         
-        intermediates_str_short = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
-        intermediates_input_str = intermediates_str_short.split('->')[0].strip()  # "Required(latents), crops_coords"
-        intermediates_output_str = intermediates_str_short.split('->')[1].strip()
+        intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
         intermediates_str = (
             "\n  Intermediates:\n"
-            f"      - inputs: {intermediates_input_str}\n"
-            f"      - outputs: {intermediates_output_str}\n"
-            f"      - final outputs: {', '.join(final_intermediates_outputs)}"
+            f"{intermediates_str}\n" 
+            f"    - final outputs: {', '.join(outputs)}"
         )
 
         return (
@@ -1158,7 +1166,7 @@ class SequentialPipelineBlocks:
 
     @property
     def doc(self):
-        return make_doc_string(self.inputs, self.intermediates_inputs, self.intermediates_outputs, self.final_intermediates_outputs, self.description)
+        return make_doc_string(self.inputs, self.intermediates_inputs, self.outputs, self.description)
 
 class ModularPipeline(ConfigMixin):
     """
