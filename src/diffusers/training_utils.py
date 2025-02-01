@@ -253,7 +253,7 @@ def compute_density_for_timestep_sampling(
     logit_mean: float = None,
     logit_std: float = None,
     mode_scale: float = None,
-    device: torch.device | str = "cpu",
+    device: Union[torch.device, str] = "cpu",
     generator: Optional[torch.Generator] = None,
 ):
     """
