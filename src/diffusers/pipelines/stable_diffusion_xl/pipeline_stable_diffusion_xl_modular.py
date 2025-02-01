@@ -693,7 +693,7 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(PipelineBlock):
     @property
     def description(self) -> str:
         return (
-            "Step that sets the timesteps for the scheduler and determines the initial noise level (latent_timestep) for image-to-image/inpainting generation."
+            "Step that sets the timesteps for the scheduler and determines the initial noise level (latent_timestep) for image-to-image/inpainting generation.\n" + \
             "The latent_timestep is calculated from the `strength` parameter - higher strength means starting from a noisier version of the input image."
         )
 
@@ -2790,7 +2790,7 @@ class StableDiffusionXLInpaintOverlayMaskStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "A post-processing step that overlays the mask on the image (inpainting task only)" + \
+        return "A post-processing step that overlays the mask on the image (inpainting task only).\n" + \
                "only needed when you are using the `padding_mask_crop` option when pre-processing the image and mask"
 
     @property
@@ -2962,10 +2962,10 @@ class StableDiffusionXLDecodeStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return "Decode step that decode the denoised latents into images outputs.\n" + \
-               "This is a sequential pipeline blocks:\n" + \
-               " - `StableDiffusionXLDecodeLatentsStep` is used to decode the denoised latents into images\n" + \
-               " - `StableDiffusionXLOutputStep` is used to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or a plain tuple."
+        return """Decode step that decode the denoised latents into images outputs.
+This is a sequential pipeline blocks:
+ - `StableDiffusionXLDecodeLatentsStep` is used to decode the denoised latents into images
+ - `StableDiffusionXLOutputStep` is used to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or a plain tuple."""
 
 
 class StableDiffusionXLInpaintDecodeStep(SequentialPipelineBlocks):
@@ -2994,6 +2994,14 @@ class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
                " - `StableDiffusionXLInpaintDecodeStep` (inpaint) is used when `padding_mask_crop` is provided.\n" + \
                " - `StableDiffusionXLDecodeStep` (non-inpaint) is used when `padding_mask_crop` is not provided."
 
+
+class StableDiffusionAutoPipeline(SequentialPipelineBlocks):
+    block_classes = [StableDiffusionXLTextEncoderStep, StableDiffusionXLAutoVaeEncoderStep, StableDiffusionXLAutoBeforeDenoiseStep, StableDiffusionXLAutoDenoiseStep, StableDiffusionXLAutoDecodeStep]
+    block_names = ["text_encoder", "image_encoder", "before_denoise", "denoise", "decode"]
+
+    @property
+    def description(self):
+        return "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL.\n"
 
 # block mapping 
 TEXT2IMAGE_BLOCKS = OrderedDict([

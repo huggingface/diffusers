@@ -53,7 +53,6 @@ class PipelineState:
 
     inputs: Dict[str, Any] = field(default_factory=dict)
     intermediates: Dict[str, Any] = field(default_factory=dict)
-    outputs: Dict[str, Any] = field(default_factory=dict)
 
     def add_input(self, key: str, value: Any):
         self.inputs[key] = value
@@ -64,19 +63,17 @@ class PipelineState:
     def get_input(self, key: str, default: Any = None) -> Any:
         return self.inputs.get(key, default)
 
+    def get_inputs(self, keys: List[str], default: Any = None) -> Dict[str, Any]:
+        return {key: self.inputs.get(key, default) for key in keys}
+
     def get_intermediate(self, key: str, default: Any = None) -> Any:
         return self.intermediates.get(key, default)
 
-    def get_output(self, key: str, default: Any = None) -> Any:
-        if key in self.outputs:
-            return self.outputs[key]
-        elif key in self.intermediates:
-            return self.intermediates[key]
-        else:
-            return default
+    def get_intermediates(self, keys: List[str], default: Any = None) -> Dict[str, Any]:
+        return {key: self.intermediates.get(key, default) for key in keys}
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**self.__dict__, "inputs": self.inputs, "intermediates": self.intermediates, "outputs": self.outputs}
+        return {**self.__dict__, "inputs": self.inputs, "intermediates": self.intermediates}
 
     def __repr__(self):
         def format_value(v):
@@ -89,13 +86,11 @@ class PipelineState:
 
         inputs = "\n".join(f"    {k}: {format_value(v)}" for k, v in self.inputs.items())
         intermediates = "\n".join(f"    {k}: {format_value(v)}" for k, v in self.intermediates.items())
-        outputs = "\n".join(f"    {k}: {format_value(v)}" for k, v in self.outputs.items())
 
         return (
             f"PipelineState(\n"
             f"  inputs={{\n{inputs}\n  }},\n"
-            f"  intermediates={{\n{intermediates}\n  }},\n"
-            f"  outputs={{\n{outputs}\n  }}\n"
+            f"  intermediates={{\n{intermediates}\n  }}\n"
             f")"
         )
 
@@ -403,6 +398,16 @@ class PipelineBlock:
         class_name = self.__class__.__name__
         base_class = self.__class__.__bases__[0].__name__
 
+        # Format description with proper indentation
+        desc_lines = self.description.split('\n')
+        desc = []
+        # First line with "Description:" label
+        desc.append(f"  Description: {desc_lines[0]}")
+        # Subsequent lines with proper indentation
+        if len(desc_lines) > 1:
+            desc.extend(f"      {line}" for line in desc_lines[1:])
+        desc = '\n'.join(desc) + '\n'
+
         # Components section
         expected_components = set(getattr(self, "expected_components", []))
         loaded_components = set(self.components.keys())
@@ -441,6 +446,7 @@ class PipelineBlock:
         return (
             f"{class_name}(\n"
             f"  Class: {base_class}\n"
+            f"{desc}"
             f"  {components}\n"
             f"  {configs}\n"
             f"  {inputs}\n"
@@ -760,16 +766,33 @@ class AutoPipelineBlocks:
         class_name = self.__class__.__name__
         base_class = self.__class__.__bases__[0].__name__
 
-        all_triggers = set(self.trigger_to_block_map.keys())
-        
+        # Format description with proper indentation
+        desc_lines = self.description.split('\n')
+        desc = []
+        # First line with "Description:" label
+        desc.append(f"  Description: {desc_lines[0]}")
+        # Subsequent lines with proper indentation
+        if len(desc_lines) > 1:
+            desc.extend(f"      {line}" for line in desc_lines[1:])
+        desc = '\n'.join(desc) + '\n'
+
         sections = []
+        all_triggers = set(self.trigger_to_block_map.keys())
         for trigger in sorted(all_triggers, key=lambda x: str(x)):
             sections.append(f"\n  Trigger Input: {trigger}\n")
             
             block = self.trigger_to_block_map.get(trigger)
             if block is None:
                 continue
-                
+
+            # Add block description with proper indentation
+            desc_lines = block.description.split('\n')
+            # First line starts right after "Description:", subsequent lines get indented
+            indented_desc = desc_lines[0]
+            if len(desc_lines) > 1:
+                indented_desc += '\n' + '\n'.join('                   ' + line for line in desc_lines[1:])  # Align with first line
+            sections.append(f"    Description: {indented_desc}\n")
+
             expected_components = set(getattr(block, "expected_components", []))
             loaded_components = set(k for k, v in self.components.items() 
                                  if v is not None and hasattr(block, k))
@@ -815,6 +838,7 @@ class AutoPipelineBlocks:
         return (
             f"{class_name}(\n"
             f"  Class: {base_class}\n"
+            f"{desc}"
             f"{chr(10).join(sections)}"
             f")"
         )
@@ -1097,6 +1121,16 @@ class SequentialPipelineBlocks:
             header += "  " + "=" * 100 + "\n"  # Add decorative line
             header += "\n"  # Add empty line after
 
+        # Format description with proper indentation
+        desc_lines = self.description.split('\n')
+        desc = []
+        # First line with "Description:" label
+        desc.append(f"  Description: {desc_lines[0]}")
+        # Subsequent lines with proper indentation
+        if len(desc_lines) > 1:
+            desc.extend(f"      {line}" for line in desc_lines[1:])
+        desc = '\n'.join(desc) + '\n'
+
         # Components section
         expected_components = set(getattr(self, "expected_components", []))
         loaded_components = set(self.components.keys())
@@ -1122,6 +1156,13 @@ class SequentialPipelineBlocks:
         blocks_str = "  Blocks:\n"
         for i, (name, block) in enumerate(self.blocks.items()):
             blocks_str += f"    {i}. {name} ({block.__class__.__name__})\n"
+            
+            desc_lines = block.description.split('\n')
+            # First line starts right after "Description:", subsequent lines get indented
+            indented_desc = desc_lines[0]
+            if len(desc_lines) > 1:
+                indented_desc += '\n' + '\n'.join('                   ' + line for line in desc_lines[1:])  # Align with first line
+            blocks_str += f"       Description: {indented_desc}\n"
 
             # Format inputs
             inputs_str = format_inputs_short(block.inputs)
@@ -1155,6 +1196,7 @@ class SequentialPipelineBlocks:
 
         return (
             f"{header}\n"
+            f"{desc}"
             f"{components_str}\n"
             f"{auxiliaries_str}\n"
             f"{configs_str}\n"
@@ -1329,13 +1371,12 @@ class ModularPipeline(ConfigMixin):
         if output is None:
             return state
 
-        if isinstance(output, str):
-            return state.get_output(output)
+
+        elif isinstance(output, str):
+            return state.get_intermediate(output)
+
         elif isinstance(output, (list, tuple)):
-            outputs = {}
-            for output_name in output:
-                outputs[output_name] = state.get_output(output_name)
-            return outputs
+            return state.get_intermediates(output)
         else:
             raise ValueError(f"Output '{output}' is not a valid output type")
 
