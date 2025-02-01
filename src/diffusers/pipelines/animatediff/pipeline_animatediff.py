@@ -46,6 +46,7 @@ from ..free_init_utils import FreeInitMixin
 from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
+from .context import get_context_scheduler, get_total_steps
 
 
 if is_torch_xla_available():
@@ -591,6 +592,10 @@ class AnimateDiffPipeline(
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        context_frames: int = -1,
+        context_stride: int = 3,
+        context_overlap: int = 4,
+        context_schedule: str = "uniform"
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -785,13 +790,25 @@ class AnimateDiffPipeline(
             height,
             width,
             prompt_embeds.dtype,
-            device,
+            'cpu',
             generator,
             latents,
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+
+        # 6.5 - Infinite context loop shenanigans
+        context_scheduler = get_context_scheduler(context_schedule)
+        total_steps = get_total_steps(
+            context_scheduler,
+            timesteps,
+            num_inference_steps,
+            latents.shape[2],
+            context_frames,
+            context_stride,
+            context_overlap,
+        )
 
         # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = (
@@ -811,23 +828,49 @@ class AnimateDiffPipeline(
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
             # 8. Denoising loop
-            with self.progress_bar(total=self._num_timesteps) as progress_bar:
+            with self.progress_bar(total=total_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     if self.interrupt:
                         continue
 
-                    # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                    noise_pred = torch.zeros(
+                        (latents.shape[0] * (2 if do_classifier_free_guidance else 1), *latents.shape[1:]),
+                        device=latents.device,
+                        dtype=latents.dtype,
+                    )
+                    counter = torch.zeros(
+                        (1, 1, latents.shape[2], 1, 1), device=latents.device, dtype=latents.dtype
+                    )
 
-                    # predict the noise residual
-                    noise_pred = self.unet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=prompt_embeds,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        added_cond_kwargs=added_cond_kwargs,
-                    ).sample
+                    for context in context_scheduler(
+                        i, num_inference_steps, latents.shape[2], context_frames, context_stride, context_overlap
+                    ):
+                        # expand the latents if we are doing classifier free guidance
+                        latent_model_input = (
+                            latents[:, :, context]
+                            .to(device)
+                            .repeat(2 if do_classifier_free_guidance else 1, 1, 1, 1, 1)
+                        )
+                        latent_model_input = self.scheduler.scale_model_input(latent_model_input, t).to(
+                            self.unet.device, self.unet.dtype
+                        )
+
+                        frame_embeds = get_frame_embeds(context).to(self.unet.device, self.unet.dtype)
+
+
+                        # predict the noise residual
+                        pred = self.unet(
+                            latent_model_input,
+                            t,
+                            encoder_hidden_states=frame_embeds,
+                            cross_attention_kwargs=cross_attention_kwargs,
+                            return_dict=False,
+                        )[0]
+
+                        pred = pred.to(dtype=latents.dtype, device=latents.device)
+                        noise_pred[:, :, context] = noise_pred[:, :, context] + pred
+                        counter[:, :, context] = counter[:, :, context] + 1
+                        progress_bar.update()
 
                     # perform guidance
                     if self.do_classifier_free_guidance:
