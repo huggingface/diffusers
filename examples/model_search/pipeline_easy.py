@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 suzukimain
+# Copyright 2025 suzukimain
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ import os
 import re
 import types
 from collections import OrderedDict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Union
 
 import requests
@@ -321,9 +321,9 @@ class SearchResult:
     model_path: str = ""
     loading_method: Union[str, None] = None
     checkpoint_format: Union[str, None] = None
-    repo_status: RepoStatus = RepoStatus()
-    model_status: ModelStatus = ModelStatus()
-    extra_status: ExtraStatus = ExtraStatus()
+    repo_status: RepoStatus = field(default_factory=RepoStatus)
+    model_status: ModelStatus = field(default_factory=ModelStatus)
+    extra_status: ExtraStatus = field(default_factory=ExtraStatus)
 
 
 @validate_hf_hub_args
@@ -589,10 +589,18 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
     gated = kwargs.pop("gated", False)
     skip_error = kwargs.pop("skip_error", False)
 
+    file_list = []
+    hf_repo_info = {}
+    hf_security_info = {}
+    model_path = ""
+    repo_id, file_name = "", ""
+    diffusers_model_exists = False
+
     # Get the type and loading method for the keyword
     search_word_status = get_keyword_types(search_word)
 
     if search_word_status["type"]["hf_repo"]:
+        hf_repo_info = hf_api.model_info(repo_id=search_word, securityStatus=True)
         if download:
             model_path = DiffusionPipeline.download(
                 search_word,
@@ -634,13 +642,6 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
             token=token,
         )
         model_dicts = [asdict(value) for value in list(hf_models)]
-
-        file_list = []
-        hf_repo_info = {}
-        hf_security_info = {}
-        model_path = ""
-        repo_id, file_name = "", ""
-        diffusers_model_exists = False
 
         # Loop through models to find a suitable candidate
         for repo_info in model_dicts:
@@ -705,6 +706,10 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
                     token=token,
                     force_download=force_download,
                 )
+
+    # `pathlib.PosixPath` may be returned
+    if model_path:
+        model_path = str(model_path)
 
     if file_name:
         download_url = f"https://huggingface.co/{repo_id}/blob/main/{file_name}"
