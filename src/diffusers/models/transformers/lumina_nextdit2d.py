@@ -98,7 +98,7 @@ class LuminaNextDiTBlock(nn.Module):
 
         self.feed_forward = LuminaFeedForward(
             dim=dim,
-            inner_dim=4 * dim,
+            inner_dim=int(4 * 2 * dim / 3),
             multiple_of=multiple_of,
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
