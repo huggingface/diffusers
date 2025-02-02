@@ -216,7 +216,7 @@ class Attention(nn.Module):
         )
 
     def cal_qkv(
-        self, x, context=None, mask=None, rope_emb=None, **kwargs
+        self, x, context=None, mask=None, image_rotary_emb=None, **kwargs
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         q = self.to_q[0](x)
         context = x if context is None else context
@@ -227,19 +227,19 @@ class Attention(nn.Module):
         q = self.to_q[1](q)
         k = self.to_k[1](k)
         v = self.to_v[1](v)
-        if self.is_selfattn and rope_emb is not None:  # only apply to self-attention!
-            apply_rotary_pos_emb(q, rope_emb)
-            apply_rotary_pos_emb(k, rope_emb)
+        if self.is_selfattn and image_rotary_emb is not None:  # only apply to self-attention!
+            apply_rotary_pos_emb(q, image_rotary_emb)
+            apply_rotary_pos_emb(k, image_rotary_emb)
             q_shape = q.shape
             q = q.reshape(*q.shape[:-1], 2, -1).movedim(-2, -1).unsqueeze(-2)
-            q = torch.cat([rope_emb[..., 0] * q[..., 0], rope_emb[..., 1] * q[..., 1]], dim=-1)
+            q = torch.cat([image_rotary_emb[..., 0] * q[..., 0], image_rotary_emb[..., 1] * q[..., 1]], dim=-1)
             # q = rope_emb[..., 0] * q[..., 0] + rope_emb[..., 1] * q[..., 1]
             q = q.movedim(-1, -2).reshape(*q_shape).to(x.dtype)
 
             # apply_rotary_pos_emb inlined
             k_shape = k.shape
             k = k.reshape(*k.shape[:-1], 2, -1).movedim(-2, -1).unsqueeze(-2)
-            k = torch.cat([rope_emb[..., 0] * k[..., 0], rope_emb[..., 1] * k[..., 1]], dim=-1)
+            k = torch.cat([image_rotary_emb[..., 0] * k[..., 0], image_rotary_emb[..., 1] * k[..., 1]], dim=-1)
             # k = rope_emb[..., 0] * k[..., 0] + rope_emb[..., 1] * k[..., 1]
             k = k.movedim(-1, -2).reshape(*k_shape).to(x.dtype)
         return q, k, v
@@ -256,7 +256,7 @@ class Attention(nn.Module):
         x,
         context=None,
         mask=None,
-        rope_emb=None,
+        image_rotary_emb=None,
         **kwargs,
     ):
         """
@@ -265,53 +265,8 @@ class Attention(nn.Module):
             context (Optional[Tensor]):
                 The key tensor of shape [B, Mk, K] or use x as context [self attention] if None
         """
-        q, k, v = self.cal_qkv(x, context, mask, rope_emb=rope_emb, **kwargs)
+        q, k, v = self.cal_qkv(x, context, mask, image_rotary_emb=image_rotary_emb, **kwargs)
         return self.cal_attn(q, k, v, mask)
-
-
-class VideoAttn(nn.Module):
-    def __init__(
-        self,
-        x_dim: int,
-        context_dim: Optional[int],
-        num_heads: int,
-        bias: bool = False,
-        qkv_norm_mode: str = "per_head",
-        x_format: str = "BTHWD",
-    ) -> None:
-        super().__init__()
-        self.x_format = x_format
-
-        self.attn = Attention(
-            x_dim,
-            context_dim,
-            num_heads,
-            x_dim // num_heads,
-            qkv_bias=bias,
-            out_bias=bias,
-            qkv_norm_mode=qkv_norm_mode,
-            qkv_format="sbhd",
-        )
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        context: Optional[torch.Tensor] = None,
-        crossattn_mask: Optional[torch.Tensor] = None,
-        rope_emb_L_1_1_D: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        x_T_H_W_B_D = x
-        context_M_B_D = context
-        T, H, W, B, D = x_T_H_W_B_D.shape
-        x_THW_B_D = rearrange(x_T_H_W_B_D, "t h w b d -> (t h w) b d")
-        x_THW_B_D = self.attn(
-            x_THW_B_D,
-            context_M_B_D,
-            crossattn_mask,
-            rope_emb=rope_emb_L_1_1_D,
-        )
-        x_T_H_W_B_D = rearrange(x_THW_B_D, "(t h w) b d -> t h w b d", h=H, w=W)
-        return x_T_H_W_B_D
 
 
 class DITBuildingBlock(nn.Module):
@@ -324,26 +279,33 @@ class DITBuildingBlock(nn.Module):
         mlp_ratio: float = 4.0,
         bias: bool = False,
         qkv_norm_mode: str = "per_head",
-        x_format: str = "BTHWD",
         use_adaln_lora: bool = False,
         adaln_lora_dim: int = 256,
     ) -> None:
         block_type = block_type.lower()
 
         super().__init__()
-        self.x_format = x_format
         if block_type in ["cross_attn", "ca"]:
-            self.block = VideoAttn(
+            self.attn = Attention(
                 x_dim,
                 context_dim,
                 num_heads,
-                bias=bias,
+                x_dim // num_heads,
+                qkv_bias=bias,
+                out_bias=bias,
                 qkv_norm_mode=qkv_norm_mode,
-                x_format=self.x_format,
+                qkv_format="sbhd",
             )
         elif block_type in ["full_attn", "fa"]:
-            self.block = VideoAttn(
-                x_dim, None, num_heads, bias=bias, qkv_norm_mode=qkv_norm_mode, x_format=self.x_format
+            self.attn = Attention(
+                x_dim,
+                None,
+                num_heads,
+                x_dim // num_heads,
+                qkv_bias=bias,
+                out_bias=bias,
+                qkv_norm_mode=qkv_norm_mode,
+                qkv_format="sbhd",
             )
         elif block_type in ["mlp", "ff"]:
             self.block = FeedForward(x_dim, mult=mlp_ratio, activation_fn="gelu", bias=bias)
@@ -366,27 +328,13 @@ class DITBuildingBlock(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,
+        hidden_states: torch.Tensor,
         emb_B_D: torch.Tensor,
         crossattn_emb: torch.Tensor,
         crossattn_mask: Optional[torch.Tensor] = None,
-        rope_emb_L_1_1_D: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
         adaln_lora_B_3D: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """
-        Forward pass for dynamically configured blocks with adaptive normalization.
-
-        Args:
-            x (Tensor): Input tensor of shape (B, T, H, W, D) or (T, H, W, B, D).
-            emb_B_D (Tensor): Embedding tensor for adaptive layer normalization modulation.
-            crossattn_emb (Tensor): Tensor for cross-attention blocks.
-            crossattn_mask (Optional[Tensor]): Optional mask for cross-attention.
-            rope_emb_L_1_1_D (Optional[Tensor]):
-            Rotary positional embedding tensor of shape (L, 1, 1, D). L == THW for current video training.
-
-        Returns:
-            Tensor: The output tensor after processing through the configured block and adaptive normalization.
-        """
         if self.use_adaln_lora:
             shift_B_D, scale_B_D, gate_B_D = (self.adaLN_modulation(emb_B_D) + adaln_lora_B_3D).chunk(
                 self.n_adaln_chunks, dim=1
@@ -401,26 +349,36 @@ class DITBuildingBlock(nn.Module):
         )
 
         if self.block_type in ["mlp", "ff"]:
-            x = x + gate_1_1_1_B_D * self.block(
-                self.norm_state(x) * (1 + scale_1_1_1_B_D) + shift_1_1_1_B_D,
+            hidden_states = hidden_states + gate_1_1_1_B_D * self.block(
+                self.norm_state(hidden_states) * (1 + scale_1_1_1_B_D) + shift_1_1_1_B_D,
             )
         elif self.block_type in ["full_attn", "fa"]:
-            x = x + gate_1_1_1_B_D * self.block(
-                self.norm_state(x) * (1 + scale_1_1_1_B_D) + shift_1_1_1_B_D,
+            norm_hidden_states = self.norm_state(hidden_states) * (1 + scale_1_1_1_B_D) + shift_1_1_1_B_D
+            T, H, W, B, D = norm_hidden_states.shape
+            norm_hidden_states = rearrange(norm_hidden_states, "t h w b d -> (t h w) b d")
+            attn_output = self.attn(
+                norm_hidden_states,
                 context=None,
-                rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                image_rotary_emb=image_rotary_emb,
             )
+            attn_output = rearrange(attn_output, "(t h w) b d -> t h w b d", h=H, w=W)
+            hidden_states = hidden_states + gate_1_1_1_B_D * attn_output
         elif self.block_type in ["cross_attn", "ca"]:
-            x = x + gate_1_1_1_B_D * self.block(
-                self.norm_state(x) * (1 + scale_1_1_1_B_D) + shift_1_1_1_B_D,
+            norm_hidden_states = self.norm_state(hidden_states) * (1 + scale_1_1_1_B_D) + shift_1_1_1_B_D
+            T, H, W, B, D = norm_hidden_states.shape
+            norm_hidden_states = rearrange(norm_hidden_states, "t h w b d -> (t h w) b d")
+            attn_output = self.attn(
+                norm_hidden_states,
                 context=crossattn_emb,
                 crossattn_mask=crossattn_mask,
-                rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                image_rotary_emb=image_rotary_emb,
             )
+            attn_output = rearrange(attn_output, "(t h w) b d -> t h w b d", h=H, w=W)
+            hidden_states = hidden_states + gate_1_1_1_B_D * attn_output
         else:
             raise ValueError(f"Unknown block type: {self.block_type}")
 
-        return x
+        return hidden_states
 
 
 class DataType(Enum):
@@ -601,13 +559,11 @@ class GeneralDITTransformerBlock(nn.Module):
         num_heads: int,
         block_config: str,
         mlp_ratio: float = 4.0,
-        x_format: str = "BTHWD",
         use_adaln_lora: bool = False,
         adaln_lora_dim: int = 256,
     ):
         super().__init__()
         self.blocks = nn.ModuleList()
-        self.x_format = x_format
         for block_type in block_config.split("-"):
             self.blocks.append(
                 DITBuildingBlock(
@@ -616,7 +572,6 @@ class GeneralDITTransformerBlock(nn.Module):
                     context_dim,
                     num_heads,
                     mlp_ratio,
-                    x_format=self.x_format,
                     use_adaln_lora=use_adaln_lora,
                     adaln_lora_dim=adaln_lora_dim,
                 )
@@ -628,7 +583,7 @@ class GeneralDITTransformerBlock(nn.Module):
         emb_B_D: torch.Tensor,
         crossattn_emb: torch.Tensor,
         crossattn_mask: Optional[torch.Tensor] = None,
-        rope_emb_L_1_1_D: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
         adaln_lora_B_3D: Optional[torch.Tensor] = None,
         extra_per_block_pos_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
@@ -640,7 +595,7 @@ class GeneralDITTransformerBlock(nn.Module):
                 emb_B_D,
                 crossattn_emb,
                 crossattn_mask,
-                rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                image_rotary_emb=image_rotary_emb,
                 adaln_lora_B_3D=adaln_lora_B_3D,
             )
         return x
@@ -692,7 +647,6 @@ class GeneralDIT(nn.Module):
         num_blocks: int = 10,
         num_heads: int = 16,
         mlp_ratio: float = 4.0,
-        block_x_format: str = "BTHWD",
         # cross attention settings
         crossattn_emb_channels: int = 1024,
         use_cross_attn_mask: bool = False,
@@ -738,7 +692,6 @@ class GeneralDIT(nn.Module):
 
         self.build_patch_embed()
         self.build_pos_embed()
-        self.block_x_format = block_x_format
         self.adaln_lora_dim = adaln_lora_dim
 
         self.condition_embedder = CosmosEmbedding(model_channels, model_channels)
@@ -752,7 +705,6 @@ class GeneralDIT(nn.Module):
                 num_heads=num_heads,
                 block_config=block_config,
                 mlp_ratio=mlp_ratio,
-                x_format=self.block_x_format,
                 use_adaln_lora=True,
                 adaln_lora_dim=adaln_lora_dim,
             )
@@ -833,30 +785,6 @@ class GeneralDIT(nn.Module):
         latent_condition: Optional[torch.Tensor] = None,
         latent_condition_sigma: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """
-        Prepares an embedded sequence tensor by applying positional embeddings and handling padding masks.
-
-        Args:
-            x_B_C_T_H_W (torch.Tensor): video
-            fps (Optional[torch.Tensor]): Frames per second tensor to be used for positional embedding when required.
-                                    If None, a default value (`self.base_fps`) will be used.
-            padding_mask (Optional[torch.Tensor]): current it is not used
-
-        Returns:
-            Tuple[torch.Tensor, Optional[torch.Tensor]]:
-                - A tensor of shape (B, T, H, W, D) with the embedded sequence.
-                - An optional positional embedding tensor, returned only if the positional embedding class
-                (`self.pos_emb_cls`) includes 'rope'. Otherwise, None.
-
-        Notes:
-            - If `self.concat_padding_mask` is True, a padding mask channel is concatenated to the input tensor.
-            - The method of applying positional embeddings depends on the value of `self.pos_emb_cls`.
-            - If 'rope' is in `self.pos_emb_cls` (case insensitive), the positional embeddings are generated using
-                the `self.pos_embedder` with the shape [T, H, W].
-            - If "fps_aware" is in `self.pos_emb_cls`, the positional embeddings are generated using the
-            `self.pos_embedder` with the fps tensor.
-            - Otherwise, the positional embeddings are generated without considering fps.
-        """
         if self.concat_padding_mask:
             padding_mask = transforms.functional.resize(
                 padding_mask, list(x_B_C_T_H_W.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST
@@ -939,7 +867,7 @@ class GeneralDIT(nn.Module):
             data_type, DataType
         ), f"Expected DataType, got {type(data_type)}. We need discuss this flag later."
         original_shape = x.shape
-        x_B_T_H_W_D, rope_emb_L_1_1_D, extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D = self.prepare_embedded_sequence(
+        x_B_T_H_W_D, image_rotary_emb, extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D = self.prepare_embedded_sequence(
             x,
             fps=fps,
             padding_mask=padding_mask,
@@ -954,27 +882,22 @@ class GeneralDIT(nn.Module):
         else:
             crossattn_mask = None
 
-        if self.blocks["block0"].x_format == "THWBD":
-            x = rearrange(x_B_T_H_W_D, "B T H W D -> T H W B D")
-            if extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D is not None:
-                extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D = rearrange(
-                    extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D, "B T H W D -> T H W B D"
-                )
-            crossattn_emb = rearrange(crossattn_emb, "B M D -> M B D")
+        x = rearrange(x_B_T_H_W_D, "B T H W D -> T H W B D")
+        if extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D is not None:
+            extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D = rearrange(
+                extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D, "B T H W D -> T H W B D"
+            )
+        crossattn_emb = rearrange(crossattn_emb, "B M D -> M B D")
 
-            if crossattn_mask:
-                crossattn_mask = rearrange(crossattn_mask, "B M -> M B")
-
-        elif self.blocks["block0"].x_format == "BTHWD":
-            x = x_B_T_H_W_D
-        else:
-            raise ValueError(f"Unknown x_format {self.blocks[0].x_format}")
+        if crossattn_mask:
+            crossattn_mask = rearrange(crossattn_mask, "B M -> M B")
+        
         output = {
             "x": x,
             "affline_emb_B_D": affline_emb_B_D,
             "crossattn_emb": crossattn_emb,
             "crossattn_mask": crossattn_mask,
-            "rope_emb_L_1_1_D": rope_emb_L_1_1_D,
+            "image_rotary_emb": image_rotary_emb,
             "adaln_lora_B_3D": adaln_lora_B_3D,
             "original_shape": original_shape,
             "extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D": extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D,
@@ -1010,12 +933,12 @@ class GeneralDIT(nn.Module):
             condition_video_augment_sigma=condition_video_augment_sigma,
             **kwargs,
         )
-        x, affline_emb_B_D, crossattn_emb, crossattn_mask, rope_emb_L_1_1_D, adaln_lora_B_3D, original_shape = (
+        x, affline_emb_B_D, crossattn_emb, crossattn_mask, image_rotary_emb, adaln_lora_B_3D, original_shape = (
             inputs["x"],
             inputs["affline_emb_B_D"],
             inputs["crossattn_emb"],
             inputs["crossattn_mask"],
-            inputs["rope_emb_L_1_1_D"],
+            inputs["image_rotary_emb"],
             inputs["adaln_lora_B_3D"],
             inputs["original_shape"],
         )
@@ -1026,16 +949,12 @@ class GeneralDIT(nn.Module):
             ), f"{x.shape} != {extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D.shape} {original_shape}"
 
         for _, block in self.blocks.items():
-            assert (
-                self.blocks["block0"].x_format == block.x_format
-            ), f"First block has x_format {self.blocks[0].x_format}, got {block.x_format}"
-
             x = block(
                 x,
                 affline_emb_B_D,
                 crossattn_emb,
                 crossattn_mask,
-                rope_emb_L_1_1_D=rope_emb_L_1_1_D,
+                image_rotary_emb=image_rotary_emb,
                 adaln_lora_B_3D=adaln_lora_B_3D,
                 extra_per_block_pos_emb=extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D,
             )
