@@ -1248,7 +1248,8 @@ class FluxPosEmbed(nn.Module):
         sin_out = []
         pos = ids.float()
         is_mps = ids.device.type == "mps"
-        freqs_dtype = torch.float32 if is_mps else torch.float64
+        is_npu = ids.device.type == "npu"
+        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
                 self.axes_dim[i],
@@ -1786,7 +1787,7 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
     def forward(self, timestep, caption_feat, caption_mask):
         # timestep embedding:
         time_freq = self.time_proj(timestep)
-        time_embed = self.timestep_embedder(time_freq.to(dtype=self.timestep_embedder.linear_1.weight.dtype))
+        time_embed = self.timestep_embedder(time_freq.to(dtype=caption_feat.dtype))
 
         # caption condition embedding:
         caption_mask_float = caption_mask.float().unsqueeze(-1)

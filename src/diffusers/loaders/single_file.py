@@ -60,6 +60,7 @@ def load_single_file_sub_model(
     local_files_only=False,
     torch_dtype=None,
     is_legacy_loading=False,
+    disable_mmap=False,
     **kwargs,
 ):
     if is_pipeline_module:
@@ -106,6 +107,7 @@ def load_single_file_sub_model(
             subfolder=name,
             torch_dtype=torch_dtype,
             local_files_only=local_files_only,
+            disable_mmap=disable_mmap,
             **kwargs,
         )
 
@@ -308,6 +310,9 @@ class FromSingleFileMixin:
                       hosted on the Hub.
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
                       component configs in Diffusers format.
+            disable_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
+                is on a network mount or hard drive.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -329,7 +334,7 @@ class FromSingleFileMixin:
 
         >>> # Enable float16 and move to GPU
         >>> pipeline = StableDiffusionPipeline.from_single_file(
-        ...     "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
+        ...     "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
         ...     torch_dtype=torch.float16,
         ... )
         >>> pipeline.to("cuda")
@@ -355,6 +360,7 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        disable_mmap = kwargs.pop("disable_mmap", False)
 
         is_legacy_loading = False
 
@@ -383,6 +389,7 @@ class FromSingleFileMixin:
             cache_dir=cache_dir,
             local_files_only=local_files_only,
             revision=revision,
+            disable_mmap=disable_mmap,
         )
 
         if config is None:
@@ -504,6 +511,7 @@ class FromSingleFileMixin:
                         original_config=original_config,
                         local_files_only=local_files_only,
                         is_legacy_loading=is_legacy_loading,
+                        disable_mmap=disable_mmap,
                         **kwargs,
                     )
                 except SingleFileComponentError as e:
