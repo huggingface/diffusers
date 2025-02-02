@@ -18,11 +18,13 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from torchvision import transforms
 
 from ..attention import FeedForward
+from ..attention_processor import Attention
 from ..embeddings import Timesteps
 from ..normalization import RMSNorm
 
@@ -33,33 +35,6 @@ def normalize(x: torch.Tensor, dim: Optional[List[int]] = None, eps: float = 0) 
     norm = torch.linalg.vector_norm(x, dim=dim, keepdim=True, dtype=torch.float32)
     norm = torch.add(eps, norm, alpha=np.sqrt(norm.numel() / x.numel()))
     return x / norm.to(x.dtype)
-
-
-def _rotate_half(x: torch.Tensor) -> torch.Tensor:
-    x = x.view(x.shape[:-1] + torch.Size((2, x.shape[-1] // 2)))
-    x1, x2 = x.unbind(dim=-2)
-    return torch.cat((-x2, x1), dim=-1)
-
-
-def apply_rotary_pos_emb(
-    t: torch.Tensor,
-    freqs: torch.Tensor,
-) -> torch.Tensor:
-    cur_seq_len = t.shape[0]
-
-    freqs = freqs[:cur_seq_len]
-    # cos/sin first then dtype conversion for better precision
-    cos_ = torch.cos(freqs).to(t.dtype)
-    sin_ = torch.sin(freqs).to(t.dtype)
-
-    rot_dim = freqs.shape[-1]
-    # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
-    t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
-
-    # first part is cosine component
-    # second part is sine component, need to change signs with _rotate_half method
-    t = (t * cos_) + (_rotate_half(t) * sin_)
-    return torch.cat((t, t_pass), dim=-1)
 
 
 class PatchEmbed(nn.Module):
@@ -164,109 +139,53 @@ class FinalLayer(nn.Module):
         return x_BT_HW_D
 
 
-class Attention(nn.Module):
-    def __init__(
+class CosmosAttnProcessor2_0:
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("CosmosAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
         self,
-        query_dim: int,
-        context_dim=None,
-        heads=8,
-        dim_head=64,
-        dropout=0.0,
-        qkv_bias: bool = False,
-        out_bias: bool = False,
-        qkv_norm_mode: str = "per_head",
-        backend: str = "transformer_engine",
-        qkv_format: str = "bshd",
-    ) -> None:
-        super().__init__()
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        # 1. QKV projections
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
 
-        self.is_selfattn = context_dim is None  # self attention
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
 
-        inner_dim = dim_head * heads
-        context_dim = query_dim if context_dim is None else context_dim
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
-        self.heads = heads
-        self.dim_head = dim_head
-        self.qkv_norm_mode = qkv_norm_mode
-        self.qkv_format = qkv_format
+        # 2. QK normalization
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
 
-        if self.qkv_norm_mode == "per_head":
-            norm_dim = dim_head
-        else:
-            raise ValueError(f"Normalization mode {self.qkv_norm_mode} not found, only support 'per_head'")
+        # 3. Apply RoPE
+        if image_rotary_emb is not None:
+            from ..embeddings import apply_rotary_emb
 
-        self.backend = backend
+            query = apply_rotary_emb(query, image_rotary_emb, use_real_unbind_dim=-2)
+            key = apply_rotary_emb(key, image_rotary_emb, use_real_unbind_dim=-2)
 
-        self.to_q = nn.Sequential(
-            nn.Linear(query_dim, inner_dim, bias=qkv_bias),
-            RMSNorm(norm_dim, eps=1e-6, elementwise_affine=True),
+        # 4. Attention
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, enable_gqa=True
         )
-        self.to_k = nn.Sequential(
-            nn.Linear(context_dim, inner_dim, bias=qkv_bias),
-            RMSNorm(norm_dim, eps=1e-6, elementwise_affine=True),
-        )
-        self.to_v = nn.Sequential(
-            nn.Linear(context_dim, inner_dim, bias=qkv_bias),
-            nn.Identity(),
-        )
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3).type_as(query)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim, bias=out_bias),
-            nn.Dropout(dropout),
-        )
+        # 5. Output projection
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
 
-    def cal_qkv(
-        self, x, context=None, mask=None, image_rotary_emb=None, **kwargs
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        q = self.to_q[0](x)
-        context = x if context is None else context
-        k = self.to_k[0](context)
-        v = self.to_v[0](context)
-        q, k, v = (rearrange(t, "s b (n c) -> b n s c", n=self.heads, c=self.dim_head) for t in (q, k, v))
-
-        q = self.to_q[1](q)
-        k = self.to_k[1](k)
-        v = self.to_v[1](v)
-        if self.is_selfattn and image_rotary_emb is not None:  # only apply to self-attention!
-            apply_rotary_pos_emb(q, image_rotary_emb)
-            apply_rotary_pos_emb(k, image_rotary_emb)
-            q_shape = q.shape
-            q = q.reshape(*q.shape[:-1], 2, -1).movedim(-2, -1).unsqueeze(-2)
-            q = torch.cat([image_rotary_emb[..., 0] * q[..., 0], image_rotary_emb[..., 1] * q[..., 1]], dim=-1)
-            # q = rope_emb[..., 0] * q[..., 0] + rope_emb[..., 1] * q[..., 1]
-            q = q.movedim(-1, -2).reshape(*q_shape).to(x.dtype)
-
-            # apply_rotary_pos_emb inlined
-            k_shape = k.shape
-            k = k.reshape(*k.shape[:-1], 2, -1).movedim(-2, -1).unsqueeze(-2)
-            k = torch.cat([image_rotary_emb[..., 0] * k[..., 0], image_rotary_emb[..., 1] * k[..., 1]], dim=-1)
-            # k = rope_emb[..., 0] * k[..., 0] + rope_emb[..., 1] * k[..., 1]
-            k = k.movedim(-1, -2).reshape(*k_shape).to(x.dtype)
-        return q, k, v
-
-    def cal_attn(self, q, k, v, mask=None):
-        # Note: Does not seem to use atttention masks
-        out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, enable_gqa=True)
-        out = rearrange(out, "b n s c -> s b (n c)")
-        out = self.to_out(out)
-        return out
-
-    def forward(
-        self,
-        x,
-        context=None,
-        mask=None,
-        image_rotary_emb=None,
-        **kwargs,
-    ):
-        """
-        Args:
-            x (Tensor): The query tensor of shape [B, Mq, K]
-            context (Optional[Tensor]):
-                The key tensor of shape [B, Mk, K] or use x as context [self attention] if None
-        """
-        q, k, v = self.cal_qkv(x, context, mask, image_rotary_emb=image_rotary_emb, **kwargs)
-        return self.cal_attn(q, k, v, mask)
+        return hidden_states
 
 
 class DITBuildingBlock(nn.Module):
@@ -278,7 +197,6 @@ class DITBuildingBlock(nn.Module):
         num_heads: int,
         mlp_ratio: float = 4.0,
         bias: bool = False,
-        qkv_norm_mode: str = "per_head",
         use_adaln_lora: bool = False,
         adaln_lora_dim: int = 256,
     ) -> None:
@@ -287,25 +205,25 @@ class DITBuildingBlock(nn.Module):
         super().__init__()
         if block_type in ["cross_attn", "ca"]:
             self.attn = Attention(
-                x_dim,
-                context_dim,
-                num_heads,
-                x_dim // num_heads,
-                qkv_bias=bias,
+                query_dim=x_dim,
+                cross_attention_dim=context_dim,
+                heads=num_heads,
+                dim_head=x_dim // num_heads,
+                qk_norm="rms_norm",
+                elementwise_affine=True,
                 out_bias=bias,
-                qkv_norm_mode=qkv_norm_mode,
-                qkv_format="sbhd",
+                processor=CosmosAttnProcessor2_0(),
             )
         elif block_type in ["full_attn", "fa"]:
             self.attn = Attention(
-                x_dim,
-                None,
-                num_heads,
-                x_dim // num_heads,
-                qkv_bias=bias,
+                query_dim=x_dim,
+                cross_attention_dim=None,
+                heads=num_heads,
+                dim_head=x_dim // num_heads,
+                qk_norm="rms_norm",
+                elementwise_affine=True,
                 out_bias=bias,
-                qkv_norm_mode=qkv_norm_mode,
-                qkv_format="sbhd",
+                processor=CosmosAttnProcessor2_0(),
             )
         elif block_type in ["mlp", "ff"]:
             self.block = FeedForward(x_dim, mult=mlp_ratio, activation_fn="gelu", bias=bias)
@@ -355,25 +273,24 @@ class DITBuildingBlock(nn.Module):
         elif self.block_type in ["full_attn", "fa"]:
             norm_hidden_states = self.norm_state(hidden_states) * (1 + scale_1_1_1_B_D) + shift_1_1_1_B_D
             T, H, W, B, D = norm_hidden_states.shape
-            norm_hidden_states = rearrange(norm_hidden_states, "t h w b d -> (t h w) b d")
+            norm_hidden_states = rearrange(norm_hidden_states, "t h w b d -> b (t h w) d")
             attn_output = self.attn(
-                norm_hidden_states,
-                context=None,
+                hidden_states=norm_hidden_states,
                 image_rotary_emb=image_rotary_emb,
             )
-            attn_output = rearrange(attn_output, "(t h w) b d -> t h w b d", h=H, w=W)
+            attn_output = rearrange(attn_output, "b (t h w) d -> t h w b d", h=H, w=W)
             hidden_states = hidden_states + gate_1_1_1_B_D * attn_output
         elif self.block_type in ["cross_attn", "ca"]:
             norm_hidden_states = self.norm_state(hidden_states) * (1 + scale_1_1_1_B_D) + shift_1_1_1_B_D
             T, H, W, B, D = norm_hidden_states.shape
-            norm_hidden_states = rearrange(norm_hidden_states, "t h w b d -> (t h w) b d")
+            norm_hidden_states = rearrange(norm_hidden_states, "t h w b d -> b (t h w) d")
+            crossattn_emb = rearrange(crossattn_emb, "s b d -> b s d")
             attn_output = self.attn(
-                norm_hidden_states,
-                context=crossattn_emb,
-                crossattn_mask=crossattn_mask,
-                image_rotary_emb=image_rotary_emb,
+                hidden_states=norm_hidden_states,
+                encoder_hidden_states=crossattn_emb,
+                attention_mask=crossattn_mask,
             )
-            attn_output = rearrange(attn_output, "(t h w) b d -> t h w b d", h=H, w=W)
+            attn_output = rearrange(attn_output, "b (t h w) d -> t h w b d", h=H, w=W)
             hidden_states = hidden_states + gate_1_1_1_B_D * attn_output
         else:
             raise ValueError(f"Unknown block type: {self.block_type}")
@@ -426,17 +343,6 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         dim_w = dim_h
         dim_t = dim - 2 * dim_h
         assert dim == dim_h + dim_w + dim_t, f"bad dim: {dim} != {dim_h} + {dim_w} + {dim_t}"
-        # self.register_buffer(
-        #     "dim_spatial_range",
-        #     torch.arange(0, dim_h, 2)[: (dim_h // 2)].float() / dim_h,
-        #     persistent=False,
-        # )
-
-        # self.register_buffer(
-        #     "dim_temporal_range",
-        #     torch.arange(0, dim_t, 2)[: (dim_t // 2)].float() / dim_t,
-        #     persistent=False,
-        # )
         self.dim_h = dim_h
         self.dim_t = dim_t
 
@@ -472,10 +378,6 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         w_spatial_freqs = 1.0 / (w_theta**dim_spatial_range)
         temporal_freqs = 1.0 / (t_theta**dim_temporal_range)
 
-        # h_spatial_freqs = 1.0 / (h_theta**self.dim_spatial_range)
-        # w_spatial_freqs = 1.0 / (w_theta**self.dim_spatial_range)
-        # temporal_freqs = 1.0 / (t_theta**self.dim_temporal_range)
-
         B, T, H, W, _ = B_T_H_W_C
         uniform_fps = (fps is None) or (fps.min() == fps.max())
         assert (
@@ -504,7 +406,10 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
             dim=-1,
         )
 
-        return rearrange(em_T_H_W_D, "t h w d -> (t h w) 1 1 d").float()
+        freqs = rearrange(em_T_H_W_D, "t h w d -> (t h w) d").float()
+        cos = torch.cos(freqs)
+        sin = torch.sin(freqs)
+        return cos, sin
 
 
 class LearnablePosEmbAxis(VideoPositionEmb):
@@ -651,7 +556,6 @@ class GeneralDIT(nn.Module):
         crossattn_emb_channels: int = 1024,
         use_cross_attn_mask: bool = False,
         # positional embedding settings
-        pos_emb_cls: str = "sincos",
         pos_emb_learnable: bool = False,
         pos_emb_interpolation: str = "crop",
         adaln_lora_dim: int = 256,
@@ -678,7 +582,6 @@ class GeneralDIT(nn.Module):
         self.use_cross_attn_mask = use_cross_attn_mask
         self.concat_padding_mask = concat_padding_mask
         # positional embedding settings
-        self.pos_emb_cls = pos_emb_cls
         self.pos_emb_learnable = pos_emb_learnable
         self.pos_emb_interpolation = pos_emb_interpolation
         self.rope_h_extrapolation_ratio = rope_h_extrapolation_ratio
@@ -745,10 +648,7 @@ class GeneralDIT(nn.Module):
         )
 
     def build_pos_embed(self):
-        if self.pos_emb_cls == "rope3d":
-            cls_type = VideoRopePosition3DEmb
-        else:
-            raise ValueError(f"Unknown pos_emb_cls {self.pos_emb_cls}")
+        cls_type = VideoRopePosition3DEmb
 
         kwargs = {
             "model_channels": self.model_channels,
@@ -762,9 +662,7 @@ class GeneralDIT(nn.Module):
             "w_extrapolation_ratio": self.rope_w_extrapolation_ratio,
             "t_extrapolation_ratio": self.rope_t_extrapolation_ratio,
         }
-        self.pos_embedder = cls_type(
-            **kwargs,
-        )
+        self.pos_embedder = cls_type(**kwargs)
 
         if self.extra_per_block_abs_pos_emb:
             assert self.extra_per_block_abs_pos_emb_type in [
@@ -773,17 +671,13 @@ class GeneralDIT(nn.Module):
             kwargs["h_extrapolation_ratio"] = self.extra_h_extrapolation_ratio
             kwargs["w_extrapolation_ratio"] = self.extra_w_extrapolation_ratio
             kwargs["t_extrapolation_ratio"] = self.extra_t_extrapolation_ratio
-            self.extra_pos_embedder = LearnablePosEmbAxis(
-                **kwargs,
-            )
+            self.extra_pos_embedder = LearnablePosEmbAxis(**kwargs)
 
     def prepare_embedded_sequence(
         self,
         x_B_C_T_H_W: torch.Tensor,
         fps: Optional[torch.Tensor] = None,
         padding_mask: Optional[torch.Tensor] = None,
-        latent_condition: Optional[torch.Tensor] = None,
-        latent_condition_sigma: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if self.concat_padding_mask:
             padding_mask = transforms.functional.resize(
@@ -799,15 +693,7 @@ class GeneralDIT(nn.Module):
         else:
             extra_pos_emb = None
 
-        if "rope" in self.pos_emb_cls.lower():
-            return x_B_T_H_W_D, self.pos_embedder(x_B_T_H_W_D, fps=fps), extra_pos_emb
-
-        if "fps_aware" in self.pos_emb_cls:
-            x_B_T_H_W_D = x_B_T_H_W_D + self.pos_embedder(x_B_T_H_W_D, fps=fps)  # [B, T, H, W, D]
-        else:
-            x_B_T_H_W_D = x_B_T_H_W_D + self.pos_embedder(x_B_T_H_W_D)  # [B, T, H, W, D]
-
-        return x_B_T_H_W_D, None, extra_pos_emb
+        return x_B_T_H_W_D, self.pos_embedder(x_B_T_H_W_D, fps=fps), extra_pos_emb
 
     def decoder_head(
         self,
@@ -871,8 +757,6 @@ class GeneralDIT(nn.Module):
             x,
             fps=fps,
             padding_mask=padding_mask,
-            latent_condition=latent_condition,
-            latent_condition_sigma=latent_condition_sigma,
         )
 
         affline_emb_B_D, adaln_lora_B_3D = self.condition_embedder(timesteps, x.dtype)
@@ -891,7 +775,7 @@ class GeneralDIT(nn.Module):
 
         if crossattn_mask:
             crossattn_mask = rearrange(crossattn_mask, "B M -> M B")
-        
+
         output = {
             "x": x,
             "affline_emb_B_D": affline_emb_B_D,
