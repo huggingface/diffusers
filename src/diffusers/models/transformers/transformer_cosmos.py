@@ -182,6 +182,81 @@ class CosmosAttnProcessor2_0:
         return hidden_states
 
 
+class CosmosTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        cross_attention_dim: int,
+        mlp_ratio: float = 4.0,
+        adaln_lora_dim: int = 256,
+        qk_norm: str = "rms_norm",
+        out_bias: bool = False,
+    ) -> None:
+        super().__init__()
+
+        hidden_size = num_attention_heads * attention_head_dim
+
+        self.norm1 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
+        self.attn1 = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=None,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            qk_norm=qk_norm,
+            elementwise_affine=True,
+            out_bias=out_bias,
+            processor=CosmosAttnProcessor2_0(),
+        )
+
+        self.norm2 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
+        self.attn2 = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=cross_attention_dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            qk_norm=qk_norm,
+            elementwise_affine=True,
+            out_bias=out_bias,
+            processor=CosmosAttnProcessor2_0(),
+        )
+
+        self.norm3 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
+        self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu", bias=out_bias)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        embedded_timestep: torch.Tensor,
+        image_rotary_emb: torch.Tensor,
+        extra_pos_emb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if extra_pos_emb is not None:
+            hidden_states = hidden_states + extra_pos_emb
+
+        # 1. Self Attention
+        norm_hidden_states, gate = self.norm1(hidden_states, temb, embedded_timestep)
+        attn_output = self.attn1(norm_hidden_states, image_rotary_emb=image_rotary_emb)
+        hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
+
+        # 2. Cross Attention
+        norm_hidden_states, gate = self.norm2(hidden_states, temb, embedded_timestep)
+        attn_output = self.attn2(
+            norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+        )
+        hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
+
+        # 3. Feed Forward
+        norm_hidden_states, gate = self.norm3(hidden_states, temb, embedded_timestep)
+        ff_output = self.ff(norm_hidden_states)
+        hidden_states = hidden_states + gate.unsqueeze(1) * ff_output
+
+        return hidden_states
+
+
 class CosmosRotaryPosEmbed(nn.Module):
     def __init__(
         self,
@@ -279,81 +354,6 @@ class CosmosLearnablePositionalEmbed(nn.Module):
         norm = torch.linalg.vector_norm(emb, dim=-1, keepdim=True, dtype=torch.float32)
         norm = torch.add(self.eps, norm, alpha=np.sqrt(norm.numel() / emb.numel()))
         return (emb / norm).type_as(hidden_states)
-
-
-class CosmosTransformerBlock(nn.Module):
-    def __init__(
-        self,
-        num_attention_heads: int,
-        attention_head_dim: int,
-        cross_attention_dim: int,
-        mlp_ratio: float = 4.0,
-        adaln_lora_dim: int = 256,
-        qk_norm: str = "rms_norm",
-        out_bias: bool = False,
-    ) -> None:
-        super().__init__()
-
-        hidden_size = num_attention_heads * attention_head_dim
-
-        self.norm1 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
-        self.attn1 = Attention(
-            query_dim=hidden_size,
-            cross_attention_dim=None,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            qk_norm=qk_norm,
-            elementwise_affine=True,
-            out_bias=out_bias,
-            processor=CosmosAttnProcessor2_0(),
-        )
-
-        self.norm2 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
-        self.attn2 = Attention(
-            query_dim=hidden_size,
-            cross_attention_dim=cross_attention_dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            qk_norm=qk_norm,
-            elementwise_affine=True,
-            out_bias=out_bias,
-            processor=CosmosAttnProcessor2_0(),
-        )
-
-        self.norm3 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
-        self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu", bias=out_bias)
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
-        embedded_timestep: torch.Tensor,
-        image_rotary_emb: torch.Tensor,
-        extra_pos_emb: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        if extra_pos_emb is not None:
-            hidden_states = hidden_states + extra_pos_emb
-
-        # 1. Self Attention
-        norm_hidden_states, gate = self.norm1(hidden_states, temb, embedded_timestep)
-        attn_output = self.attn1(norm_hidden_states, image_rotary_emb=image_rotary_emb)
-        hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
-
-        # 2. Cross Attention
-        norm_hidden_states, gate = self.norm2(hidden_states, temb, embedded_timestep)
-        attn_output = self.attn2(
-            norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
-        )
-        hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
-
-        # 3. Feed Forward
-        norm_hidden_states, gate = self.norm3(hidden_states, temb, embedded_timestep)
-        ff_output = self.ff(norm_hidden_states)
-        hidden_states = hidden_states + gate.unsqueeze(1) * ff_output
-
-        return hidden_states
 
 
 class CosmosTransformer(ModelMixin, ConfigMixin):
