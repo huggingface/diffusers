@@ -173,7 +173,6 @@ class CosmosPipeline(DiffusionPipeline):
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
-    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline._get_t5_prompt_embeds with 256->512
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
