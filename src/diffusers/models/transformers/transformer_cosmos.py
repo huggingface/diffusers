@@ -446,6 +446,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
             hidden_size, patch_size[0] * patch_size[1] * patch_size[2] * out_channels, bias=False
         )
 
+        self.gradient_checkpointing = False
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -482,15 +484,27 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 5. Transformer blocks
         for block in self.transformer_blocks:
-            hidden_states = block(
-                hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                temb=temb,
-                embedded_timestep=embedded_timestep,
-                attention_mask=attention_mask,
-                image_rotary_emb=image_rotary_emb,
-                extra_pos_emb=extra_pos_emb,
-            )
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    embedded_timestep,
+                    image_rotary_emb,
+                    extra_pos_emb,
+                    attention_mask,
+                )
+            else:
+                hidden_states = block(
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=temb,
+                    embedded_timestep=embedded_timestep,
+                    image_rotary_emb=image_rotary_emb,
+                    extra_pos_emb=extra_pos_emb,
+                    attention_mask=attention_mask,
+                )
 
         # 6. Output norm & projection & unpatchify
         hidden_states = self.norm_out(hidden_states, temb, embedded_timestep)
