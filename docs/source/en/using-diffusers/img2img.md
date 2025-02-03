@@ -461,12 +461,12 @@ Chain it to an upscaler pipeline to increase the image resolution:
 from diffusers import StableDiffusionLatentUpscalePipeline
 
 upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
-    "stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16, use_safetensors=True
 )
 upscaler.enable_model_cpu_offload()
 upscaler.enable_xformers_memory_efficient_attention()
 
-image_2 = upscaler(prompt, image=image_1, output_type="latent").images[0]
+image_2 = upscaler(prompt, image=image_1).images[0]
 ```
 
 Finally, chain it to a super-resolution pipeline to further enhance the resolution:
