@@ -4212,7 +4212,7 @@ class Lumina2AttnProcessor2_0:
         key_rotary_emb: Optional[torch.Tensor] = None,
         base_sequence_length: Optional[int] = None,
     ) -> torch.Tensor:
-        from embeddings import apply_rotary_emb
+        from .embeddings import apply_rotary_emb
 
         input_ndim = hidden_states.ndim
 
