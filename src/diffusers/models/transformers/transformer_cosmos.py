@@ -21,10 +21,12 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from torchvision import transforms
 
+from ...configuration_utils import ConfigMixin, register_to_config
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..embeddings import Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
 
 
@@ -192,20 +194,16 @@ class CosmosRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         hidden_size: int,
-        len_h: int,
-        len_w: int,
-        len_t: int,
-        patch_size: Tuple[int, int, int],
+        max_size: Tuple[int, int, int] = (128, 240, 240),
+        patch_size: Tuple[int, int, int] = (1, 2, 2),
         base_fps: int = 24,
         rope_scale: Tuple[float, float, float] = (2.0, 1.0, 1.0),
     ) -> None:
         super().__init__()
 
-        self.base_fps = base_fps
-        self.max_h = len_h
-        self.max_w = len_w
-        self.max_t = len_t
+        self.max_size = [size // patch for size, patch in zip(max_size, patch_size)]
         self.patch_size = patch_size
+        self.base_fps = base_fps
 
         self.dim_h = hidden_size // 6 * 2
         self.dim_w = hidden_size // 6 * 2
@@ -223,7 +221,7 @@ class CosmosRotaryPosEmbed(nn.Module):
         w_theta = 10000.0 * self.w_ntk_factor
         t_theta = 10000.0 * self.t_ntk_factor
 
-        seq = torch.arange(max(self.max_h, self.max_w, self.max_t), dtype=torch.float32)
+        seq = torch.arange(max(self.max_size), dtype=torch.float32)
         dim_h_range = torch.arange(0, self.dim_h, 2, dtype=torch.float32)[: (self.dim_h // 2)] / self.dim_h
         dim_w_range = torch.arange(0, self.dim_w, 2, dtype=torch.float32)[: (self.dim_w // 2)] / self.dim_w
         dim_t_range = torch.arange(0, self.dim_t, 2, dtype=torch.float32)[: (self.dim_t // 2)] / self.dim_t
@@ -262,35 +260,32 @@ class CosmosLearnablePositionalEmbed(nn.Module):
     def __init__(
         self,
         hidden_size: int,
-        len_h: int,
-        len_w: int,
-        len_t: int,
+        max_size: Tuple[int, int, int],
         patch_size: Tuple[int, int, int],
+        eps: float = 1e-6,
     ) -> None:
         super().__init__()
-        self.patch_size = patch_size
 
-        self.pos_emb_h = nn.Parameter(torch.zeros(len_h, hidden_size))
-        self.pos_emb_w = nn.Parameter(torch.zeros(len_w, hidden_size))
-        self.pos_emb_t = nn.Parameter(torch.zeros(len_t, hidden_size))
+        self.max_size = [size // patch for size, patch in zip(max_size, patch_size)]
+        self.patch_size = patch_size
+        self.eps = eps
+
+        self.pos_emb_t = nn.Parameter(torch.zeros(self.max_size[0], hidden_size))
+        self.pos_emb_h = nn.Parameter(torch.zeros(self.max_size[1], hidden_size))
+        self.pos_emb_w = nn.Parameter(torch.zeros(self.max_size[2], hidden_size))
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        pe_sizes = [num_frames // self.patch_size[0], height // self.patch_size[1], width // self.patch_size[2]]
+        pe_size = [num_frames // self.patch_size[0], height // self.patch_size[1], width // self.patch_size[2]]
 
-        emb_t_T = self.pos_emb_t[: pe_sizes[0]]
-        emb_h_H = self.pos_emb_h[: pe_sizes[1]]
-        emb_w_W = self.pos_emb_w[: pe_sizes[2]]
-        emb = (
-            repeat(emb_t_T, "t d -> b t h w d", b=batch_size, h=pe_sizes[1], w=pe_sizes[2])
-            + repeat(emb_h_H, "h d -> b t h w d", b=batch_size, t=pe_sizes[0], w=pe_sizes[2])
-            + repeat(emb_w_W, "w d -> b t h w d", b=batch_size, t=pe_sizes[0], h=pe_sizes[1])
-        )
+        emb_t = self.pos_emb_t[: pe_size[0]][None, :, None, None, :].repeat(batch_size, 1, pe_size[1], pe_size[2], 1)
+        emb_h = self.pos_emb_h[: pe_size[1]][None, None, :, None, :].repeat(batch_size, pe_size[0], 1, pe_size[2], 1)
+        emb_w = self.pos_emb_w[: pe_size[2]][None, None, None, :, :].repeat(batch_size, pe_size[0], pe_size[1], 1, 1)
+        emb = emb_t + emb_h + emb_w
         emb = emb.flatten(1, 3)
 
-        eps = 1e-6
         norm = torch.linalg.vector_norm(emb, dim=-1, keepdim=True, dtype=torch.float32)
-        norm = torch.add(eps, norm, alpha=np.sqrt(norm.numel() / emb.numel()))
+        norm = torch.add(self.eps, norm, alpha=np.sqrt(norm.numel() / emb.numel()))
         return (emb / norm).type_as(hidden_states)
 
 
@@ -369,91 +364,103 @@ class CosmosTransformerBlock(nn.Module):
         return hidden_states
 
 
-class GeneralDIT(nn.Module):
+class CosmosTransformer(ModelMixin, ConfigMixin):
+    r"""
+    A Transformer model for video-like data used in [Cosmos](https://github.com/NVIDIA/Cosmos).
+
+    Args:
+        in_channels (`int`, defaults to `16`):
+            The number of channels in the input.
+        out_channels (`int`, defaults to `16`):
+            The number of channels in the output.
+        num_attention_heads (`int`, defaults to `32`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of channels in each attention head.
+        num_layers (`int`, defaults to `28`):
+            The number of layers of transformer blocks to use.
+        mlp_ratio (`float`, defaults to `4.0`):
+            The ratio of the hidden layer size to the input size in the feedforward network.
+        text_embed_dim (`int`, defaults to `4096`):
+            Input dimension of text embeddings from the text encoder.
+        adaln_lora_dim (`int`, defaults to `256`):
+            The hidden dimension of the Adaptive LayerNorm LoRA layer.
+        max_size (`Tuple[int, int, int]`, defaults to `(128, 240, 240)`):
+            The maximum size of the input latent tensors in the temporal, height, and width dimensions.
+        patch_size (`Tuple[int, int, int]`, defaults to `(1, 2, 2)`):
+            The patch size to use for patchifying the input latent tensors in the temporal, height, and width
+            dimensions.
+        rope_scale (`Tuple[float, float, float]`, defaults to `(2.0, 1.0, 1.0)`):
+            The scaling factor to use for RoPE in the temporal, height, and width dimensions.
+        concat_padding_mask (`bool`, defaults to `True`):
+            Whether to concatenate the padding mask to the input latent tensors.
+        extra_pos_embed_type (`str`, *optional*, defaults to `learnable`):
+            The type of extra positional embeddings to use. Can be one of `None` or `learnable`.
+    """
+
+    _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["patch_embed", "final_layer", "norm"]
+    _no_split_modules = ["CosmosTransformerBlock"]
+
+    @register_to_config
     def __init__(
         self,
-        max_img_h: int,
-        max_img_w: int,
-        max_frames: int,
-        in_channels: int,
-        out_channels: int,
-        patch_size: Tuple[int, int, int],
-        concat_padding_mask: bool = True,
-        # attention settings
-        model_channels: int = 4096,
-        num_blocks: int = 10,
-        num_heads: int = 16,
+        in_channels: int = 16,
+        out_channels: int = 16,
+        num_attention_heads: int = 32,
+        attention_head_dim: int = 128,
+        num_layers: int = 28,
         mlp_ratio: float = 4.0,
-        # cross attention settings
-        crossattn_emb_channels: int = 1024,
-        # positional embedding settings
-        pos_emb_learnable: bool = False,
+        text_embed_dim: int = 1024,
         adaln_lora_dim: int = 256,
+        max_size: Tuple[int, int, int] = (128, 240, 240),
+        patch_size: Tuple[int, int, int] = (1, 2, 2),
         rope_scale: Tuple[float, float, float] = (2.0, 1.0, 1.0),
-        extra_per_block_abs_pos_emb_type: Optional[str] = "learnable",
+        concat_padding_mask: bool = True,
+        extra_pos_embed_type: Optional[str] = "learnable",
     ) -> None:
         super().__init__()
-        self.max_img_h = max_img_h
-        self.max_img_w = max_img_w
-        self.max_frames = max_frames
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.num_heads = num_heads
-        self.num_blocks = num_blocks
-        self.model_channels = model_channels
-        self.patch_size = patch_size
-        self.concat_padding_mask = concat_padding_mask
-        # positional embedding settings
-        self.pos_emb_learnable = pos_emb_learnable
-        self.extra_per_block_abs_pos_emb_type = extra_per_block_abs_pos_emb_type.lower()
-        self.adaln_lora_dim = adaln_lora_dim
+        hidden_size = num_attention_heads * attention_head_dim
 
         # 1. Patch Embedding
         patch_embed_in_channels = in_channels + 1 if concat_padding_mask else in_channels
-        self.patch_embed = CosmosPatchEmbed(patch_embed_in_channels, model_channels, patch_size, bias=False)
+        self.patch_embed = CosmosPatchEmbed(patch_embed_in_channels, hidden_size, patch_size, bias=False)
 
         # 2. Positional Embedding
         self.rope = CosmosRotaryPosEmbed(
-            hidden_size=model_channels // num_heads,
-            len_h=max_img_h // patch_size[1],
-            len_w=max_img_w // patch_size[2],
-            len_t=max_frames // patch_size[0],
-            patch_size=patch_size,
-            rope_scale=rope_scale,
+            hidden_size=attention_head_dim, max_size=max_size, patch_size=patch_size, rope_scale=rope_scale
         )
 
         self.learnable_pos_embedder = None
-        if extra_per_block_abs_pos_emb_type == "learnable":
+        if extra_pos_embed_type == "learnable":
             self.learnable_pos_embedder = CosmosLearnablePositionalEmbed(
-                hidden_size=model_channels,
-                len_h=max_img_h // patch_size[1],
-                len_w=max_img_w // patch_size[2],
-                len_t=max_frames // patch_size[0],
+                hidden_size=hidden_size,
+                max_size=max_size,
                 patch_size=patch_size,
             )
 
         # 3. Time Embedding
-        self.time_embed = CosmosEmbedding(model_channels, model_channels)
+        self.time_embed = CosmosEmbedding(hidden_size, hidden_size)
 
         # 4. Transformer Blocks
         self.transformer_blocks = nn.ModuleList(
             [
                 CosmosTransformerBlock(
-                    num_attention_heads=num_heads,
-                    attention_head_dim=model_channels // num_heads,
-                    cross_attention_dim=crossattn_emb_channels,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
+                    cross_attention_dim=text_embed_dim,
                     mlp_ratio=mlp_ratio,
                     adaln_lora_dim=adaln_lora_dim,
                     qk_norm="rms_norm",
                     out_bias=False,
                 )
-                for _ in range(num_blocks)
+                for _ in range(num_layers)
             ]
         )
 
         # 5. Output norm & projection
         self.final_layer = FinalLayer(
-            embedding_dim=model_channels,
+            embedding_dim=hidden_size,
             patch_size=patch_size,
             out_channels=out_channels,
             modulation_dim=adaln_lora_dim,
@@ -470,7 +477,7 @@ class GeneralDIT(nn.Module):
         return_dict: bool = True,
     ) -> torch.Tensor:
         # 1. Concatenate padding mask if needed
-        if self.concat_padding_mask:
+        if self.config.concat_padding_mask:
             padding_mask = transforms.functional.resize(
                 padding_mask, list(hidden_states.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST
             )
@@ -480,15 +487,15 @@ class GeneralDIT(nn.Module):
 
         # 2. Generate positional embeddings
         image_rotary_emb = self.rope(hidden_states, fps=fps)
-        extra_pos_emb = self.learnable_pos_embedder(hidden_states) if self.extra_per_block_abs_pos_emb_type else None
+        extra_pos_emb = self.learnable_pos_embedder(hidden_states) if self.config.extra_pos_embed_type else None
 
         # 3. Patchify input
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        post_patch_num_frames = num_frames // self.patch_size[0]
-        post_patch_height = height // self.patch_size[1]
-        post_patch_width = width // self.patch_size[2]
+        post_patch_num_frames = num_frames // self.config.patch_size[0]
+        post_patch_height = height // self.config.patch_size[1]
+        post_patch_width = width // self.config.patch_size[2]
         hidden_states = self.patch_embed(hidden_states)
-        hidden_states = hidden_states.flatten(1, 3)  # [B, T, H, W, C] => [B, THW, C]
+        hidden_states = hidden_states.flatten(1, 3)  # [B, T, H, W, C] -> [B, THW, C]
 
         # 4. Timestep embeddings
         temb, embedded_timestep = self.time_embed(hidden_states, timestep)
@@ -507,7 +514,7 @@ class GeneralDIT(nn.Module):
 
         # 6. Output norm & projection
         hidden_states = self.final_layer(hidden_states, temb, embedded_timestep)
-        hidden_states = hidden_states.unflatten(2, (-1, *self.patch_size))
+        hidden_states = hidden_states.unflatten(2, (-1, *self.config.patch_size))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
         hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
         hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
