@@ -80,6 +80,30 @@ class CosmosEmbedding(nn.Module):
 
 
 class CosmosAdaLayerNorm(nn.Module):
+    def __init__(self, in_features: int, hidden_features: int) -> None:
+        super().__init__()
+        self.embedding_dim = in_features
+
+        self.activation = nn.SiLU()
+        self.norm = nn.LayerNorm(in_features, elementwise_affine=False, eps=1e-6)
+        self.linear_1 = nn.Linear(in_features, hidden_features, bias=False)
+        self.linear_2 = nn.Linear(hidden_features, 2 * in_features, bias=False)
+
+    def forward(
+        self, hidden_states: torch.Tensor, temb: torch.Tensor, embedded_timestep: torch.Tensor
+    ) -> torch.Tensor:
+        temb = self.activation(temb)
+        temb = self.linear_1(temb)
+        temb = self.linear_2(temb)
+        temb = temb + embedded_timestep[:, : 2 * self.embedding_dim]
+        shift, scale = temb.chunk(2, dim=1)
+
+        hidden_states = self.norm(hidden_states)
+        hidden_states = hidden_states * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+        return hidden_states
+
+
+class CosmosAdaLayerNormZero(nn.Module):
     def __init__(self, in_features: int, hidden_features: Optional[int] = None) -> None:
         super().__init__()
 
@@ -107,38 +131,6 @@ class CosmosAdaLayerNorm(nn.Module):
         hidden_states = self.norm(hidden_states)
         hidden_states = hidden_states * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
         return hidden_states, gate
-
-
-class FinalLayer(nn.Module):
-    def __init__(
-        self,
-        embedding_dim: int,
-        patch_size: Tuple[int, int, int],
-        out_channels: int,
-        modulation_dim: int = 256,
-    ) -> None:
-        super().__init__()
-        self.norm_final = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
-        self.linear = nn.Linear(
-            embedding_dim, patch_size[0] * patch_size[1] * patch_size[2] * out_channels, bias=False
-        )
-        self.hidden_size = embedding_dim
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(embedding_dim, modulation_dim, bias=False),
-            nn.Linear(modulation_dim, 2 * embedding_dim, bias=False),
-        )
-
-    def forward(
-        self, hidden_states: torch.Tensor, temb: torch.Tensor, embedded_timestep: torch.Tensor
-    ) -> torch.Tensor:
-        temb = self.adaLN_modulation(temb) + embedded_timestep[:, : 2 * self.hidden_size]
-        shift, scale = temb.chunk(2, dim=1)
-
-        hidden_states = self.norm_final(hidden_states)
-        hidden_states = hidden_states * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-        hidden_states = self.linear(hidden_states)
-        return hidden_states
 
 
 class CosmosAttnProcessor2_0:
@@ -304,7 +296,7 @@ class CosmosTransformerBlock(nn.Module):
 
         hidden_size = num_attention_heads * attention_head_dim
 
-        self.norm1 = CosmosAdaLayerNorm(in_features=hidden_size, hidden_features=adaln_lora_dim)
+        self.norm1 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         self.attn1 = Attention(
             query_dim=hidden_size,
             cross_attention_dim=None,
@@ -316,7 +308,7 @@ class CosmosTransformerBlock(nn.Module):
             processor=CosmosAttnProcessor2_0(),
         )
 
-        self.norm2 = CosmosAdaLayerNorm(in_features=hidden_size, hidden_features=adaln_lora_dim)
+        self.norm2 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         self.attn2 = Attention(
             query_dim=hidden_size,
             cross_attention_dim=cross_attention_dim,
@@ -328,7 +320,7 @@ class CosmosTransformerBlock(nn.Module):
             processor=CosmosAttnProcessor2_0(),
         )
 
-        self.norm3 = CosmosAdaLayerNorm(in_features=hidden_size, hidden_features=adaln_lora_dim)
+        self.norm3 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu", bias=out_bias)
 
     def forward(
@@ -459,11 +451,9 @@ class CosmosTransformer(ModelMixin, ConfigMixin):
         )
 
         # 5. Output norm & projection
-        self.final_layer = FinalLayer(
-            embedding_dim=hidden_size,
-            patch_size=patch_size,
-            out_channels=out_channels,
-            modulation_dim=adaln_lora_dim,
+        self.norm_out = CosmosAdaLayerNorm(hidden_size, adaln_lora_dim)
+        self.proj_out = nn.Linear(
+            hidden_size, patch_size[0] * patch_size[1] * patch_size[2] * out_channels, bias=False
         )
 
     def forward(
@@ -512,8 +502,9 @@ class CosmosTransformer(ModelMixin, ConfigMixin):
                 extra_pos_emb=extra_pos_emb,
             )
 
-        # 6. Output norm & projection
-        hidden_states = self.final_layer(hidden_states, temb, embedded_timestep)
+        # 6. Output norm & projection & unpatchify
+        hidden_states = self.norm_out(hidden_states, temb, embedded_timestep)
+        hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.unflatten(2, (-1, *self.config.patch_size))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
         hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
