@@ -765,6 +765,22 @@ class AutoPipelineBlocks:
     def __repr__(self):
         class_name = self.__class__.__name__
         base_class = self.__class__.__bases__[0].__name__
+        header = (
+            f"{class_name}(\n  Class: {base_class}\n"
+            if base_class and base_class != "object"
+            else f"{class_name}(\n"
+        )
+
+    
+        if self.trigger_inputs:
+            header += "\n"
+            header += "  " + "=" * 100 + "\n"
+            header += "  This pipeline contains blocks that are selected at runtime based on inputs.\n"
+            header += f"  Trigger Inputs: {self.trigger_inputs}\n"
+            # Get first trigger input as example
+            example_input = next(t for t in self.trigger_inputs if t is not None)
+            header += f"  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('{example_input}')`).\n"
+            header += "  " + "=" * 100 + "\n\n"
 
         # Format description with proper indentation
         desc_lines = self.description.split('\n')
@@ -776,70 +792,92 @@ class AutoPipelineBlocks:
             desc.extend(f"      {line}" for line in desc_lines[1:])
         desc = '\n'.join(desc) + '\n'
 
-        sections = []
-        all_triggers = set(self.trigger_to_block_map.keys())
-        for trigger in sorted(all_triggers, key=lambda x: str(x)):
-            sections.append(f"\n  Trigger Input: {trigger}\n")
-            
-            block = self.trigger_to_block_map.get(trigger)
-            if block is None:
-                continue
+        # Components section
+        expected_components = set(getattr(self, "expected_components", []))
+        loaded_components = set(self.components.keys())
+        all_components = sorted(expected_components | loaded_components)
+        components_str = "  Components:\n" + "\n".join(
+            f"    - {k}={type(self.components[k]).__name__}" if k in loaded_components else f"    - {k}"
+            for k in all_components
+        )
 
-            # Add block description with proper indentation
+        # Auxiliaries section
+        auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
+            f"    - {k}={type(v).__name__}" for k, v in self.auxiliaries.items()
+        )
+
+        # Configs section
+        expected_configs = set(getattr(self, "expected_configs", []))
+        loaded_configs = set(self.configs.keys())
+        all_configs = sorted(expected_configs | loaded_configs)
+        configs_str = "  Configs:\n" + "\n".join(
+            f"    - {k}={v}" if k in loaded_configs else f"    - {k}" for k, v in self.configs.items()
+        )
+
+        blocks_str = "  Blocks:\n"
+        for i, (name, block) in enumerate(self.blocks.items()):
+            # Get trigger input for this block
+            trigger = None
+            if hasattr(self, 'block_to_trigger_map'):
+                trigger = self.block_to_trigger_map.get(name)
+                # Format the trigger info
+                if trigger is None:
+                    trigger_str = "[default]"
+                elif isinstance(trigger, (list, tuple)):
+                    trigger_str = f"[trigger: {', '.join(str(t) for t in trigger)}]"
+                else:
+                    trigger_str = f"[trigger: {trigger}]"
+                # For AutoPipelineBlocks, add bullet points
+                blocks_str += f"    • {name} {trigger_str} ({block.__class__.__name__})\n"
+            else:
+                # For SequentialPipelineBlocks, show execution order
+                blocks_str += f"    [{i}] {name} ({block.__class__.__name__})\n"
+            
+            # Add block description
             desc_lines = block.description.split('\n')
-            # First line starts right after "Description:", subsequent lines get indented
             indented_desc = desc_lines[0]
             if len(desc_lines) > 1:
-                indented_desc += '\n' + '\n'.join('                   ' + line for line in desc_lines[1:])  # Align with first line
-            sections.append(f"    Description: {indented_desc}\n")
+                indented_desc += '\n' + '\n'.join('                   ' + line for line in desc_lines[1:])
+            blocks_str += f"       Description: {indented_desc}\n"
 
-            expected_components = set(getattr(block, "expected_components", []))
-            loaded_components = set(k for k, v in self.components.items() 
-                                 if v is not None and hasattr(block, k))
-            all_components = sorted(expected_components | loaded_components)
-            if all_components:
-                sections.append("    Components:\n" + "\n".join(
-                    f"      - {k}={type(self.components[k]).__name__}" if k in loaded_components 
-                    else f"      - {k}" for k in all_components
-                ))
-
-            if self.auxiliaries:
-                sections.append("    Auxiliaries:\n" + "\n".join(
-                    f"      - {k}={type(v).__name__}" 
-                    for k, v in self.auxiliaries.items()
-                ))
-
-            if self.configs:
-                sections.append("    Configs:\n" + "\n".join(
-                    f"      - {k}={v}" for k, v in self.configs.items()
-                ))
-
-            sections.append(f"    Block: {block.__class__.__name__}")
-            
+            # Format inputs
             inputs_str = format_inputs_short(block.inputs)
-            sections.append(f"      inputs: {inputs_str}")
+            blocks_str += f"       inputs: {inputs_str}\n"
 
-            # Format intermediates with proper indentation
+            # Format intermediates
             intermediates_str = format_intermediates_short(
-                block.intermediates_inputs, 
-                block.required_intermediates_inputs, 
+                block.intermediates_inputs,
+                block.required_intermediates_inputs,
                 block.intermediates_outputs
             )
-            if intermediates_str != "    (none)":  # Only add if there are intermediates
-                sections.append("      intermediates:")
-                # Add extra indentation to each line of intermediates
+            if intermediates_str != "    (none)":
+                blocks_str += "       intermediates:\n"
                 indented_intermediates = "\n".join(
                     "        " + line for line in intermediates_str.split("\n")
                 )
-                sections.append(indented_intermediates)
-            
-            sections.append("") 
+                blocks_str += f"{indented_intermediates}\n"
+            blocks_str += "\n"
+
+        inputs_str = format_inputs_short(self.inputs)
+        inputs_str = "  Inputs:\n    " + inputs_str
+        outputs = [out.name for out in self.outputs]
+        
+        intermediates_str = format_intermediates_short(self.intermediates_inputs, self.required_intermediates_inputs, self.intermediates_outputs)
+        intermediates_str = (
+            "\n  Intermediates:\n"
+            f"{intermediates_str}\n" 
+            f"    - final outputs: {', '.join(outputs)}"
+        )
 
         return (
-            f"{class_name}(\n"
-            f"  Class: {base_class}\n"
+            f"{header}\n"
             f"{desc}"
-            f"{chr(10).join(sections)}"
+            f"{components_str}\n"
+            f"{auxiliaries_str}\n"
+            f"{configs_str}\n"
+            f"{blocks_str}\n"
+            f"{inputs_str}\n"
+            f"{intermediates_str}\n"
             f")"
         )
 
@@ -1097,7 +1135,7 @@ class SequentialPipelineBlocks:
             all_blocks.update(blocks_to_update)
         return all_blocks
     
-    def get_triggered_blocks(self, *trigger_inputs):
+    def get_execution_blocks(self, *trigger_inputs):
         trigger_inputs_all = self.trigger_inputs
 
         if trigger_inputs is not None:
@@ -1130,14 +1168,14 @@ class SequentialPipelineBlocks:
 
     
         if self.trigger_inputs:
-            header += "\n"  # Add empty line before
-            header += "  " + "=" * 100 + "\n"  # Add decorative line
-            header += "  This pipeline block contains dynamic blocks that are selected at runtime based on your inputs.\n"
-            header += "  You can use `get_triggered_blocks(input1, input2,...)` to see which blocks will be used for your trigger inputs.\n"
-            header += "  Use `get_triggered_blocks()` to see blocks will be used for default inputs (when no trigger inputs are provided)\n"
+            header += "\n"
+            header += "  " + "=" * 100 + "\n"
+            header += "  This pipeline contains blocks that are selected at runtime based on inputs.\n"
             header += f"  Trigger Inputs: {self.trigger_inputs}\n"
-            header += "  " + "=" * 100 + "\n"  # Add decorative line
-            header += "\n"  # Add empty line after
+            # Get first trigger input as example
+            example_input = next(t for t in self.trigger_inputs if t is not None)
+            header += f"  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('{example_input}')`).\n"
+            header += "  " + "=" * 100 + "\n\n"
 
         # Format description with proper indentation
         desc_lines = self.description.split('\n')
@@ -1173,28 +1211,42 @@ class SequentialPipelineBlocks:
 
         blocks_str = "  Blocks:\n"
         for i, (name, block) in enumerate(self.blocks.items()):
-            blocks_str += f"    {i}. {name} ({block.__class__.__name__})\n"
+            # Get trigger input for this block
+            trigger = None
+            if hasattr(self, 'block_to_trigger_map'):
+                trigger = self.block_to_trigger_map.get(name)
+                # Format the trigger info
+                if trigger is None:
+                    trigger_str = "[default]"
+                elif isinstance(trigger, (list, tuple)):
+                    trigger_str = f"[trigger: {', '.join(str(t) for t in trigger)}]"
+                else:
+                    trigger_str = f"[trigger: {trigger}]"
+                # For AutoPipelineBlocks, add bullet points
+                blocks_str += f"    • {name} {trigger_str} ({block.__class__.__name__})\n"
+            else:
+                # For SequentialPipelineBlocks, show execution order
+                blocks_str += f"    [{i}] {name} ({block.__class__.__name__})\n"
             
+            # Add block description
             desc_lines = block.description.split('\n')
-            # First line starts right after "Description:", subsequent lines get indented
             indented_desc = desc_lines[0]
             if len(desc_lines) > 1:
-                indented_desc += '\n' + '\n'.join('                   ' + line for line in desc_lines[1:])  # Align with first line
+                indented_desc += '\n' + '\n'.join('                   ' + line for line in desc_lines[1:])
             blocks_str += f"       Description: {indented_desc}\n"
 
             # Format inputs
             inputs_str = format_inputs_short(block.inputs)
             blocks_str += f"       inputs: {inputs_str}\n"
 
-            # Format intermediates with proper indentation
+            # Format intermediates
             intermediates_str = format_intermediates_short(
-                block.intermediates_inputs, 
-                block.required_intermediates_inputs, 
+                block.intermediates_inputs,
+                block.required_intermediates_inputs,
                 block.intermediates_outputs
             )
-            if intermediates_str != "    (none)":  # Only add if there are intermediates
+            if intermediates_str != "    (none)":
                 blocks_str += "       intermediates:\n"
-                # Add extra indentation to each line of intermediates
                 indented_intermediates = "\n".join(
                     "        " + line for line in intermediates_str.split("\n")
                 )
@@ -1295,6 +1347,10 @@ class ModularPipeline(ConfigMixin):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    
+    def get_execution_blocks(self, *trigger_inputs):
+        return self.pipeline_block.get_execution_blocks(*trigger_inputs)
+    
     @property
     def dtype(self) -> torch.dtype:
         r"""
@@ -1449,16 +1505,7 @@ class ModularPipeline(ConfigMixin):
 
         block = self.pipeline_block
         
-        if hasattr(block, "trigger_inputs") and block.trigger_inputs:
-            output += "\n"
-            output += "  Trigger Inputs:\n"
-            output += "  --------------\n"
-            output += f"  This pipeline contains dynamic blocks that are selected at runtime based on your inputs.\n"
-            output += f"  • Trigger inputs: {block.trigger_inputs}\n"
-            output += f"  • Use .pipeline_block.get_triggered_blocks(*inputs) to see which blocks will be used for specific inputs\n"
-            output += f"  • Use .pipeline_block.get_triggered_blocks() to see blocks will be used for default inputs (when no trigger inputs are provided)\n"
-            output += "\n"
-
+        # List the pipeline block structure first
         output += "Pipeline Block:\n"
         output += "--------------\n"
         if hasattr(block, "blocks"):
@@ -1492,6 +1539,16 @@ class ModularPipeline(ConfigMixin):
         for name, config in self.config.items():
             output += f"{name}: {config!r}\n"
         output += "\n"
+
+        # Add auto blocks section
+        if hasattr(block, "trigger_inputs") and block.trigger_inputs:
+            output += "------------------\n"
+            output += "This pipeline contains blocks that are selected at runtime based on inputs.\n\n"
+            output += f"Trigger Inputs: {block.trigger_inputs}\n"
+            # Get first trigger input as example
+            example_input = next(t for t in block.trigger_inputs if t is not None)
+            output += f"  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('{example_input}')`).\n"
+            output += "Check `.doc` of returned object for more information.\n\n"
 
         # List the call parameters
         full_doc = self.pipeline_block.doc

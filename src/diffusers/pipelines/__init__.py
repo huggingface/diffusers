@@ -317,6 +317,7 @@ else:
             "StableDiffusionXLInstructPix2PixPipeline",
             "StableDiffusionXLPipeline",
             "StableDiffusionXLModularPipeline",
+            "StableDiffusionXLAutoPipeline",
         ]
     )
     _import_structure["stable_diffusion_diffedit"] = ["StableDiffusionDiffEditPipeline"]
@@ -667,6 +668,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLInstructPix2PixPipeline,
             StableDiffusionXLModularPipeline,
             StableDiffusionXLPipeline,
+            StableDiffusionXLAutoPipeline,
         )
         from .stable_video_diffusion import StableVideoDiffusionPipeline
         from .t2i_adapter import (

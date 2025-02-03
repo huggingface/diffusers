@@ -39,6 +39,7 @@ else:
         "StableDiffusionXLPrepareLatentsStep",
         "StableDiffusionXLSetTimestepsStep",
         "StableDiffusionXLTextEncoderStep",
+        "StableDiffusionXLAutoPipeline",
     ]
 
 if is_transformers_available() and is_flax_available():
@@ -69,6 +70,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPrepareLatentsStep,
             StableDiffusionXLSetTimestepsStep,
             StableDiffusionXLTextEncoderStep,
+            StableDiffusionXLAutoPipeline,
         )
 
     try:
