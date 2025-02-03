@@ -130,9 +130,8 @@ def get_args():
         "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
     parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original VAE checkpoint")
-    parser.add_argument("--text_encoder_path", type=str, default=None, help="Path to original llama checkpoint")
-    parser.add_argument("--tokenizer_path", type=str, default=None, help="Path to original llama tokenizer")
-    parser.add_argument("--text_encoder_2_path", type=str, default=None, help="Path to original clip checkpoint")
+    parser.add_argument("--text_encoder_path", type=str, default=None, help="Path to original T5 checkpoint")
+    parser.add_argument("--tokenizer_path", type=str, default=None, help="Path to original T5 tokenizer")
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the transformer in.")
