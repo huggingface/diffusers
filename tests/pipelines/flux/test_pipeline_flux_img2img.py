@@ -12,13 +12,13 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import FluxIPAdapterTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class FluxImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
     pipeline_class = FluxImg2ImgPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
@@ -85,6 +85,8 @@ class FluxImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_2": tokenizer_2,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):

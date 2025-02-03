@@ -39,13 +39,13 @@ from diffusers.utils.testing_utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import FluxIPAdapterTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
     pipeline_class = FluxControlNetPipeline
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
@@ -127,6 +127,8 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "transformer": transformer,
             "vae": vae,
             "controlnet": controlnet,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
