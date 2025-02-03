@@ -69,6 +69,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
+    _import_structure["transformers.transformer_cosmos"] = ["CosmosTransformer3DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
@@ -133,6 +134,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
             ConsisIDTransformer3DModel,
+            CosmosTransformer3DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,
             FluxTransformer2DModel,

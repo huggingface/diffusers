@@ -356,7 +356,7 @@ class CosmosLearnablePositionalEmbed(nn.Module):
         return (emb / norm).type_as(hidden_states)
 
 
-class CosmosTransformer(ModelMixin, ConfigMixin):
+class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
     r"""
     A Transformer model for video-like data used in [Cosmos](https://github.com/NVIDIA/Cosmos).
 
@@ -423,9 +423,9 @@ class CosmosTransformer(ModelMixin, ConfigMixin):
             hidden_size=attention_head_dim, max_size=max_size, patch_size=patch_size, rope_scale=rope_scale
         )
 
-        self.learnable_pos_embedder = None
+        self.learnable_pos_embed = None
         if extra_pos_embed_type == "learnable":
-            self.learnable_pos_embedder = CosmosLearnablePositionalEmbed(
+            self.learnable_pos_embed = CosmosLearnablePositionalEmbed(
                 hidden_size=hidden_size,
                 max_size=max_size,
                 patch_size=patch_size,
@@ -477,7 +477,7 @@ class CosmosTransformer(ModelMixin, ConfigMixin):
 
         # 2. Generate positional embeddings
         image_rotary_emb = self.rope(hidden_states, fps=fps)
-        extra_pos_emb = self.learnable_pos_embedder(hidden_states) if self.config.extra_pos_embed_type else None
+        extra_pos_emb = self.learnable_pos_embed(hidden_states) if self.config.extra_pos_embed_type else None
 
         # 3. Patchify input
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
