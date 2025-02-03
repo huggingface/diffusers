@@ -18,7 +18,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, repeat
 from torchvision import transforms
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -282,7 +281,7 @@ class CosmosRotaryPosEmbed(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, fps: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        rope_sizes = [num_frames // self.patch_size[0], height // self.patch_size[1], width // self.patch_size[2]]
+        pe_size = [num_frames // self.patch_size[0], height // self.patch_size[1], width // self.patch_size[2]]
 
         h_theta = 10000.0 * self.h_ntk_factor
         w_theta = 10000.0 * self.w_ntk_factor
@@ -296,28 +295,19 @@ class CosmosRotaryPosEmbed(nn.Module):
         w_spatial_freqs = 1.0 / (w_theta**dim_w_range)
         temporal_freqs = 1.0 / (t_theta**dim_t_range)
 
-        emb_h = torch.outer(seq[: rope_sizes[1]], h_spatial_freqs)
-        emb_w = torch.outer(seq[: rope_sizes[2]], w_spatial_freqs)
+        emb_h = torch.outer(seq[: pe_size[1]], h_spatial_freqs)[None, :, None, :].repeat(pe_size[0], 1, pe_size[2], 1)
+        emb_w = torch.outer(seq[: pe_size[2]], w_spatial_freqs)[None, None, :, :].repeat(pe_size[0], pe_size[1], 1, 1)
 
         # Apply sequence scaling in temporal dimension
         if fps is None:
             # Images
-            emb_t = torch.outer(seq[: rope_sizes[0]], temporal_freqs)
+            emb_t = torch.outer(seq[: pe_size[0]], temporal_freqs)
         else:
             # Videos
-            emb_t = torch.outer(seq[: rope_sizes[0]] / fps * self.base_fps, temporal_freqs)
+            emb_t = torch.outer(seq[: pe_size[0]] / fps * self.base_fps, temporal_freqs)
 
-        freqs = torch.cat(
-            [
-                repeat(emb_t, "t d -> t h w d", h=rope_sizes[1], w=rope_sizes[2]),
-                repeat(emb_h, "h d -> t h w d", t=rope_sizes[0], w=rope_sizes[2]),
-                repeat(emb_w, "w d -> t h w d", t=rope_sizes[0], h=rope_sizes[1]),
-            ]
-            * 2,
-            dim=-1,
-        )
-
-        freqs = rearrange(freqs, "t h w d -> (t h w) d").float()
+        emb_t = emb_t[:, None, None, :].repeat(1, pe_size[1], pe_size[2], 1)
+        freqs = torch.cat([emb_t, emb_h, emb_w] * 2, dim=-1).flatten(0, 2).float()
         cos = torch.cos(freqs)
         sin = torch.sin(freqs)
         return cos, sin
