@@ -1770,7 +1770,7 @@ class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
     def __init__(self, hidden_size=4096, cap_feat_dim=2048, frequency_embedding_size=256, norm_eps=1e-5):
         super().__init__()
         
-        from normalization import RMSNorm
+        from .normalization import RMSNorm
         
         self.time_proj = Timesteps(
             num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0.0
