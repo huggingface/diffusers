@@ -12,13 +12,14 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import FluxIPAdapterTesterMixin, PipelineTesterMixin
+from .test_pipeline_flux import FluxIPAdapterPipelineSlowTests
 
 
 enable_full_determinism()
 
 
-class FluxImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
     pipeline_class = FluxImg2ImgPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
@@ -85,6 +86,8 @@ class FluxImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_2": tokenizer_2,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
@@ -161,3 +164,54 @@ class FluxImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
+
+
+class FluxIPAdapterImg2ImgPipelineSlowTests(FluxIPAdapterPipelineSlowTests):
+    """
+    Same test as in FluxPipeline, only with inital `image` and `strength` parameters.
+    """
+    pipeline_class = FluxImg2ImgPipeline
+
+    def get_expected_slice(self):
+        return np.array(
+            [
+                0.3125,
+                0.2812,
+                0.2285,
+                0.3125,
+                0.2734,
+                0.2207,
+                0.3125,
+                0.2734,
+                0.2187,
+                0.3125,
+                0.2734,
+                0.2226,
+                0.3203,
+                0.2832,
+                0.2285,
+                0.3164,
+                0.2812,
+                0.2207,
+                0.3125,
+                0.2792,
+                0.2187,
+                0.3085,
+                0.2734,
+                0.2128,
+                0.3027,
+                0.2675,
+                0.2089,
+                0.3144,
+                0.2773,
+                0.2226,
+            ],
+            dtype=np.float32,
+        )
+
+    def get_inputs(self, device, seed=0):
+        return {
+            "image": floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device),
+            "strength": 0.8,
+            **super().get_inputs(device, seed),
+        }

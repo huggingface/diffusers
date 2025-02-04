@@ -333,55 +333,8 @@ class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        prompt_embeds = torch.load(
-            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
-        )
-        pooled_prompt_embeds = torch.load(
-            hf_hub_download(
-                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
-            )
-        )
-        negative_prompt_embeds = torch.zeros_like(prompt_embeds)
-        negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
-        ip_adapter_image = np.zeros((1024, 1024, 3), dtype=np.uint8)
-        return {
-            "prompt_embeds": prompt_embeds,
-            "pooled_prompt_embeds": pooled_prompt_embeds,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "negative_pooled_prompt_embeds": negative_pooled_prompt_embeds,
-            "ip_adapter_image": ip_adapter_image,
-            "num_inference_steps": 2,
-            "guidance_scale": 3.5,
-            "true_cfg_scale": 4.0,
-            "max_sequence_length": 256,
-            "output_type": "np",
-            "generator": generator,
-        }
-
-    def test_flux_ip_adapter_inference(self):
-        pipe = self.pipeline_class.from_pretrained(
-            self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
-        )
-        pipe.load_ip_adapter(
-            self.ip_adapter_repo_id,
-            weight_name=self.weight_name,
-            image_encoder_pretrained_model_name_or_path=self.image_encoder_pretrained_model_name_or_path,
-        )
-        pipe.set_ip_adapter_scale(1.0)
-        pipe.enable_model_cpu_offload()
-
-        inputs = self.get_inputs(torch_device)
-
-        image = pipe(**inputs).images[0]
-        image_slice = image[0, :10, :10]
-
-        expected_slice = np.array(
+    def get_expected_slice(self):
+        return np.array(
             [
                 0.1855,
                 0.1680,
@@ -417,6 +370,57 @@ class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
             dtype=np.float32,
         )
 
+    def get_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        prompt_embeds = torch.load(
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt"),
+            weights_only=True
+        )
+        pooled_prompt_embeds = torch.load(
+            hf_hub_download(
+                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+            ),
+            weights_only=True
+        )
+        negative_prompt_embeds = torch.zeros_like(prompt_embeds)
+        negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
+        ip_adapter_image = np.zeros((1024, 1024, 3), dtype=np.uint8)
+        return {
+            "prompt_embeds": prompt_embeds,
+            "pooled_prompt_embeds": pooled_prompt_embeds,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_pooled_prompt_embeds": negative_pooled_prompt_embeds,
+            "ip_adapter_image": ip_adapter_image,
+            "num_inference_steps": 2,
+            "guidance_scale": 3.5,
+            "true_cfg_scale": 4.0,
+            "max_sequence_length": 256,
+            "output_type": "np",
+            "generator": generator,
+        }
+
+    def test_flux_ip_adapter_inference(self):
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
+        )
+        pipe.load_ip_adapter(
+            self.ip_adapter_repo_id,
+            weight_name=self.weight_name,
+            image_encoder_pretrained_model_name_or_path=self.image_encoder_pretrained_model_name_or_path,
+        )
+        pipe.set_ip_adapter_scale(1.0)
+        pipe.enable_model_cpu_offload()
+
+        inputs = self.get_inputs(torch_device)
+
+        image = pipe(**inputs).images[0]
+        image_slice = image[0, :10, :10]
+
+        expected_slice = self.get_expected_slice()
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4, f"{image_slice} != {expected_slice}"
