@@ -134,27 +134,11 @@ class EasyAnimateRMSNorm(nn.Module):
     This implementation is specifically designed for use in models similar to T5.
     """
     def __init__(self, hidden_size, eps=1e-6):
-        """
-        Initializes the RMS normalization layer.
-        
-        Parameters:
-        - hidden_size: The size of the hidden layer, used to determine the size of the learnable weight parameters.
-        - eps: A small value added to the denominator to avoid division by zero during normalization.
-        """
         super().__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
 
     def forward(self, hidden_states):
-        """
-        Performs the forward propagation of the RMS normalization layer.
-        
-        Parameters:
-        - hidden_states: The input tensor, usually the output of the previous layer.
-        
-        Returns:
-        - The normalized tensor, scaled by the learnable weight parameters.
-        """
         # Save the input data type for restoring it before returning
         input_dtype = hidden_states.dtype
         # Convert the input to float32 for accurate calculation
@@ -175,17 +159,6 @@ class EasyAnimateLayerNormZero(nn.Module):
     
     This module applies a learned affine transformation to the input, which is useful for stabilizing the training of deep neural networks.
     It is designed to work with both standard and fp32 layer normalization, depending on the `norm_type` parameter.
-    
-    Parameters:
-    - conditioning_dim: int, the dimension of the input conditioning vector.
-    - embedding_dim: int, the dimension of the hidden state and encoder hidden state embeddings.
-    - elementwise_affine: bool, default True, whether to learn an affine transformation for each element.
-    - eps: float, default 1e-5, a value added to the denominator for numerical stability.
-    - bias: bool, default True, whether to include a bias term in the linear transformation.
-    - norm_type: str, default 'fp32_layer_norm', the type of normalization to apply. Supports 'layer_norm' and 'fp32_layer_norm'.
-    
-    Raises:
-    - ValueError: if an unsupported `norm_type` is provided.
     """
     def __init__(
         self,
@@ -215,20 +188,6 @@ class EasyAnimateLayerNormZero(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Applies the learned affine transformation to the input hidden states and encoder hidden states.
-        
-        Parameters:
-        - hidden_states: torch.Tensor, the hidden states tensor.
-        - encoder_hidden_states: torch.Tensor, the encoder hidden states tensor.
-        - temb: torch.Tensor, the conditioning input tensor.
-        
-        Returns:
-        - hidden_states: torch.Tensor, the transformed hidden states tensor.
-        - encoder_hidden_states: torch.Tensor, the transformed encoder hidden states tensor.
-        - gate: torch.Tensor, the gate tensor for hidden states.
-        - enc_gate: torch.Tensor, the gate tensor for encoder hidden states.
-        """
         # Apply SiLU activation to temb and then linear transformation, splitting the result into 6 parts
         shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(self.silu(temb)).chunk(6, dim=1)
         # Apply normalization and learned affine transformation to hidden states
