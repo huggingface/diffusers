@@ -3020,6 +3020,7 @@ class StableDiffusionXLAutoPipeline(SequentialPipelineBlocks):
 # block mapping 
 TEXT2IMAGE_BLOCKS = OrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ("input", StableDiffusionXLInputStep),
     ("set_timesteps", StableDiffusionXLSetTimestepsStep),
     ("prepare_latents", StableDiffusionXLPrepareLatentsStep),
@@ -3030,6 +3031,7 @@ TEXT2IMAGE_BLOCKS = OrderedDict([
 
 IMAGE2IMAGE_BLOCKS = OrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ("image_encoder", StableDiffusionXLVaeEncoderStep),
     ("input", StableDiffusionXLInputStep),
     ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
@@ -3041,6 +3043,7 @@ IMAGE2IMAGE_BLOCKS = OrderedDict([
 
 INPAINT_BLOCKS = OrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ("image_encoder", StableDiffusionXLInpaintVaeEncoderStep),
     ("input", StableDiffusionXLInputStep),
     ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
@@ -3058,8 +3061,13 @@ CONTROLNET_UNION_BLOCKS = OrderedDict([
     ("denoise", StableDiffusionXLControlNetUnionDenoiseStep),
 ])
 
+IP_ADAPTER_BLOCKS = OrderedDict([
+    ("ip_adapter", StableDiffusionXLIPAdapterStep),
+])
+
 AUTO_BLOCKS = OrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
+    ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
     ("image_encoder", StableDiffusionXLAutoVaeEncoderStep),
     ("before_denoise", StableDiffusionXLAutoBeforeDenoiseStep),
     ("denoise", StableDiffusionXLAutoDenoiseStep),
@@ -3078,6 +3086,7 @@ SDXL_SUPPORTED_BLOCKS = {
     "inpaint": INPAINT_BLOCKS,
     "controlnet": CONTROLNET_BLOCKS,
     "controlnet_union": CONTROLNET_UNION_BLOCKS,
+    "ip_adapter": IP_ADAPTER_BLOCKS,
     "auto": AUTO_BLOCKS
 }
 
