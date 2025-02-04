@@ -378,13 +378,13 @@ class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
 
         prompt_embeds = torch.load(
             hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt"),
-            weights_only=True
+            weights_only=True,
         )
         pooled_prompt_embeds = torch.load(
             hf_hub_download(
                 repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
             ),
-            weights_only=True
+            weights_only=True,
         )
         negative_prompt_embeds = torch.zeros_like(prompt_embeds)
         negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)

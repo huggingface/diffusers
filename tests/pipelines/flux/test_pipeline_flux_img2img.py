@@ -167,9 +167,8 @@ class FluxImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxI
 
 
 class FluxIPAdapterImg2ImgPipelineSlowTests(FluxIPAdapterPipelineSlowTests):
-    """
-    Same test as in FluxPipeline, only with inital `image` and `strength` parameters.
-    """
+    """Same test as in FluxIPAdapterPipelineSlowTests, only with inital `image` and `strength` parameters."""
+
     pipeline_class = FluxImg2ImgPipeline
 
     def get_expected_slice(self):
