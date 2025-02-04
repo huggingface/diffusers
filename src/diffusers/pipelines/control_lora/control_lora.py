@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     unet = UNet2DConditionModel.from_pretrained(pipe_id, subfolder="unet", torch_dtype=torch.float16).to("cuda")
     controlnet = ControlNetModel.from_unet(unet).to(device="cuda", dtype=torch.float16)
-    controlnet.load_lora_weights(lora_id, weight_name=lora_filename, controlnet_config=controlnet.config)
+    controlnet.load_lora_adapter(lora_id, weight_name=lora_filename, controlnet_config=controlnet.config)
 
     from diffusers import AutoencoderKL
     from diffusers.utils import load_image, make_image_grid
