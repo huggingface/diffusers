@@ -285,14 +285,14 @@ def apply_group_offloading(
       memory, but can be slower due to the excessive number of device synchronizations.
 
     Group offloading is a middle ground between the two methods. It works by offloading groups of internal layers,
-    (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method is more memory-efficient than module-level
+    (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method uses lower memory than module-level
     offloading. It is also faster than leaf-level offloading, as the number of device synchronizations is reduced.
 
     Another supported feature (for CUDA devices with support for asynchronous data transfer streams) is the ability to
-    overlap data transfer and computation to reduce the overall execution time. This is enabled using layer prefetching
-    with streams, i.e., the layer that is to be executed next starts onloading to the accelerator device while the
-    current layer is being executed - this increases the memory requirements slightly. Note that this implementation
-    also supports leaf-level offloading but can be made much faster when using streams.
+    overlap data transfer and computation to reduce the overall execution time compared to sequential offloading. This
+    is enabled using layer prefetching with streams, i.e., the layer that is to be executed next starts onloading to
+    the accelerator device while the current layer is being executed - this increases the memory requirements slightly.
+    Note that this implementation also supports leaf-level offloading but can be made much faster when using streams.
 
     Args:
         module (`torch.nn.Module`):
