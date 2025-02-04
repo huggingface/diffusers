@@ -68,14 +68,14 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> validation_image_end = None
         >>> sample_size = (576, 448)
-        >>> video_length = 49
-        >>> input_video, input_video_mask, _ = get_image_to_video_latent(validation_image_start, validation_image_end, video_length, sample_size)
-        >>> video = pipe(prompt, video_length=video_length, negative_prompt="bad detailed", height=sample_size[0], width=sample_size[1], input_video=input_video, mask_video=input_video_mask)
+        >>> num_frames = 49
+        >>> input_video, input_video_mask, _ = get_image_to_video_latent(validation_image_start, validation_image_end, num_frames, sample_size)
+        >>> video = pipe(prompt, num_frames=num_frames, negative_prompt="bad detailed", height=sample_size[0], width=sample_size[1], input_video=input_video, mask_video=input_video_mask)
         >>> export_to_video(video.frames[0], "output.mp4", fps=8)
         ```
 """
 
-def get_image_to_video_latent(validation_image_start, validation_image_end, video_length, sample_size):
+def get_image_to_video_latent(validation_image_start, validation_image_end, num_frames, sample_size):
     if validation_image_start is not None and validation_image_end is not None:
         if type(validation_image_start) is str and os.path.isfile(validation_image_start):
             image_start = clip_image = Image.open(validation_image_start).convert("RGB")
@@ -99,7 +99,7 @@ def get_image_to_video_latent(validation_image_start, validation_image_end, vide
                 [torch.from_numpy(np.array(_image_start)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0) for _image_start in image_start], 
                 dim=2
             )
-            input_video = torch.tile(start_video[:, :, :1], [1, 1, video_length, 1, 1])
+            input_video = torch.tile(start_video[:, :, :1], [1, 1, num_frames, 1, 1])
             input_video[:, :, :len(image_start)] = start_video
             
             input_video_mask = torch.zeros_like(input_video[:, :1])
@@ -107,7 +107,7 @@ def get_image_to_video_latent(validation_image_start, validation_image_end, vide
         else:
             input_video = torch.tile(
                 torch.from_numpy(np.array(image_start)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0), 
-                [1, 1, video_length, 1, 1]
+                [1, 1, num_frames, 1, 1]
             )
             input_video_mask = torch.zeros_like(input_video[:, :1])
             input_video_mask[:, :, 1:] = 255
@@ -145,7 +145,7 @@ def get_image_to_video_latent(validation_image_start, validation_image_end, vide
                 [torch.from_numpy(np.array(_image_start)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0) for _image_start in image_start], 
                 dim=2
             )
-            input_video = torch.tile(start_video[:, :, :1], [1, 1, video_length, 1, 1])
+            input_video = torch.tile(start_video[:, :, :1], [1, 1, num_frames, 1, 1])
             input_video[:, :, :len(image_start)] = start_video
             input_video = input_video / 255
             
@@ -154,15 +154,15 @@ def get_image_to_video_latent(validation_image_start, validation_image_end, vide
         else:
             input_video = torch.tile(
                 torch.from_numpy(np.array(image_start)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0), 
-                [1, 1, video_length, 1, 1]
+                [1, 1, num_frames, 1, 1]
             ) / 255
             input_video_mask = torch.zeros_like(input_video[:, :1])
             input_video_mask[:, :, 1:, ] = 255
     else:
         image_start = None
         image_end = None
-        input_video = torch.zeros([1, 3, video_length, sample_size[0], sample_size[1]])
-        input_video_mask = torch.ones([1, 1, video_length, sample_size[0], sample_size[1]]) * 255
+        input_video = torch.zeros([1, 3, num_frames, sample_size[0], sample_size[1]])
+        input_video_mask = torch.ones([1, 1, num_frames, sample_size[0], sample_size[1]]) * 255
         clip_image = None
 
     del image_start
@@ -806,7 +806,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         num_channels_latents,
         height,
         width,
-        video_length,
+        num_frames,
         dtype,
         device,
         generator,
@@ -821,8 +821,8 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         mini_batch_decoder = self.vae.mini_batch_decoder
         shape = (
             batch_size, num_channels_latents, 
-            int((video_length - 1) // mini_batch_encoder * mini_batch_decoder + 1
-        ) if video_length != 1 else 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            int((num_frames - 1) // mini_batch_encoder * mini_batch_decoder + 1
+        ) if num_frames != 1 else 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -906,7 +906,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        video_length: Optional[int] = 49,
+        num_frames: Optional[int] = 49,
         video: Union[torch.FloatTensor] = None,
         mask_video: Union[torch.FloatTensor] = None,
         masked_video_latents: Union[torch.FloatTensor] = None,
@@ -944,7 +944,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         Examples:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            video_length (`int`, *optional*):
+            num_frames (`int`, *optional*):
                 Length of the video to be generated in seconds. This parameter influences the number of frames and
                 continuity of generated content.
             video (`torch.FloatTensor`, *optional*):
@@ -1127,10 +1127,10 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         is_strength_max = strength == 1.0
 
         if video is not None:
-            video_length = video.shape[2]
+            num_frames = video.shape[2]
             init_video = self.image_processor.preprocess(rearrange(video, "b c f h w -> (b f) c h w"), height=height, width=width) 
             init_video = init_video.to(dtype=torch.float32)
-            init_video = rearrange(init_video, "(b f) c h w -> b c f h w", f=video_length)
+            init_video = rearrange(init_video, "(b f) c h w -> b c f h w", f=num_frames)
         else:
             init_video = None
 
@@ -1145,7 +1145,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             num_channels_latents,
             height,
             width,
-            video_length,
+            num_frames,
             dtype,
             device,
             generator,
@@ -1179,10 +1179,10 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                 inpaint_latents = torch.cat([mask_input, masked_video_latents_input], dim=1).to(dtype)
             else:
                 # Prepare mask latent variables
-                video_length = video.shape[2]
+                num_frames = video.shape[2]
                 mask_condition = self.mask_processor.preprocess(rearrange(mask_video, "b c f h w -> (b f) c h w"), height=height, width=width) 
                 mask_condition = mask_condition.to(dtype=torch.float32)
-                mask_condition = rearrange(mask_condition, "(b f) c h w -> b c f h w", f=video_length)
+                mask_condition = rearrange(mask_condition, "(b f) c h w -> b c f h w", f=num_frames)
 
                 if num_channels_transformer != num_channels_latents:
                     mask_condition_tile = torch.tile(mask_condition, [1, 3, 1, 1, 1])

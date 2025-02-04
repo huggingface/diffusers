@@ -600,13 +600,13 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, video_length, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None):
         mini_batch_encoder = self.vae.mini_batch_encoder
         mini_batch_decoder = self.vae.mini_batch_decoder
         shape = (
             batch_size, num_channels_latents, 
-            int((video_length - 1) // mini_batch_encoder * mini_batch_decoder + 1
-        ) if video_length != 1 else 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            int((num_frames - 1) // mini_batch_encoder * mini_batch_decoder + 1
+        ) if num_frames != 1 else 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -657,7 +657,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        video_length: Optional[int] = 49,
+        num_frames: Optional[int] = 49,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         num_inference_steps: Optional[int] = 50,
@@ -690,7 +690,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
         Examples:
             prompt (`str` or `List[str]`, *optional*): 
                 Text prompts to guide the image or video generation. If not provided, use `prompt_embeds` instead.
-            video_length (`int`, *optional*): 
+            num_frames (`int`, *optional*): 
                 Length of the generated video (in frames).
             height (`int`, *optional*): 
                 Height of the generated image in pixels.
@@ -849,7 +849,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
-            video_length,
+            num_frames,
             height,
             width,
             dtype,

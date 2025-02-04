@@ -1,5 +1,4 @@
 # Initially taken from GitHub's Python gitignore file
-__*/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -25,14 +25,218 @@ from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
-from ..attention_processor import AttentionProcessor, EasyAnimateAttnProcessor2_0
-from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
+from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm, EasyAnimateRMSNorm, EasyAnimateLayerNormZero, FP32LayerNorm
+from ..normalization import AdaLayerNorm, FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class EasyAnimateAttnProcessor2_0:
+    r"""
+    Attention processor used in EasyAnimate.
+    """
+
+    def __init__(self, attn2=None):
+        self.attn2 = attn2
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if self.attn2 is None and encoder_hidden_states is not None:
+            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
+        # 1. QKV projections
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+        # 2. QK normalization
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # 3. Encoder condition QKV projection and normalization
+        if self.attn2.to_q is not None and encoder_hidden_states is not None:
+            encoder_query = self.attn2.to_q(encoder_hidden_states)
+            encoder_key = self.attn2.to_k(encoder_hidden_states)
+            encoder_value = self.attn2.to_v(encoder_hidden_states)
+
+            encoder_query = encoder_query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+            encoder_key = encoder_key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+            encoder_value = encoder_value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+            if self.attn2.norm_q is not None:
+                encoder_query = self.attn2.norm_q(encoder_query)
+            if self.attn2.norm_k is not None:
+                encoder_key = self.attn2.norm_k(encoder_key)
+
+            query = torch.cat([encoder_query, query], dim=2)
+            key = torch.cat([encoder_key, key], dim=2)
+            value = torch.cat([encoder_value, value], dim=2)
+            
+        if image_rotary_emb is not None:
+            from ..embeddings import apply_rotary_emb
+            query[:, :, encoder_hidden_states.shape[1]:] = apply_rotary_emb(query[:, :, encoder_hidden_states.shape[1]:], image_rotary_emb)
+            if not attn.is_cross_attention:
+                key[:, :, encoder_hidden_states.shape[1]:] = apply_rotary_emb(key[:, :, encoder_hidden_states.shape[1]:], image_rotary_emb)
+
+        # 5. Attention
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.to(query.dtype)
+        
+        # 6. Output projection
+        if encoder_hidden_states is not None:
+            encoder_hidden_states, hidden_states = (
+                hidden_states[:, : encoder_hidden_states.shape[1]],
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+            )
+
+            if getattr(attn, "to_out", None) is not None:
+                hidden_states = attn.to_out[0](hidden_states)
+                hidden_states = attn.to_out[1](hidden_states)
+
+            if self.attn2 is not None and getattr(self.attn2, "to_out", None) is not None:
+                encoder_hidden_states = self.attn2.to_out[0](encoder_hidden_states)
+                encoder_hidden_states = self.attn2.to_out[1](encoder_hidden_states)
+        else:
+            if getattr(attn, "to_out", None) is not None:
+                hidden_states = attn.to_out[0](hidden_states)
+                hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states, encoder_hidden_states
+
+
+class EasyAnimateRMSNorm(nn.Module):
+    """
+    EasyAnimateRMSNorm implements the Root Mean Square (RMS) normalization layer, 
+    which is equivalent to T5LayerNorm.
+    
+    RMS normalization is a method for normalizing the output of neural network layers, 
+    aimed at accelerating the training process and improving model performance. 
+    This implementation is specifically designed for use in models similar to T5.
+    """
+    def __init__(self, hidden_size, eps=1e-6):
+        """
+        Initializes the RMS normalization layer.
+        
+        Parameters:
+        - hidden_size: The size of the hidden layer, used to determine the size of the learnable weight parameters.
+        - eps: A small value added to the denominator to avoid division by zero during normalization.
+        """
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, hidden_states):
+        """
+        Performs the forward propagation of the RMS normalization layer.
+        
+        Parameters:
+        - hidden_states: The input tensor, usually the output of the previous layer.
+        
+        Returns:
+        - The normalized tensor, scaled by the learnable weight parameters.
+        """
+        # Save the input data type for restoring it before returning
+        input_dtype = hidden_states.dtype
+        # Convert the input to float32 for accurate calculation
+        hidden_states = hidden_states.to(torch.float32)
+        # Calculate the variance of the input along the last dimension
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        # Normalize the input
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        # Scale by the weight parameters and restore the input data type
+        return self.weight * hidden_states.to(input_dtype)
+    
+
+class EasyAnimateLayerNormZero(nn.Module):
+    # Modified from https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/normalization.py
+    # Add fp32 layer norm
+    """
+    Implements a custom layer normalization module with support for fp32 data type.
+    
+    This module applies a learned affine transformation to the input, which is useful for stabilizing the training of deep neural networks.
+    It is designed to work with both standard and fp32 layer normalization, depending on the `norm_type` parameter.
+    
+    Parameters:
+    - conditioning_dim: int, the dimension of the input conditioning vector.
+    - embedding_dim: int, the dimension of the hidden state and encoder hidden state embeddings.
+    - elementwise_affine: bool, default True, whether to learn an affine transformation for each element.
+    - eps: float, default 1e-5, a value added to the denominator for numerical stability.
+    - bias: bool, default True, whether to include a bias term in the linear transformation.
+    - norm_type: str, default 'fp32_layer_norm', the type of normalization to apply. Supports 'layer_norm' and 'fp32_layer_norm'.
+    
+    Raises:
+    - ValueError: if an unsupported `norm_type` is provided.
+    """
+    def __init__(
+        self,
+        conditioning_dim: int,
+        embedding_dim: int,
+        elementwise_affine: bool = True,
+        eps: float = 1e-5,
+        bias: bool = True,
+        norm_type: str = "fp32_layer_norm",
+    ) -> None:
+        super().__init__()
+
+        # Initialize SiLU activation function
+        self.silu = nn.SiLU()
+        # Initialize linear layer for conditioning input
+        self.linear = nn.Linear(conditioning_dim, 6 * embedding_dim, bias=bias)
+        # Initialize normalization layer based on norm_type
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=elementwise_affine, eps=eps)
+        elif norm_type == "fp32_layer_norm":
+            self.norm = FP32LayerNorm(embedding_dim, elementwise_affine=elementwise_affine, eps=eps)
+        else:
+            raise ValueError(
+                f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm', 'fp32_layer_norm'."
+            )
+
+    def forward(
+        self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Applies the learned affine transformation to the input hidden states and encoder hidden states.
+        
+        Parameters:
+        - hidden_states: torch.Tensor, the hidden states tensor.
+        - encoder_hidden_states: torch.Tensor, the encoder hidden states tensor.
+        - temb: torch.Tensor, the conditioning input tensor.
+        
+        Returns:
+        - hidden_states: torch.Tensor, the transformed hidden states tensor.
+        - encoder_hidden_states: torch.Tensor, the transformed encoder hidden states tensor.
+        - gate: torch.Tensor, the gate tensor for hidden states.
+        - enc_gate: torch.Tensor, the gate tensor for encoder hidden states.
+        """
+        # Apply SiLU activation to temb and then linear transformation, splitting the result into 6 parts
+        shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(self.silu(temb)).chunk(6, dim=1)
+        # Apply normalization and learned affine transformation to hidden states
+        hidden_states = self.norm(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
+        # Apply normalization and learned affine transformation to encoder hidden states
+        encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale)[:, None, :] + enc_shift[:, None, :]
+        # Return the transformed hidden states, encoder hidden states, and gates
+        return hidden_states, encoder_hidden_states, gate[:, None, :], enc_gate[:, None, :]
 
 
 @maybe_allow_in_graph
@@ -62,15 +266,6 @@ class EasyAnimateDiTBlock(nn.Module):
             time_embed_dim, dim, norm_elementwise_affine, norm_eps, norm_type=norm_type, bias=True
         )
 
-        self.attn1 = Attention(
-            query_dim=dim,
-            dim_head=attention_head_dim,
-            heads=num_attention_heads,
-            qk_norm="layer_norm" if qk_norm else None,
-            eps=1e-6,
-            bias=True,
-            processor=EasyAnimateAttnProcessor2_0(),
-        )
         if is_mmdit_block:
             self.attn2 = Attention(
                 query_dim=dim,
@@ -83,6 +278,15 @@ class EasyAnimateDiTBlock(nn.Module):
             )
         else:
             self.attn2 = None
+        self.attn1 = Attention(
+            query_dim=dim,
+            dim_head=attention_head_dim,
+            heads=num_attention_heads,
+            qk_norm="layer_norm" if qk_norm else None,
+            eps=1e-6,
+            bias=True,
+            processor=EasyAnimateAttnProcessor2_0(self.attn2),
+        )
         
         # FFN Part
         self.norm2 = EasyAnimateLayerNormZero(
@@ -133,7 +337,6 @@ class EasyAnimateDiTBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
-            attn2=self.attn2
         )
         hidden_states = hidden_states + gate_msa * attn_hidden_states
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_encoder_hidden_states
@@ -216,7 +419,7 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_attention_heads: int = 30,
+        num_attention_heads: int = 48,
         attention_head_dim: int = 64,
         in_channels: Optional[int] = None,
         out_channels: Optional[int] = None,
@@ -227,13 +430,13 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         activation_fn: str = "gelu-approximate",
         timestep_activation_fn: str = "silu",
         freq_shift: int = 0,
-        num_layers: int = 30,
-        mmdit_layers: int = 10000,
+        num_layers: int = 48,
+        mmdit_layers: int = 48,
         dropout: float = 0.0,
         time_embed_dim: int = 512,
         add_norm_text_encoder: bool = False,
-        text_embed_dim: int = 4096,
-        text_embed_dim_t5: int = 4096,
+        text_embed_dim: int = 3584,
+        text_embed_dim_t5: int = None,
         norm_eps: float = 1e-5,
 
         norm_elementwise_affine: bool = True,
@@ -241,9 +444,9 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
     
         time_position_encoding_type: str = "3d_rope", 
         after_norm = False,
-        resize_inpaint_mask_directly: bool = False,
+        resize_inpaint_mask_directly: bool = True,
         enable_text_attention_mask: bool = True,
-        add_noise_in_inpaint_model: bool = False,
+        add_noise_in_inpaint_model: bool = True,
     ):
         super().__init__()
         self.num_heads = num_attention_heads

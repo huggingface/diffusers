@@ -74,15 +74,15 @@ EXAMPLE_DOC_STRING = """
         ...     "moons, but the remainder of the scene is mostly realistic."
         ... )
         >>> sample_size = (576, 448)
-        >>> video_length = 49
+        >>> num_frames = 49
 
-        >>> input_video, _, _ = get_video_to_video_latent(control_video, video_length, sample_size)
-        >>> video = pipe(prompt, video_length=video_length, negative_prompt="bad detailed", height=sample_size[0], width=sample_size[1], control_video=input_video).frames[0]
+        >>> input_video, _, _ = get_video_to_video_latent(control_video, num_frames, sample_size)
+        >>> video = pipe(prompt, num_frames=num_frames, negative_prompt="bad detailed", height=sample_size[0], width=sample_size[1], control_video=input_video).frames[0]
         >>> export_to_video(video, "output.mp4", fps=8)
         ```
 """
 
-def get_video_to_video_latent(input_video_path, video_length, sample_size, fps=None, validation_video_mask=None, ref_image=None):
+def get_video_to_video_latent(input_video_path, num_frames, sample_size, fps=None, validation_video_mask=None, ref_image=None):
     if input_video_path is not None:
         if isinstance(input_video_path, str):
             import cv2
@@ -109,7 +109,7 @@ def get_video_to_video_latent(input_video_path, video_length, sample_size, fps=N
         else:
             input_video = input_video_path
 
-        input_video = torch.from_numpy(np.array(input_video))[:video_length]
+        input_video = torch.from_numpy(np.array(input_video))[:num_frames]
         input_video = input_video.permute([3, 0, 1, 2]).unsqueeze(0) / 255
 
         if validation_video_mask is not None:
@@ -704,13 +704,13 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, video_length, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None):
         mini_batch_encoder = self.vae.mini_batch_encoder
         mini_batch_decoder = self.vae.mini_batch_decoder
         shape = (
             batch_size, num_channels_latents, 
-            int((video_length - 1) // mini_batch_encoder * mini_batch_decoder + 1
-        ) if video_length != 1 else 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            int((num_frames - 1) // mini_batch_encoder * mini_batch_decoder + 1
+        ) if num_frames != 1 else 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -796,7 +796,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        video_length: Optional[int] = 49,
+        num_frames: Optional[int] = 49,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         control_video: Union[torch.FloatTensor] = None,
@@ -832,7 +832,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
         Examples:
             prompt (`str` or `List[str]`, *optional*): 
                 Text prompts to guide the image or video generation. If not provided, use `prompt_embeds` instead.
-            video_length (`int`, *optional*): 
+            num_frames (`int`, *optional*): 
                 Length of the generated video (in frames).
             height (`int`, *optional*): 
                 Height of the generated image in pixels.
@@ -986,7 +986,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
-            video_length,
+            num_frames,
             height,
             width,
             dtype,
@@ -1002,10 +1002,10 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 torch.cat([control_video_latents] * 2) if self.do_classifier_free_guidance else control_video_latents
             ).to(device, dtype)
         elif control_video is not None:
-            video_length = control_video.shape[2]
+            num_frames = control_video.shape[2]
             control_video = self.image_processor.preprocess(rearrange(control_video, "b c f h w -> (b f) c h w"), height=height, width=width) 
             control_video = control_video.to(dtype=torch.float32)
-            control_video = rearrange(control_video, "(b f) c h w -> b c f h w", f=video_length)
+            control_video = rearrange(control_video, "(b f) c h w -> b c f h w", f=num_frames)
             control_video_latents = self.prepare_control_latents(
                 None,
                 control_video,
@@ -1027,10 +1027,10 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
             ).to(device, dtype)
             
         if ref_image is not None:
-            video_length = ref_image.shape[2]
+            num_frames = ref_image.shape[2]
             ref_image = self.image_processor.preprocess(rearrange(ref_image, "b c f h w -> (b f) c h w"), height=height, width=width) 
             ref_image = ref_image.to(dtype=torch.float32)
-            ref_image = rearrange(ref_image, "(b f) c h w -> b c f h w", f=video_length)
+            ref_image = rearrange(ref_image, "(b f) c h w -> b c f h w", f=num_frames)
             
             ref_image_latentes = self.prepare_control_latents(
                 None,
