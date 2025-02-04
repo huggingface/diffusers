@@ -363,8 +363,9 @@ class FromOriginalModelMixin:
         device_map = None
         if is_accelerate_available():
             param_device = torch.device(device) if device else torch.device("cpu")
+            empty_state_dict = model.state_dict()
             unexpected_keys = [
-                param_name for param_name in diffusers_format_checkpoint if param_name not in model.state_dict()
+                param_name for param_name in diffusers_format_checkpoint if param_name not in empty_state_dict
             ]
             device_map = {"": param_device}
             load_model_dict_into_meta(
