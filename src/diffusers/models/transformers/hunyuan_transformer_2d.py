@@ -245,6 +245,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
     """
 
     _skip_layerwise_casting_patterns = ["pos_embed", "norm", "pooler"]
+    _supports_group_offloading = False
 
     @register_to_config
     def __init__(

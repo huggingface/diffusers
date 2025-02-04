@@ -174,6 +174,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _no_split_modules = None
     _keep_in_fp32_modules = None
     _skip_layerwise_casting_patterns = None
+    _supports_group_offloading = True
 
     def __init__(self):
         super().__init__()

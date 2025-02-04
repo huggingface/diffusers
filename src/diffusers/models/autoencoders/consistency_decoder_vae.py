@@ -68,6 +68,8 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         ```
     """
 
+    _supports_group_offloading = False
+
     @register_to_config
     def __init__(
         self,

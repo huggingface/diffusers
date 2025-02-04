@@ -66,6 +66,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
 
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _supports_gradient_checkpointing = True
+    _supports_group_offloading = False
 
     @register_to_config
     def __init__(

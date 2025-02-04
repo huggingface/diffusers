@@ -1020,25 +1020,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
         Accelerate's module hooks.
         """
-        diffusers_hook_device = None
+        # When apply group offloading at the leaf_level, we're in the same situation as accelerate's sequential
+        # offloading. We need to return the onload device of the group offloading hooks so that the intermediates
+        # required for computation (latents, prompt embeddings, etc.) can be created on the correct device.
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue
-
             for submodule in model.modules():
                 if not hasattr(submodule, "_diffusers_hook"):
                     continue
                 registry = submodule._diffusers_hook
                 hook = registry.get_hook("group_offloading")
                 if hook is not None:
-                    diffusers_hook_device = hook.group.onload_device
-                    break
-
-            if diffusers_hook_device is not None:
-                break
-
-        if diffusers_hook_device is not None:
-            return diffusers_hook_device
+                    return hook.group.onload_device
 
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:

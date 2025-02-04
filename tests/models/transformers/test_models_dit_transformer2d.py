@@ -100,11 +100,3 @@ class DiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     def test_correct_class_remapping(self):
         model = Transformer2DModel.from_pretrained("facebook/DiT-XL-2-256", subfolder="transformer")
         assert isinstance(model, DiTTransformer2DModel)
-
-    @unittest.skip(
-        "This model uses a direct call to self.transformer_blocks[0].norm1.emb. This causes attached hooks to not be invoked "
-        "when block offloading is enabled. In order for it to work, the model should correctly first invoke the forward pass "
-        "the transformer blocks, so that weights can be onloaded, instead of directly invoking a submodule of the block."
-    )
-    def test_group_offloading(self):
-        pass

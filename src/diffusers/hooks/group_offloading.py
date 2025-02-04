@@ -343,7 +343,7 @@ def _apply_group_offloading_block_level(
         for i in range(0, len(submodule), num_blocks_per_group):
             current_modules = submodule[i : i + num_blocks_per_group]
             group = ModuleGroup(
-                modules=submodule[i : i + num_blocks_per_group],
+                modules=current_modules,
                 offload_device=offload_device,
                 onload_device=onload_device,
                 offload_leader=current_modules[-1],

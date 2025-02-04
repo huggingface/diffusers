@@ -155,10 +155,6 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
             "Without slicing outputs should match with the outputs when slicing is manually disabled.",
         )
 
-    @unittest.skip("Not quite sure why this test fails and unable to debug.")
-    def test_group_offloading(self):
-        pass
-
 
 @slow
 class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):

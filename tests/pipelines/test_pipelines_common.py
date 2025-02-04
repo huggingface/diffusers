@@ -2075,6 +2075,8 @@ class PipelineTesterMixin:
                 if not hasattr(pipe, component_name):
                     continue
                 component = getattr(pipe, component_name)
+                if not getattr(component, "_supports_group_offloading", True):
+                    continue
                 apply_group_offloading(component, **group_offloading_kwargs)
                 self.assertTrue(
                     all(

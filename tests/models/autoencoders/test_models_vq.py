@@ -116,7 +116,3 @@ class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         expected_output = torch.tensor([0.1936])
         # fmt: on
         self.assertTrue(torch.allclose(output, expected_output, atol=1e-3))
-
-    @unittest.skip("Group offloading for torch::nn::Embedding layers is not yet supported.")
-    def test_group_offloading(self):
-        pass
