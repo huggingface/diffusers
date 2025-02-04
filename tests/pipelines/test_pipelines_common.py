@@ -2077,7 +2077,14 @@ class PipelineTesterMixin:
                 component = getattr(pipe, component_name)
                 if not getattr(component, "_supports_group_offloading", True):
                     continue
-                apply_group_offloading(component, **group_offloading_kwargs)
+                if hasattr(component, "enable_group_offloading"):
+                    # For diffusers ModelMixin implementations
+                    component.enable_group_offloading(torch.device(torch_device), **group_offloading_kwargs)
+                else:
+                    # For other models not part of diffusers
+                    apply_group_offloading(
+                        component, onload_device=torch.device(torch_device), **group_offloading_kwargs
+                    )
                 self.assertTrue(
                     all(
                         module._diffusers_hook.get_hook("group_offloading") is not None

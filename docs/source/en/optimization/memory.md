@@ -158,6 +158,46 @@ In order to properly offload models after they're called, it is required to run 
 
 </Tip>
 
+## Group offloading
+
+Group offloading is a middle ground between the two above methods. It works by offloading groups of internal layers (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method is more memory-efficient than model-level offloading. It is also faster than sequential-level offloading, as the number of device synchronizations is reduced.
+
+Another supported feature (for CUDA devices with support for asynchronous data transfer streams) is the ability to overlap data transfer and computation to reduce the overall execution time. This is enabled using layer prefetching with CUDA streams, i.e., the layer that is to be executed next starts onloading to the accelerator device while the current layer is being executed - this increases the memory requirements slightly. Note that this implementation also supports leaf-level offloading but can be made much faster when using streams.
+
+To enable group offloading, either call the [`~ModelMixin.enable_group_offloading`] method on the model or pass use [`~hooks.group_offloading.apply_group_offloading`]:
+
+```python
+import torch
+from diffusers import CogVideoXPipeline
+from diffusers.hooks import apply_group_offloading
+from diffusers.utils import export_to_video
+
+# Load the pipeline
+onload_device = torch.device("cuda")
+offload_device = torch.device("cpu")
+pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+
+# We can utilize the enable_group_offloading method for Diffusers model implementations
+pipe.transformer.enable_group_offloading(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True)
+
+# For any other model implementations, the apply_group_offloading function can be used
+apply_group_offloading(pipe.text_encoder, onload_device=onload_device, offload_type="block_level", num_blocks_per_group=2)
+apply_group_offloading(pipe.vae, onload_device=onload_device, offload_type="leaf_level")
+
+prompt = (
+    "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
+    "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
+    "pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, "
+    "casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. "
+    "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
+    "atmosphere of this unique musical performance."
+)
+video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
+# This utilized about 14.79 GB. It can be further reduced by using tiling and using leaf_level offloading throughout the pipeline.
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+export_to_video(video, "output.mp4", fps=8)
+```
+
 ## FP8 layerwise weight-casting
 
 PyTorch supports `torch.float8_e4m3fn` and `torch.float8_e5m2` as weight storage dtypes, but they can't be used for computation in many different tensor operations due to unimplemented kernel support. However, you can use these dtypes to store model weights in fp8 precision and upcast them on-the-fly when the layers are used in the forward pass. This is known as layerwise weight-casting.

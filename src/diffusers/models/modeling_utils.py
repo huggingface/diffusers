@@ -33,7 +33,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
-from ..hooks import apply_layerwise_casting
+from ..hooks import apply_group_offloading, apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -444,6 +444,55 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         apply_layerwise_casting(
             self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
+        )
+
+    def enable_group_offloading(
+        self,
+        onload_device: torch.device,
+        offload_device: torch.device = torch.device("cpu"),
+        offload_type: str = "block_level",
+        num_blocks_per_group: Optional[int] = None,
+        non_blocking: bool = False,
+        use_stream: bool = False,
+    ) -> None:
+        r"""
+        Activates group offloading for the current model.
+
+        See [`~hooks.group_offloading.apply_group_offloading`] for more information.
+
+        Example:
+
+            ```python
+            >>> from diffusers import CogVideoXTransformer3DModel
+
+            >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
+            ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
+            ... )
+
+            >>> transformer.enable_group_offloading(
+            ...     onload_device=torch.device("cuda"),
+            ...     offload_device=torch.device("cpu"),
+            ...     offload_type="leaf_level",
+            ...     use_stream=True,
+            ... )
+            ```
+        """
+        if getattr(self, "enable_tiling", None) is not None and getattr(self, "use_tiling", False) and use_stream:
+            msg = (
+                "Applying group offloading on autoencoders, with CUDA streams, may not work as expected if the first "
+                "forward pass is executed with tiling enabled. Please make sure to either:\n"
+                "1. Run a forward pass with small input shapes.\n"
+                "2. Or, run a forward pass with tiling disabled (can still use small dummy inputs)."
+            )
+            logger.warning(msg)
+        if not self._supports_group_offloading:
+            raise ValueError(
+                f"{self.__class__.__name__} does not support group offloading. Please make sure to set the boolean attribute "
+                f"`_supports_group_offloading` to `True` in the class definition. If you believe this is a mistake, please "
+                f"open an issue at https://github.com/huggingface/diffusers/issues."
+            )
+        apply_group_offloading(
+            self, onload_device, offload_device, offload_type, num_blocks_per_group, non_blocking, use_stream
         )
 
     def save_pretrained(

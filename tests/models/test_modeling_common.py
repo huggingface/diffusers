@@ -37,7 +37,6 @@ from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 
-from diffusers.hooks import apply_group_offloading
 from diffusers.models import UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor,
@@ -1434,6 +1433,7 @@ class ModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
 
+        @torch.no_grad()
         def run_forward(model):
             self.assertTrue(
                 all(
@@ -1443,34 +1443,35 @@ class ModelTesterMixin:
                 )
             )
             model.eval()
-            with torch.no_grad():
-                return model(**inputs_dict)[0]
+            return model(**inputs_dict)[0]
 
         model = self.model_class(**init_dict)
         if not getattr(model, "_supports_group_offloading", True):
             return
-        
+
         model.to(torch_device)
         output_without_group_offloading = run_forward(model)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        apply_group_offloading(model, offload_type="block_level", num_blocks_per_group=1)
+        model.enable_group_offloading(torch_device, offload_type="block_level", num_blocks_per_group=1)
         output_with_group_offloading1 = run_forward(model)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        apply_group_offloading(model, offload_type="block_level", num_blocks_per_group=1, non_blocking=True)
+        model.enable_group_offloading(
+            torch_device, offload_type="block_level", num_blocks_per_group=1, non_blocking=True
+        )
         output_with_group_offloading2 = run_forward(model)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        apply_group_offloading(model, offload_type="leaf_level")
+        model.enable_group_offloading(torch_device, offload_type="leaf_level")
         output_with_group_offloading3 = run_forward(model)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        apply_group_offloading(model, offload_type="leaf_level", use_stream=True)
+        model.enable_group_offloading(torch_device, offload_type="leaf_level", use_stream=True)
         output_with_group_offloading4 = run_forward(model)
 
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5))
