@@ -154,10 +154,6 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self.register_to_config(block_out_channels=decoder_block_out_channels)
         self.register_to_config(force_upcast=False)
 
-    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (EncoderTiny, DecoderTiny)):
-            module.gradient_checkpointing = value
-
     def scale_latents(self, x: torch.Tensor) -> torch.Tensor:
         """raw latents -> [0, 1]"""
         return x.div(2 * self.latent_magnitude).add(self.latent_shift).clamp(0, 1)

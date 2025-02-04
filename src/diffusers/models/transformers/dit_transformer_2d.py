@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...utils import logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -144,10 +144,6 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
             self.inner_dim, self.config.patch_size * self.config.patch_size * self.out_channels
         )
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -186,19 +182,8 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
         # 2. Blocks
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     None,
                     None,
@@ -206,7 +191,6 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
                     timestep,
                     cross_attention_kwargs,
                     class_labels,
-                    **ckpt_kwargs,
                 )
             else:
                 hidden_states = block(
