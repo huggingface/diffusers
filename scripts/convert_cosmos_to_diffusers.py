@@ -3,8 +3,9 @@ from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
+from transformers import T5EncoderModel, T5TokenizerFast
 
-from diffusers import CosmosTransformer3DModel
+from diffusers import CosmosTransformer3DModel, EDMEulerScheduler
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -167,6 +168,21 @@ if __name__ == "__main__":
     #     vae = convert_vae(args.vae_ckpt_path)
     #     if not args.save_pipeline:
     #         vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+
+    if args.save_pipeline:
+        text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=dtype)
+        tokenizer = T5TokenizerFast.from_pretrained(args.tokenizer_path)
+        # The original code initializes EDM config with sigma_min=0.0002, but does not make use of it anywhere directly.
+        # So, the sigma_min values that is used is the default value of 0.002.
+        scheduler = EDMEulerScheduler(
+            sigma_min=0.002,
+            sigma_max=80,
+            sigma_data=0.5,
+            sigma_schedule="karras",
+            num_train_timesteps=1000,
+            prediction_type="epsilon",
+            rho=7.0,
+        )
 
     # if args.save_pipeline:
     #     text_encoder = AutoModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.float16)

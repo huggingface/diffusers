@@ -56,8 +56,8 @@ class CosmosTimestepEmbedding(nn.Module):
         self.activation = nn.SiLU()
         self.linear_2 = nn.Linear(out_features, 3 * out_features, bias=False)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        emb = self.linear_1(hidden_states)
+    def forward(self, timesteps: torch.Tensor) -> torch.Tensor:
+        emb = self.linear_1(timesteps)
         emb = self.activation(emb)
         emb = self.linear_2(emb)
         return emb
@@ -73,9 +73,9 @@ class CosmosEmbedding(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, timestep: torch.LongTensor) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep).type_as(hidden_states)
-        embedded_timestep = self.t_embedder(timesteps_proj)
-        norm_timesteps_proj = self.norm(timesteps_proj)
-        return norm_timesteps_proj, embedded_timestep
+        temb = self.t_embedder(timesteps_proj)
+        embedded_timestep = self.norm(timesteps_proj)
+        return temb, embedded_timestep
 
 
 class CosmosAdaLayerNorm(nn.Module):
@@ -89,14 +89,16 @@ class CosmosAdaLayerNorm(nn.Module):
         self.linear_2 = nn.Linear(hidden_features, 2 * in_features, bias=False)
 
     def forward(
-        self, hidden_states: torch.Tensor, temb: torch.Tensor, embedded_timestep: torch.Tensor
+        self, hidden_states: torch.Tensor, embedded_timestep: torch.Tensor, temb: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        temb = self.activation(temb)
-        temb = self.linear_1(temb)
-        temb = self.linear_2(temb)
-        temb = temb + embedded_timestep[:, : 2 * self.embedding_dim]
-        shift, scale = temb.chunk(2, dim=1)
+        embedded_timestep = self.activation(embedded_timestep)
+        embedded_timestep = self.linear_1(embedded_timestep)
+        embedded_timestep = self.linear_2(embedded_timestep)
 
+        if temb is not None:
+            embedded_timestep = embedded_timestep + temb[:, : 2 * self.embedding_dim]
+
+        shift, scale = embedded_timestep.chunk(2, dim=1)
         hidden_states = self.norm(hidden_states)
         hidden_states = hidden_states * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
         return hidden_states
@@ -117,16 +119,19 @@ class CosmosAdaLayerNormZero(nn.Module):
         self.linear_2 = nn.Linear(hidden_features, 3 * in_features, bias=False)
 
     def forward(
-        self, hidden_states: torch.Tensor, temb: torch.Tensor, embedded_timestep: Optional[torch.Tensor] = None
+        self,
+        hidden_states: torch.Tensor,
+        embedded_timestep: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        temb = self.activation(temb)
-        temb = self.linear_1(temb)
-        temb = self.linear_2(temb)
+        embedded_timestep = self.activation(embedded_timestep)
+        embedded_timestep = self.linear_1(embedded_timestep)
+        embedded_timestep = self.linear_2(embedded_timestep)
 
-        if embedded_timestep is not None:
-            temb = temb + embedded_timestep
+        if temb is not None:
+            embedded_timestep = embedded_timestep + temb
 
-        shift, scale, gate = temb.chunk(3, dim=1)
+        shift, scale, gate = embedded_timestep.chunk(3, dim=1)
         hidden_states = self.norm(hidden_states)
         hidden_states = hidden_states * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
         return hidden_states, gate
@@ -165,8 +170,8 @@ class CosmosAttnProcessor2_0:
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
 
-            query = apply_rotary_emb(query, image_rotary_emb, use_real_unbind_dim=-2)
-            key = apply_rotary_emb(key, image_rotary_emb, use_real_unbind_dim=-2)
+            query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
 
         # 4. Attention
         hidden_states = F.scaled_dot_product_attention(
@@ -227,9 +232,9 @@ class CosmosTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
         embedded_timestep: torch.Tensor,
-        image_rotary_emb: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
         extra_pos_emb: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
@@ -237,19 +242,19 @@ class CosmosTransformerBlock(nn.Module):
             hidden_states = hidden_states + extra_pos_emb
 
         # 1. Self Attention
-        norm_hidden_states, gate = self.norm1(hidden_states, temb, embedded_timestep)
+        norm_hidden_states, gate = self.norm1(hidden_states, embedded_timestep, temb)
         attn_output = self.attn1(norm_hidden_states, image_rotary_emb=image_rotary_emb)
         hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
 
         # 2. Cross Attention
-        norm_hidden_states, gate = self.norm2(hidden_states, temb, embedded_timestep)
+        norm_hidden_states, gate = self.norm2(hidden_states, embedded_timestep, temb)
         attn_output = self.attn2(
             norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
         )
         hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
 
         # 3. Feed Forward
-        norm_hidden_states, gate = self.norm3(hidden_states, temb, embedded_timestep)
+        norm_hidden_states, gate = self.norm3(hidden_states, embedded_timestep, temb)
         ff_output = self.ff(norm_hidden_states)
         hidden_states = hidden_states + gate.unsqueeze(1) * ff_output
 
@@ -458,29 +463,49 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         padding_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
-        # 1. Concatenate padding mask if needed
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+
+        # 1. Concatenate padding mask if needed & prepare attention mask
         if self.config.concat_padding_mask:
             padding_mask = transforms.functional.resize(
                 padding_mask, list(hidden_states.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST
             )
-            hidden_states = torch.cat(
-                [hidden_states, padding_mask.unsqueeze(1).repeat(1, 1, hidden_states.shape[2], 1, 1)], dim=1
-            )
+            hidden_states = torch.cat([hidden_states, padding_mask.unsqueeze(2).repeat(1, 1, num_frames, 1, 1)], dim=1)
+
+        if attention_mask is not None:
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, S]
 
         # 2. Generate positional embeddings
         image_rotary_emb = self.rope(hidden_states, fps=fps)
         extra_pos_emb = self.learnable_pos_embed(hidden_states) if self.config.extra_pos_embed_type else None
 
         # 3. Patchify input
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
         post_patch_num_frames = num_frames // self.config.patch_size[0]
         post_patch_height = height // self.config.patch_size[1]
         post_patch_width = width // self.config.patch_size[2]
         hidden_states = self.patch_embed(hidden_states)
+        print(
+            "patch_embed:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8]
+        )
+        print(
+            "extra_pos_emb:",
+            extra_pos_emb.shape,
+            extra_pos_emb.mean(),
+            extra_pos_emb.std(),
+            extra_pos_emb.flatten()[:8],
+        )
         hidden_states = hidden_states.flatten(1, 3)  # [B, T, H, W, C] -> [B, THW, C]
 
         # 4. Timestep embeddings
         temb, embedded_timestep = self.time_embed(hidden_states, timestep)
+        print("temb:", temb.shape, temb.mean(), temb.std(), temb.flatten()[:8])
+        print(
+            "embedded_timestep:",
+            embedded_timestep.shape,
+            embedded_timestep.mean(),
+            embedded_timestep.std(),
+            embedded_timestep.flatten()[:8],
+        )
 
         # 5. Transformer blocks
         for block in self.transformer_blocks:
@@ -489,8 +514,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    temb,
                     embedded_timestep,
+                    temb,
                     image_rotary_emb,
                     extra_pos_emb,
                     attention_mask,
@@ -499,20 +524,26 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
                 hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    temb=temb,
                     embedded_timestep=embedded_timestep,
+                    temb=temb,
                     image_rotary_emb=image_rotary_emb,
                     extra_pos_emb=extra_pos_emb,
                     attention_mask=attention_mask,
                 )
+            print(
+                "block:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8]
+            )
 
         # 6. Output norm & projection & unpatchify
-        hidden_states = self.norm_out(hidden_states, temb, embedded_timestep)
+        hidden_states = self.norm_out(hidden_states, embedded_timestep, temb)
+        print("norm_out:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
         hidden_states = self.proj_out(hidden_states)
+        print("proj_out:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
         hidden_states = hidden_states.unflatten(2, (-1, *self.config.patch_size))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
         hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
         hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        print("output:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
 
         if not return_dict:
             return (hidden_states,)

@@ -15,7 +15,6 @@
 import inspect
 from typing import Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
@@ -169,7 +168,7 @@ class CosmosPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 8
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
@@ -305,6 +304,38 @@ class CosmosPipeline(DiffusionPipeline):
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
+    def prepare_latents(
+        self,
+        batch_size: int,
+        num_channels_latents: 16,
+        height: int = 704,
+        width: int = 1280,
+        num_frames: int = 121,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype) * self.scheduler.config.sigma_max
+
+        shape = (
+            batch_size,
+            num_channels_latents,
+            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
+            int(height) // self.vae_scale_factor_spatial,
+            int(width) // self.vae_scale_factor_spatial,
+        )
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        # TODO(aryan): not sure if we should use init_noise_sigma here, because the original code simply multiplies with sigmas_max
+        return latents * self.scheduler.config.sigma_max
+
     def check_inputs(
         self,
         prompt,
@@ -334,37 +365,6 @@ class CosmosPipeline(DiffusionPipeline):
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-    def prepare_latents(
-        self,
-        batch_size: int,
-        num_channels_latents: 16,
-        height: int = 704,
-        width: int = 1280,
-        num_frames: int = 121,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_frames,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        return latents
 
     @property
     def guidance_scale(self):
@@ -396,8 +396,8 @@ class CosmosPipeline(DiffusionPipeline):
         width: int = 1280,
         num_frames: int = 121,
         num_inference_steps: int = 35,
-        sigmas: List[float] = None,
         guidance_scale: float = 7.0,
+        fps: int = 30,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -429,15 +429,13 @@ class CosmosPipeline(DiffusionPipeline):
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            sigmas (`List[float]`, *optional*):
-                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
-                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
-                will be used.
             guidance_scale (`float`, defaults to `6.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`.
+            fps (`int`, defaults to `30`):
+                The frames per second of the generated video.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -533,29 +531,24 @@ class CosmosPipeline(DiffusionPipeline):
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # 4. Prepare timesteps
-        sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler,
-            num_inference_steps,
-            device,
-            sigmas=sigmas,
-        )
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device)
 
         # 5. Prepare latent variables
         transformer_dtype = self.transformer.dtype
         num_channels_latents = self.transformer.config.in_channels
-        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
             width,
-            num_latent_frames,
+            num_frames,
             torch.float32,
             device,
             generator,
             latents,
         )
+
+        padding_mask = latents.new_zeros(batch_size, 1, height, width, dtype=transformer_dtype)
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -567,7 +560,10 @@ class CosmosPipeline(DiffusionPipeline):
                     continue
 
                 self._current_timestep = t
-                latent_model_input = latents.to(transformer_dtype)
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = latent_model_input.to(transformer_dtype)
+
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
@@ -575,9 +571,19 @@ class CosmosPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
+                    fps=fps,
+                    padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
+
+                if self.do_classifier_free_guidance:
+                    # TODO(aryan): The original codebase seems to be doing it differently ======
+                    # cond_x0 = self.denoise(noise_x, sigma, condition).x0
+                    # uncond_x0 = self.denoise(noise_x, sigma, uncondition).x0
+                    # raw_x0 = cond_x0 + guidance * (cond_x0 - uncond_x0)
+                    # ==========================================================================
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
