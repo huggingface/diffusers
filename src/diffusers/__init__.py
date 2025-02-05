@@ -11,6 +11,7 @@ from .utils import (
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
+    is_optimum_quanto_available,
     is_scipy_available,
     is_sentencepiece_available,
     is_torch_available,
@@ -32,7 +33,12 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
-    "quantizers.quantization_config": ["BitsAndBytesConfig", "GGUFQuantizationConfig", "TorchAoConfig"],
+    "quantizers.quantization_config": [
+        "BitsAndBytesConfig",
+        "GGUFQuantizationConfig",
+        "QuantoConfig",
+        "TorchAoConfig",
+    ],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -54,6 +60,19 @@ _import_structure = {
     ],
 }
 
+"""
+try:
+    if not is_optimum_quanto_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_quanto_objects  # noqa F403
+
+    _import_structure["utils.dummy_quanto_objects"] = [
+        name for name in dir(dummy_quanto_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].extend("QuantoConfig")
+"""
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -581,7 +600,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
-    from .quantizers.quantization_config import BitsAndBytesConfig, GGUFQuantizationConfig, TorchAoConfig
+    from .quantizers.quantization_config import BitsAndBytesConfig, GGUFQuantizationConfig, QuantoConfig, TorchAoConfig
 
     try:
         if not is_onnx_available():
