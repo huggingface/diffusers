@@ -548,7 +548,7 @@ class CosmosPipeline(DiffusionPipeline):
             latents,
         )
 
-        padding_mask = latents.new_zeros(batch_size, 1, height, width, dtype=transformer_dtype)
+        padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order

@@ -165,6 +165,9 @@ class CosmosAttnProcessor2_0:
         # 2. QK normalization
         query = attn.norm_q(query)
         key = attn.norm_k(key)
+        print("norm_q:", query.shape, query.mean(), query.std(), query.flatten()[:8])
+        print("norm_k:", key.shape, key.mean(), key.std(), key.flatten()[:8])
+        print("norm_v:", value.shape, value.mean(), value.std(), value.flatten()[:8])
 
         # 3. Apply RoPE
         if image_rotary_emb is not None:
@@ -172,16 +175,20 @@ class CosmosAttnProcessor2_0:
 
             query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
             key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            print("rope_q:", query.shape, query.mean(), query.std(), query.flatten()[:8])
+            print("rope_k:", key.shape, key.mean(), key.std(), key.flatten()[:8])
 
         # 4. Attention
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, enable_gqa=True
         )
+        print("sdpa:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3).type_as(query)
 
         # 5. Output projection
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
+        print("attn_out:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
 
         return hidden_states
 
@@ -243,20 +250,26 @@ class CosmosTransformerBlock(nn.Module):
 
         # 1. Self Attention
         norm_hidden_states, gate = self.norm1(hidden_states, embedded_timestep, temb)
+        print("attn1_norm:", norm_hidden_states.shape, norm_hidden_states.mean(), norm_hidden_states.std(), norm_hidden_states.flatten()[:8])
         attn_output = self.attn1(norm_hidden_states, image_rotary_emb=image_rotary_emb)
         hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
+        print("attn1:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
 
         # 2. Cross Attention
         norm_hidden_states, gate = self.norm2(hidden_states, embedded_timestep, temb)
+        print("attn2_norm:", norm_hidden_states.shape, norm_hidden_states.mean(), norm_hidden_states.std(), norm_hidden_states.flatten()[:8])
         attn_output = self.attn2(
             norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
         )
         hidden_states = hidden_states + gate.unsqueeze(1) * attn_output
+        print("attn2:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
 
         # 3. Feed Forward
         norm_hidden_states, gate = self.norm3(hidden_states, embedded_timestep, temb)
+        print("ff_norm:", norm_hidden_states.shape, norm_hidden_states.mean(), norm_hidden_states.std(), norm_hidden_states.flatten()[:8])
         ff_output = self.ff(norm_hidden_states)
         hidden_states = hidden_states + gate.unsqueeze(1) * ff_output
+        print("ff:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
 
         return hidden_states
 
@@ -470,7 +483,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
             padding_mask = transforms.functional.resize(
                 padding_mask, list(hidden_states.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST
             )
-            hidden_states = torch.cat([hidden_states, padding_mask.unsqueeze(2).repeat(1, 1, num_frames, 1, 1)], dim=1)
+            hidden_states = torch.cat([hidden_states, padding_mask.unsqueeze(2).repeat(batch_size, 1, num_frames, 1, 1)], dim=1)
 
         if attention_mask is not None:
             attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, S]
@@ -480,13 +493,16 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         extra_pos_emb = self.learnable_pos_embed(hidden_states) if self.config.extra_pos_embed_type else None
 
         # 3. Patchify input
-        post_patch_num_frames = num_frames // self.config.patch_size[0]
-        post_patch_height = height // self.config.patch_size[1]
-        post_patch_width = width // self.config.patch_size[2]
+        p_t, p_h, p_w = self.config.patch_size
+        post_patch_num_frames = num_frames // p_t
+        post_patch_height = height // p_h
+        post_patch_width = width // p_w
         hidden_states = self.patch_embed(hidden_states)
         print(
             "patch_embed:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8]
         )
+        print("rope_emb cos:", image_rotary_emb[0].shape, image_rotary_emb[0].mean(), image_rotary_emb[0].std(), image_rotary_emb[0].flatten()[:8])
+        print("rope_emb sin:", image_rotary_emb[1].shape, image_rotary_emb[1].mean(), image_rotary_emb[1].std(), image_rotary_emb[1].flatten()[:8])
         print(
             "extra_pos_emb:",
             extra_pos_emb.shape,
@@ -539,10 +555,14 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         print("norm_out:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
         hidden_states = self.proj_out(hidden_states)
         print("proj_out:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
-        hidden_states = hidden_states.unflatten(2, (-1, *self.config.patch_size))
+        torch.save(hidden_states, "proj_out.pt")
+        hidden_states = hidden_states.unflatten(2, (p_h, p_w, p_t, -1))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
-        hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
+        # Please just kill me at this point. What even is this permutation order and why is it different from the patching order?
+        # Another few hours of sanity lost to the void.
+        hidden_states = hidden_states.permute(0, 7, 1, 6, 2, 4, 3, 5)
         hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        torch.save(hidden_states, "output.pt")
         print("output:", hidden_states.shape, hidden_states.mean(), hidden_states.std(), hidden_states.flatten()[:8])
 
         if not return_dict:
