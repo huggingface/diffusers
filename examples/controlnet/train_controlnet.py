@@ -562,6 +562,11 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+    parser.add_argument(
+            "--trust_remote_code",
+            action="store_true",
+            help="Whether to trust and execute remote code for loading datasets.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -613,12 +618,14 @@ def make_train_dataset(args, tokenizer, accelerator):
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             data_dir=args.train_data_dir,
+            trust_remote_code=args.trust_remote_code
         )
     else:
         if args.train_data_dir is not None:
             dataset = load_dataset(
                 args.train_data_dir,
                 cache_dir=args.cache_dir,
+                trust_remote_code=args.trust_remote_code
             )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
