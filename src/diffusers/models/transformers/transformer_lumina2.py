@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from ...loaders import PeftAdapterMixin
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging
+from ...utils import logging, is_torch_version
 from ..attention import LuminaFeedForward
 from ..attention_processor import Attention
 from ..embeddings import get_1d_rotary_pos_embed, apply_rotary_emb, Timesteps, TimestepEmbedding
@@ -550,7 +550,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     hidden_states,
                     mask,
                     joint_rotary_emb,
-                    temb=temb,
+                    temb,
                 )
         else:
             for layer in self.layers:
@@ -558,7 +558,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     hidden_states,
                     mask,
                     joint_rotary_emb,
-                    temb=temb,
+                    temb,
                 )
 
         hidden_states = self.norm_out(hidden_states, temb)

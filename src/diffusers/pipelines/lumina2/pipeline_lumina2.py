@@ -328,7 +328,8 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         
         if system_prompt is None:
             system_prompt = self.system_prompt
-        prompt = [system_prompt + ' <Prompt Start> ' + p for p in prompt]
+        if prompt is not None:
+            prompt = [system_prompt + ' <Prompt Start> ' + p for p in prompt]
 
         if prompt_embeds is None:
             prompt_embeds, prompt_attention_mask = self._get_gemma_prompt_embeds(
@@ -630,6 +631,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         """
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
+        self._guidance_scale = guidance_scale
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
