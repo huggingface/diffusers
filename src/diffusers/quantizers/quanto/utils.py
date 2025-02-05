@@ -43,18 +43,6 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
                     model._modules[name].source_cls = type(module)
                     model._modules[name].requires_grad_(False)
 
-            elif isinstance(module, nn.LayerNorm) and quantization_config.activations is not None:
-                with init_empty_weights():
-                    model._modules[name] = QLayerNorm(
-                        module.normalized_shape,
-                        module.eps,
-                        module.elementwise_affine,
-                        module.bias is not None,
-                        activations=_get_activation_type(quantization_config.activations),
-                    )
-                    model._modules[name].source_cls = type(module)
-                    model._modules[name].requires_grad_(False)
-
         return model
 
     model = _replace_layers(model, quantization_config, modules_to_not_convert)

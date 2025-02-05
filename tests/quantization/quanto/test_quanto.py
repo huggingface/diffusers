@@ -40,12 +40,9 @@ class QuantoBaseTesterMixin:
 
     def test_quanto_layers(self):
         model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
-        has_quantized_activations = model.hf_quantizer.quantization_config.activations is not None
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):
                 assert isinstance(module, QLinear)
-            if isinstance(module, torch.nn.LayerNorm) and has_quantized_activations:
-                assert isinstance(module, QLayerNorm)
 
     def test_quanto_memory_usage(self):
         model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
