@@ -1132,19 +1132,28 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
+        if not isinstance(control_mode, list):
+            control_mode = [control_mode]
+
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
         elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(control_mode)
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
+
+        if isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(control_mode)
 
         if not isinstance(control_image, list):
             control_image = [control_image]
         else:
             control_image = control_image.copy()
-
-        if not isinstance(control_mode, list):
-            control_mode = [control_mode]
 
         if len(control_image) != len(control_mode):
             raise ValueError("Expected len(control_image) == len(control_type)")
@@ -1278,10 +1287,11 @@ class StableDiffusionXLControlNetUnionPipeline(
         # 7.1 Create tensor stating which controlnets to keep
         controlnet_keep = []
         for i in range(len(timesteps)):
-            controlnet_keep.append(
-                1.0
-                - float(i / len(timesteps) < control_guidance_start or (i + 1) / len(timesteps) > control_guidance_end)
-            )
+            keeps = [
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
+            controlnet_keep.append(keeps)
 
         # 7.2 Prepare added time ids & embeddings
         original_size = original_size or (height, width)

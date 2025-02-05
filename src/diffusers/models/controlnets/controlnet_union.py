@@ -605,7 +605,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         controlnet_cond: List[torch.Tensor],
         control_type: torch.Tensor,
         control_type_idx: List[int],
-        conditioning_scale: float = 1.0,
+        conditioning_scale: Union[float, List[float]] = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -658,6 +658,9 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 If `return_dict` is `True`, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
                 returned where the first element is the sample tensor.
         """
+        if isinstance(conditioning_scale, float):
+            conditioning_scale = [conditioning_scale] * len(controlnet_cond)
+
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
 
@@ -742,12 +745,12 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         inputs = []
         condition_list = []
 
-        for cond, control_idx in zip(controlnet_cond, control_type_idx):
+        for cond, control_idx, scale in zip(controlnet_cond, control_type_idx, conditioning_scale):
             condition = self.controlnet_cond_embedding(cond)
             feat_seq = torch.mean(condition, dim=(2, 3))
             feat_seq = feat_seq + self.task_embedding[control_idx]
-            inputs.append(feat_seq.unsqueeze(1))
-            condition_list.append(condition)
+            inputs.append(feat_seq.unsqueeze(1) * scale)
+            condition_list.append(condition * scale)
 
         condition = sample
         feat_seq = torch.mean(condition, dim=(2, 3))
@@ -759,10 +762,10 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             x = layer(x)
 
         controlnet_cond_fuser = sample * 0.0
-        for idx, condition in enumerate(condition_list[:-1]):
+        for (idx, condition), scale in zip(enumerate(condition_list[:-1]), conditioning_scale):
             alpha = self.spatial_ch_projs(x[:, idx])
             alpha = alpha.unsqueeze(-1).unsqueeze(-1)
-            controlnet_cond_fuser += condition + alpha
+            controlnet_cond_fuser += condition + alpha * scale
 
         sample = sample + controlnet_cond_fuser
 
@@ -806,12 +809,8 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # 6. scaling
         if guess_mode and not self.config.global_pool_conditions:
             scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1, device=sample.device)  # 0.1 to 1.0
-            scales = scales * conditioning_scale
             down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
             mid_block_res_sample = mid_block_res_sample * scales[-1]  # last one
-        else:
-            down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
-            mid_block_res_sample = mid_block_res_sample * conditioning_scale
 
         if self.config.global_pool_conditions:
             down_block_res_samples = [
