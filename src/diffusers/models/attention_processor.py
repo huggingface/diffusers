@@ -3248,6 +3248,7 @@ class AttnProcessor2_0:
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
+        # thesea modified for text prompt mask
         if (encoder_hidden_states is not None) and (encoder_hidden_states.ndim == 4):
             hidden_states_list = []
             if not text_masks.shape[0] == encoder_hidden_states.shape[1]:
