@@ -365,8 +365,8 @@ def parse_args():
         "--dream_training",
         action="store_true",
         help=(
-            "Use the DREAM training method, which makes training more efficient and accurate at the ",
-            "expense of doing an extra forward pass. See: https://arxiv.org/abs/2312.00210",
+            "Use the DREAM training method, which makes training more efficient and accurate at the "
+            "expense of doing an extra forward pass. See: https://arxiv.org/abs/2312.00210"
         ),
     )
     parser.add_argument(
