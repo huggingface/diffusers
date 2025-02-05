@@ -71,6 +71,7 @@ accelerate launch train_controlnet.py \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=4
+ --trust_remote_code=True
 ```
 
 This default configuration requires ~38GB VRAM.
