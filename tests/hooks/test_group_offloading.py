@@ -18,11 +18,7 @@ import unittest
 import torch
 
 from diffusers.models import ModelMixin
-from diffusers.utils.logging import get_logger
 from diffusers.utils.testing_utils import require_torch_gpu, torch_device
-
-
-logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class DummyBlock(torch.nn.Module):
@@ -105,8 +101,8 @@ class GroupOffloadTests(unittest.TestCase):
             )
             model.eval()
             output = model(self.input)[0].cpu()
-            max_memory_reserved = torch.cuda.max_memory_allocated()
-            return output, max_memory_reserved
+            max_memory_allocated = torch.cuda.max_memory_allocated()
+            return output, max_memory_allocated
 
         self.model.to(torch_device)
         output_without_group_offloading, mem_baseline = run_forward(self.model)
