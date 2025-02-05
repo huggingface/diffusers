@@ -1042,7 +1042,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         for _, model in self.components.items():
             if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
-                accelerate.hooks.remove_hook_from_module(model, recurse=True)
+                accelerate.hooks.remove_hook_from_module(_unwrap_model(model), recurse=True)
         self._all_hooks = []
 
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
