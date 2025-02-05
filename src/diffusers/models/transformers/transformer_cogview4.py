@@ -176,6 +176,12 @@ class CogView4TransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
+def swap_scale_shift(weight, dim):
+    shift, scale = weight.chunk(2, dim=0)
+    new_weight = torch.cat([scale, shift], dim=0)
+    return new_weight
+
+
 class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
     r"""
     Args:
@@ -276,7 +282,10 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
             elementwise_affine=False,
         )
         self.adaln_final = self.norm_out.linear
-        ######################################
+        # with torch.no_grad():
+        #     w = self.norm_out.linear.weight.data.clone()
+        #     w_swapped = swap_scale_shift(w, dim=0)
+        #     self.adaln_final.weight.data.copy_(w_swapped)
 
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
@@ -445,6 +454,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         image_rotary_emb = self.get_rope_embedding(
             patch_height, patch_width, target_h=patch_height, target_w=patch_width, device=hidden_states.device
         )
+        ## TODO: @Oleehy Remove it after debugging
         # image_rotary_emb = torch.load("/home/lhy/code/cogview/rotary_pos_emb.pt")
         # image_rotary_emb = image_rotary_emb[16:16+4096, 0, 0, :]
 
@@ -457,6 +467,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         )
         hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
 
+        # Todo: @Oleehy Remove it after debugging
         # prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_0_16.pt")[None, ::]
         # negative_prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_16_32.pt")[None, ::]
         #
@@ -488,27 +499,15 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
                     image_rotary_emb=image_rotary_emb,
                 )
 
-        #################################################
-        # hidden_states_cond, encoder_hidden_states_cond = (
-        #     self.norm_out(hidden_states_cond, temb_cond),
-        #     self.norm_out(encoder_hidden_states_cond, temb_cond),
-        # )
-        # hidden_states_uncond, encoder_hidden_states_uncond = (
-        #     self.norm_out(hidden_states_uncond, temb_uncond),
-        #     self.norm_out(encoder_hidden_states_uncond, temb_uncond),
-        # )
-
-        hidden_states_cond = self.layernorm(hidden_states_cond)
-        hidden_states_uncond = self.layernorm(hidden_states_uncond)
-        encoder_hidden_states_cond = self.layernorm(encoder_hidden_states_cond)
-        encoder_hidden_states_uncond = self.layernorm(encoder_hidden_states_uncond)
-
-        shift_cond, scale_cond = self.adaln_final(temb_cond).chunk(2, dim=-1)
-        shift_uncond, scale_uncond = self.adaln_final(temb_uncond).chunk(2, dim=-1)
-
-        hidden_states_cond = hidden_states_cond * (1 + scale_cond) + shift_cond
-        hidden_states_uncond = hidden_states_uncond * (1 + scale_uncond) + shift_uncond
-        #################################################
+        # Todo: @Oleehy Check if this is the right implementation
+        hidden_states_cond, encoder_hidden_states_cond = (
+            self.norm_out(hidden_states_cond, temb_cond),
+            self.norm_out(encoder_hidden_states_cond, temb_cond),
+        )
+        hidden_states_uncond, encoder_hidden_states_uncond = (
+            self.norm_out(hidden_states_uncond, temb_uncond),
+            self.norm_out(encoder_hidden_states_uncond, temb_uncond),
+        )
 
         hidden_states_cond = self.proj_out(hidden_states_cond)
         hidden_states_uncond = self.proj_out(hidden_states_uncond)
