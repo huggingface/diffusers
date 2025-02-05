@@ -160,11 +160,11 @@ In order to properly offload models after they're called, it is required to run 
 
 ## Group offloading
 
-Group offloading is a middle ground between the two above methods. It works by offloading groups of internal layers (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method uses lower memory than model-level offloading. It is also faster than sequential-level offloading, as the number of device synchronizations is reduced.
+Group offloading is the middle ground between CPU and model offloading. It works by offloading groups of internal layers (either `torch.nn.ModuleList` or `torch.nn.Sequential`), which uses less memory than model-level offloading. It is also faster than sequential-level offloading because the number of device synchronizations is reduced.
 
-Another supported feature (for CUDA devices with support for asynchronous data transfer streams) is the ability to overlap data transfer and computation to reduce the overall execution time compared to sequential offloading. This is enabled using layer prefetching with CUDA streams, i.e., the layer that is to be executed next starts onloading to the accelerator device while the current layer is being executed - this increases the memory requirements slightly. Note that this implementation also supports leaf-level offloading but can be made much faster when using streams.
+Group offloading (for CUDA devices with support for asynchronous data transfer streams) overlaps data transfer and computation to reduce the overall execution time compared to sequential offloading. This is enabled using layer prefetching with CUDA streams. The next layer to be executed is loaded onto the accelerator device while the current layer is being executed - this increases the memory requirements slightly. Group offloading also supports leaf-level offloading but can be made much faster when using streams.
 
-To enable group offloading, either call the [`~ModelMixin.enable_group_offloading`] method on the model or pass use [`~hooks.group_offloading.apply_group_offloading`]:
+To enable group offloading, call the [`~ModelMixin.enable_group_offloading`] method on the model if it is a Diffusers model implementation. For any other model implementation, use [`~hooks.group_offloading.apply_group_offloading`]:
 
 ```python
 import torch
