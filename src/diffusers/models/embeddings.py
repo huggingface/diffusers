@@ -1766,38 +1766,6 @@ class HunyuanCombinedTimestepTextSizeStyleEmbedding(nn.Module):
         return conditioning
 
 
-class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
-    def __init__(self, hidden_size=4096, cap_feat_dim=2048, frequency_embedding_size=256, norm_eps=1e-5):
-        super().__init__()
-        
-        from .normalization import RMSNorm
-        
-        self.time_proj = Timesteps(
-            num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0.0
-        )
-
-        self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=min(hidden_size, 1024))
-
-        self.caption_embedder = nn.Sequential(
-            RMSNorm(cap_feat_dim, eps=norm_eps),
-            nn.Linear(
-                cap_feat_dim,
-                hidden_size,
-                bias=True,
-            ),
-        )
-
-    def forward(self, timestep, caption_feat):
-        # timestep embedding:
-        time_freq = self.time_proj(timestep)
-        time_embed = self.timestep_embedder(time_freq.to(dtype=self.timestep_embedder.linear_1.weight.dtype))
-
-        # caption condition embedding:
-        caption_embed = self.caption_embedder(caption_feat)
-
-        return time_embed, caption_embed
-    
-    
 class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
     def __init__(self, hidden_size=4096, cross_attention_dim=2048, frequency_embedding_size=256):
         super().__init__()

@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import Lumina2Text2ImgPipeline
 
         >>> pipe = Lumina2Text2ImgPipeline.from_pretrained(
-        ...     "Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
+        ...     "Alpha-VLLM/Lumina-Image-2.0", torch_dtype=torch.bfloat16
         ... )
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
@@ -72,7 +72,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -228,14 +228,23 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
 
-        text_inputs = self.tokenizer(
-            prompt,
-            pad_to_multiple_of=8,
-            max_length=self.max_sequence_length,
-            truncation=True,
-            padding=True,
-            return_tensors="pt",
-        )
+        if max_length is None:
+            text_inputs = self.tokenizer(
+                prompt,
+                pad_to_multiple_of=8,
+                max_length=self.max_sequence_length,
+                truncation=True,
+                padding=True,
+                return_tensors="pt",
+            )
+        else:
+            text_inputs = self.tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
         text_input_ids = text_inputs.input_ids.to(device)
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids.to(device)
 
@@ -348,35 +357,11 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
                     " the batch size of `prompt`."
                 )
-            # Padding negative prompt to the same length with prompt
-            prompt_max_length = prompt_embeds.shape[1]
-            negative_text_inputs = self.tokenizer(
-                negative_prompt,
-                padding="max_length",
-                max_length=prompt_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            negative_text_input_ids = negative_text_inputs.input_ids.to(device)
-            negative_prompt_attention_mask = negative_text_inputs.attention_mask.to(device)
-            # Get the negative prompt embeddings
-            negative_prompt_embeds = self.text_encoder(
-                negative_text_input_ids,
-                attention_mask=negative_prompt_attention_mask,
-                output_hidden_states=True,
-            )
-
-            negative_dtype = self.text_encoder.dtype
-            negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
-            _, seq_len, _ = negative_prompt_embeds.shape
-
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=negative_dtype, device=device)
-            # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
-            negative_prompt_attention_mask = negative_prompt_attention_mask.view(
-                batch_size * num_images_per_prompt, -1
+            negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
+                prompt=negative_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                max_length=prompt_embeds.shape[1],
             )
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
@@ -518,6 +503,9 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             latents = latents.to(device)
 
         return latents
+    
+    def enable_sequential_cpu_offload(self, *args, **kwargs):
+        super().enable_sequential_cpu_offload(*args, **kwargs)
 
     @property
     def guidance_scale(self):
