@@ -86,16 +86,17 @@ if is_accelerate_available():
 
 
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
-    try:
-        if hasattr(parameter, "_diffusers_hook"):
-            for submodule in parameter.modules():
-                if not hasattr(submodule, "_diffusers_hook"):
-                    continue
-                registry = parameter._diffusers_hook
-                hook = registry.get_hook("group_offloading")
-                if hook is not None:
-                    return hook.group.onload_device
+    from ..hooks.group_offloading import _get_group_onload_device
 
+    try:
+        # Try to get the onload device from the group offloading hook
+        return _get_group_onload_device(parameter)
+    except ValueError:
+        pass
+
+    try:
+        # If the onload device is not available due to no group offloading hooks, try to get the device
+        # from the first parameter or buffer
         parameters_and_buffers = itertools.chain(parameter.parameters(), parameter.buffers())
         return next(parameters_and_buffers).device
     except StopIteration:

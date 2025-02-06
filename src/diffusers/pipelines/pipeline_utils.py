@@ -462,7 +462,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` 8bit and moving it to {device} via `.to()` is not supported. Module is still on {module.device}."
                 )
 
-            # Note: we also handle this as the ModelMixin level. The reason for doing it here too is that modeling
+            # Note: we also handle this at the ModelMixin level. The reason for doing it here too is that modeling
             # components can be from outside diffusers too, but still have group offloading enabled.
             if (
                 self._maybe_raise_error_if_group_offload_active(raise_error=False, module=module)
@@ -1035,19 +1035,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
         Accelerate's module hooks.
         """
+        from ..hooks.group_offloading import _get_group_onload_device
+
         # When apply group offloading at the leaf_level, we're in the same situation as accelerate's sequential
         # offloading. We need to return the onload device of the group offloading hooks so that the intermediates
         # required for computation (latents, prompt embeddings, etc.) can be created on the correct device.
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue
-            for submodule in model.modules():
-                if not hasattr(submodule, "_diffusers_hook"):
-                    continue
-                registry = submodule._diffusers_hook
-                hook = registry.get_hook("group_offloading")
-                if hook is not None:
-                    return hook.group.onload_device
+            try:
+                return _get_group_onload_device(model)
+            except ValueError:
+                pass
 
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:

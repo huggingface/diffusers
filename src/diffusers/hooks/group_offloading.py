@@ -669,3 +669,10 @@ def _is_group_offload_enabled(module: torch.nn.Module) -> bool:
         if hasattr(submodule, "_diffusers_hook") and submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING) is not None:
             return True
     return False
+
+
+def _get_group_onload_device(module: torch.nn.Module) -> torch.device:
+    for submodule in module.modules():
+        if hasattr(submodule, "_diffusers_hook") and submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING) is not None:
+            return submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING).group.onload_device
+    raise ValueError("Group offloading is not enabled for the provided module.")
