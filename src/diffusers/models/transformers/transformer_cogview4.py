@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Union
+from typing import Dict, Union
 
 import torch
 import torch.nn as nn
@@ -281,12 +281,6 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
             conditioning_embedding_dim=time_embed_dim,
             elementwise_affine=False,
         )
-        self.adaln_final = self.norm_out.linear
-        # with torch.no_grad():
-        #     w = self.norm_out.linear.weight.data.clone()
-        #     w_swapped = swap_scale_shift(w, dim=0)
-        #     self.adaln_final.weight.data.copy_(w_swapped)
-
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
@@ -485,22 +479,14 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
                     image_rotary_emb=image_rotary_emb,
                 )
 
-        hidden_states_cond = self.layernorm(hidden_states_cond)
-        hidden_states_uncond = self.layernorm(hidden_states_uncond)
-        encoder_hidden_states_cond = self.layernorm(encoder_hidden_states_cond)
-        encoder_hidden_states_uncond = self.layernorm(encoder_hidden_states_uncond)
-
-        #################################################
-        # reload weight&bias for debug
-        self.adaln_final.weight = torch.load("/home/lhy/code/cogview/adaln_final_weight.pt")
-        self.adaln_final.bias = torch.load("/home/lhy/code/cogview/adaln_final_bias.pt")
-        #################################################
-
-        shift_cond, scale_cond = self.adaln_final(temb_cond).chunk(2, dim=-1)
-        shift_uncond, scale_uncond = self.adaln_final(temb_uncond).chunk(2, dim=-1)
-
-        hidden_states_cond = hidden_states_cond * (1 + scale_cond) + shift_cond
-        hidden_states_uncond = hidden_states_uncond * (1 + scale_uncond) + shift_uncond
+        hidden_states_cond, encoder_hidden_states_cond = (
+            self.norm_out(hidden_states_cond, temb_cond),
+            self.norm_out(encoder_hidden_states_cond, temb_cond),
+        )
+        hidden_states_uncond, encoder_hidden_states_uncond = (
+            self.norm_out(hidden_states_uncond, temb_uncond),
+            self.norm_out(encoder_hidden_states_uncond, temb_uncond),
+        )
 
         hidden_states_cond = self.proj_out(hidden_states_cond)
         hidden_states_uncond = self.proj_out(hidden_states_uncond)
