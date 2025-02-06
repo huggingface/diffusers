@@ -19,6 +19,7 @@ import torch
 
 from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.utils import get_logger
 from diffusers.utils.testing_utils import require_torch_gpu, torch_device
 
 
@@ -152,6 +153,27 @@ class GroupOffloadTests(unittest.TestCase):
 
         # Memory assertions - offloading should reduce memory usage
         self.assertTrue(mem4 <= mem5 < mem2 < mem3 < mem1 < mem_baseline)
+
+    def test_warning_logged_if_group_offloaded_module_moved_to_cuda(self):
+        if torch.device(torch_device).type != "cuda":
+            return
+        self.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
+        logger = get_logger("diffusers.models.modeling_utils")
+        logger.setLevel("INFO")
+        with self.assertLogs(logger, level="WARNING") as cm:
+            self.model.to(torch_device)
+        self.assertIn(f"The module '{self.model.__class__.__name__}' is group offloaded", cm.output[0])
+
+    def test_warning_logged_if_group_offloaded_pipe_moved_to_cuda(self):
+        if torch.device(torch_device).type != "cuda":
+            return
+        pipe = DummyPipeline(self.model)
+        self.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
+        logger = get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel("INFO")
+        with self.assertLogs(logger, level="WARNING") as cm:
+            pipe.to(torch_device)
+        self.assertIn(f"The module '{self.model.__class__.__name__}' is group offloaded", cm.output[0])
 
     def test_error_raised_if_streams_used_and_no_cuda_device(self):
         original_is_available = torch.cuda.is_available

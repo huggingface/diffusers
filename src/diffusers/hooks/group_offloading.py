@@ -662,3 +662,10 @@ def _raise_error_if_accelerate_model_or_sequential_hook_present(module: torch.nn
                 f"offloading strategy from Accelerate. If you want to apply group offloading, please "
                 f"disable the existing offloading strategy first. Offending module: {name} ({type(submodule)})"
             )
+
+
+def _is_group_offload_enabled(module: torch.nn.Module) -> bool:
+    for submodule in module.modules():
+        if hasattr(submodule, "_diffusers_hook") and submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING) is not None:
+            return True
+    return False

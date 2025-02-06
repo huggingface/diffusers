@@ -1245,7 +1245,20 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.to)
     def to(self, *args, **kwargs):
+        from ..hooks.group_offloading import _is_group_offload_enabled
+
+        device_arg_or_kwarg_present = any(isinstance(arg, torch.device) for arg in args) or "device" in kwargs
         dtype_present_in_args = "dtype" in kwargs
+
+        # Try converting arguments to torch.device in case they are passed as strings
+        for arg in args:
+            if not isinstance(arg, str):
+                continue
+            try:
+                torch.device(arg)
+                device_arg_or_kwarg_present = True
+            except RuntimeError:
+                pass
 
         if not dtype_present_in_args:
             for arg in args:
@@ -1271,6 +1284,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
+
+        if _is_group_offload_enabled(self) and device_arg_or_kwarg_present:
+            logger.warning(
+                f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.to()` is not supported."
+            )
+            return self
+
         return super().to(*args, **kwargs)
 
     # Taken from `transformers`.
