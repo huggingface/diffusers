@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-import math
 import re
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -203,8 +202,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.vae_scale_factor = 8
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
-        self.max_sequence_length = 256
         self.default_sample_size = (
             self.transformer.config.sample_size
             if hasattr(self, "transformer") and self.transformer is not None
@@ -213,42 +210,38 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         self.default_image_size = self.default_sample_size * self.vae_scale_factor
         self.system_prompt = "You are an assistant designed to generate superior images with the superior degree of image-text alignment based on textual prompts or user prompts."
 
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+
+        if getattr(self, "tokenizer", None) is not None:
+            self.tokenizer.padding_side = "right"
+
     def _get_gemma_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
-        max_length: Optional[int] = None,
-    ):
+        max_sequence_length: int = 256,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self._execution_device
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
 
-        if max_length is None:
-            text_inputs = self.tokenizer(
-                prompt,
-                pad_to_multiple_of=8,
-                max_length=self.max_sequence_length,
-                truncation=True,
-                padding=True,
-                return_tensors="pt",
-            )
-        else:
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=max_sequence_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+
         text_input_ids = text_inputs.input_ids.to(device)
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids.to(device)
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.max_sequence_length - 1 : -1])
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because Gemma can only handle sequences up to"
-                f" {self.max_sequence_length} tokens: {removed_text}"
+                f" {max_sequence_length} tokens: {removed_text}"
             )
 
         prompt_attention_mask = text_inputs.attention_mask.to(device)
@@ -288,8 +281,8 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         system_prompt: Optional[str] = None,
-        **kwargs,
-    ):
+        max_sequence_length: int = 256,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -311,7 +304,8 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. For Lumina-T2I, it's should be the embeddings of the "" string.
-            max_sequence_length (`int`, defaults to 256): Maximum sequence length to use for the prompt.
+            max_sequence_length (`int`, defaults to `256`):
+                Maximum sequence length to use for the prompt.
         """
         if device is None:
             device = self._execution_device
@@ -332,6 +326,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 prompt=prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
+                max_sequence_length=max_sequence_length,
             )
 
         # Get negative embeddings for classifier free guidance
@@ -358,7 +353,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 prompt=negative_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
-                max_length=prompt_embeds.shape[1],
+                max_sequence_length=max_sequence_length,
             )
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
@@ -501,9 +496,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
 
         return latents
 
-    def enable_sequential_cpu_offload(self, *args, **kwargs):
-        super().enable_sequential_cpu_offload(*args, **kwargs)
-
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -539,12 +531,12 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        max_sequence_length: int = 256,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         system_prompt: Optional[str] = None,
         cfg_trunc_ratio: float = 1.0,
         cfg_normalization: bool = True,
+        max_sequence_length: int = 256,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -600,8 +592,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
-            max_sequence_length (`int` defaults to 120):
-                Maximum sequence length to use with the `prompt`.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -613,10 +603,12 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             system_prompt (`str`, *optional*):
                 The system prompt to use for the image generation.
-            cfg_trunc_ratio (`float`, *optional*, defaults to 1.0):
+            cfg_trunc_ratio (`float`, *optional*, defaults to `1.0`):
                 The ratio of the timestep interval to apply normalization-based guidance scale.
-            cfg_normalization (`bool`, *optional*, defaults to True):
+            cfg_normalization (`bool`, *optional*, defaults to `True`):
                 Whether to apply normalization-based guidance scale.
+            max_sequence_length (`int`, defaults to `256`):
+                Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -651,16 +643,12 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        scaling_factor = math.sqrt(width * height / self.default_image_size**2)
-
         device = self._execution_device
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-
-        self.tokenizer.padding_side = "right"
 
         # 3. Encode input prompt
         (
@@ -744,9 +732,9 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     )
                 elif len(current_timestep.shape) == 0:
                     current_timestep = current_timestep[None].to(latent_model_input.device)
+
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
-
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
                 current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
 
@@ -754,7 +742,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     timestep=current_timestep,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_mask=prompt_attention_mask,
+                    attention_mask=prompt_attention_mask,
                     return_dict=False,
                 )[0]
 
@@ -777,8 +765,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
-
-                progress_bar.update()
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
