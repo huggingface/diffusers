@@ -22,6 +22,7 @@ from .hooks import HookRegistry, ModelHook
 
 
 if is_accelerate_available():
+    from accelerate.hooks import AlignDevicesHook, CpuOffload
     from accelerate.utils import send_to_device
 
 
@@ -341,6 +342,8 @@ def apply_group_offloading(
         else:
             raise ValueError("Using streams for data transfer requires a CUDA device.")
 
+    _raise_error_if_accelerate_model_or_sequential_hook_present(module)
+
     if offload_type == "block_level":
         if num_blocks_per_group is None:
             raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
@@ -645,3 +648,17 @@ def _find_parent_module_in_module_dict(name: str, module_dict: Dict[str, torch.n
             return parent_name
         atoms.pop()
     return ""
+
+
+def _raise_error_if_accelerate_model_or_sequential_hook_present(module: torch.nn.Module) -> None:
+    if not is_accelerate_available():
+        return
+    for name, submodule in module.named_modules():
+        if not hasattr(submodule, "_hf_hook"):
+            continue
+        if isinstance(submodule._hf_hook, (AlignDevicesHook, CpuOffload)):
+            raise ValueError(
+                f"Cannot apply group offloading to a module that is already applying an alternative "
+                f"offloading strategy from Accelerate. If you want to apply group offloading, please "
+                f"disable the existing offloading strategy first. Offending module: {name} ({type(submodule)})"
+            )

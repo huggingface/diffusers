@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers.models import ModelMixin
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils.testing_utils import require_torch_gpu, torch_device
 
 
@@ -53,6 +54,20 @@ class DummyModel(ModelMixin):
         for block in self.blocks:
             x = block(x)
         x = self.linear_2(x)
+        return x
+
+
+class DummyPipeline(DiffusionPipeline):
+    model_cpu_offload_seq = "model"
+
+    def __init__(self, model: torch.nn.Module) -> None:
+        super().__init__()
+
+        self.register_modules(model=model)
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        for _ in range(2):
+            x = x + 0.1 * self.model(x)
         return x
 
 
@@ -151,3 +166,27 @@ class GroupOffloadTests(unittest.TestCase):
         self.model._supports_group_offloading = False
         with self.assertRaisesRegex(ValueError, "does not support group offloading"):
             self.model.enable_group_offload(onload_device=torch.device("cuda"))
+
+    def test_error_raised_if_model_offloading_applied_on_group_offloaded_module(self):
+        pipe = DummyPipeline(self.model)
+        pipe.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
+        with self.assertRaisesRegex(ValueError, "You are trying to apply model/sequential CPU offloading"):
+            pipe.enable_model_cpu_offload()
+
+    def test_error_raised_if_sequential_offloading_applied_on_group_offloaded_module(self):
+        pipe = DummyPipeline(self.model)
+        pipe.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
+        with self.assertRaisesRegex(ValueError, "You are trying to apply model/sequential CPU offloading"):
+            pipe.enable_sequential_cpu_offload()
+
+    def test_error_raised_if_group_offloading_applied_on_model_offloaded_module(self):
+        pipe = DummyPipeline(self.model)
+        pipe.enable_model_cpu_offload()
+        with self.assertRaisesRegex(ValueError, "Cannot apply group offloading"):
+            pipe.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
+
+    def test_error_raised_if_group_offloading_applied_on_sequential_offloaded_module(self):
+        pipe = DummyPipeline(self.model)
+        pipe.enable_sequential_cpu_offload()
+        with self.assertRaisesRegex(ValueError, "Cannot apply group offloading"):
+            pipe.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)

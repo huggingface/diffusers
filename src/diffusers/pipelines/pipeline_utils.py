@@ -1075,6 +1075,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
+        self._check_group_offloading_inactive_or_raise_error()
+
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
@@ -1186,6 +1188,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
+        self._check_group_offloading_inactive_or_raise_error()
+
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
@@ -1909,6 +1913,24 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             new_pipeline.to(dtype=torch_dtype)
 
         return new_pipeline
+
+    def _check_group_offloading_inactive_or_raise_error(self) -> None:
+        from ..hooks import HookRegistry
+        from ..hooks.group_offloading import _GROUP_OFFLOADING
+
+        for name, component in self.components.items():
+            if not isinstance(component, torch.nn.Module):
+                continue
+            for module in component.modules():
+                if not hasattr(module, "_diffusers_hook"):
+                    continue
+                registry: HookRegistry = module._diffusers_hook
+                if registry.get_hook(_GROUP_OFFLOADING) is not None:
+                    raise ValueError(
+                        f"You are trying to apply model/sequential CPU offloading to a pipeline that contains "
+                        f"components with group offloading enabled. This is not supported. Please disable group "
+                        f"offloading for the '{name}' component of the pipeline to use other offloading methods."
+                    )
 
 
 class StableDiffusionMixin:
