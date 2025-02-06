@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. -->
 
-# HunyuanVideo
+# Lumina2
 
 [Lumina Image 2.0](https://huggingface.co/Alpha-VLLM/Lumina-Image-2.0) by Alpha-VLLM.
 

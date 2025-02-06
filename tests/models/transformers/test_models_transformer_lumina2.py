@@ -36,12 +36,6 @@ class Lumina2Transformer2DModelTransformerTests(ModelTesterMixin, unittest.TestC
 
     @property
     def dummy_input(self):
-        """
-        Args:
-            None
-        Returns:
-            Dict: Dictionary of dummy input tensors
-        """
         batch_size = 2  # N
         num_channels = 4  # C
         height = width = 16  # H, W
@@ -51,43 +45,24 @@ class Lumina2Transformer2DModelTransformerTests(ModelTesterMixin, unittest.TestC
         hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
         timestep = torch.rand(size=(batch_size,)).to(torch_device)
-        encoder_mask = torch.ones(size=(batch_size, sequence_length), dtype=torch.bool).to(torch_device)
+        attention_mask = torch.ones(size=(batch_size, sequence_length), dtype=torch.bool).to(torch_device)
 
         return {
             "hidden_states": hidden_states,
             "encoder_hidden_states": encoder_hidden_states,
             "timestep": timestep,
-            "encoder_mask": encoder_mask,
+            "attention_mask": attention_mask,
         }
 
     @property
     def input_shape(self):
-        """
-        Args:
-            None
-        Returns:
-            Tuple: (int, int, int)
-        """
         return (4, 16, 16)
 
     @property
     def output_shape(self):
-        """
-        Args:
-            None
-        Returns:
-            Tuple: (int, int, int)
-        """
         return (4, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
-        """
-        Args:
-            None
-
-        Returns:
-            Tuple: (Dict, Dict)
-        """
         init_dict = {
             "sample_size": 16,
             "patch_size": 2,
