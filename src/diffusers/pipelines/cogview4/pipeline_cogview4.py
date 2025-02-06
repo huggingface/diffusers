@@ -55,25 +55,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def time_shift(mu: float, shift_sigma: float, sigmas: torch.Tensor):
-    return mu / (mu + (1 / sigmas - 1) ** shift_sigma)
-
-
-def calculate_shift(
-        image_seq_len,
-        base_seq_len: int = 256,
-):
-    if isinstance(image_seq_len, int):
-        mu = math.sqrt(image_seq_len / base_seq_len)
-    elif isinstance(image_seq_len, torch.Tensor):
-        mu = torch.sqrt(image_seq_len / base_seq_len)
-    else:
-        raise ValueError(f'Invalid type for image_seq_len: {type(image_seq_len)}')
-
-    mu = mu * 0.75 + 0.25
-
-    return mu
-
 class CogView4Pipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using CogView4.
@@ -545,9 +526,7 @@ class CogView4Pipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        torch.save(prompt_embeds, '/share/home/zyx/prompt_embeds.pt')
-        torch.save(negative_prompt_embeds, '/share/home/zyx/negative_prompt_embeds.pt')
-        # 5. Prepare latents.
+        # Prepare latents.
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -578,18 +557,13 @@ class CogView4Pipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device)
-        timesteps = self.scheduler.timesteps
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
             self.transformer.config.patch_size**2
         )
-        mu = calculate_shift(image_seq_len)
-        sigmas = timesteps / self.scheduler.config.num_train_timesteps
-        sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])  # Append zero at the end
-        self.sigmas = time_shift(mu, 1.0, sigmas).to("cpu")
-        self._num_timesteps = len(timesteps)
+        self.scheduler.set_timesteps(num_inference_steps, image_seq_len, device)
+        timesteps = self.scheduler.timesteps
 
-        # 6. Denoising loop
+        # Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -614,16 +588,7 @@ class CogView4Pipeline(DiffusionPipeline):
                     noise_pred_cond, noise_pred_uncond = noise_pred
                     noise_pred_guided = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
 
-                ###########################
-                # Get the corresponding sigma value
-                # 这一部分应该放到schduler中（包括self.sigmas的计算也是）
-                # 最后应该调用self.scheduler.step()，只需要传入当前的t，返回下一步的latents即可
-                sigma = self.sigmas[i]
-                sigma_next = self.sigmas[i + 1]
-                dt = sigma_next - sigma
-
-                latents = latents + dt * noise_pred_guided
-                ##############################
+                latents = self.scheduler.step(noise_pred_guided, latents, t).prev_sample
                 latents = latents.to(prompt_embeds.dtype)
 
                 # call the callback, if provided
@@ -631,7 +596,7 @@ class CogView4Pipeline(DiffusionPipeline):
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, sigma, callback_kwargs)
+                    callback_outputs = callback_on_step_end(self, i, self.scheduler.sigmas[i], callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
