@@ -448,27 +448,32 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         # image_rotary_emb = torch.load("/home/lhy/code/cogview/rotary_pos_emb.pt")
         # image_rotary_emb = image_rotary_emb[16:16+4096, 0, 0, :]
 
-        ######################
         # 2. Conditional embeddings
         temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
+        temb = F.silu(temb)
         temb_cond, temb_uncond = temb.chunk(2)
         hidden_states, prompt_embeds, negative_prompt_embeds = self.patch_embed(
             hidden_states, prompt_embeds, negative_prompt_embeds
         )
         hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
 
+        ######################
+        # reload for debug
+        ## 这里大概有2%～4%的误差
         # prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_0_16.pt")[None, ::]
         # negative_prompt_embeds = torch.load("/home/lhy/code/cogview/cp_condition_16_32.pt")[None, ::]
-        #
+
+        ## 这里0误差
         # hidden_states_cond = torch.load("/home/lhy/code/cogview/cp_vision_input_0_4096.pt")[None, ::]
         # hidden_states_uncond = torch.load("/home/lhy/code/cogview/cp_vision_input_4096:8192.pt")[None, ::]
-        #
+
+        ## 目前temb部分有很大的误差
         # temb_cond = torch.load("/home/lhy/code/cogview/time_embedding_0_1.pt")[None, ::]
         # temb_uncond = torch.load("/home/lhy/code/cogview/time_embedding_1_2.pt")[None, ::]
+        ######################
 
         encoder_hidden_states_cond = prompt_embeds
         encoder_hidden_states_uncond = negative_prompt_embeds
-        ######################
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -480,35 +485,33 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states_cond,
                     time_embedding=temb_cond,
                     image_rotary_emb=image_rotary_emb,
+                    # image_rotary_emb=None,
                 )
                 hidden_states_uncond, encoder_hidden_states_uncond = block(
                     hidden_states=hidden_states_uncond,
                     encoder_hidden_states=encoder_hidden_states_uncond,
                     time_embedding=temb_uncond,
                     image_rotary_emb=image_rotary_emb,
+                    # image_rotary_emb=None,
                 )
 
-        #################################################
-        # hidden_states_cond, encoder_hidden_states_cond = (
-        #     self.norm_out(hidden_states_cond, temb_cond),
-        #     self.norm_out(encoder_hidden_states_cond, temb_cond),
-        # )
-        # hidden_states_uncond, encoder_hidden_states_uncond = (
-        #     self.norm_out(hidden_states_uncond, temb_uncond),
-        #     self.norm_out(encoder_hidden_states_uncond, temb_uncond),
-        # )
 
         hidden_states_cond = self.layernorm(hidden_states_cond)
         hidden_states_uncond = self.layernorm(hidden_states_uncond)
         encoder_hidden_states_cond = self.layernorm(encoder_hidden_states_cond)
         encoder_hidden_states_uncond = self.layernorm(encoder_hidden_states_uncond)
 
+        #################################################
+        # reload weight&bias for debug
+        # self.adaln_final.weight = torch.load("/home/lhy/code/cogview/adaln_final_weight.pt")
+        # self.adaln_final.bias = torch.load("/home/lhy/code/cogview/adaln_final_bias.pt")
+        #################################################
+
         shift_cond, scale_cond = self.adaln_final(temb_cond).chunk(2, dim=-1)
         shift_uncond, scale_uncond = self.adaln_final(temb_uncond).chunk(2, dim=-1)
 
         hidden_states_cond = hidden_states_cond * (1 + scale_cond) + shift_cond
         hidden_states_uncond = hidden_states_uncond * (1 + scale_uncond) + shift_uncond
-        #################################################
 
         hidden_states_cond = self.proj_out(hidden_states_cond)
         hidden_states_uncond = self.proj_out(hidden_states_uncond)
