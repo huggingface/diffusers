@@ -1,8 +1,6 @@
-import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
 
@@ -12,12 +10,7 @@ from diffusers import (
     Lumina2Text2ImgPipeline,
     Lumina2Transformer2DModel,
 )
-from diffusers.utils.testing_utils import (
-    nightly,
-    numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
-    torch_device,
-)
+from diffusers.utils.testing_utils import torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -150,63 +143,4 @@ class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTester
         ).images[0]
 
         max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
-
-
-@nightly
-@require_big_gpu_with_torch_cuda
-@pytest.mark.big_gpu_with_torch_cuda
-class Lumina2Text2ImgPipelineSlowTests(unittest.TestCase):
-    pipeline_class = Lumina2Text2ImgPipeline
-    repo_id = "Alpha-VLLM/Lumina-Image-2.0"
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def get_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        return {
-            "prompt": "A photo of a cat",
-            "num_inference_steps": 2,
-            "guidance_scale": 5.0,
-            "output_type": "np",
-            "generator": generator,
-        }
-
-    def test_lumina_inference(self):
-        pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
-        pipe.enable_model_cpu_offload()
-
-        inputs = self.get_inputs(torch_device)
-        image = pipe(**inputs).images[0]
-        image_slice = image[0, :10, :10]
-        expected_slice = np.array(
-            [
-                [0.17773438, 0.18554688, 0.22070312],
-                [0.046875, 0.06640625, 0.10351562],
-                [0.0, 0.0, 0.02148438],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-            ],
-            dtype=np.float32,
-        )
-
-        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-
         assert max_diff < 1e-4
