@@ -550,27 +550,23 @@ def _apply_group_offloading_leaf_level(
         )
         _apply_group_offloading_hook(parent_module, group, None)
 
-    # This is a dummy group that will handle lazy prefetching from the top-level module to the first leaf module
-    unmatched_group = ModuleGroup(
-        modules=[],
-        offload_device=offload_device,
-        onload_device=onload_device,
-        offload_leader=module,
-        onload_leader=module,
-        parameters=None,
-        buffers=None,
-        non_blocking=False,
-        stream=None,
-        cpu_param_dict=None,
-        onload_self=True,
-    )
-
-    # When using streams, we need to know the layer execution order for applying prefetching (to overlap data transfer
-    # and computation). Since we don't know the order beforehand, we apply a lazy prefetching hook that will find the
-    # execution order and apply prefetching in the correct order.
-    if stream is None:
-        _apply_group_offloading_hook(module, unmatched_group, None)
-    else:
+    if stream is not None:
+        # When using streams, we need to know the layer execution order for applying prefetching (to overlap data transfer
+        # and computation). Since we don't know the order beforehand, we apply a lazy prefetching hook that will find the
+        # execution order and apply prefetching in the correct order.
+        unmatched_group = ModuleGroup(
+            modules=[],
+            offload_device=offload_device,
+            onload_device=onload_device,
+            offload_leader=module,
+            onload_leader=module,
+            parameters=None,
+            buffers=None,
+            non_blocking=False,
+            stream=None,
+            cpu_param_dict=None,
+            onload_self=True,
+        )
         _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 
 
