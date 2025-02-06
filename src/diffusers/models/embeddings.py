@@ -2560,10 +2560,16 @@ class IPAdapterTimeImageProjection(nn.Module):
         timestep_in_dim: int = 320,
         timestep_flip_sin_to_cos: bool = True,
         timestep_freq_shift: int = 0,
+        color_modality = False, # thesea modified for color modality in multimodality model
     ) -> None:
         super().__init__()
         self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dim) / hidden_dim**0.5)
-        self.proj_in = nn.Linear(embed_dim, hidden_dim)
+        
+        # thesea modified for color modality in multimodality model
+        self.color_modality = color_modality
+        if not self.color_modality:
+            self.proj_in = nn.Linear(embed_dim, hidden_dim)
+            
         self.proj_out = nn.Linear(hidden_dim, output_dim)
         self.norm_out = nn.LayerNorm(output_dim)
         self.layers = nn.ModuleList(
@@ -2588,7 +2594,10 @@ class IPAdapterTimeImageProjection(nn.Module):
 
         latents = self.latents.repeat(x.size(0), 1, 1)
 
-        x = self.proj_in(x)
+        # thesea modified for color modality in multimodality model
+        if not self.color_modality:
+            x = self.proj_in(x)
+
         x = x + timestep_emb[:, None]
 
         for block in self.layers:

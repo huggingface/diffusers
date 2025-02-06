@@ -21,7 +21,8 @@ from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_
 class SD3Transformer2DLoadersMixin:
     """Load IP-Adapters and LoRA layers into a `[SD3Transformer2DModel]`."""
 
-    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT) -> None:
+    # thesea modified for color modality in multimodality model
+    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT, color_modality: bool = False) -> None:
         """Sets IP-Adapter attention processors, image projection, and loads state_dict.
 
         Args:
@@ -66,7 +67,12 @@ class SD3Transformer2DLoadersMixin:
         self.set_attn_processor(attn_procs)
 
         # Image projetion parameters
-        embed_dim = state_dict["image_proj"]["proj_in.weight"].shape[1]
+        # thesea modified for color modality in multimodality model
+        if "proj_in.weight" in state_dict["image_proj"]:
+            embed_dim = state_dict["image_proj"]["proj_in.weight"].shape[1]
+        else:
+            color_modality = True
+            embed_dim = 0
         output_dim = state_dict["image_proj"]["proj_out.weight"].shape[0]
         hidden_dim = state_dict["image_proj"]["proj_in.weight"].shape[0]
         heads = state_dict["image_proj"]["layers.0.attn.to_q.weight"].shape[0] // 64
@@ -81,6 +87,7 @@ class SD3Transformer2DLoadersMixin:
             heads=heads,
             num_queries=num_queries,
             timestep_in_dim=timestep_in_dim,
+            color_modality=color_modality, # thesea modified for color modality in multimodality model
         ).to(device=self.device, dtype=self.dtype)
 
         if not low_cpu_mem_usage:

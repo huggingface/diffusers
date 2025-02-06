@@ -667,6 +667,7 @@ class SD3IPAdapterMixin:
         weight_name: str = "ip-adapter.safetensors",
         subfolder: Optional[str] = None,
         image_encoder_folder: Optional[str] = "image_encoder",
+        color_modality: bool = False, # thesea modified for color modality in multimodality model
         **kwargs,
     ) -> None:
         """
@@ -811,7 +812,8 @@ class SD3IPAdapterMixin:
                 )
 
         # Load IP-Adapter into transformer
-        self.transformer._load_ip_adapter_weights(state_dict, low_cpu_mem_usage=low_cpu_mem_usage)
+        # thesea modified for color modality in multimodality model
+        self.transformer._load_ip_adapter_weights(state_dict, low_cpu_mem_usage=low_cpu_mem_usage, color_modality = color_modality)
 
     def set_ip_adapter_scale(self, scale: float) -> None:
         """
