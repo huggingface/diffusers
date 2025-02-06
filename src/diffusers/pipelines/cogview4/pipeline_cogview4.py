@@ -55,12 +55,11 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def time_shift(self, mu: float, shift_sigma: float, sigmas: torch.Tensor):
+def time_shift(mu: float, shift_sigma: float, sigmas: torch.Tensor):
     return mu / (mu + (1 / sigmas - 1) ** shift_sigma)
 
 
 def calculate_shift(
-        self,
         image_seq_len,
         base_seq_len: int = 256,
 ):
