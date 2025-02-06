@@ -336,7 +336,7 @@ def main(args):
             vae = vae.to(dtype=dtype)
 
     # Load the text encoder and tokenizer
-    text_encoder_id = "/share/home/zyx/Models/glm-4-9b-hf"
+    text_encoder_id = "THUDM/glm-4-9b-hf"
     tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
     text_encoder = GlmForCausalLM.from_pretrained(
         text_encoder_id,
