@@ -177,7 +177,6 @@ class HookRegistry:
         return self.hooks.get(name, None)
 
     def remove_hook(self, name: str, recurse: bool = True) -> None:
-        num_hooks = len(self._hook_order)
         if name in self.hooks.keys():
             num_hooks = len(self._hook_order)
             hook = self.hooks[name]
