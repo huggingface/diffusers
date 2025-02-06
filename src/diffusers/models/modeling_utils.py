@@ -1229,6 +1229,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.cuda)
     def cuda(self, *args, **kwargs):
+        from ..hooks.group_offloading import _is_group_offload_enabled
+
         # Checks if the model has been loaded in 4-bit or 8-bit with BNB
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
             if getattr(self, "is_loaded_in_8bit", False):
@@ -1241,6 +1243,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
+
+        # Checks if group offloading is enabled
+        if _is_group_offload_enabled(self):
+            logger.warning(
+                f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.cuda()` is not supported."
+            )
+            return self
+
         return super().cuda(*args, **kwargs)
 
     # Adapted from `transformers`.
