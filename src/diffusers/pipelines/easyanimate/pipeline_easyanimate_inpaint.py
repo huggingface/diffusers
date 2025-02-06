@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import EasyAnimateInpaintPipeline
-        >>> from diffusers.easyanimate.pipeline_easyanimate_inpaint import get_image_to_video_latent
+        >>> from diffusers.pipelines.easyanimate.pipeline_easyanimate_inpaint import get_image_to_video_latent
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> pipe = EasyAnimateInpaintPipeline.from_pretrained("alibaba-pai/EasyAnimateV5.1-12b-zh-InP", torch_dtype=torch.bfloat16)
@@ -67,10 +67,10 @@ EXAMPLE_DOC_STRING = """
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
         ... )
         >>> validation_image_end = None
-        >>> sample_size = (576, 448)
+        >>> sample_size = (448, 576)
         >>> num_frames = 49
-        >>> input_video, input_video_mask, _ = get_image_to_video_latent(validation_image_start, validation_image_end, num_frames, sample_size)
-        >>> video = pipe(prompt, num_frames=num_frames, negative_prompt="bad detailed", height=sample_size[0], width=sample_size[1], input_video=input_video, mask_video=input_video_mask)
+        >>> input_video, input_video_mask, _ = get_image_to_video_latent([validation_image_start], validation_image_end, num_frames, sample_size)
+        >>> video = pipe(prompt, num_frames=num_frames, negative_prompt="bad detailed", height=sample_size[0], width=sample_size[1], video=input_video, mask_video=input_video_mask)
         >>> export_to_video(video.frames[0], "output.mp4", fps=8)
         ```
 """

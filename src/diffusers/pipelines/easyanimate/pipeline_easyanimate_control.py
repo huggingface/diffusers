@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> from diffusers import EasyAnimateControlPipeline
-        >>> from diffusers.easyanimate.pipeline_easyanimate_control import get_video_to_video_latent
+        >>> from diffusers.pipelines.easyanimate.pipeline_easyanimate_control import get_video_to_video_latent
         >>> from diffusers.utils import export_to_video, load_video
 
         >>> pipe = EasyAnimateControlPipeline.from_pretrained(
@@ -65,15 +65,18 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> control_video = load_video(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hiker.mp4"
+        ...     "https://huggingface.co/alibaba-pai/EasyAnimateV5.1-12b-zh-Control/blob/main/asset/pose.mp4"
         ... )
         >>> prompt = (
-        ...     "An astronaut stands triumphantly at the peak of a towering mountain. Panorama of rugged peaks and "
-        ...     "valleys. Very futuristic vibe and animated aesthetic. Highlights of purple and golden colors in "
-        ...     "the scene. The sky is looks like an animated/cartoonish dream of galaxies, nebulae, stars, planets, "
-        ...     "moons, but the remainder of the scene is mostly realistic."
+        ...     "In this sunlit outdoor garden, a beautiful woman is dressed in a knee-length, sleeveless white dress. "
+        ...     "The hem of her dress gently sways with her graceful dance, much like a butterfly fluttering in the breeze. "
+        ...     "Sunlight filters through the leaves, casting dappled shadows that highlight her soft features and clear eyes, "
+        ...     "making her appear exceptionally elegant. It seems as if every movement she makes speaks of youth and vitality. "
+        ...     "As she twirls on the grass, her dress flutters, as if the entire garden is rejoicing in her dance. "
+        ...     "The colorful flowers around her sway in the gentle breeze, with roses, chrysanthemums, and lilies each "
+        ...     "releasing their fragrances, creating a relaxed and joyful atmosphere."
         ... )
-        >>> sample_size = (576, 448)
+        >>> sample_size = (672, 384)
         >>> num_frames = 49
 
         >>> input_video, _, _ = get_video_to_video_latent(control_video, num_frames, sample_size)
