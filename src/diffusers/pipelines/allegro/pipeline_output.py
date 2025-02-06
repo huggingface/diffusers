@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Union
 
+import PIL.Image
 import numpy as np
-import PIL
 import torch
 
 from diffusers.utils import BaseOutput
