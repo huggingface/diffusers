@@ -2846,7 +2846,7 @@ class CogView4AttnProcessor:
         # TODO: 直接用qkv_weight算出qkv（注意要先分出num_heads, head_dim），再在head_dims上拆出qkv
         # linear_qkv_weight = torch.load("/home/lhy/code/cogview/linear_qkv_weight.pt")
         # linear_qkv_bias = torch.load("/home/lhy/code/cogview/linear_qkv_bias.pt")
-        #
+
         # qkv = torch.matmul(hidden_states, linear_qkv_weight.T) + linear_qkv_bias
         # qkv = qkv.view(batch_size, -1, attn.heads, head_dim * 3)
         # query, key, value = qkv.chunk(3, dim=-1)
@@ -2866,6 +2866,54 @@ class CogView4AttnProcessor:
         # Apply RoPE if needed
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb_megatron
+
+            ##########################  check tensor
+            # def apply_rope_megatron_tmp(input, freqs, transpose_output=False):
+            #     # 这个实现目前似乎存在0.2%的误差
+            #     s, b, h, d = input.shape
+            #     d2 = freqs.shape[3]  # d2 corresponds to the frequency dimension size
+
+            #     # Initialize output tensor with the correct shape
+            #     if transpose_output:
+            #         output = torch.empty((b, s, h, d), device=input.device)
+            #         output = output.transpose(0, 1)  # Transpose to (s, b, h, d)
+            #     else:
+            #         output = torch.empty((s, b, h, d), device=input.device)
+
+            #     # Apply the ROPE transformation for each element
+            #     for s_id in range(s):
+            #         for b_id in range(b):
+            #             for h_id in range(h):
+            #                 for d_id in range(d2):
+            #                     v_cos, v_sin = torch.cos(freqs[s_id, 0, 0, d_id]), torch.sin(freqs[s_id, 0, 0, d_id])
+            #                     input_val = input[s_id, b_id, h_id, d_id]
+            #                     if d_id + d2 // 2 < d2:
+            #                         input_val_rotate = -input[s_id, b_id, h_id, d_id + d2 // 2]
+            #                     else:
+            #                         input_val_rotate = input[s_id, b_id, h_id, d_id + (d2 // 2 - d2)]
+            #                     output[s_id, b_id, h_id, d_id] = input_val * v_cos + input_val_rotate * v_sin
+
+            #     return output
+
+            # query_before_rope_megatron = torch.load("/home/lhy/code/cogview/query_before_rope.pt")
+            # query_after_rope_megatron = torch.load("/home/lhy/code/cogview/query_after_rope.pt")
+
+            # q_pos_emb = torch.load("/home/lhy/code/cogview/q_pos_emb.pt")[16:16+4096][:, 0, 0, :]
+            # k_pos_emb = torch.load("/home/lhy/code/cogview/k_pos_emb.pt")[16:16+4096][:, 0, 0, :]
+
+            # diff_query_before_rope = torch.norm(query_before_rope_megatron[:4112, ...] - query.transpose(1, 2)[0])
+            # diff_q_emb = torch.norm(q_pos_emb - image_rotary_emb)
+            # diff_k_emb = torch.norm(k_pos_emb - image_rotary_emb)
+
+            # input = query.permute(2, 0, 1, 3)[16:, ...]
+            # freqs = image_rotary_emb[:, None, None, :]
+            # output = apply_rope_megatron_tmp(input.to("cpu"), freqs.to("cpu"), transpose_output=True)
+
+            # out_foo = apply_rotary_emb_megatron(
+            #     query[:, :, text_seq_length:, :], image_rotary_emb
+            # )
+            # diff_after_rope = torch.norm(query_after_rope_megatron[16:16+4096].transpose(0, 1) - out_foo[0])
+            ##########################
 
             query[:, :, text_seq_length:, :] = apply_rotary_emb_megatron(
                 query[:, :, text_seq_length:, :], image_rotary_emb

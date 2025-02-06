@@ -1287,33 +1287,21 @@ def apply_rotary_emb_megatron(x: torch.Tensor, freqs: torch.Tensor) -> torch.Ten
     """Apply rotary position embeddings to input tensor.
 
     Args:
-        x: Input tensor of shape [seq_len, batch_size, n_heads, head_dim]
-        freqs: Frequency tensor of shape [seq_len, 1, 1, head_dim//2]
+        x: Input tensor of shape [batch_size, n_heads, seq_len, head_dim]
+        freqs: Frequency tensor of shape [seq_len, head_dim]
 
     Returns:
         Tensor with rotary position embeddings applied
     """
     batch_size, n_heads, seq_len, rot_dim = x.shape
+    assert rot_dim % 2 == 0 and rot_dim == freqs.shape[-1]
 
-    # Reshape x to have rot_dim as the last dimension
-    x_rot, x_pass = x.chunk(2, dim=-1)
+    x_dim_first_half, x_dim_second_half = x.chunk(2, dim=-1)
+    x_rot_shifted = torch.cat([-x_dim_second_half, x_dim_first_half], dim=-1)
 
-    # Apply rotary embeddings
-    # First calculate cos and sin
-    cos, sin = freqs.chunk(2, dim=-1)
-    cos, sin = torch.cos(cos), torch.sin(sin)
+    cos, sin = torch.cos(freqs), torch.sin(freqs)
 
-    # Rotate x_rot
-    x_rot_cos = x_rot * cos
-    # Create rotated version of x_rot by shifting rot_dim/2 positions
-    x_rot_shifted = torch.cat([-x_rot[..., rot_dim//2:], x_rot[..., :rot_dim//2]], dim=-1)
-    x_rot_sin = x_rot_shifted * sin
-
-    # Combine
-    x_rot = x_rot_cos + x_rot_sin
-
-    # Concatenate back with x_pass
-    x_out = torch.cat([x_rot, x_pass], dim=-1)
+    x_out = cos * x + sin * x_rot_shifted
 
     return x_out
 
