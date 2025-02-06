@@ -37,6 +37,7 @@ from ...schedulers import (
 )
 from ...utils import (
     BaseOutput,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -45,6 +46,13 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .marigold_image_processing import MarigoldImageProcessor
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -174,7 +182,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             default_processing_resolution=default_processing_resolution,
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
         self.scale_invariant = scale_invariant
         self.shift_invariant = shift_invariant
@@ -516,6 +524,9 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 batch_pred_latent = self.scheduler.step(
                     noise, t, batch_pred_latent, generator=generator
                 ).prev_sample  # [B,4,h,w]
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
             pred_latents.append(batch_pred_latent)
 

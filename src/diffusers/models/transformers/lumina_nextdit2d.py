@@ -221,6 +221,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             overall scale of the model's operations.
     """
 
+    _skip_layerwise_casting_patterns = ["patch_embedder", "norm", "ffn_norm"]
+
     @register_to_config
     def __init__(
         self,

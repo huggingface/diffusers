@@ -47,6 +47,8 @@ def download_diffusers_config(repo_id, tmpdir):
 
 
 class SDSingleFileTesterMixin:
+    single_file_kwargs = {}
+
     def _compare_component_configs(self, pipe, single_file_pipe):
         for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
             if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
@@ -154,23 +156,23 @@ class SDSingleFileTesterMixin:
         self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_format_inference_is_same_as_pretrained(self, expected_max_diff=1e-4):
-        sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, safety_checker=None)
+        sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, safety_checker=None, **self.single_file_kwargs)
         sf_pipe.unet.set_attn_processor(AttnProcessor())
-        sf_pipe.enable_model_cpu_offload()
+        sf_pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image_single_file = sf_pipe(**inputs).images[0]
 
         pipe = self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
         pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images[0]
 
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
-        assert max_diff < expected_max_diff
+        assert max_diff < expected_max_diff, f"{image.flatten()} != {image_single_file.flatten()}"
 
     def test_single_file_components_with_diffusers_config(
         self,
@@ -378,14 +380,14 @@ class SDXLSingleFileTesterMixin:
     def test_single_file_format_inference_is_same_as_pretrained(self, expected_max_diff=1e-4):
         sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, torch_dtype=torch.float16, safety_checker=None)
         sf_pipe.unet.set_default_attn_processor()
-        sf_pipe.enable_model_cpu_offload()
+        sf_pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image_single_file = sf_pipe(**inputs).images[0]
 
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16, safety_checker=None)
         pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images[0]

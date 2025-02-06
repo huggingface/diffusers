@@ -17,8 +17,18 @@ import tempfile
 import unittest
 
 import numpy as np
+import pytest
+from huggingface_hub import hf_hub_download
 
-from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel, logging
+from diffusers import (
+    BitsAndBytesConfig,
+    DiffusionPipeline,
+    FluxTransformer2DModel,
+    SanaTransformer2DModel,
+    SD3Transformer2DModel,
+    logging,
+)
+from diffusers.utils import is_accelerate_version
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     is_bitsandbytes_available,
@@ -28,6 +38,7 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate,
     require_bitsandbytes_version_greater,
+    require_peft_version_greater,
     require_torch,
     require_torch_gpu,
     require_transformers_version_greater,
@@ -44,6 +55,7 @@ def get_some_linear_layer(model):
 
 
 if is_transformers_available():
+    from transformers import BitsAndBytesConfig as BnbConfig
     from transformers import T5EncoderModel
 
 if is_torch_available():
@@ -297,6 +309,33 @@ class BnB8bitBasicTests(Base8bitTests):
         _ = self.model_fp16.cuda()
 
 
+class Bnb8bitDeviceTests(Base8bitTests):
+    def setUp(self) -> None:
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
+        self.model_8bit = SanaTransformer2DModel.from_pretrained(
+            "Efficient-Large-Model/Sana_1600M_4Kpx_BF16_diffusers",
+            subfolder="transformer",
+            quantization_config=mixed_int8_config,
+        )
+
+    def tearDown(self):
+        del self.model_8bit
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_buffers_device_assignment(self):
+        for buffer_name, buffer in self.model_8bit.named_buffers():
+            self.assertEqual(
+                buffer.device.type,
+                torch.device(torch_device).type,
+                f"Expected device {torch_device} for {buffer_name} got {buffer.device}.",
+            )
+
+
 class BnB8bitTrainingTests(Base8bitTests):
     def setUp(self):
         gc.collect()
@@ -369,7 +408,7 @@ class SlowBnb8bitTests(Base8bitTests):
             output_type="np",
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.0149, 0.0322, 0.0073, 0.0134, 0.0332, 0.011, 0.002, 0.0232, 0.0193])
+        expected_slice = np.array([0.0674, 0.0623, 0.0364, 0.0632, 0.0671, 0.0430, 0.0317, 0.0493, 0.0583])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-2)
@@ -432,6 +471,39 @@ class SlowBnb8bitTests(Base8bitTests):
             output_type="np",
         ).images
 
+    @pytest.mark.xfail(
+        condition=is_accelerate_version("<=", "1.1.1"),
+        reason="Test will pass after https://github.com/huggingface/accelerate/pull/3223 is in a release.",
+        strict=True,
+    )
+    def test_pipeline_cuda_placement_works_with_mixed_int8(self):
+        transformer_8bit_config = BitsAndBytesConfig(load_in_8bit=True)
+        transformer_8bit = SD3Transformer2DModel.from_pretrained(
+            self.model_name,
+            subfolder="transformer",
+            quantization_config=transformer_8bit_config,
+            torch_dtype=torch.float16,
+        )
+        text_encoder_3_8bit_config = BnbConfig(load_in_8bit=True)
+        text_encoder_3_8bit = T5EncoderModel.from_pretrained(
+            self.model_name,
+            subfolder="text_encoder_3",
+            quantization_config=text_encoder_3_8bit_config,
+            torch_dtype=torch.float16,
+        )
+        # CUDA device placement works.
+        pipeline_8bit = DiffusionPipeline.from_pretrained(
+            self.model_name,
+            transformer=transformer_8bit,
+            text_encoder_3=text_encoder_3_8bit,
+            torch_dtype=torch.float16,
+        ).to("cuda")
+
+        # Check if inference works.
+        _ = pipeline_8bit("table", max_sequence_length=20, num_inference_steps=2)
+
+        del pipeline_8bit
+
 
 @require_transformers_version_greater("4.44.0")
 class SlowBnb8bitFluxTests(Base8bitTests):
@@ -469,6 +541,29 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.0574, 0.0554, 0.0581, 0.0686, 0.0676, 0.0759, 0.0757, 0.0803, 0.0930])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3)
+
+    @require_peft_version_greater("0.14.0")
+    def test_lora_loading(self):
+        self.pipeline_8bit.load_lora_weights(
+            hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
+        )
+        self.pipeline_8bit.set_adapters("hyper-sd", adapter_weights=0.125)
+
+        output = self.pipeline_8bit(
+            prompt=self.prompt,
+            height=256,
+            width=256,
+            max_sequence_length=64,
+            output_type="np",
+            num_inference_steps=8,
+            generator=torch.manual_seed(42),
+        ).images
+        out_slice = output[0, -3:, -3:, -1].flatten()
+
+        expected_slice = np.array([0.3916, 0.3916, 0.3887, 0.4243, 0.4155, 0.4233, 0.4570, 0.4531, 0.4248])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3)

@@ -28,13 +28,20 @@ from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
+    convert_state_dict_to_diffusers,
+    convert_state_dict_to_peft,
     delete_adapter_layers,
     deprecate,
+    get_adapter_name,
+    get_peft_kwargs,
     is_accelerate_available,
     is_peft_available,
+    is_peft_version,
     is_transformers_available,
+    is_transformers_version,
     logging,
     recurse_remove_peft_layers,
+    scale_lora_layers,
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
@@ -43,6 +50,8 @@ from ..utils import (
 if is_transformers_available():
     from transformers import PreTrainedModel
 
+    from ..models.lora import text_encoder_attn_modules, text_encoder_mlp_modules
+
 if is_peft_available():
     from peft.tuners.tuners_utils import BaseTunerLayer
 
@@ -50,6 +59,9 @@ if is_accelerate_available():
     from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
 
 logger = logging.get_logger(__name__)
+
+LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
+LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 
 def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
@@ -181,6 +193,265 @@ def _remove_text_encoder_monkey_patch(text_encoder):
         text_encoder._hf_peft_config_loaded = None
 
 
+def _fetch_state_dict(
+    pretrained_model_name_or_path_or_dict,
+    weight_name,
+    use_safetensors,
+    local_files_only,
+    cache_dir,
+    force_download,
+    proxies,
+    token,
+    revision,
+    subfolder,
+    user_agent,
+    allow_pickle,
+):
+    model_file = None
+    if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+        # Let's first try to load .safetensors weights
+        if (use_safetensors and weight_name is None) or (
+            weight_name is not None and weight_name.endswith(".safetensors")
+        ):
+            try:
+                # Here we're relaxing the loading check to enable more Inference API
+                # friendliness where sometimes, it's not at all possible to automatically
+                # determine `weight_name`.
+                if weight_name is None:
+                    weight_name = _best_guess_weight_name(
+                        pretrained_model_name_or_path_or_dict,
+                        file_extension=".safetensors",
+                        local_files_only=local_files_only,
+                    )
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path_or_dict,
+                    weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+                state_dict = safetensors.torch.load_file(model_file, device="cpu")
+            except (IOError, safetensors.SafetensorError) as e:
+                if not allow_pickle:
+                    raise e
+                # try loading non-safetensors weights
+                model_file = None
+                pass
+
+        if model_file is None:
+            if weight_name is None:
+                weight_name = _best_guess_weight_name(
+                    pretrained_model_name_or_path_or_dict, file_extension=".bin", local_files_only=local_files_only
+                )
+            model_file = _get_model_file(
+                pretrained_model_name_or_path_or_dict,
+                weights_name=weight_name or LORA_WEIGHT_NAME,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+            )
+            state_dict = load_state_dict(model_file)
+    else:
+        state_dict = pretrained_model_name_or_path_or_dict
+
+    return state_dict
+
+
+def _best_guess_weight_name(
+    pretrained_model_name_or_path_or_dict, file_extension=".safetensors", local_files_only=False
+):
+    if local_files_only or HF_HUB_OFFLINE:
+        raise ValueError("When using the offline mode, you must specify a `weight_name`.")
+
+    targeted_files = []
+
+    if os.path.isfile(pretrained_model_name_or_path_or_dict):
+        return
+    elif os.path.isdir(pretrained_model_name_or_path_or_dict):
+        targeted_files = [f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)]
+    else:
+        files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
+        targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
+    if len(targeted_files) == 0:
+        return
+
+    # "scheduler" does not correspond to a LoRA checkpoint.
+    # "optimizer" does not correspond to a LoRA checkpoint
+    # only top-level checkpoints are considered and not the other ones, hence "checkpoint".
+    unallowed_substrings = {"scheduler", "optimizer", "checkpoint"}
+    targeted_files = list(
+        filter(lambda x: all(substring not in x for substring in unallowed_substrings), targeted_files)
+    )
+
+    if any(f.endswith(LORA_WEIGHT_NAME) for f in targeted_files):
+        targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME), targeted_files))
+    elif any(f.endswith(LORA_WEIGHT_NAME_SAFE) for f in targeted_files):
+        targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
+
+    if len(targeted_files) > 1:
+        raise ValueError(
+            f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
+        )
+    weight_name = targeted_files[0]
+    return weight_name
+
+
+def _load_lora_into_text_encoder(
+    state_dict,
+    network_alphas,
+    text_encoder,
+    prefix=None,
+    lora_scale=1.0,
+    text_encoder_name="text_encoder",
+    adapter_name=None,
+    _pipeline=None,
+    low_cpu_mem_usage=False,
+):
+    if not USE_PEFT_BACKEND:
+        raise ValueError("PEFT backend is required for this method.")
+
+    peft_kwargs = {}
+    if low_cpu_mem_usage:
+        if not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+        if not is_transformers_version(">", "4.45.2"):
+            # Note from sayakpaul: It's not in `transformers` stable yet.
+            # https://github.com/huggingface/transformers/pull/33725/
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `transformers` version. Please update it with `pip install -U transformers`."
+            )
+        peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+    from peft import LoraConfig
+
+    # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
+    # then the `state_dict` keys should have `unet_name` and/or `text_encoder_name` as
+    # their prefixes.
+    keys = list(state_dict.keys())
+    prefix = text_encoder_name if prefix is None else prefix
+
+    # Safe prefix to check with.
+    if any(text_encoder_name in key for key in keys):
+        # Load the layers corresponding to text encoder and make necessary adjustments.
+        text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".")[0] == prefix]
+        text_encoder_lora_state_dict = {
+            k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
+        }
+
+        if len(text_encoder_lora_state_dict) > 0:
+            logger.info(f"Loading {prefix}.")
+            rank = {}
+            text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
+
+            # convert state dict
+            text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+
+            for name, _ in text_encoder_attn_modules(text_encoder):
+                for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
+                    rank_key = f"{name}.{module}.lora_B.weight"
+                    if rank_key not in text_encoder_lora_state_dict:
+                        continue
+                    rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+
+            for name, _ in text_encoder_mlp_modules(text_encoder):
+                for module in ("fc1", "fc2"):
+                    rank_key = f"{name}.{module}.lora_B.weight"
+                    if rank_key not in text_encoder_lora_state_dict:
+                        continue
+                    rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+
+            if network_alphas is not None:
+                alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
+                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"]:
+                    if is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<", "0.9.0"):
+                        lora_config_kwargs.pop("use_dora")
+
+            if "lora_bias" in lora_config_kwargs:
+                if lora_config_kwargs["lora_bias"]:
+                    if is_peft_version("<=", "0.13.2"):
+                        raise ValueError(
+                            "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<=", "0.13.2"):
+                        lora_config_kwargs.pop("lora_bias")
+
+            lora_config = LoraConfig(**lora_config_kwargs)
+
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(text_encoder)
+
+            is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
+
+            # inject LoRA layers and load the state dict
+            # in transformers we automatically check whether the adapter name is already in use or not
+            text_encoder.load_adapter(
+                adapter_name=adapter_name,
+                adapter_state_dict=text_encoder_lora_state_dict,
+                peft_config=lora_config,
+                **peft_kwargs,
+            )
+
+            # scale LoRA layers with `lora_scale`
+            scale_lora_layers(text_encoder, weight=lora_scale)
+
+            text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
+
+
+def _func_optionally_disable_offloading(_pipeline):
+    is_model_cpu_offload = False
+    is_sequential_cpu_offload = False
+
+    if _pipeline is not None and _pipeline.hf_device_map is None:
+        for _, component in _pipeline.components.items():
+            if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                if not is_model_cpu_offload:
+                    is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
+                if not is_sequential_cpu_offload:
+                    is_sequential_cpu_offload = (
+                        isinstance(component._hf_hook, AlignDevicesHook)
+                        or hasattr(component._hf_hook, "hooks")
+                        and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                    )
+
+                logger.info(
+                    "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                )
+                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+    return (is_model_cpu_offload, is_sequential_cpu_offload)
+
+
 class LoraBaseMixin:
     """Utility class for handling LoRAs."""
 
@@ -211,147 +482,19 @@ class LoraBaseMixin:
             tuple:
                 A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
         """
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-
-        if _pipeline is not None and _pipeline.hf_device_map is None:
-            for _, component in _pipeline.components.items():
-                if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
-                    if not is_model_cpu_offload:
-                        is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
-                    if not is_sequential_cpu_offload:
-                        is_sequential_cpu_offload = (
-                            isinstance(component._hf_hook, AlignDevicesHook)
-                            or hasattr(component._hf_hook, "hooks")
-                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
-                        )
-
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
-
-        return (is_model_cpu_offload, is_sequential_cpu_offload)
+        return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
     @classmethod
-    def _fetch_state_dict(
-        cls,
-        pretrained_model_name_or_path_or_dict,
-        weight_name,
-        use_safetensors,
-        local_files_only,
-        cache_dir,
-        force_download,
-        proxies,
-        token,
-        revision,
-        subfolder,
-        user_agent,
-        allow_pickle,
-    ):
-        from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
-
-        model_file = None
-        if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            # Let's first try to load .safetensors weights
-            if (use_safetensors and weight_name is None) or (
-                weight_name is not None and weight_name.endswith(".safetensors")
-            ):
-                try:
-                    # Here we're relaxing the loading check to enable more Inference API
-                    # friendliness where sometimes, it's not at all possible to automatically
-                    # determine `weight_name`.
-                    if weight_name is None:
-                        weight_name = cls._best_guess_weight_name(
-                            pretrained_model_name_or_path_or_dict,
-                            file_extension=".safetensors",
-                            local_files_only=local_files_only,
-                        )
-                    model_file = _get_model_file(
-                        pretrained_model_name_or_path_or_dict,
-                        weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
-                        cache_dir=cache_dir,
-                        force_download=force_download,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        token=token,
-                        revision=revision,
-                        subfolder=subfolder,
-                        user_agent=user_agent,
-                    )
-                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                except (IOError, safetensors.SafetensorError) as e:
-                    if not allow_pickle:
-                        raise e
-                    # try loading non-safetensors weights
-                    model_file = None
-                    pass
-
-            if model_file is None:
-                if weight_name is None:
-                    weight_name = cls._best_guess_weight_name(
-                        pretrained_model_name_or_path_or_dict, file_extension=".bin", local_files_only=local_files_only
-                    )
-                model_file = _get_model_file(
-                    pretrained_model_name_or_path_or_dict,
-                    weights_name=weight_name or LORA_WEIGHT_NAME,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                )
-                state_dict = load_state_dict(model_file)
-        else:
-            state_dict = pretrained_model_name_or_path_or_dict
-
-        return state_dict
+    def _fetch_state_dict(cls, *args, **kwargs):
+        deprecation_message = f"Using the `_fetch_state_dict()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _fetch_state_dict`."
+        deprecate("_fetch_state_dict", "0.35.0", deprecation_message)
+        return _fetch_state_dict(*args, **kwargs)
 
     @classmethod
-    def _best_guess_weight_name(
-        cls, pretrained_model_name_or_path_or_dict, file_extension=".safetensors", local_files_only=False
-    ):
-        from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
-
-        if local_files_only or HF_HUB_OFFLINE:
-            raise ValueError("When using the offline mode, you must specify a `weight_name`.")
-
-        targeted_files = []
-
-        if os.path.isfile(pretrained_model_name_or_path_or_dict):
-            return
-        elif os.path.isdir(pretrained_model_name_or_path_or_dict):
-            targeted_files = [
-                f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)
-            ]
-        else:
-            files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
-            targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
-        if len(targeted_files) == 0:
-            return
-
-        # "scheduler" does not correspond to a LoRA checkpoint.
-        # "optimizer" does not correspond to a LoRA checkpoint
-        # only top-level checkpoints are considered and not the other ones, hence "checkpoint".
-        unallowed_substrings = {"scheduler", "optimizer", "checkpoint"}
-        targeted_files = list(
-            filter(lambda x: all(substring not in x for substring in unallowed_substrings), targeted_files)
-        )
-
-        if any(f.endswith(LORA_WEIGHT_NAME) for f in targeted_files):
-            targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME), targeted_files))
-        elif any(f.endswith(LORA_WEIGHT_NAME_SAFE) for f in targeted_files):
-            targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
-
-        if len(targeted_files) > 1:
-            raise ValueError(
-                f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
-            )
-        weight_name = targeted_files[0]
-        return weight_name
+    def _best_guess_weight_name(cls, *args, **kwargs):
+        deprecation_message = f"Using the `_best_guess_weight_name()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _best_guess_weight_name`."
+        deprecate("_best_guess_weight_name", "0.35.0", deprecation_message)
+        return _best_guess_weight_name(*args, **kwargs)
 
     def unload_lora_weights(self):
         """
@@ -725,8 +868,6 @@ class LoraBaseMixin:
         save_function: Callable,
         safe_serialization: bool,
     ):
-        from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
-
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return

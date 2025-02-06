@@ -22,6 +22,7 @@ from transformers import (
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDIMScheduler, DDPMScheduler
 from ...utils import (
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -30,7 +31,15 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -384,6 +393,9 @@ class KandinskyPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)
                 callback(step_idx, t, latents)
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]

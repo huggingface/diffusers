@@ -20,12 +20,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import is_torch_version
+from ..utils import is_torch_npu_available, is_torch_version
 from .activations import get_activation
-from .embeddings import (
-    CombinedTimestepLabelEmbeddings,
-    PixArtAlphaCombinedTimestepSizeEmbeddings,
-)
+from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
 
 class AdaLayerNorm(nn.Module):
@@ -266,6 +263,7 @@ class AdaLayerNormSingle(nn.Module):
         hidden_dtype: Optional[torch.dtype] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # No modulation happening here.
+        added_cond_kwargs = added_cond_kwargs or {"resolution": None, "aspect_ratio": None}
         embedded_timestep = self.emb(timestep, **added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_dtype)
         return self.linear(self.silu(embedded_timestep)), embedded_timestep
 
@@ -358,20 +356,21 @@ class LuminaLayerNormContinuous(nn.Module):
         out_dim: Optional[int] = None,
     ):
         super().__init__()
+
         # AdaLN
         self.silu = nn.SiLU()
         self.linear_1 = nn.Linear(conditioning_embedding_dim, embedding_dim, bias=bias)
+
         if norm_type == "layer_norm":
             self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+        elif norm_type == "rms_norm":
+            self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
         else:
             raise ValueError(f"unknown norm_type {norm_type}")
-        # linear_2
+
+        self.linear_2 = None
         if out_dim is not None:
-            self.linear_2 = nn.Linear(
-                embedding_dim,
-                out_dim,
-                bias=bias,
-            )
+            self.linear_2 = nn.Linear(embedding_dim, out_dim, bias=bias)
 
     def forward(
         self,
@@ -486,6 +485,57 @@ else:
 
 
 class RMSNorm(nn.Module):
+    def __init__(self, dim, eps: float, elementwise_affine: bool = True, bias: bool = False):
+        super().__init__()
+
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+
+        if isinstance(dim, numbers.Integral):
+            dim = (dim,)
+
+        self.dim = torch.Size(dim)
+
+        self.weight = None
+        self.bias = None
+
+        if elementwise_affine:
+            self.weight = nn.Parameter(torch.ones(dim))
+            if bias:
+                self.bias = nn.Parameter(torch.zeros(dim))
+
+    def forward(self, hidden_states):
+        if is_torch_npu_available():
+            import torch_npu
+
+            if self.weight is not None:
+                # convert into half-precision if necessary
+                if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                    hidden_states = hidden_states.to(self.weight.dtype)
+            hidden_states = torch_npu.npu_rms_norm(hidden_states, self.weight, epsilon=self.eps)[0]
+            if self.bias is not None:
+                hidden_states = hidden_states + self.bias
+        else:
+            input_dtype = hidden_states.dtype
+            variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+            hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+
+            if self.weight is not None:
+                # convert into half-precision if necessary
+                if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                    hidden_states = hidden_states.to(self.weight.dtype)
+                hidden_states = hidden_states * self.weight
+                if self.bias is not None:
+                    hidden_states = hidden_states + self.bias
+            else:
+                hidden_states = hidden_states.to(input_dtype)
+
+        return hidden_states
+
+
+# TODO: (Dhruv) This can be replaced with regular RMSNorm in Mochi once `_keep_in_fp32_modules` is supported
+# for sharded checkpoints, see: https://github.com/huggingface/diffusers/issues/10013
+class MochiRMSNorm(nn.Module):
     def __init__(self, dim, eps: float, elementwise_affine: bool = True):
         super().__init__()
 
@@ -507,12 +557,8 @@ class RMSNorm(nn.Module):
         hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
 
         if self.weight is not None:
-            # convert into half-precision if necessary
-            if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                hidden_states = hidden_states.to(self.weight.dtype)
             hidden_states = hidden_states * self.weight
-        else:
-            hidden_states = hidden_states.to(input_dtype)
+        hidden_states = hidden_states.to(input_dtype)
 
         return hidden_states
 
@@ -528,3 +574,33 @@ class GlobalResponseNorm(nn.Module):
         gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
         nx = gx / (gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * nx) + self.beta + x
+
+
+class LpNorm(nn.Module):
+    def __init__(self, p: int = 2, dim: int = -1, eps: float = 1e-12):
+        super().__init__()
+
+        self.p = p
+        self.dim = dim
+        self.eps = eps
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)
+
+
+def get_normalization(
+    norm_type: str = "batch_norm",
+    num_features: Optional[int] = None,
+    eps: float = 1e-5,
+    elementwise_affine: bool = True,
+    bias: bool = True,
+) -> nn.Module:
+    if norm_type == "rms_norm":
+        norm = RMSNorm(num_features, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
+    elif norm_type == "layer_norm":
+        norm = nn.LayerNorm(num_features, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
+    elif norm_type == "batch_norm":
+        norm = nn.BatchNorm2d(num_features, eps=eps, affine=elementwise_affine)
+    else:
+        raise ValueError(f"{norm_type=} is not supported.")
+    return norm

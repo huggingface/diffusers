@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -262,6 +262,12 @@ def parse_args(input_args=None):
         default=None,
         help="Path to pretrained controlnet model or model identifier from huggingface.co/models."
         " If not specified controlnet weights are initialized from unet.",
+    )
+    parser.add_argument(
+        "--num_extra_conditioning_channels",
+        type=int,
+        default=0,
+        help="Number of extra conditioning channels for controlnet.",
     )
     parser.add_argument(
         "--revision",
@@ -538,6 +544,9 @@ def parse_args(input_args=None):
         type=int,
         default=77,
         help="Maximum sequence length to use with with the T5 text encoder",
+    )
+    parser.add_argument(
+        "--dataset_preprocess_batch_size", type=int, default=1000, help="Batch size for preprocessing dataset."
     )
     parser.add_argument(
         "--validation_prompt",
@@ -986,7 +995,9 @@ def main(args):
         controlnet = SD3ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
     else:
         logger.info("Initializing controlnet weights from transformer")
-        controlnet = SD3ControlNetModel.from_transformer(transformer)
+        controlnet = SD3ControlNetModel.from_transformer(
+            transformer, num_extra_conditioning_channels=args.num_extra_conditioning_channels
+        )
 
     transformer.requires_grad_(False)
     vae.requires_grad_(False)
@@ -1123,7 +1134,12 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+        train_dataset = train_dataset.map(
+            compute_embeddings_fn,
+            batched=True,
+            batch_size=args.dataset_preprocess_batch_size,
+            new_fingerprint=new_fingerprint,
+        )
 
     del text_encoder_one, text_encoder_two, text_encoder_three
     del tokenizer_one, tokenizer_two, tokenizer_three

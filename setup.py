@@ -101,7 +101,7 @@ _deps = [
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.23.2",
+    "huggingface-hub>=0.27.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -130,11 +130,12 @@ _deps = [
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
-    "torch>=1.4,<2.5.0",
+    "torch>=1.4",
     "torchvision",
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
     "black",
+    "phonemizer",
 ]
 
 # this is a lookup table with items like:
@@ -227,6 +228,7 @@ extras["test"] = deps_list(
     "scipy",
     "torchvision",
     "transformers",
+    "phonemizer",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
@@ -254,7 +256,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.32.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.33.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
