@@ -108,7 +108,7 @@ class Lumina2Transformer2DModelTransformerTests(ModelTesterMixin, unittest.TestC
 
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-    
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Lumina2Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import html
 import inspect
 import math
-import numpy as np
 import re
-import urllib.parse as ul
-from typing import List, Optional, Tuple, Union, Callable, Dict
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from transformers import AutoModel, AutoTokenizer
 
@@ -28,7 +26,6 @@ from ...models import AutoencoderKL
 from ...models.transformers.transformer_lumina2 import Lumina2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
-    BACKENDS_MAPPING,
     is_bs4_available,
     is_ftfy_available,
     is_torch_xla_available,
@@ -50,10 +47,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 if is_bs4_available():
-    from bs4 import BeautifulSoup
+    pass
 
 if is_ftfy_available():
-    import ftfy
+    pass
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -61,9 +58,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import Lumina2Text2ImgPipeline
 
-        >>> pipe = Lumina2Text2ImgPipeline.from_pretrained(
-        ...     "Alpha-VLLM/Lumina-Image-2.0", torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = Lumina2Text2ImgPipeline.from_pretrained("Alpha-VLLM/Lumina-Image-2.0", torch_dtype=torch.bfloat16)
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
@@ -71,6 +66,7 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt).images[0]
         ```
 """
+
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
@@ -325,11 +321,11 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        
+
         if system_prompt is None:
             system_prompt = self.system_prompt
         if prompt is not None:
-            prompt = [system_prompt + ' <Prompt Start> ' + p for p in prompt]
+            prompt = [system_prompt + " <Prompt Start> " + p for p in prompt]
 
         if prompt_embeds is None:
             prompt_embeds, prompt_attention_mask = self._get_gemma_prompt_embeds(
@@ -407,7 +403,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
-            
+
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
@@ -451,10 +447,10 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
                 )
-        
+
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
-    
+
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -483,7 +479,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-        
+
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         # VAE applies 8x compression on images but we must also account for packing which requires
         # latent height and width to be divisible by 2.
@@ -491,7 +487,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
 
         shape = (batch_size, num_channels_latents, height, width)
-        
+
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -504,7 +500,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             latents = latents.to(device)
 
         return latents
-    
+
     def enable_sequential_cpu_offload(self, *args, **kwargs):
         super().enable_sequential_cpu_offload(*args, **kwargs)
 
@@ -663,7 +659,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        
+
         self.tokenizer.padding_side = "right"
 
         # 3. Encode input prompt
@@ -721,12 +717,17 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
-        
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance and 1 - t.item() / self.scheduler.config.num_train_timesteps < cfg_trunc_ratio else latents
+                latent_model_input = (
+                    torch.cat([latents] * 2)
+                    if do_classifier_free_guidance
+                    and 1 - t.item() / self.scheduler.config.num_train_timesteps < cfg_trunc_ratio
+                    else latents
+                )
                 current_timestep = t
                 if not torch.is_tensor(current_timestep):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
@@ -748,7 +749,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
 
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
                 current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
-                
+
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=current_timestep,
@@ -759,18 +760,14 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
 
                 # perform normalization-based guidance scale on a truncated timestep interval
                 if do_classifier_free_guidance and current_timestep[0] < cfg_trunc_ratio:
-                    noise_pred_cond, noise_pred_uncond = torch.split(
-                        noise_pred, len(noise_pred) // 2, dim=0
-                    )
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_cond - noise_pred_uncond
-                    )
+                    noise_pred_cond, noise_pred_uncond = torch.split(noise_pred, len(noise_pred) // 2, dim=0)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
                     # apply normalization after classifier-free guidance
                     if cfg_normalization:
                         cond_norm = torch.norm(noise_pred_cond, dim=-1, keepdim=True)
                         noise_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
                         noise_pred = noise_pred * (cond_norm / noise_norm)
-                
+
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 noise_pred = -noise_pred
@@ -798,7 +795,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
-                    
+
         if not output_type == "latent":
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
             image = self.vae.decode(latents, return_dict=False)[0]

@@ -17,7 +17,7 @@ import inspect
 import math
 import re
 import urllib.parse as ul
-from typing import List, Optional, Tuple, Union, Callable, Dict
+from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoModel, AutoTokenizer

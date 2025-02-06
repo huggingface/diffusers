@@ -12,18 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, List
+import math
+from typing import List, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ...loaders import PeftAdapterMixin
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging, is_torch_version
+from ...loaders import PeftAdapterMixin
+from ...utils import logging
 from ..attention import LuminaFeedForward
 from ..attention_processor import Attention
-from ..embeddings import get_1d_rotary_pos_embed, apply_rotary_emb, Timesteps, TimestepEmbedding
+from ..embeddings import TimestepEmbedding, Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import LuminaLayerNormContinuous, LuminaRMSNormZero, RMSNorm
@@ -35,12 +36,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
     def __init__(self, hidden_size=4096, cap_feat_dim=2048, frequency_embedding_size=256, norm_eps=1e-5):
         super().__init__()
-        
+
         self.time_proj = Timesteps(
             num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0.0
         )
 
-        self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=min(hidden_size, 1024))
+        self.timestep_embedder = TimestepEmbedding(
+            in_channels=frequency_embedding_size, time_embed_dim=min(hidden_size, 1024)
+        )
 
         self.caption_embedder = nn.Sequential(
             RMSNorm(cap_feat_dim, eps=norm_eps),
@@ -60,12 +63,13 @@ class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
         caption_embed = self.caption_embedder(caption_feat)
 
         return time_embed, caption_embed
-    
-    
+
+
 class Lumina2AttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
-    used in the Lumina2Transformer2DModel model. It applies a s normalization layer and rotary embedding on query and key vector.
+    used in the Lumina2Transformer2DModel model. It applies a s normalization layer and rotary embedding on query and
+    key vector.
     """
 
     def __init__(self):
@@ -81,8 +85,6 @@ class Lumina2AttnProcessor2_0:
         image_rotary_emb: Optional[torch.Tensor] = None,
         base_sequence_length: Optional[int] = None,
     ) -> torch.Tensor:
-
-        input_ndim = hidden_states.ndim
         batch_size, sequence_length, _ = hidden_states.shape
 
         # Get Query-Key-Value Pair
@@ -101,13 +103,13 @@ class Lumina2AttnProcessor2_0:
         query = query.view(batch_size, -1, attn.heads, head_dim)
         key = key.view(batch_size, -1, kv_heads, head_dim)
         value = value.view(batch_size, -1, kv_heads, head_dim)
-        
+
         # Apply Query-Key Norm if needed
         if attn.norm_q is not None:
             query = attn.norm_q(query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
-        
+
         # Apply RoPE if needed
         if image_rotary_emb is not None:
             query = apply_rotary_emb(query, image_rotary_emb, use_real=False)
@@ -146,10 +148,10 @@ class Lumina2AttnProcessor2_0:
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
-        
+
         return hidden_states
-    
-    
+
+
 class Lumina2TransformerBlock(nn.Module):
     """
     A Lumina2TransformerBlock for Lumina2Transformer2DModel.
@@ -194,14 +196,14 @@ class Lumina2TransformerBlock(nn.Module):
             out_bias=False,
             processor=Lumina2AttnProcessor2_0(),
         )
-        
+
         self.feed_forward = LuminaFeedForward(
             dim=dim,
             inner_dim=4 * dim,
             multiple_of=multiple_of,
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
-        
+
         if modulation:
             self.norm1 = LuminaRMSNormZero(
                 embedding_dim=dim,
@@ -257,8 +259,8 @@ class Lumina2TransformerBlock(nn.Module):
             hidden_states = hidden_states + self.ffn_norm2(mlp_output)
 
         return hidden_states
-    
-    
+
+
 class Lumina2RotaryPosEmbed(nn.Module):
     def __init__(self, theta: int, axes_dim: List[int], axes_lens: List[int] = (300, 512, 512), patch_size: int = 2):
         super().__init__()
@@ -267,7 +269,7 @@ class Lumina2RotaryPosEmbed(nn.Module):
         self.axes_lens = axes_lens
         self.patch_size = patch_size
         self.freqs_cis = self.precompute_freqs_cis(axes_dim, axes_lens, theta)
-        
+
     def precompute_freqs_cis(self, axes_dim: List[int], axes_lens: List[int], theta: int) -> List[torch.Tensor]:
         freqs_cis = []
         for i, (d, e) in enumerate(zip(axes_dim, axes_lens)):
@@ -279,15 +281,15 @@ class Lumina2RotaryPosEmbed(nn.Module):
             )
             freqs_cis.append(emb)
         return freqs_cis
-    
+
     def get_freqs_cis(self, ids: torch.Tensor) -> torch.Tensor:
         result = []
         for i in range(len(self.axes_dim)):
             freqs = self.freqs_cis[i].to(ids.device)
-            index = ids[:, :, i:i+1].repeat(1, 1, freqs.shape[-1]).to(torch.int64)
+            index = ids[:, :, i : i + 1].repeat(1, 1, freqs.shape[-1]).to(torch.int64)
             result.append(torch.gather(freqs.unsqueeze(0).repeat(index.shape[0], 1, 1), dim=1, index=index))
         return torch.cat(result, dim=-1)
-    
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -301,14 +303,11 @@ class Lumina2RotaryPosEmbed(nn.Module):
         img_sizes = [(img.size(1), img.size(2)) for img in hidden_states]
         l_effective_img_len = [(H // pH) * (W // pW) for (H, W) in img_sizes]
 
-        max_seq_len = max(
-            (cap_len+img_len for cap_len, img_len in zip(l_effective_cap_len, l_effective_img_len))
-        )
-        max_cap_len = max(l_effective_cap_len)
+        max_seq_len = max((cap_len + img_len for cap_len, img_len in zip(l_effective_cap_len, l_effective_img_len)))
         max_img_len = max(l_effective_img_len)
-        
+
         position_ids = torch.zeros(bsz, max_seq_len, 3, dtype=torch.int32, device=device)
-        
+
         for i in range(bsz):
             cap_len = l_effective_cap_len[i]
             img_len = l_effective_img_len[i]
@@ -317,14 +316,18 @@ class Lumina2RotaryPosEmbed(nn.Module):
             assert H_tokens * W_tokens == img_len
 
             position_ids[i, :cap_len, 0] = torch.arange(cap_len, dtype=torch.int32, device=device)
-            position_ids[i, cap_len:cap_len+img_len, 0] = cap_len
-            row_ids = torch.arange(H_tokens, dtype=torch.int32, device=device).view(-1, 1).repeat(1, W_tokens).flatten()
-            col_ids = torch.arange(W_tokens, dtype=torch.int32, device=device).view(1, -1).repeat(H_tokens, 1).flatten()
-            position_ids[i, cap_len:cap_len+img_len, 1] = row_ids
-            position_ids[i, cap_len:cap_len+img_len, 2] = col_ids
+            position_ids[i, cap_len : cap_len + img_len, 0] = cap_len
+            row_ids = (
+                torch.arange(H_tokens, dtype=torch.int32, device=device).view(-1, 1).repeat(1, W_tokens).flatten()
+            )
+            col_ids = (
+                torch.arange(W_tokens, dtype=torch.int32, device=device).view(1, -1).repeat(H_tokens, 1).flatten()
+            )
+            position_ids[i, cap_len : cap_len + img_len, 1] = row_ids
+            position_ids[i, cap_len : cap_len + img_len, 2] = col_ids
 
         freqs_cis = self.get_freqs_cis(position_ids)
-        
+
         cap_freqs_cis_shape = list(freqs_cis.shape)
         cap_freqs_cis_shape[1] = encoder_mask.shape[1]
         cap_freqs_cis = torch.zeros(*cap_freqs_cis_shape, device=device, dtype=freqs_cis.dtype)
@@ -332,13 +335,13 @@ class Lumina2RotaryPosEmbed(nn.Module):
         img_freqs_cis_shape = list(freqs_cis.shape)
         img_freqs_cis_shape[1] = max_img_len
         img_freqs_cis = torch.zeros(*img_freqs_cis_shape, device=device, dtype=freqs_cis.dtype)
-        
+
         for i in range(bsz):
             cap_len = l_effective_cap_len[i]
             img_len = l_effective_img_len[i]
             cap_freqs_cis[i, :cap_len] = freqs_cis[i, :cap_len]
-            img_freqs_cis[i, :img_len] = freqs_cis[i, cap_len:cap_len+img_len]
-        
+            img_freqs_cis[i, :img_len] = freqs_cis[i, cap_len : cap_len + img_len]
+
         flat_hidden_states = []
         for i in range(bsz):
             img = hidden_states[i]
@@ -346,13 +349,25 @@ class Lumina2RotaryPosEmbed(nn.Module):
             img = img.view(C, H // pH, pH, W // pW, pW).permute(1, 3, 2, 4, 0).flatten(2).flatten(0, 1)
             flat_hidden_states.append(img)
         hidden_states = flat_hidden_states
-        padded_img_embed = torch.zeros(bsz, max_img_len, hidden_states[0].shape[-1], device=device, dtype=hidden_states[0].dtype)
+        padded_img_embed = torch.zeros(
+            bsz, max_img_len, hidden_states[0].shape[-1], device=device, dtype=hidden_states[0].dtype
+        )
         padded_img_mask = torch.zeros(bsz, max_img_len, dtype=torch.bool, device=device)
         for i in range(bsz):
-            padded_img_embed[i, :l_effective_img_len[i]] = hidden_states[i]
-            padded_img_mask[i, :l_effective_img_len[i]] = True
-            
-        return padded_img_embed, padded_img_mask, img_sizes, l_effective_cap_len, l_effective_img_len, freqs_cis, cap_freqs_cis, img_freqs_cis, max_seq_len
+            padded_img_embed[i, : l_effective_img_len[i]] = hidden_states[i]
+            padded_img_mask[i, : l_effective_img_len[i]] = True
+
+        return (
+            padded_img_embed,
+            padded_img_mask,
+            img_sizes,
+            l_effective_cap_len,
+            l_effective_img_len,
+            freqs_cis,
+            cap_freqs_cis,
+            img_freqs_cis,
+            max_seq_len,
+        )
 
 
 class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -392,7 +407,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
 
     _supports_gradient_checkpointing = True
-    
+
     @register_to_config
     def __init__(
         self,
@@ -448,7 +463,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 for _ in range(num_refiner_layers)
             ]
         )
-        
+
         self.context_refiner = nn.ModuleList(
             [
                 Lumina2TransformerBlock(
@@ -463,7 +478,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 for _ in range(num_refiner_layers)
             ]
         )
-        
+
         self.layers = nn.ModuleList(
             [
                 Lumina2TransformerBlock(
@@ -486,9 +501,9 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             bias=True,
             out_dim=patch_size * patch_size * self.out_channels,
         )
-        
+
         self.gradient_checkpointing = False
-    
+
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
@@ -513,26 +528,39 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         bsz = hidden_states.size(0)
         device = hidden_states.device
         temb, encoder_hidden_states = self.time_caption_embed(timestep, encoder_hidden_states)
-        hidden_states, hidden_mask, hidden_sizes, encoder_hidden_len, hidden_len, joint_rotary_emb, encoder_rotary_emb, hidden_rotary_emb, max_seq_len = self.rope_embedder(hidden_states, encoder_mask)
-        
+        (
+            hidden_states,
+            hidden_mask,
+            hidden_sizes,
+            encoder_hidden_len,
+            hidden_len,
+            joint_rotary_emb,
+            encoder_rotary_emb,
+            hidden_rotary_emb,
+            max_seq_len,
+        ) = self.rope_embedder(hidden_states, encoder_mask)
+
         hidden_states = self.x_embedder(hidden_states)
         for layer in self.context_refiner:
             encoder_hidden_states = layer(encoder_hidden_states, encoder_mask, encoder_rotary_emb)
-            
+
         for layer in self.noise_refiner:
             hidden_states = layer(hidden_states, hidden_mask, hidden_rotary_emb, temb)
-        
+
         mask = torch.zeros(bsz, max_seq_len, dtype=torch.bool, device=device)
-        padded_hidden_states = torch.zeros(bsz, max_seq_len, self.config.hidden_size, device=device, dtype=hidden_states.dtype)
+        padded_hidden_states = torch.zeros(
+            bsz, max_seq_len, self.config.hidden_size, device=device, dtype=hidden_states.dtype
+        )
         for i in range(bsz):
             cap_len = encoder_hidden_len[i]
             img_len = hidden_len[i]
-            mask[i, :cap_len+img_len] = True
+            mask[i, : cap_len + img_len] = True
             padded_hidden_states[i, :cap_len] = encoder_hidden_states[i, :cap_len]
-            padded_hidden_states[i, cap_len:cap_len+img_len] = hidden_states[i, :img_len]
+            padded_hidden_states[i, cap_len : cap_len + img_len] = hidden_states[i, :img_len]
         hidden_states = padded_hidden_states
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
+
             def create_custom_forward(module, return_dict=None):
                 def custom_forward(*inputs):
                     if return_dict is not None:
@@ -542,8 +570,6 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
                 return custom_forward
 
-            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-            
             for layer in self.layers:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(layer),

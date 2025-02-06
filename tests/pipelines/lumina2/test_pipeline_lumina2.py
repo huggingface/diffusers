@@ -6,7 +6,12 @@ import pytest
 import torch
 from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, Lumina2Transformer2DModel, Lumina2Text2ImgPipeline
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    Lumina2Text2ImgPipeline,
+    Lumina2Transformer2DModel,
+)
 from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
@@ -62,7 +67,7 @@ class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTester
             axes_dim_rope=[4, 2, 2],
             cap_feat_dim=8,
         )
-        
+
         torch.manual_seed(0)
         vae = AutoencoderKL(
             sample_size=32,
