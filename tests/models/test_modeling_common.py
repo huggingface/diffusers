@@ -1454,24 +1454,22 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        model.enable_group_offloading(torch_device, offload_type="block_level", num_blocks_per_group=1)
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1)
         output_with_group_offloading1 = run_forward(model)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        model.enable_group_offloading(
-            torch_device, offload_type="block_level", num_blocks_per_group=1, non_blocking=True
-        )
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, non_blocking=True)
         output_with_group_offloading2 = run_forward(model)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        model.enable_group_offloading(torch_device, offload_type="leaf_level")
+        model.enable_group_offload(torch_device, offload_type="leaf_level")
         output_with_group_offloading3 = run_forward(model)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        model.enable_group_offloading(torch_device, offload_type="leaf_level", use_stream=True)
+        model.enable_group_offload(torch_device, offload_type="leaf_level", use_stream=True)
         output_with_group_offloading4 = run_forward(model)
 
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5))

@@ -446,7 +446,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
         )
 
-    def enable_group_offloading(
+    def enable_group_offload(
         self,
         onload_device: torch.device,
         offload_device: torch.device = torch.device("cpu"),
@@ -469,7 +469,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
             ... )
 
-            >>> transformer.enable_group_offloading(
+            >>> transformer.enable_group_offload(
             ...     onload_device=torch.device("cuda"),
             ...     offload_device=torch.device("cpu"),
             ...     offload_type="leaf_level",

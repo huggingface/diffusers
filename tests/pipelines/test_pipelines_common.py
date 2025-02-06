@@ -2059,7 +2059,7 @@ class PipelineTesterMixin:
             pipe.set_progress_bar_config(disable=None)
             return pipe
 
-        def enable_group_offloading_on_component(pipe, group_offloading_kwargs):
+        def enable_group_offload_on_component(pipe, group_offloading_kwargs):
             # We intentionally don't test VAE's here. This is because some tests enable tiling on the VAE. If
             # tiling is enabled and a forward pass is run, when cuda streams are used, the execution order of
             # the layers is not traced correctly. This causes errors. For apply group offloading to VAE, a
@@ -2077,9 +2077,9 @@ class PipelineTesterMixin:
                 component = getattr(pipe, component_name)
                 if not getattr(component, "_supports_group_offloading", True):
                     continue
-                if hasattr(component, "enable_group_offloading"):
+                if hasattr(component, "enable_group_offload"):
                     # For diffusers ModelMixin implementations
-                    component.enable_group_offloading(torch.device(torch_device), **group_offloading_kwargs)
+                    component.enable_group_offload(torch.device(torch_device), **group_offloading_kwargs)
                 else:
                     # For other models not part of diffusers
                     apply_group_offloading(
@@ -2105,11 +2105,11 @@ class PipelineTesterMixin:
         output_without_group_offloading = run_forward(pipe)
 
         pipe = create_pipe()
-        enable_group_offloading_on_component(pipe, {"offload_type": "block_level", "num_blocks_per_group": 1})
+        enable_group_offload_on_component(pipe, {"offload_type": "block_level", "num_blocks_per_group": 1})
         output_with_group_offloading1 = run_forward(pipe)
 
         pipe = create_pipe()
-        enable_group_offloading_on_component(pipe, {"offload_type": "leaf_level"})
+        enable_group_offload_on_component(pipe, {"offload_type": "leaf_level"})
         output_with_group_offloading2 = run_forward(pipe)
 
         if torch.is_tensor(output_without_group_offloading):

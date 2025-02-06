@@ -109,25 +109,23 @@ class GroupOffloadTests(unittest.TestCase):
         self.model.to("cpu")
 
         model = self.get_model()
-        model.enable_group_offloading(torch_device, offload_type="block_level", num_blocks_per_group=3)
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
         output_with_group_offloading1, mem1 = run_forward(model)
 
         model = self.get_model()
-        model.enable_group_offloading(torch_device, offload_type="block_level", num_blocks_per_group=1)
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1)
         output_with_group_offloading2, mem2 = run_forward(model)
 
         model = self.get_model()
-        model.enable_group_offloading(
-            torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True
-        )
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
         output_with_group_offloading3, mem3 = run_forward(model)
 
         model = self.get_model()
-        model.enable_group_offloading(torch_device, offload_type="leaf_level")
+        model.enable_group_offload(torch_device, offload_type="leaf_level")
         output_with_group_offloading4, mem4 = run_forward(model)
 
         model = self.get_model()
-        model.enable_group_offloading(torch_device, offload_type="leaf_level", use_stream=True)
+        model.enable_group_offload(torch_device, offload_type="leaf_level", use_stream=True)
         output_with_group_offloading5, mem5 = run_forward(model)
 
         # Precision assertions - offloading should not impact the output
@@ -144,7 +142,7 @@ class GroupOffloadTests(unittest.TestCase):
         original_is_available = torch.cuda.is_available
         torch.cuda.is_available = lambda: False
         with self.assertRaises(ValueError):
-            self.model.enable_group_offloading(
+            self.model.enable_group_offload(
                 onload_device=torch.device("cuda"), offload_type="leaf_level", use_stream=True
             )
         torch.cuda.is_available = original_is_available
@@ -152,4 +150,4 @@ class GroupOffloadTests(unittest.TestCase):
     def test_error_raised_if_supports_group_offloading_false(self):
         self.model._supports_group_offloading = False
         with self.assertRaisesRegex(ValueError, "does not support group offloading"):
-            self.model.enable_group_offloading(onload_device=torch.device("cuda"))
+            self.model.enable_group_offload(onload_device=torch.device("cuda"))

@@ -162,7 +162,7 @@ In order to properly offload models after they're called, it is required to run 
 
 Group offloading is the middle ground between sequential and model offloading. It works by offloading groups of internal layers (either `torch.nn.ModuleList` or `torch.nn.Sequential`), which uses less memory than model-level offloading. It is also faster than sequential-level offloading because the number of device synchronizations is reduced.
 
-To enable group offloading, call the [`~ModelMixin.enable_group_offloading`] method on the model if it is a Diffusers model implementation. For any other model implementation, use [`~hooks.group_offloading.apply_group_offloading`]:
+To enable group offloading, call the [`~ModelMixin.enable_group_offload`] method on the model if it is a Diffusers model implementation. For any other model implementation, use [`~hooks.group_offloading.apply_group_offloading`]:
 
 ```python
 import torch
@@ -175,8 +175,8 @@ onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
 pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
 
-# We can utilize the enable_group_offloading method for Diffusers model implementations
-pipe.transformer.enable_group_offloading(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True)
+# We can utilize the enable_group_offload method for Diffusers model implementations
+pipe.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level", use_stream=True)
 
 # For any other model implementations, the apply_group_offloading function can be used
 apply_group_offloading(pipe.text_encoder, onload_device=onload_device, offload_type="block_level", num_blocks_per_group=2)
