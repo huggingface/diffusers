@@ -288,6 +288,8 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/lumina2_transformer2d
+        title: Lumina2Transformer2DModel
       - local: api/models/ltx_video_transformer3d
         title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
