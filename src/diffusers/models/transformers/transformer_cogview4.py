@@ -176,6 +176,12 @@ class CogView4TransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
+def swap_scale_shift(weight, dim):
+    shift, scale = weight.chunk(2, dim=0)
+    new_weight = torch.cat([scale, shift], dim=0)
+    return new_weight
+
+
 class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
     r"""
     Args:
@@ -276,7 +282,10 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
             elementwise_affine=False,
         )
         self.adaln_final = self.norm_out.linear
-        ######################################
+        # with torch.no_grad():
+        #     w = self.norm_out.linear.weight.data.clone()
+        #     w_swapped = swap_scale_shift(w, dim=0)
+        #     self.adaln_final.weight.data.copy_(w_swapped)
 
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 

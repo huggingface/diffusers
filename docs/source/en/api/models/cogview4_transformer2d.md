@@ -16,9 +16,9 @@ A Diffusion Transformer model for 2D data from [CogView4]()
 The model can be loaded with the following code snippet.
 
 ```python
-from diffusers import CogView3PlusTransformer2DModel
+from diffusers import CogView4Transformer2DModel
 
-transformer = CogView3PlusTransformer2DModel.from_pretrained("THUDM/CogView4-6B", subfolder="transformer", torch_dtype=torch.bfloat16).to("cuda")
+transformer = CogView4Transformer2DModel.from_pretrained("THUDM/CogView4-6B", subfolder="transformer", torch_dtype=torch.bfloat16).to("cuda")
 ```
 
 ## CogView4Transformer2DModel
