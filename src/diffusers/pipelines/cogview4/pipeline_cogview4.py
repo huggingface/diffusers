@@ -55,18 +55,25 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+def time_shift(self, mu: float, shift_sigma: float, sigmas: torch.Tensor):
+    return mu / (mu + (1 / sigmas - 1) ** shift_sigma)
+
+
 def calculate_shift(
-    image_seq_len, base_seq_len: int = 256, max_seq_len: int = 4096, base_shift: float = 0.5, max_shift: float = 1.15
+        self,
+        image_seq_len,
+        base_seq_len: int = 256,
 ):
-    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-    b = base_shift - m * base_seq_len
-    mu = image_seq_len * m + b
+    if isinstance(image_seq_len, int):
+        mu = math.sqrt(image_seq_len / base_seq_len)
+    elif isinstance(image_seq_len, torch.Tensor):
+        mu = torch.sqrt(image_seq_len / base_seq_len)
+    else:
+        raise ValueError(f'Invalid type for image_seq_len: {type(image_seq_len)}')
+
+    mu = mu * 0.75 + 0.25
+
     return mu
-
-
-def time_shift(mu: float, shift_sigma: float, sigmas: torch.Tensor):
-    return math.exp(mu) / (math.exp(mu) + (1 / sigmas - 1) ** shift_sigma)
-
 
 # def retrieve_timesteps(
 #     scheduler,
@@ -598,7 +605,8 @@ class CogView4Pipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-
+        torch.save(prompt_embeds, '/share/home/zyx/prompt_embeds.pt')
+        torch.save(negative_prompt_embeds, '/share/home/zyx/negative_prompt_embeds.pt')
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
