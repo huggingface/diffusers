@@ -440,6 +440,8 @@
       title: LEDITS++
     - local: api/pipelines/ltx_video
       title: LTXVideo
+    - local: api/pipelines/lumina2
+      title: Lumina 2.0
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
