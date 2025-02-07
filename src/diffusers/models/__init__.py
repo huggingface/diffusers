@@ -51,6 +51,7 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
     _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
+    _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -120,6 +121,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DMultiControlNetModel,
             MultiControlNetModel,
+            MultiControlNetUnionModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SparseControlNetModel,
