@@ -342,33 +342,24 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
         )
         (
             data.prompt_embeds,
+            data.negative_prompt_embeds,
             data.pooled_prompt_embeds,
+            data.negative_pooled_prompt_embeds,
         ) = pipeline.encode_prompt(
             data.prompt,
             data.prompt_2,
             data.device,
+            data.do_classifier_free_guidance,
+            data.negative_prompt,
+            data.negative_prompt_2,
             prompt_embeds=None,
+            negative_prompt_embeds=None,
             pooled_prompt_embeds=None,
+            negative_pooled_prompt_embeds=None,
             lora_scale=data.text_encoder_lora_scale,
             clip_skip=data.clip_skip,
+            force_zeros_for_empty_prompt=self.configs.get('force_zeros_for_empty_prompt', False),
         )
-        zero_out_negative_prompt = data.negative_prompt is None and self.configs.get('force_zeros_for_empty_prompt', False)
-        if data.do_classifier_free_guidance and zero_out_negative_prompt:
-            data.negative_prompt_embeds = torch.zeros_like(data.prompt_embeds)
-            data.negative_pooled_prompt_embeds = torch.zeros_like(data.pooled_prompt_embeds)
-        elif data.do_classifier_free_guidance and not zero_out_negative_prompt:
-            (
-                data.negative_prompt_embeds,
-                data.negative_pooled_prompt_embeds,
-            ) = pipeline.encode_prompt(
-                data.negative_prompt,
-                data.negative_prompt_2,
-                data.device,
-                prompt_embeds=None,
-                pooled_prompt_embeds=None,
-                lora_scale=data.text_encoder_lora_scale,
-                clip_skip=data.clip_skip,
-            )
         # Add outputs
         self.add_block_state(state, data)
         return pipeline, state
@@ -3262,6 +3253,53 @@ class StableDiffusionXLModularPipeline(
         return image
 
     def encode_prompt(
+        self,
+        prompt: str,
+        prompt_2: Optional[str] = None,
+        device: Optional[torch.device] = None,
+        do_classifier_free_guidance: bool = True,
+        negative_prompt: Optional[str] = None,
+        negative_prompt_2: Optional[str] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        lora_scale: Optional[float] = None,
+        clip_skip: Optional[int] = None,
+        force_zeros_for_empty_prompt: bool = False,
+    ):
+        (
+            prompt_embeds,
+            pooled_prompt_embeds,
+        ) = self.encode_single_prompt(
+            prompt,
+            prompt_2,
+            device,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            lora_scale=lora_scale,
+            clip_skip=clip_skip,
+        )
+        zero_out_negative_prompt = negative_prompt is None and force_zeros_for_empty_prompt
+        if do_classifier_free_guidance and zero_out_negative_prompt:
+            negative_prompt_embeds = torch.zeros_like(prompt_embeds)
+            negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
+        elif do_classifier_free_guidance and not zero_out_negative_prompt:
+            (
+                negative_prompt_embeds,
+                negative_pooled_prompt_embeds,
+            ) = self.encode_single_prompt(
+                negative_prompt,
+                negative_prompt_2,
+                device,
+                prompt_embeds=negative_prompt_embeds,
+                pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                lora_scale=lora_scale,
+                clip_skip=clip_skip,
+            )
+        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+
+    def encode_single_prompt(
         self,
         prompt: str,
         prompt_2: Optional[str] = None,
