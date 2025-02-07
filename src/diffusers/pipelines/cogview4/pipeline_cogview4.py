@@ -147,12 +147,6 @@ class CogView4Pipeline(DiffusionPipeline):
             text_input_ids.to(self.text_encoder.model.device), output_hidden_states=True
         ).hidden_states[-2]
 
-        # TODO: This is for Older GLM-4 as https://huggingface.co/THUDM/glm-4-9b, will use https://huggingface.co/THUDM/glm-4-9b-hf for new transformers version format.
-        # TODO: Remove it later
-        # prompt_embeds = self.text_encoder(
-        #     text_input_ids.to(self.text_encoder.transformer.device), output_hidden_states=True
-        # ).hidden_states[-2]
-
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -569,6 +563,7 @@ class CogView4Pipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
                 timestep = t.reshape((1,))
+                timestep = torch.cat([timestep] * num_images_per_prompt)
                 timestep = torch.cat([timestep] * 2) if do_classifier_free_guidance else t
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
