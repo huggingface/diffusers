@@ -51,16 +51,55 @@ UNET_TO_DIFFUSERS = {
 }
 
 CONTROL_LORA_TO_DIFFUSERS = {
-    ".to_out.up": ".to_out.0.lora_B",
-    ".to_out.down": ".to_out.0.lora_A",
-    ".to_q.down": ".to_q.lora_A",
-    ".to_q.up": ".to_q.lora_B",
-    ".to_k.down": ".to_k.lora_A",
-    ".to_k.up": ".to_k.lora_B",
-    ".to_v.down": ".to_v.lora_A",
-    ".to_v.up": ".to_v.lora_B",
-    ".down": ".lora_A",
-    ".up": ".lora_B",
+    ".to_q.bias": ".to_q.base_layer.bias",
+    ".to_q.down": ".to_q.lora_A.weight",
+    ".to_q.up": ".to_q.lora_B.weight",
+    ".to_k.bias": ".to_k.base_layer.bias",
+    ".to_k.down": ".to_k.lora_A.weight",
+    ".to_k.up": ".to_k.lora_B.weight",
+    ".to_v.bias": ".to_v.base_layer.bias",
+    ".to_v.down": ".to_v.lora_A.weight",
+    ".to_v.up": ".to_v.lora_B.weight",
+    ".to_out.0.bias": ".to_out.0.base_layer.bias",
+    ".to_out.0.down": ".to_out.0.lora_A.weight",
+    ".to_out.0.up": ".to_out.0.lora_B.weight",
+    ".ff.net.0.proj.bias": ".ff.net.0.proj.base_layer.bias",
+    ".ff.net.0.proj.down": ".ff.net.0.proj.lora_A.weight",
+    ".ff.net.0.proj.up": ".ff.net.0.proj.lora_B.weight",
+    ".ff.net.2.bias": ".ff.net.2.base_layer.bias",
+    ".ff.net.2.down": ".ff.net.2.lora_A.weight",
+    ".ff.net.2.up": ".ff.net.2.lora_B.weight",
+    ".proj_in.bias": ".proj_in.base_layer.bias",
+    ".proj_in.down": ".proj_in.lora_A.weight",
+    ".proj_in.up": ".proj_in.lora_B.weight",
+    ".proj_out.bias": ".proj_out.base_layer.bias",
+    ".proj_out.down": ".proj_out.lora_A.weight",
+    ".proj_out.up": ".proj_out.lora_B.weight",
+    ".conv.bias": ".conv.base_layer.bias",
+    ".conv.down": ".conv.lora_A.weight",
+    ".conv.up": ".conv.lora_B.weight",
+    **{f".conv{i}.bias": f".conv{i}.base_layer.bias" for i in range(1, 3)},
+    **{f".conv{i}.down": f".conv{i}.lora_A.weight" for i in range(1, 3)},
+    **{f".conv{i}.up": f".conv{i}.lora_B.weight" for i in range(1, 3)},
+    "conv_in.bias": "conv_in.base_layer.bias",
+    "conv_in.down": "conv_in.lora_A.weight",
+    "conv_in.up": "conv_in.lora_B.weight",
+    ".conv_shortcut.bias": ".conv_shortcut.base_layer.bias",
+    ".conv_shortcut.down": ".conv_shortcut.lora_A.weight",
+    ".conv_shortcut.up": ".conv_shortcut.lora_B.weight",
+    **{f".linear_{i}.bias": f".linear_{i}.base_layer.bias" for i in range(1, 3)},
+    **{f".linear_{i}.down": f".linear_{i}.lora_A.weight" for i in range(1, 3)},
+    **{f".linear_{i}.up": f".linear_{i}.lora_B.weight" for i in range(1, 3)},
+    "time_emb_proj.bias": "time_emb_proj.base_layer.bias",
+    "time_emb_proj.down": "time_emb_proj.lora_A.weight",
+    "time_emb_proj.up": "time_emb_proj.lora_B.weight",
+    "controlnet_cond_embedding.conv_in.bias": "controlnet_cond_embedding.conv_in.modules_to_save.bias",
+    "controlnet_cond_embedding.conv_out.bias": "controlnet_cond_embedding.conv_out.modules_to_save.bias",
+    **{f"controlnet_cond_embedding.blocks.{i}.bias": f"controlnet_cond_embedding.blocks.{i}.modules_to_save.bias" for i in range(6)},
+    **{f"controlnet_down_blocks.{i}.bias": f"controlnet_down_blocks.{i}.modules_to_save.bias" for i in range(9)},
+    "controlnet_mid_block.bias": "controlnet_mid_block.modules_to_save.bias",
+    ".norm.bias": ".norm.modules_to_save.bias",
+    **{f".norm{i}.bias": f".norm{i}.modules_to_save.bias" for i in range(1, 4)},
 }
 
 DIFFUSERS_TO_PEFT = {
@@ -280,10 +319,29 @@ def convert_control_lora_state_dict_to_peft(state_dict):
         }
         layers_per_block = 2
 
+        # op blocks
+        op_blocks = [key for key in state_dict if "0.op" in key]
+
         converted_state_dict = {}
         # Conv in layers
         for key in input_blocks[0]:
-            diffusers_key = key.replace("conv_in", "input_blocks.0.0")
+            diffusers_key = key.replace("input_blocks.0.0", "conv_in")
+            converted_state_dict[diffusers_key] = state_dict.get(key)
+        
+        # controlnet time embedding blocks
+        time_embedding_blocks = [key for key in state_dict if "time_embed" in key]
+        for key in time_embedding_blocks:
+            diffusers_key = (key.replace("time_embed.0", "time_embedding.linear_1")
+                .replace("time_embed.2", "time_embedding.linear_2")
+            )
+            converted_state_dict[diffusers_key] = state_dict.get(key)
+
+        # controlnet label embedding blocks
+        label_embedding_blocks = [key for key in state_dict if "label_emb" in key]
+        for key in label_embedding_blocks:
+            diffusers_key = (key.replace("label_emb.0.0", "add_embedding.linear_1")
+                .replace("label_emb.0.2", "add_embedding.linear_2")
+            )
             converted_state_dict[diffusers_key] = state_dict.get(key)
 
         # Down blocks
@@ -307,13 +365,10 @@ def convert_control_lora_state_dict_to_peft(state_dict):
                 )
                 converted_state_dict[diffusers_key] = state_dict.get(key)
 
-            if f"input_blocks.{i}.0.op.weight" in state_dict:
-                converted_state_dict[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = state_dict.get(
-                    f"input_blocks.{i}.0.op.weight"
-                )
-                converted_state_dict[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = state_dict.get(
-                    f"input_blocks.{i}.0.op.bias"
-                )
+            if f"input_blocks.{i}.0.op.bias" in state_dict:
+                for key in [key for key in op_blocks if f"input_blocks.{i}.0.op" in key]:
+                    diffusers_key = key.replace(f"input_blocks.{i}.0.op", f"down_blocks.{block_id}.downsamplers.0.conv")
+                    converted_state_dict[diffusers_key] = state_dict.get(key)
 
             attentions = [key for key in input_blocks[i] if f"input_blocks.{i}.1" in key]
             if attentions:
@@ -342,23 +397,23 @@ def convert_control_lora_state_dict_to_peft(state_dict):
             diffusers_key = max(key - 1, 0)
             if key % 2 == 0:
                 for k in middle_blocks[key]:
-                    diffusers_key = (k.replace("in_layers.0", "norm1")
+                    diffusers_key_hf = (k.replace("in_layers.0", "norm1")
                         .replace("in_layers.2", "conv1")
                         .replace("out_layers.0", "norm2")
                         .replace("out_layers.3", "conv2")
                         .replace("emb_layers.1", "time_emb_proj")
                         .replace("skip_connection", "conv_shortcut")
                     )
-                    diffusers_key = diffusers_key.replace(
-                        f"middle_block.{k}", f"mid_block.resnets.{diffusers_key}"
+                    diffusers_key_hf = diffusers_key_hf.replace(
+                        f"middle_block.{key}", f"mid_block.resnets.{diffusers_key}"
                     )
-                    converted_state_dict[diffusers_key] = state_dict.get(k)
+                    converted_state_dict[diffusers_key_hf] = state_dict.get(k)
             else:
                 for k in middle_blocks[key]:
-                    diffusers_key = k.replace(
-                        f"middle_block.{k}", f"mid_block.attentions.{diffusers_key}"
+                    diffusers_key_hf = k.replace(
+                        f"middle_block.{key}", f"mid_block.attentions.{diffusers_key}"
                     )
-                    converted_state_dict[diffusers_key] = state_dict.get(k)
+                    converted_state_dict[diffusers_key_hf] = state_dict.get(k)
         
         # mid block
         converted_state_dict["controlnet_mid_block.weight"] = state_dict.get("middle_block_out.0.weight")
@@ -383,6 +438,14 @@ def convert_control_lora_state_dict_to_peft(state_dict):
                 f"input_hint_block.{cond_block_id}.bias"
             )
         
+        for key in [key for key in state_dict if "input_hint_block.0" in key]:
+            diffusers_key = key.replace("input_hint_block.0", "controlnet_cond_embedding.conv_in")
+            converted_state_dict[diffusers_key] = state_dict.get(key)
+        
+        for key in [key for key in state_dict if "input_hint_block.14" in key]:
+            diffusers_key = key.replace(f"input_hint_block.14", "controlnet_cond_embedding.conv_out")
+            converted_state_dict[diffusers_key] = state_dict.get(key)
+
         return converted_state_dict
 
     state_dict = _convert_controlnet_to_diffusers(state_dict)

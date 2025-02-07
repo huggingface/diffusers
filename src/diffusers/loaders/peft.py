@@ -245,13 +245,7 @@ class PeftAdapterMixin:
             # check with first key if is not in peft format
             first_key = next(iter(state_dict.keys()))
             if "lora_A" not in first_key:
-                if "lora_controlnet" in state_dict:
-                    del state_dict["lora_controlnet"]
-                    state_dict = convert_control_lora_state_dict_to_peft(state_dict)
-                else:
-                    state_dict = convert_unet_state_dict_to_peft(state_dict)
-            print(state_dict.keys())
-            print(len(state_dict.keys()))
+                state_dict = convert_unet_state_dict_to_peft(state_dict)
 
             rank = {}
             for key, val in state_dict.items():
@@ -759,3 +753,184 @@ class PeftAdapterMixin:
             # Pop also the corresponding adapter from the config
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
+
+
+class ControlLoRAMixin(PeftAdapterMixin):
+    TARGET_MODULES = ["to_q", "to_k", "to_v", "to_out.0", "ff.net.0.proj", "ff.net.2", "proj_in", "proj_out",
+                      "conv", "conv1", "conv2", "conv_in", "conv_shortcut", "linear_1", "linear_2", "time_emb_proj"]
+    SAVE_MODULES = ["controlnet_cond_embedding.conv_in", "controlnet_cond_embedding.blocks.0",
+                    "controlnet_cond_embedding.blocks.1", "controlnet_cond_embedding.blocks.2",
+                    "controlnet_cond_embedding.blocks.3", "controlnet_cond_embedding.blocks.4",
+                    "controlnet_cond_embedding.blocks.5", "controlnet_cond_embedding.conv_out",
+                    "controlnet_down_blocks.0", "controlnet_down_blocks.1", "controlnet_down_blocks.2",
+                    "controlnet_down_blocks.3", "controlnet_down_blocks.4", "controlnet_down_blocks.5",
+                    "controlnet_down_blocks.6", "controlnet_down_blocks.7", "controlnet_down_blocks.8",
+                    "controlnet_mid_block", "norm", "norm1", "norm2", "norm3"]
+
+    def load_lora_adapter(self, pretrained_model_name_or_path_or_dict, prefix="transformer", **kwargs):
+        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        adapter_name = kwargs.pop("adapter_name", None)
+        network_alphas = kwargs.pop("network_alphas", None)
+        _pipeline = kwargs.pop("_pipeline", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        allow_pickle = False
+
+        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+
+        user_agent = {
+            "file_type": "attn_procs_weights",
+            "framework": "pytorch",
+        }
+
+        state_dict = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+        if network_alphas is not None and prefix is None:
+            raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
+
+        if prefix is not None:
+            keys = list(state_dict.keys())
+            model_keys = [k for k in keys if k.startswith(f"{prefix}.")]
+            if len(model_keys) > 0:
+                state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
+
+        if len(state_dict) > 0:
+            if adapter_name in getattr(self, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."
+                )
+
+            # check with first key if is not in peft format
+            if "lora_controlnet" in state_dict:
+                del state_dict["lora_controlnet"]
+                state_dict = convert_control_lora_state_dict_to_peft(state_dict)
+
+            rank = {}
+            for key, val in state_dict.items():
+                # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
+                # Bias layers in LoRA only have a single dimension
+                if "lora_B" in key and val.ndim > 1:
+                    rank[key] = val.shape[1]
+
+            if network_alphas is not None and len(network_alphas) >= 1:
+                alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
+                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
+            lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
+
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"]:
+                    if is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<", "0.9.0"):
+                        lora_config_kwargs.pop("use_dora")
+
+            if "lora_bias" in lora_config_kwargs:
+                if lora_config_kwargs["lora_bias"]:
+                    if is_peft_version("<=", "0.13.2"):
+                        raise ValueError(
+                            "You need `peft` 0.14.0 at least to use `lora_bias` in LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<=", "0.13.2"):
+                        lora_config_kwargs.pop("lora_bias")
+
+            lora_config_kwargs["bias"] = "all"
+            lora_config_kwargs["target_modules"] = self.TARGET_MODULES
+            lora_config_kwargs["modules_to_save"] = self.SAVE_MODULES
+            lora_config = LoraConfig(**lora_config_kwargs)
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = "default"
+
+            # <Unsafe code
+            # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
+            # Now we remove any existing hooks to `_pipeline`.
+
+            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
+            # otherwise loading LoRA weights will lead to an error
+            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+            # To handle scenarios where we cannot successfully set state dict. If it's unsucessful,
+            # we should also delete the `peft_config` associated to the `adapter_name`.
+            try:
+                inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+                incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+            except Exception as e:
+                # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
+                if hasattr(self, "peft_config"):
+                    for module in self.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            active_adapters = module.active_adapters
+                            for active_adapter in active_adapters:
+                                if adapter_name in active_adapter:
+                                    module.delete_adapter(adapter_name)
+
+                    self.peft_config.pop(adapter_name)
+                logger.error(f"Loading {adapter_name} was unsucessful with the following error: \n{e}")
+                raise
+
+            warn_msg = ""
+            if incompatible_keys is not None:
+                # Check only for unexpected keys.
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
+                    if lora_unexpected_keys:
+                        warn_msg = (
+                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}. "
+                        )
+
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
+                    if lora_missing_keys:
+                        warn_msg += (
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}."
+                        )
+
+            if warn_msg:
+                logger.warning(warn_msg)
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
