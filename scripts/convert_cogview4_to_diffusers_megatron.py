@@ -1,12 +1,9 @@
 """
-Convert a CogView4 checkpoint to the Diffusers format.
-
-This script converts a CogView4 checkpoint to the Diffusers format, which can then be used
-with the Diffusers library.
+Convert a CogView4 checkpoint from Megatron to the Diffusers format.
 
 Example usage:
     python scripts/convert_cogview4_to_diffusers.py \
-        --transformer_checkpoint_path 'your path/cogview4_6b/1/mp_rank_00_model_states.pt' \
+        --transformer_checkpoint_path 'your path/cogview4_6b/mp_rank_00/model_optim_rng.pt' \
         --vae_checkpoint_path 'your path/cogview4_6b/imagekl_ch16.pt' \
         --output_path "THUDM/CogView4-6B" \
         --dtype "bf16"
@@ -25,7 +22,6 @@ Note: You must provide either --transformer_checkpoint_path or --vae_checkpoint_
 """
 
 import argparse
-from contextlib import nullcontext
 import torch
 from transformers import PreTrainedTokenizerFast, GlmForCausalLM
 from tqdm import tqdm

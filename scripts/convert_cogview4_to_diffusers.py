@@ -1,5 +1,6 @@
 """
-Convert a CogView4 checkpoint to the Diffusers format.
+Convert a CogView4 checkpoint from SAT(https://github.com/THUDM/SwissArmyTransformer) to the Diffusers format.
+(deprecated Since 2025-02-07 and will remove it in later CogView4 version)
 
 This script converts a CogView4 checkpoint to the Diffusers format, which can then be used
 with the Diffusers library.
@@ -216,19 +217,6 @@ def main(args):
         cache_dir=args.text_encoder_cache_dir,
         torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
     )
-
-    # TODO: This is for Older GLM-4 as https://huggingface.co/THUDM/glm-4-9b, will use https://huggingface.co/THUDM/glm-4-9b-hf for new transformers version format.
-    # TODO: Remove it later
-
-    # from transformers import AutoTokenizer,AutoModel
-    # text_encoder_id = "/share/home/zyx/Models/Megatron-VLM/examples/dit/ckpts/glm-4-9b"
-    # tokenizer = AutoTokenizer.from_pretrained(text_encoder_id,trust_remote_code=True)
-    # text_encoder = AutoModel.from_pretrained(
-    #     text_encoder_id,
-    #     cache_dir=args.text_encoder_cache_dir,
-    #     torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,
-    #     trust_remote_code = True
-    # )
 
     for param in text_encoder.parameters():
         param.data = param.data.contiguous()
