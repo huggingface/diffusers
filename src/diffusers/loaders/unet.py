@@ -308,6 +308,7 @@ class UNet2DConditionLoadersMixin:
             raise ValueError("PEFT backend is required for this method.")
 
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
         keys = list(state_dict.keys())
 
@@ -333,7 +334,8 @@ class UNet2DConditionLoadersMixin:
                 )
             elif adapter_name not in getattr(self, "peft_config", {}) and hotswap:
                 raise ValueError(
-                    f"Trying to hotswap LoRA adapter '{adapter_name}' but there is no existing adapter by that name."
+                    f"Trying to hotswap LoRA adapter '{adapter_name}' but there is no existing adapter by that name. "
+                    "Please choose an existing adapter name or set `hotswap=False` to prevent hotswapping."
                 )
 
             state_dict = convert_unet_state_dict_to_peft(state_dict_to_be_used)
@@ -382,106 +384,59 @@ class UNet2DConditionLoadersMixin:
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            def _check_hotswap_configs_compatible(config0, config1):
-                # To hot-swap two adapters, their configs must be compatible. Otherwise, the results could be false. E.g. if they
-                # use different alpha values, after hot-swapping, the alphas from the first adapter would still be used with the
-                # weights from the 2nd adapter, which would result in incorrect behavior. There is probably a way to swap these
-                # values as well, but that's not implemented yet, and it would trigger a re-compilation if the model is compiled.
-
-                # TODO: This is a very rough check at the moment and there are probably better ways than to error out
-                config_keys_to_check = ["lora_alpha", "use_rslora", "lora_dropout", "alpha_pattern", "use_dora"]
-                config0 = config0.to_dict()
-                config1 = config1.to_dict()
-                sentinel = object()
-                for key in config_keys_to_check:
-                    val0 = config0.get(key, sentinel)
-                    val1 = config1.get(key, sentinel)
-                    if val0 != val1:
-                        raise ValueError(f"Configs are incompatible: for {key}, {val0} != {val1}")
-
-            def _hotswap_adapter_from_state_dict(model, state_dict, adapter_name):
-                """
-                Swap out the LoRA weights from the model with the weights from state_dict.
-
-                It is assumed that the existing adapter and the new adapter are compatible.
-
-                Args:
-                    model: nn.Module
-                        The model with the loaded adapter.
-                    state_dict: dict[str, torch.Tensor]
-                        The state dict of the new adapter, which needs to be compatible (targeting same modules etc.).
-                    adapter_name: Optional[str]
-                        The name of the adapter that should be hot-swapped.
-
-                Raises:
-                    RuntimeError
-                        If the old and the new adapter are not compatible, a RuntimeError is raised.
-                """
-                from operator import attrgetter
-
-                #######################
-                # INSERT ADAPTER NAME #
-                #######################
-
-                remapped_state_dict = {}
-                expected_str = adapter_name + "."
-                for key, val in state_dict.items():
-                    if expected_str not in key:
-                        prefix, _, suffix = key.rpartition(".")
-                        key = f"{prefix}.{adapter_name}.{suffix}"
-                    remapped_state_dict[key] = val
-                state_dict = remapped_state_dict
-
-                ####################
-                # CHECK STATE_DICT #
-                ####################
-
-                # Ensure that all the keys of the new adapter correspond exactly to the keys of the old adapter, otherwise
-                # hot-swapping is not possible
-                parameter_prefix = "lora_"  # hard-coded for now
-                is_compiled = hasattr(model, "_orig_mod")
-                # TODO: there is probably a more precise way to identify the adapter keys
-                missing_keys = {k for k in model.state_dict() if (parameter_prefix in k) and (adapter_name in k)}
-                unexpected_keys = set()
-
-                # first: dry run, not swapping anything
-                for key, new_val in state_dict.items():
-                    try:
-                        old_val = attrgetter(key)(model)
-                    except AttributeError:
-                        unexpected_keys.add(key)
-                        continue
-
-                    if is_compiled:
-                        missing_keys.remove("_orig_mod." + key)
-                    else:
-                        missing_keys.remove(key)
-
-                if missing_keys or unexpected_keys:
-                    msg = "Hot swapping the adapter did not succeed."
-                    if missing_keys:
-                        msg += f" Missing keys: {', '.join(sorted(missing_keys))}."
-                    if unexpected_keys:
-                        msg += f" Unexpected keys: {', '.join(sorted(unexpected_keys))}."
-                    raise RuntimeError(msg)
-
-                ###################
-                # ACTUAL SWAPPING #
-                ###################
-
-                for key, new_val in state_dict.items():
-                    # no need to account for potential _orig_mod in key here, as torch handles that
-                    old_val = attrgetter(key)(model)
-                    old_val.data = new_val.data.to(device=old_val.device)
+            if hotswap:
+                try:
+                    from peft.utils.hotswap import _check_hotswap_configs_compatible, hotswap_adapter_from_state_dict
+                except ImportError as exc:
+                    msg = (
+                        "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
+                        "from source."
+                    )
+                    raise ImportError(msg) from exc
 
             if hotswap:
-                _check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
-                _hotswap_adapter_from_state_dict(self, state_dict, adapter_name)
-                # the hotswap function raises if there are incompatible keys, so if we reach this point we can set it to None
-                incompatible_keys = None
-            else:
-                inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
-                incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+
+                def map_state_dict_for_hotswap(sd):
+                    # For hotswapping, we need the adapter name to be present in the state dict keys
+                    new_sd = {}
+                    for k, v in sd.items():
+                        if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
+                            k = k[:-7] + f".{adapter_name}.weight"
+                        elif k.endswith("lora_B.bias"):  # lora_bias=True option
+                            k = k[:-5] + f".{adapter_name}.bias"
+                        new_sd[k] = v
+                    return new_sd
+
+            # To handle scenarios where we cannot successfully set state dict. If it's unsucessful,
+            # we should also delete the `peft_config` associated to the `adapter_name`.
+            try:
+                if hotswap:
+                    _check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
+                    hotswap_adapter_from_state_dict(
+                        model=self,
+                        state_dict=state_dict,
+                        adapter_name=adapter_name,
+                        config=lora_config,
+                    )
+                    # the hotswap function raises if there are incompatible keys, so if we reach this point we can set
+                    # it to None
+                    incompatible_keys = None
+                else:
+                    inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+                    incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+            except Exception as e:
+                # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
+                if hasattr(self, "peft_config"):
+                    for module in self.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            active_adapters = module.active_adapters
+                            for active_adapter in active_adapters:
+                                if adapter_name in active_adapter:
+                                    module.delete_adapter(adapter_name)
+
+                    self.peft_config.pop(adapter_name)
+                logger.error(f"Loading {adapter_name} was unsucessful with the following error: \n{e}")
+                raise
 
             warn_msg = ""
             if incompatible_keys is not None:

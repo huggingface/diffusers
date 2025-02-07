@@ -18,7 +18,6 @@ import json
 import os
 import random
 import shutil
-import subprocess
 import sys
 import tempfile
 import traceback
@@ -2179,54 +2178,153 @@ class PipelineNightlyTests(unittest.TestCase):
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
 
 
-class TestLoraHotSwapping:
+class TestLoraHotSwapping(unittest.TestCase):
     """Test that hotswapping does not result in recompilation.
 
     We're not extensively testing the hotswapping functionality since it is implemented in PEFT and is extensively
     tested there. The goal of this test is specifically to ensure that hotswapping with diffusers does not require
     recompilation.
 
-    The reason why we need to shell out instead of just running the script inside of the test is that shelling out is
-    required to collect the torch.compile logs.
+    See
+    https://github.com/huggingface/peft/blob/eaab05e18d51fb4cce20a73c9acd82a00c013b83/tests/test_gpu_examples.py#L4252
+    for the analogous PEFT test.
 
     """
 
+    def tearDown(self):
+        # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
+        # there will be recompilation errors, as torch caches the model when run in the same process.
+        super().tearDown()
+        torch._dynamo.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def get_small_unet(self):
+        # from diffusers UNet2DConditionModelTests
+        torch.manual_seed(0)
+        init_dict = {
+            "block_out_channels": (4, 8),
+            "norm_num_groups": 4,
+            "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
+            "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),
+            "cross_attention_dim": 8,
+            "attention_head_dim": 2,
+            "out_channels": 4,
+            "in_channels": 4,
+            "layers_per_block": 1,
+            "sample_size": 16,
+        }
+        model = UNet2DConditionModel(**init_dict)
+        return model.to(torch_device)
+
+    def get_unet_lora_config(self, lora_rank, lora_alpha):
+        # from diffusers test_models_unet_2d_condition.py
+        from peft import LoraConfig
+
+        unet_lora_config = LoraConfig(
+            r=lora_rank,
+            lora_alpha=lora_alpha,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        return unet_lora_config
+
+    def get_dummy_input(self):
+        # from UNet2DConditionModelTests
+        batch_size = 4
+        num_channels = 4
+        sizes = (16, 16)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor([10]).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
+
+        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
+
+    def check_hotswap(self, do_compile, rank0, rank1):
+        """
+        Check that hotswapping works on a small unet.
+
+        Steps:
+        - create 2 LoRA adapters and save them
+        - load the first adapter
+        - hotswap the second adapter
+        - check that the outputs are correct
+        - optionally compile the model
+
+        Note: We set rank == alpha here because save_lora_adapter does not save the alpha scalings, thus the test would
+        fail if the values are different. Since rank != alpha does not matter for the purpose of this test, this is
+        fine.
+
+        """
+        from peft.utils.hotswap import prepare_model_for_compiled_hotswap
+
+        dummy_input = self.get_dummy_input()
+        alpha0, alpha1 = rank0, rank1
+        max_rank = max([rank0, rank1])
+        lora_config0 = self.get_unet_lora_config(rank0, alpha0)
+        lora_config1 = self.get_unet_lora_config(rank1, alpha1)
+
+        unet = self.get_small_unet()
+        unet.add_adapter(lora_config0, adapter_name="adapter0")
+        with torch.inference_mode():
+            output0_before = unet(**dummy_input)["sample"]
+
+        unet.add_adapter(lora_config1, adapter_name="adapter1")
+        unet.set_adapter("adapter1")
+        with torch.inference_mode():
+            output1_before = unet(**dummy_input)["sample"]
+
+        # sanity check:
+        tol = 5e-3
+        assert not torch.allclose(output0_before, output1_before, atol=tol, rtol=tol)
+
+        with tempfile.TemporaryDirectory() as tmp_dirname:
+            unet.save_lora_adapter(os.path.join(tmp_dirname, "0"), safe_serialization=True, adapter_name="adapter0")
+            unet.save_lora_adapter(os.path.join(tmp_dirname, "1"), safe_serialization=True, adapter_name="adapter1")
+            del unet
+
+            unet = self.get_small_unet()
+            file_name0 = os.path.join(os.path.join(tmp_dirname, "0"), "pytorch_lora_weights.safetensors")
+            file_name1 = os.path.join(os.path.join(tmp_dirname, "1"), "pytorch_lora_weights.safetensors")
+            unet.load_lora_adapter(file_name0, safe_serialization=True, adapter_name="adapter0")
+
+            if do_compile or (rank0 != rank1):
+                # no need to prepare if the model is not compiled or if the ranks are identical
+                prepare_model_for_compiled_hotswap(
+                    unet,
+                    config={"adapter0": lora_config0, "adapter1": lora_config1},
+                    target_rank=max_rank,
+                )
+            if do_compile:
+                unet = torch.compile(unet, mode="reduce-overhead")
+
+            with torch.inference_mode():
+                output0_after = unet(**dummy_input)["sample"]
+            assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
+
+            unet.load_lora_adapter(file_name1, adapter_name="adapter0", hotswap=True)
+
+            # we need to call forward to potentially trigger recompilation
+            with torch.inference_mode():
+                output1_after = unet(**dummy_input)["sample"]
+            assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
+
     @slow
     @require_torch_2
-    @require_torch_gpu
+    @require_torch_accelerator
     @require_peft_backend
-    def test_hotswapping_compiled_model_does_not_trigger_recompilation(self):
-        env = os.environ.copy()
-        env["TORCH_LOGS"] = "guards,recompiles"
-        here = os.path.dirname(__file__)
-        file_name = os.path.join(here, "run_compiled_model_hotswap.py")
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_diffusers_model(self, rank0, rank1):
+        self.check_hotswap(do_compile=False, rank0=rank0, rank1=rank1)
 
-        # first test with hotswapping: should not trigger recompilation
-        process = subprocess.Popen(
-            [sys.executable, file_name, "1"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-
-        # Communicate will read the output and error streams, preventing deadlock
-        stdout, stderr = process.communicate()
-        exit_code = process.returncode
-
-        # sanity check:
-        assert exit_code == 0
-
-        # check that the recompilation message is not present
-        assert "__recompiles" not in stderr.decode()
-
-        # next, contingency check: without hotswapping, we *do* get recompilation
-        process = subprocess.Popen(
-            [sys.executable, file_name, "0"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-
-        # Communicate will read the output and error streams, preventing deadlock
-        stdout, stderr = process.communicate()
-        exit_code = process.returncode
-
-        # sanity check:
-        assert exit_code == 0
-
-        # check that the recompilation message is not present
-        assert "__recompiles" in stderr.decode()
+    @slow
+    @require_torch_2
+    @require_torch_accelerator
+    @require_peft_backend
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_diffusers_model(self, rank0, rank1):
+        # It's important to add this context to raise an error on recompilation
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            self.check_hotswap(do_compile=True, rank0=rank0, rank1=rank1)
