@@ -17,20 +17,8 @@ from typing import Optional, Tuple, Type, Union
 
 import torch
 
-from ..utils import get_logger, is_peft_available
+from ..utils import get_logger, is_peft_available, is_peft_version
 from .hooks import HookRegistry, ModelHook
-
-
-if is_peft_available():
-    from peft.helpers import disable_lora_input_dtype_casting
-    from peft.tuners.loha.layer import LoHaLayer
-    from peft.tuners.lokr.layer import LoKrLayer
-    from peft.tuners.lora.layer import LoraLayer
-    from peft.tuners.tuners_utils import BaseTunerLayer
-
-    PEFT_ADAPTER_LAYERS_NAMES = ()
-    for layer_cls in (LoHaLayer, LoKrLayer, LoraLayer):
-        PEFT_ADAPTER_LAYERS_NAMES += tuple(layer_cls.adapter_layer_names)
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -47,6 +35,11 @@ SUPPORTED_PYTORCH_LAYERS = (
 
 DEFAULT_SKIP_MODULES_PATTERN = ("pos_embed", "patch_embed", "norm", "^proj_in$", "^proj_out$")
 # fmt: on
+
+_SHOULD_DISABLE_PEFT_INPUT_AUTOCAST = is_peft_available() and is_peft_version(">", "0.14.0")
+if _SHOULD_DISABLE_PEFT_INPUT_AUTOCAST:
+    from peft.helpers import disable_input_dtype_casting
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
 
 class LayerwiseCastingHook(ModelHook):
@@ -106,7 +99,7 @@ class PeftInputAutocastDisableHook(ModelHook):
     """
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        with disable_lora_input_dtype_casting(module, disable=True):
+        with disable_input_dtype_casting(module):
             return self.fn_ref.original_forward(*args, **kwargs)
 
 
@@ -232,10 +225,21 @@ def apply_layerwise_casting_hook(
     registry.register_hook(hook, _LAYERWISE_CASTING_HOOK)
 
 
-def _disable_peft_input_autocast(module: torch.nn.Module) -> None:
+def _is_layerwise_casting_active(module: torch.nn.Module) -> bool:
     for submodule in module.modules():
-        if not isinstance(submodule, BaseTunerLayer):
-            continue
-        registry = HookRegistry.check_if_exists_or_initialize(submodule)
-        hook = PeftInputAutocastDisableHook()
-        registry.register_hook(hook, _PEFT_AUTOCAST_DISABLE_HOOK)
+        if (
+            hasattr(submodule, "_diffusers_hook")
+            and submodule._diffusers_hook.get_hook(_LAYERWISE_CASTING_HOOK) is not None
+        ):
+            return True
+    return False
+
+
+def _disable_peft_input_autocast(module: torch.nn.Module) -> None:
+    if not _SHOULD_DISABLE_PEFT_INPUT_AUTOCAST:
+        return
+    for submodule in module.modules():
+        if isinstance(submodule, BaseTunerLayer) and _is_layerwise_casting_active(submodule):
+            registry = HookRegistry.check_if_exists_or_initialize(submodule)
+            hook = PeftInputAutocastDisableHook()
+            registry.register_hook(hook, _PEFT_AUTOCAST_DISABLE_HOOK)
