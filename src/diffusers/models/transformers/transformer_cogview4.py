@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Dict, Union
+from typing import Any, Dict, Union
 
 import torch
 import torch.nn as nn
@@ -80,13 +80,17 @@ class CogView4TransformerBlock(nn.Module):
         self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
 
     def multi_modulate(self, hidden_states, encoder_hidden_states, factors) -> torch.Tensor:
-        n_sample, n_type, h = factors[0].shape
+        _, _, h = factors[0].shape
         shift_factor, scale_factor = factors[0].view(-1, h), factors[1].view(-1, h)
 
         shift_factor_hidden_states, shift_factor_encoder_hidden_states = shift_factor.chunk(2, dim=0)
         scale_factor_hidden_states, scale_factor_encoder_hidden_states = scale_factor.chunk(2, dim=0)
-
+        shift_factor_hidden_states = shift_factor_hidden_states.unsqueeze(1)
+        scale_factor_hidden_states = scale_factor_hidden_states.unsqueeze(1)
         hidden_states = torch.addcmul(shift_factor_hidden_states, hidden_states, (1 + scale_factor_hidden_states))
+
+        shift_factor_encoder_hidden_states = shift_factor_encoder_hidden_states.unsqueeze(1)
+        scale_factor_encoder_hidden_states = scale_factor_encoder_hidden_states.unsqueeze(1)
         encoder_hidden_states = torch.addcmul(
             shift_factor_encoder_hidden_states, encoder_hidden_states, (1 + scale_factor_encoder_hidden_states)
         )
@@ -94,11 +98,14 @@ class CogView4TransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
     def multi_gate(self, hidden_states, encoder_hidden_states, factor):
-        batch_size, seq_len, hidden_dim = hidden_states.shape
+        _, _, hidden_dim = hidden_states.shape
         gate_factor = factor.view(-1, hidden_dim)
         gate_factor_hidden_states, gate_factor_encoder_hidden_states = gate_factor.chunk(2, dim=0)
+        gate_factor_hidden_states = gate_factor_hidden_states.unsqueeze(1)
+        gate_factor_encoder_hidden_states = gate_factor_encoder_hidden_states.unsqueeze(1)
         hidden_states = gate_factor_hidden_states * hidden_states
         encoder_hidden_states = gate_factor_encoder_hidden_states * encoder_hidden_states
+
         return hidden_states, encoder_hidden_states
 
     def forward(
@@ -111,12 +118,7 @@ class CogView4TransformerBlock(nn.Module):
     ) -> torch.Tensor:
         batch_size, encoder_hidden_states_len, hidden_dim = encoder_hidden_states.shape
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-
         residual = hidden_states
-
-        # time_embedding embedding, [n_sample, h]
-        assert time_embedding is not None
-
         layernorm_factor = (
             self.adaln(time_embedding)
             .view(
@@ -128,9 +130,6 @@ class CogView4TransformerBlock(nn.Module):
             .permute(1, 2, 0, 3)
             .contiguous()
         )
-
-        ##############################################################
-        # Optional Input Layer norm
         hidden_states = self.layernorm(hidden_states)
         hidden_states, encoder_hidden_states = self.multi_modulate(
             hidden_states=hidden_states[:, encoder_hidden_states_len:],
@@ -151,7 +150,6 @@ class CogView4TransformerBlock(nn.Module):
         hidden_states += residual
 
         residual = hidden_states
-        ##############################################################
         hidden_states = self.layernorm(hidden_states)
         hidden_states, encoder_hidden_states = self.multi_modulate(
             hidden_states=hidden_states[:, encoder_hidden_states_len:],
@@ -167,8 +165,6 @@ class CogView4TransformerBlock(nn.Module):
         )
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
         hidden_states += residual
-
-        ##############################################################
         hidden_states, encoder_hidden_states = (
             hidden_states[:, encoder_hidden_states_len:],
             hidden_states[:, :encoder_hidden_states_len],
