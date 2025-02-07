@@ -1000,7 +1000,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        control_image: PipelineImageInput = None,
+        control_image: Union[PipelineImageInput, List[PipelineImageInput]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -1027,7 +1027,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         guess_mode: bool = False,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
-        control_mode: Optional[Union[int, List[int]]] = None,
+        control_mode: Optional[Union[int, List[int], List[List[int]]]] = None,
         original_size: Tuple[int, int] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Tuple[int, int] = None,
@@ -1049,7 +1049,7 @@ class StableDiffusionXLControlNetUnionPipeline(
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders.
-            control_image (`PipelineImageInput`):
+            control_image (`PipelineImageInput` or `List[PipelineImageInput]`, *optional*):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
                 specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
                 as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
@@ -1141,8 +1141,11 @@ class StableDiffusionXLControlNetUnionPipeline(
                 The percentage of total steps at which the ControlNet starts applying.
             control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
                 The percentage of total steps at which the ControlNet stops applying.
-            control_mode (`int` or `List[int]`, *optional*):
-
+            control_mode (`int` or `List[int]` or `List[List[int]], *optional*):
+                The control condition types for the ControlNet. See the ControlNet's model card forinformation on the
+                available control modes. If multiple ControlNets are specified in `init`, control_mode should be a list
+                where each ControlNet should have its corresponding control mode list. Should reflect the order of
+                conditions in control_image.
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
                 `original_size` defaults to `(height, width)` if not specified. Part of SDXL's micro-conditioning as
