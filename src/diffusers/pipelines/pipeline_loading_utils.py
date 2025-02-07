@@ -630,6 +630,7 @@ def load_sub_model(
     cached_folder: Union[str, os.PathLike],
     use_safetensors: bool,
     dduf_entries: Optional[Dict[str, DDUFEntry]],
+    provider_options: Any,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
 
@@ -676,6 +677,7 @@ def load_sub_model(
     if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
         loading_kwargs["provider"] = provider
         loading_kwargs["sess_options"] = sess_options
+        loading_kwargs["provider_options"] = provider_options
 
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
