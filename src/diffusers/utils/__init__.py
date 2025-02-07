@@ -122,6 +122,7 @@ from .state_dict_utils import (
     convert_state_dict_to_kohya,
     convert_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
+    convert_control_lora_state_dict_to_peft,
 )
 
 

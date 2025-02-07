@@ -21,10 +21,12 @@ from typing import Dict, List, Optional, Union
 import safetensors
 import torch
 
+from ..loaders.lora_conversion_utils import _convert_stabilityai_control_lora_to_diffusers
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
     check_peft_version,
+    convert_control_lora_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
@@ -243,7 +245,13 @@ class PeftAdapterMixin:
             # check with first key if is not in peft format
             first_key = next(iter(state_dict.keys()))
             if "lora_A" not in first_key:
-                state_dict = convert_unet_state_dict_to_peft(state_dict)
+                if "lora_controlnet" in state_dict:
+                    del state_dict["lora_controlnet"]
+                    state_dict = convert_control_lora_state_dict_to_peft(state_dict)
+                else:
+                    state_dict = convert_unet_state_dict_to_peft(state_dict)
+            print(state_dict.keys())
+            print(len(state_dict.keys()))
 
             rank = {}
             for key, val in state_dict.items():
