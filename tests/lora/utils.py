@@ -2157,3 +2157,64 @@ class PeftLoraLoaderMixinTests:
 
         pipe_float8_e4m3_bf16 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
         pipe_float8_e4m3_bf16(**inputs, generator=torch.manual_seed(0))[0]
+
+    @require_peft_version_greater("0.14.0")
+    def test_layerwise_casting_peft_input_autocast_denoiser(self):
+        r"""
+        A test that checks if layerwise casting works correctly with PEFT layers and forward pass does not fail. This
+        is different from `test_layerwise_casting_inference_denoiser` as that disables the application of layerwise
+        cast hooks on the PEFT layers (relevant logic in `models.modeling_utils.ModelMixin.enable_layerwise_casting`).
+        In this test, we enable the layerwise casting on the PEFT layers as well. If run with PEFT version < 0.14.0,
+        this test will fail with the following error:
+
+        ```
+        RuntimeError: expected mat1 and mat2 to have the same dtype, but got: c10::Float8_e4m3fn != float
+        ```
+
+        See the docstring of [`hooks.layerwise_casting.PeftInputAutocastDisableHook`] for more details.
+        """
+
+        from diffusers.hooks.layerwise_casting import (
+            _PEFT_AUTOCAST_DISABLE_HOOK,
+            DEFAULT_SKIP_MODULES_PATTERN,
+            SUPPORTED_PYTORCH_LAYERS,
+            apply_layerwise_casting,
+        )
+
+        storage_dtype = torch.float8_e4m3fn
+        compute_dtype = torch.float32
+
+        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device, dtype=compute_dtype)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+        if getattr(denoiser, "_skip_layerwise_casting_patterns", None) is not None:
+            patterns_to_check += tuple(denoiser._skip_layerwise_casting_patterns)
+
+        apply_layerwise_casting(
+            denoiser, storage_dtype=storage_dtype, compute_dtype=compute_dtype, skip_modules_pattern=patterns_to_check
+        )
+
+        # This will also check if the peft layers are in torch.float8_e4m3fn dtype (unlike test_layerwise_casting_inference_denoiser)
+        for name, module in denoiser.named_modules():
+            if not isinstance(module, SUPPORTED_PYTORCH_LAYERS):
+                continue
+            dtype_to_check = storage_dtype
+            if any(re.search(pattern, name) for pattern in patterns_to_check):
+                dtype_to_check = compute_dtype
+            if getattr(module, "weight", None) is not None:
+                self.assertEqual(module.weight.dtype, dtype_to_check)
+            if getattr(module, "bias", None) is not None:
+                self.assertEqual(module.bias.dtype, dtype_to_check)
+            if isinstance(module, BaseTunerLayer):
+                self.assertTrue(getattr(module, "_diffusers_hook", None) is not None)
+                self.assertTrue(module._diffusers_hook.get_hook(_PEFT_AUTOCAST_DISABLE_HOOK) is not None)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        pipe(**inputs, generator=torch.manual_seed(0))[0]

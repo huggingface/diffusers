@@ -221,3 +221,7 @@ pipe.delete_adapters("toy")
 pipe.get_active_adapters()
 ["pixel"]
 ```
+
+## PeftInputAutocastDisableHook
+
+[[autodoc]] hooks.layerwise_casting.PeftInputAutocastDisableHook

@@ -79,8 +79,8 @@ class LayerwiseCastingHook(ModelHook):
 
 class PeftInputAutocastDisableHook(ModelHook):
     r"""
-    A hook that disables the casting of inputs to the module weight dtype for the forward pass. By default, PEFT casts
-    the inputs to the weight dtype of the module, which can lead to precision loss.
+    A hook that disables the casting of inputs to the module weight dtype during the forward pass. By default, PEFT
+    casts the inputs to the weight dtype of the module, which can lead to precision loss.
 
     The reasons for needing this are:
         - If we don't add PEFT layers' weight names to `skip_modules_pattern` when applying layerwise casting, the
@@ -94,7 +94,7 @@ class PeftInputAutocastDisableHook(ModelHook):
                PEFT implementation (as linked in the reference above), and assuming running layerwise casting inference
                with storage_dtype=torch.float8_e4m3fn and compute_dtype=torch.bfloat16, inputs are casted to
                torch.float8_e4m3fn in the lora layer. We will then upcast back to torch.bfloat16 when we continue the
-               forward pass with PEFT linear forward or Diffusers layer forward, with a `send_to_dtype` operation from
+               forward pass in PEFT linear forward or Diffusers layer forward, with a `send_to_dtype` operation from
                LayerwiseCastingHook. This will be a lossy operation and result in poorer generation quality.
     """
 
