@@ -742,22 +742,21 @@ class StableDiffusionXLControlNetUnionPipeline(
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
         if isinstance(controlnet, ControlNetUnionModel):
-            self.check_image(image, prompt, prompt_embeds)
+            for image_ in image:
+                self.check_image(image_, prompt, prompt_embeds)
         elif isinstance(controlnet, MultiControlNetUnionModel):
             if not isinstance(image, list):
                 raise TypeError("For multiple controlnets: `image` must be type `list`")
-
-            # When `image` is a nested list:
-            # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
             elif not all(isinstance(i, list) for i in image):
-                raise ValueError("For multiple controlnets: elements of `image` must be list of conditionings.")
+                    raise ValueError("For multiple controlnets: elements of `image` must be list of conditionings.")
             elif len(image) != len(self.controlnet.nets):
                 raise ValueError(
                     f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
                 )
-
-            for image_ in image:
-                self.check_image(image_, prompt, prompt_embeds)
+            
+            for images_ in image:
+                for image_ in images_:
+                    self.check_image(image_, prompt, prompt_embeds)
         else:
             assert False
 
@@ -1243,11 +1242,11 @@ class StableDiffusionXLControlNetUnionPipeline(
         )
 
         if isinstance(controlnet, ControlNetUnionModel):
-            control_type = torch.nn.functional.one_hot(torch.tensor(control_mode), controlnet.config.num_control_type)
+            control_type = torch.zeros(controlnet.config.num_control_type).scatter(0, torch.tensor(control_mode), 1)
         elif isinstance(controlnet, MultiControlNetUnionModel):
             control_type = [
-                torch.nn.functional.one_hot(torch.tensor(_control_mode), _controlnet.config.num_control_type)
-                for _control_mode, _controlnet in zip(control_mode, self.controlnet.nets)
+                torch.zeros(controlnet_.config.num_control_type).scatter(0, torch.tensor(control_mode_), 1)
+                for control_mode_, controlnet_ in zip(control_mode, self.controlnet.nets)
             ]
 
         self._guidance_scale = guidance_scale
