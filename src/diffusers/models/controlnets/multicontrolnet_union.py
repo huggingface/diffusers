@@ -79,6 +79,7 @@ class MultiControlNetUnionModel(ModelMixin):
 
         return down_block_res_samples, mid_block_res_sample
 
+    # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.save_pretrained with MultiControlNetModel->MultiControlNetUnionModel
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
