@@ -40,6 +40,7 @@ class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTester
         ]
     )
 
+    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
 
