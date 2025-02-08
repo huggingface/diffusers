@@ -156,7 +156,6 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
         scheduler = FlowMatchEulerDiscreteScheduler(invert_sigmas=True, num_train_timesteps=1)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-        # tokenizer = AutoTokenizer.from_pretrained("Shitao/OmniGen-v1")
 
         components = {
             "transformer": transformer.eval(),
