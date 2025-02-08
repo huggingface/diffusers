@@ -1245,10 +1245,10 @@ class StableDiffusionXLControlNetUnionPipeline(
         )
 
         if isinstance(controlnet, ControlNetUnionModel):
-            control_type = torch.zeros(controlnet.config.num_control_type).scatter(0, torch.tensor(control_mode), 1)
+            control_type = torch.zeros(controlnet.config.num_control_type).scatter_(0, torch.tensor(control_mode), 1)
         elif isinstance(controlnet, MultiControlNetUnionModel):
             control_type = [
-                torch.zeros(controlnet_.config.num_control_type).scatter(0, torch.tensor(control_mode_), 1)
+                torch.zeros(controlnet_.config.num_control_type).scatter_(0, torch.tensor(control_mode_), 1)
                 for control_mode_, controlnet_ in zip(control_mode, self.controlnet.nets)
             ]
 
