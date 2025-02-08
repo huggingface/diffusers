@@ -342,7 +342,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 encoded image latents by VAE
             input_image_sizes (`dict`):
                 the indices of the input_img_latents in the input_ids
-            attention_mask (`torch.FloatTensor`):
+            attention_mask (`torch.Tensor`):
                 mask for self-attention
             position_ids (`torch.LongTensor`):
                 id to represent position
