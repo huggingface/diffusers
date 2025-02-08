@@ -376,9 +376,9 @@ class OmniGenPatchEmbed(nn.Module):
         self.pos_embed_max_size = pos_embed_max_size
 
         pos_embed = get_2d_sincos_pos_embed(
-            embed_dim, self.pos_embed_max_size, base_size=base_size, interpolation_scale=self.interpolation_scale
+            embed_dim, self.pos_embed_max_size, base_size=base_size, interpolation_scale=self.interpolation_scale, output_type="pt"
         )
-        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=True)
+        self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=True)
 
     def cropped_pos_embed(self, height, width):
         """Crops positional embeddings for SD3 compatibility."""
