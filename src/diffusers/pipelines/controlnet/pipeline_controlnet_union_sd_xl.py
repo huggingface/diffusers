@@ -748,12 +748,12 @@ class StableDiffusionXLControlNetUnionPipeline(
             if not isinstance(image, list):
                 raise TypeError("For multiple controlnets: `image` must be type `list`")
             elif not all(isinstance(i, list) for i in image):
-                    raise ValueError("For multiple controlnets: elements of `image` must be list of conditionings.")
+                raise ValueError("For multiple controlnets: elements of `image` must be list of conditionings.")
             elif len(image) != len(self.controlnet.nets):
                 raise ValueError(
                     f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
                 )
-            
+
             for images_ in image:
                 for image_ in images_:
                     self.check_image(image_, prompt, prompt_embeds)
