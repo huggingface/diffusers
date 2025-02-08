@@ -119,6 +119,7 @@ class MultiControlNetUnionModel(ModelMixin):
             )
 
     @classmethod
+    # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.from_pretrained with MultiControlNetModel->MultiControlNetUnionModel
     def from_pretrained(cls, pretrained_model_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
         Instantiate a pretrained MultiControlNetUnion model from multiple pre-trained controlnet models.
