@@ -338,7 +338,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 Used to indicate denoising step.
             input_ids (`torch.LongTensor`):
                 token ids
-            input_img_latents (`torch.FloatTensor`):
+            input_img_latents (`torch.Tensor`):
                 encoded image latents by VAE
             input_image_sizes (`dict`):
                 the indices of the input_img_latents in the input_ids
