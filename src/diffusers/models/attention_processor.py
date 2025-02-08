@@ -3993,9 +3993,9 @@ class OmniGenAttnProcessor2_0:
         # Get key-value heads
         kv_heads = inner_dim // head_dim
 
-        query = query.view(batch_size, -1, attn.heads, head_dim)
-        key = key.view(batch_size, -1, kv_heads, head_dim)
-        value = value.view(batch_size, -1, kv_heads, head_dim)
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
 
         # Apply RoPE if needed
         if query_rotary_emb is not None:
@@ -4004,16 +4004,6 @@ class OmniGenAttnProcessor2_0:
             key = apply_rotary_emb(key, key_rotary_emb, revert_x_as_rotated=True)
 
         query, key = query.to(dtype), key.to(dtype)
-
-        # perform Grouped-qurey Attention (GQA)
-        n_rep = attn.heads // kv_heads
-        if n_rep > 1:
-            key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-            value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
-
-        query = query.transpose(1, 2)
-        key = key.transpose(1, 2)
-        value = value.transpose(1, 2)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         hidden_states = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)

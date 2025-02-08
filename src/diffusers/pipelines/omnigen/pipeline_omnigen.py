@@ -229,20 +229,6 @@ class OmniGenPipeline(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
-    @staticmethod
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
-        latent_image_ids = torch.zeros(height, width, 3)
-        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
-        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
-
-        latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
-
-        latent_image_ids = latent_image_ids.reshape(
-            latent_image_id_height * latent_image_id_width, latent_image_id_channels
-        )
-
-        return latent_image_ids.to(device=device, dtype=dtype)
-
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -272,6 +258,7 @@ class OmniGenPipeline(
         """
         self.vae.disable_tiling()
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -320,9 +307,7 @@ class OmniGenPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        input_images: Optional[
-            PipelineImageInput
-        ] = None,
+        input_images: Union[PipelineImageInput, List[PipelineImageInput]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -348,7 +333,7 @@ class OmniGenPipeline(
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If the input includes images, need to add
                 placeholders `<img><|image_i|></img>` in the prompt to indicate the position of the i-th images.
-            input_images (`PipelineImageInput`, *optional*):
+            input_images (`PipelineImageInput` or `List[PipelineImageInput]`, *optional*):
                 The list of input images. We will replace the "<|image_i|>" in prompt with the i-th image in list.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.

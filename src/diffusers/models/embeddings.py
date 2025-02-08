@@ -1290,19 +1290,8 @@ def apply_rotary_emb(
             cos = cos[None, None]
             sin = sin[None, None]
         elif len(cos.shape) == 3:
-            # Used for OmniGen
-            cos = cos[
-                :,
-                :,
-                None,
-                :,
-            ]
-            sin = sin[
-                :,
-                :,
-                None,
-                :,
-            ]
+            cos = cos[:, None]
+            sin = sin[:, None]
         cos, sin = cos.to(x.device), sin.to(x.device)
 
         if revert_x_as_rotated:
