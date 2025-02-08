@@ -12,24 +12,291 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Union
+import math
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
+import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers
-from ..attention import OmniGenFeedForward
-from ..attention_processor import Attention, AttentionProcessor, OmniGenAttnProcessor2_0
-from ..embeddings import OmniGenPatchEmbed, OmniGenSuScaledRotaryEmbedding, TimestepEmbedding, Timesteps
+from ..attention_processor import Attention, AttentionProcessor
+from ..embeddings import TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class OmniGenFeedForward(nn.Module):
+    r"""
+    A feed-forward layer for OmniGen.
+
+    Parameters:
+        hidden_size (`int`):
+            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
+            hidden representations.
+        intermediate_size (`int`): The intermediate dimension of the feedforward layer.
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+    ):
+        super().__init__()
+        self.gate_up_proj = nn.Linear(hidden_size, 2 * intermediate_size, bias=False)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
+
+        self.activation_fn = nn.SiLU()
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        up_states = self.gate_up_proj(hidden_states)
+
+        gate, up_states = up_states.chunk(2, dim=-1)
+        up_states = up_states * self.activation_fn(gate)
+
+        return self.down_proj(up_states)
+
+
+class OmniGenPatchEmbed(nn.Module):
+    """2D Image to Patch Embedding with support for OmniGen."""
+
+    def __init__(
+        self,
+        patch_size: int = 2,
+        in_channels: int = 4,
+        embed_dim: int = 768,
+        bias: bool = True,
+        interpolation_scale: float = 1,
+        pos_embed_max_size: int = 192,
+        base_size: int = 64,
+    ):
+        super().__init__()
+
+        self.output_image_proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
+        )
+        self.input_image_proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
+        )
+
+        self.patch_size = patch_size
+        self.interpolation_scale = interpolation_scale
+        self.pos_embed_max_size = pos_embed_max_size
+
+        pos_embed = get_2d_sincos_pos_embed(
+            embed_dim, self.pos_embed_max_size, base_size=base_size, interpolation_scale=self.interpolation_scale, output_type="pt"
+        )
+        self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=True)
+
+    def cropped_pos_embed(self, height, width):
+        """Crops positional embeddings for SD3 compatibility."""
+        if self.pos_embed_max_size is None:
+            raise ValueError("`pos_embed_max_size` must be set for cropping.")
+
+        height = height // self.patch_size
+        width = width // self.patch_size
+        if height > self.pos_embed_max_size:
+            raise ValueError(
+                f"Height ({height}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
+            )
+        if width > self.pos_embed_max_size:
+            raise ValueError(
+                f"Width ({width}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
+            )
+
+        top = (self.pos_embed_max_size - height) // 2
+        left = (self.pos_embed_max_size - width) // 2
+        spatial_pos_embed = self.pos_embed.reshape(1, self.pos_embed_max_size, self.pos_embed_max_size, -1)
+        spatial_pos_embed = spatial_pos_embed[:, top : top + height, left : left + width, :]
+        spatial_pos_embed = spatial_pos_embed.reshape(1, -1, spatial_pos_embed.shape[-1])
+        return spatial_pos_embed
+
+    def patch_embeddings(self, latent, is_input_image: bool):
+        if is_input_image:
+            latent = self.input_image_proj(latent)
+        else:
+            latent = self.output_image_proj(latent)
+        latent = latent.flatten(2).transpose(1, 2)
+        return latent
+
+    def forward(self, latent: torch.Tensor, is_input_image: bool, padding_latent: torch.Tensor = None):
+        """
+        Args:
+            latent: encoded image latents
+            is_input_image: use input_image_proj or output_image_proj
+            padding_latent:
+                When sizes of target images are inconsistent, use `padding_latent` to maintain consistent sequence
+                length.
+
+        Returns: torch.Tensor
+
+        """
+        if isinstance(latent, list):
+            if padding_latent is None:
+                padding_latent = [None] * len(latent)
+            patched_latents = []
+            for sub_latent, padding in zip(latent, padding_latent):
+                height, width = sub_latent.shape[-2:]
+                sub_latent = self.patch_embeddings(sub_latent, is_input_image)
+                pos_embed = self.cropped_pos_embed(height, width)
+                sub_latent = sub_latent + pos_embed
+                if padding is not None:
+                    sub_latent = torch.cat([sub_latent, padding.to(sub_latent.device)], dim=-2)
+                patched_latents.append(sub_latent)
+        else:
+            height, width = latent.shape[-2:]
+            pos_embed = self.cropped_pos_embed(height, width)
+            latent = self.patch_embeddings(latent, is_input_image)
+            patched_latents = latent + pos_embed
+
+        return patched_latents
+
+
+class OmniGenSuScaledRotaryEmbedding(nn.Module):
+    def __init__(
+        self, dim, max_position_embeddings=131072, original_max_position_embeddings=4096, base=10000, rope_scaling=None
+    ):
+        super().__init__()
+
+        self.dim = dim
+        self.max_position_embeddings = max_position_embeddings
+        self.base = base
+
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float() / self.dim))
+        self.register_buffer("inv_freq", tensor=inv_freq, persistent=False)
+
+        self.short_factor = rope_scaling["short_factor"]
+        self.long_factor = rope_scaling["long_factor"]
+        self.original_max_position_embeddings = original_max_position_embeddings
+
+    @torch.no_grad()
+    def forward(self, x, position_ids):
+        seq_len = torch.max(position_ids) + 1
+        if seq_len > self.original_max_position_embeddings:
+            ext_factors = torch.tensor(self.long_factor, dtype=torch.float32, device=x.device)
+        else:
+            ext_factors = torch.tensor(self.short_factor, dtype=torch.float32, device=x.device)
+
+        inv_freq_shape = torch.arange(0, self.dim, 2, dtype=torch.int64, device=x.device).float() / self.dim
+        self.inv_freq = 1.0 / (ext_factors * self.base**inv_freq_shape)
+
+        inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
+        position_ids_expanded = position_ids[:, None, :].float()
+
+        # Force float32 since bfloat16 loses precision on long contexts
+        # See https://github.com/huggingface/transformers/pull/29285
+        device_type = x.device.type
+        device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
+        with torch.autocast(device_type=device_type, enabled=False):
+            freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+            emb = torch.cat((freqs, freqs), dim=-1)
+
+            scale = self.max_position_embeddings / self.original_max_position_embeddings
+            if scale <= 1.0:
+                scaling_factor = 1.0
+            else:
+                scaling_factor = math.sqrt(1 + math.log(scale) / math.log(self.original_max_position_embeddings))
+
+            cos = emb.cos() * scaling_factor
+            sin = emb.sin() * scaling_factor
+        return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+
+
+def apply_rotary_emb(
+    x: torch.Tensor,
+    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
+    to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
+    reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
+    tensors contain rotary embeddings and are returned as real tensors.
+
+    Args:
+        x (`torch.Tensor`):
+            Query or key tensor to apply rotary embeddings. [B, H, S, D] xk (torch.Tensor): Key tensor to apply
+        freqs_cis (`Tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
+    """
+    
+    cos, sin = freqs_cis  # [S, D]
+    if len(cos.shape) == 2:
+        cos = cos[None, None]
+        sin = sin[None, None]
+    elif len(cos.shape) == 3:
+        cos = cos[:, None]
+        sin = sin[:, None]
+    cos, sin = cos.to(x.device), sin.to(x.device)
+
+    # Rotates half the hidden dims of the input. this rorate function is widely used in LLM, e.g. Llama, Phi3, etc.
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    x_rotated = torch.cat((-x2, x1), dim=-1)
+       
+    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    return out
+    
+
+class OmniGenAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
+    used in the OmniGen model.
+    """
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+
+        batch_size, sequence_length, _ = hidden_states.shape
+
+        # Get Query-Key-Value Pair
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        bsz, q_len, query_dim = query.size()
+        inner_dim = key.shape[-1]
+        head_dim = query_dim // attn.heads
+        dtype = query.dtype
+
+        # Get key-value heads
+        kv_heads = inner_dim // head_dim
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+
+        # Apply RoPE if needed
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        query, key = query.to(dtype), key.to(dtype)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        hidden_states = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
+        hidden_states = hidden_states.transpose(1, 2).to(dtype)
+        hidden_states = hidden_states.reshape(bsz, q_len, attn.out_dim)
+        hidden_states = attn.to_out[0](hidden_states)
+        return hidden_states
 
 
 class OmniGenBlock(nn.Module):
@@ -74,7 +341,7 @@ class OmniGenBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
-        rotary_emb: torch.Tensor,
+        image_rotary_emb: torch.Tensor,
     ):
         """
         Perform a forward pass through the LuminaNextDiTBlock.
@@ -82,7 +349,7 @@ class OmniGenBlock(nn.Module):
         Parameters:
             hidden_states (`torch.Tensor`): The input of hidden_states for LuminaNextDiTBlock.
             attention_mask (`torch.Tensor): The input of hidden_states corresponse attention mask.
-            rotary_emb (`torch.Tensor`): Precomputed cosine and sine frequencies.
+            image_rotary_emb (`torch.Tensor`): Precomputed cosine and sine frequencies.
         """
         residual = hidden_states
 
@@ -93,8 +360,7 @@ class OmniGenBlock(nn.Module):
             hidden_states=hidden_states,
             encoder_hidden_states=hidden_states,
             attention_mask=attention_mask,
-            query_rotary_emb=rotary_emb,
-            key_rotary_emb=rotary_emb,
+            image_rotary_emb=image_rotary_emb,
         )
 
         hidden_states = residual + attn_outputs
@@ -137,6 +403,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["OmniGenBlock"]
 
     @register_to_config
     def __init__(
@@ -203,6 +470,8 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             ]
         )
         self.norm = RMSNorm(hidden_size, eps=rms_norm_eps)
+
+        self.gradient_checkpointing = False
 
     def unpatchify(self, x, h, w):
         """
@@ -277,10 +546,6 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def get_multimodal_embeddings(
         self,
         input_ids: torch.Tensor,
@@ -319,7 +584,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        timestep: Union[int, float, torch.LongTensor],
+        timestep: Union[int, float, torch.FloatTensor],
         input_ids: torch.Tensor,
         input_img_latents: List[torch.Tensor],
         input_image_sizes: Dict[int, List[int]],
@@ -334,7 +599,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         Args:
             hidden_states (`torch.Tensor` of shape `(batch size, channel, height, width)`):
                 Input `hidden_states`.
-            timestep (`torch.LongTensor`):
+            timestep (`torch.FloatTensor`):
                 Used to indicate denoising step.
             input_ids (`torch.LongTensor`):
                 token ids
@@ -406,16 +671,21 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         hidden_states = inputs_embeds
 
-        cos, sin = self.rotary_emb(hidden_states, position_ids)
+        image_rotary_emb = self.rotary_emb(hidden_states, position_ids)
         for decoder_layer in self.layers:
-            hidden_states = decoder_layer(hidden_states, attention_mask=attention_mask, rotary_emb=[cos, sin])
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(decoder_layer, hidden_states, attention_mask, image_rotary_emb)
+            else:
+                hidden_states = decoder_layer(hidden_states, attention_mask=attention_mask, image_rotary_emb=image_rotary_emb)
 
         hidden_states = self.norm(hidden_states)
 
-        image_embedding = hidden_states[:, -num_tokens_for_output_image:]
-        time_emb = self.t_embedder(self.time_proj(timestep).to(hidden_states.dtype))
-        x = self.proj_out(self.norm_out(image_embedding, temb=time_emb))
-        output = self.unpatchify(x, height, width)
+        hidden_states = hidden_states[:, -num_tokens_for_output_image:]
+        timestep_proj = self.time_proj(timestep)
+        temb = self.t_embedder(timestep_proj.type_as(hidden_states))
+        hidden_states = self.norm_out(hidden_states, temb=temb)
+        hidden_states = self.proj_out(hidden_states)
+        output = self.unpatchify(hidden_states, height, width)
 
         if not return_dict:
             return (output,)

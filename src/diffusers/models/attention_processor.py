@@ -3951,68 +3951,6 @@ class FusedHunyuanAttnProcessor2_0:
         return hidden_states
 
 
-class OmniGenAttnProcessor2_0:
-    r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
-    used in the OmniGen model.
-    """
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        query_rotary_emb: Optional[torch.Tensor] = None,
-        key_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        from .embeddings import apply_rotary_emb
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        # Get Query-Key-Value Pair
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        bsz, q_len, query_dim = query.size()
-        inner_dim = key.shape[-1]
-        head_dim = query_dim // attn.heads
-        dtype = query.dtype
-
-        # Get key-value heads
-        kv_heads = inner_dim // head_dim
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
-
-        # Apply RoPE if needed
-        if query_rotary_emb is not None:
-            query = apply_rotary_emb(query, query_rotary_emb, revert_x_as_rotated=True)
-        if key_rotary_emb is not None:
-            key = apply_rotary_emb(key, key_rotary_emb, revert_x_as_rotated=True)
-
-        query, key = query.to(dtype), key.to(dtype)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        hidden_states = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
-        hidden_states = hidden_states.transpose(1, 2).to(dtype)
-        hidden_states = hidden_states.reshape(bsz, q_len, attn.out_dim)
-        hidden_states = attn.to_out[0](hidden_states)
-        return hidden_states
-
-
 class PAGHunyuanAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is

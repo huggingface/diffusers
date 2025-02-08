@@ -21,7 +21,6 @@ import torch
 from transformers import LlamaTokenizer
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import OmniGenTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -121,8 +120,6 @@ def retrieve_timesteps(
 
 class OmniGenPipeline(
     DiffusionPipeline,
-    FromSingleFileMixin,
-    TextualInversionLoaderMixin,
 ):
     r"""
     The OmniGen pipeline for multimodal-to-image generation.
@@ -161,7 +158,7 @@ class OmniGenPipeline(
             scheduler=scheduler,
         )
         self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+            2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) is not None else 8
         )
         # OmniGen latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
@@ -403,9 +400,6 @@ class OmniGenPipeline(
             prompt = [prompt]
             input_images = [input_images]
 
-        # using Float32 for the VAE doesn't take up much memory but can prevent potential black image outputs.
-        self.vae.to(torch.float32)
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -426,7 +420,7 @@ class OmniGenPipeline(
 
         # 3. process multi-modal instructions
         if max_input_image_size != self.multimodal_processor.max_image_size:
-            self.multimodal_processor = OmniGenMultiModalProcessor(self.tokenizer, max_image_size=max_input_image_size)
+            self.multimodal_processor.reset_max_image_size(max_image_size=max_input_image_size)
         processed_data = self.multimodal_processor(
             prompt,
             input_images,

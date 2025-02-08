@@ -569,101 +569,6 @@ class PatchEmbed(nn.Module):
         return (latent + pos_embed).to(latent.dtype)
 
 
-class OmniGenPatchEmbed(nn.Module):
-    """2D Image to Patch Embedding with support for OmniGen."""
-
-    def __init__(
-        self,
-        patch_size: int = 2,
-        in_channels: int = 4,
-        embed_dim: int = 768,
-        bias: bool = True,
-        interpolation_scale: float = 1,
-        pos_embed_max_size: int = 192,
-        base_size: int = 64,
-    ):
-        super().__init__()
-
-        self.output_image_proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
-        )
-        self.input_image_proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
-        )
-
-        self.patch_size = patch_size
-        self.interpolation_scale = interpolation_scale
-        self.pos_embed_max_size = pos_embed_max_size
-
-        pos_embed = get_2d_sincos_pos_embed(
-            embed_dim, self.pos_embed_max_size, base_size=base_size, interpolation_scale=self.interpolation_scale, output_type="pt"
-        )
-        self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=True)
-
-    def cropped_pos_embed(self, height, width):
-        """Crops positional embeddings for SD3 compatibility."""
-        if self.pos_embed_max_size is None:
-            raise ValueError("`pos_embed_max_size` must be set for cropping.")
-
-        height = height // self.patch_size
-        width = width // self.patch_size
-        if height > self.pos_embed_max_size:
-            raise ValueError(
-                f"Height ({height}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
-            )
-        if width > self.pos_embed_max_size:
-            raise ValueError(
-                f"Width ({width}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
-            )
-
-        top = (self.pos_embed_max_size - height) // 2
-        left = (self.pos_embed_max_size - width) // 2
-        spatial_pos_embed = self.pos_embed.reshape(1, self.pos_embed_max_size, self.pos_embed_max_size, -1)
-        spatial_pos_embed = spatial_pos_embed[:, top : top + height, left : left + width, :]
-        spatial_pos_embed = spatial_pos_embed.reshape(1, -1, spatial_pos_embed.shape[-1])
-        return spatial_pos_embed
-
-    def patch_embeddings(self, latent, is_input_image: bool):
-        if is_input_image:
-            latent = self.input_image_proj(latent)
-        else:
-            latent = self.output_image_proj(latent)
-        latent = latent.flatten(2).transpose(1, 2)
-        return latent
-
-    def forward(self, latent: torch.Tensor, is_input_image: bool, padding_latent: torch.Tensor = None):
-        """
-        Args:
-            latent: encoded image latents
-            is_input_image: use input_image_proj or output_image_proj
-            padding_latent:
-                When sizes of target images are inconsistent, use `padding_latent` to maintain consistent sequence
-                length.
-
-        Returns: torch.Tensor
-
-        """
-        if isinstance(latent, list):
-            if padding_latent is None:
-                padding_latent = [None] * len(latent)
-            patched_latents = []
-            for sub_latent, padding in zip(latent, padding_latent):
-                height, width = sub_latent.shape[-2:]
-                sub_latent = self.patch_embeddings(sub_latent, is_input_image)
-                pos_embed = self.cropped_pos_embed(height, width)
-                sub_latent = sub_latent + pos_embed
-                if padding is not None:
-                    sub_latent = torch.cat([sub_latent, padding.to(sub_latent.device)], dim=-2)
-                patched_latents.append(sub_latent)
-        else:
-            height, width = latent.shape[-2:]
-            pos_embed = self.cropped_pos_embed(height, width)
-            latent = self.patch_embeddings(latent, is_input_image)
-            patched_latents = latent + pos_embed
-
-        return patched_latents
-
-
 class LuminaPatchEmbed(nn.Module):
     """
     2D Image to Patch Embedding with support for Lumina-T2X
@@ -1268,7 +1173,6 @@ def apply_rotary_emb(
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
     use_real: bool = True,
     use_real_unbind_dim: int = -1,
-    revert_x_as_rotated: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
@@ -1286,31 +1190,20 @@ def apply_rotary_emb(
     """
     if use_real:
         cos, sin = freqs_cis  # [S, D]
-        if len(cos.shape) == 2:
-            cos = cos[None, None]
-            sin = sin[None, None]
-        elif len(cos.shape) == 3:
-            cos = cos[:, None]
-            sin = sin[:, None]
+        cos = cos[None, None]
+        sin = sin[None, None]
         cos, sin = cos.to(x.device), sin.to(x.device)
 
-        if revert_x_as_rotated:
-            # Rotates half the hidden dims of the input. this rorate function is widely used in LLM, e.g. Llama, Phi3, etc.
-            # Used for OmniGen
-            x1 = x[..., : x.shape[-1] // 2]
-            x2 = x[..., x.shape[-1] // 2 :]
-            x_rotated = torch.cat((-x2, x1), dim=-1)
+        if use_real_unbind_dim == -1:
+            # Used for flux, cogvideox, hunyuan-dit
+            x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+            x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+        elif use_real_unbind_dim == -2:
+            # Used for Stable Audio
+            x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
+            x_rotated = torch.cat([-x_imag, x_real], dim=-1)
         else:
-            if use_real_unbind_dim == -1:
-                # Used for flux, cogvideox, hunyuan-dit
-                x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
-                x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
-            elif use_real_unbind_dim == -2:
-                # Used for Stable Audio
-                x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
-                x_rotated = torch.cat([-x_imag, x_real], dim=-1)
-            else:
-                raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
+            raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
 
         out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
@@ -1371,56 +1264,6 @@ class FluxPosEmbed(nn.Module):
         freqs_cos = torch.cat(cos_out, dim=-1).to(ids.device)
         freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
         return freqs_cos, freqs_sin
-
-
-class OmniGenSuScaledRotaryEmbedding(nn.Module):
-    def __init__(
-        self, dim, max_position_embeddings=131072, original_max_position_embeddings=4096, base=10000, rope_scaling=None
-    ):
-        super().__init__()
-
-        self.dim = dim
-        self.max_position_embeddings = max_position_embeddings
-        self.base = base
-
-        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float() / self.dim))
-        self.register_buffer("inv_freq", tensor=inv_freq, persistent=False)
-
-        self.short_factor = rope_scaling["short_factor"]
-        self.long_factor = rope_scaling["long_factor"]
-        self.original_max_position_embeddings = original_max_position_embeddings
-
-    @torch.no_grad()
-    def forward(self, x, position_ids):
-        seq_len = torch.max(position_ids) + 1
-        if seq_len > self.original_max_position_embeddings:
-            ext_factors = torch.tensor(self.long_factor, dtype=torch.float32, device=x.device)
-        else:
-            ext_factors = torch.tensor(self.short_factor, dtype=torch.float32, device=x.device)
-
-        inv_freq_shape = torch.arange(0, self.dim, 2, dtype=torch.int64, device=x.device).float() / self.dim
-        self.inv_freq = 1.0 / (ext_factors * self.base**inv_freq_shape)
-
-        inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
-        position_ids_expanded = position_ids[:, None, :].float()
-
-        # Force float32 since bfloat16 loses precision on long contexts
-        # See https://github.com/huggingface/transformers/pull/29285
-        device_type = x.device.type
-        device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
-        with torch.autocast(device_type=device_type, enabled=False):
-            freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
-            emb = torch.cat((freqs, freqs), dim=-1)
-
-            scale = self.max_position_embeddings / self.original_max_position_embeddings
-            if scale <= 1.0:
-                scaling_factor = 1.0
-            else:
-                scaling_factor = math.sqrt(1 + math.log(scale) / math.log(self.original_max_position_embeddings))
-
-            cos = emb.cos() * scaling_factor
-            sin = emb.sin() * scaling_factor
-        return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
 
 
 class TimestepEmbedding(nn.Module):

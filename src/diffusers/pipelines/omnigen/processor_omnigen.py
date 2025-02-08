@@ -62,6 +62,16 @@ class OmniGenMultiModalProcessor:
         )
 
         self.collator = OmniGenCollator()
+    
+    def reset_max_image_size(self, max_image_size):
+        self.max_image_size = max_image_size
+        self.image_transform = transforms.Compose(
+            [
+                transforms.Lambda(lambda pil_image: crop_image(pil_image, max_image_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+            ]
+        )
 
     def process_image(self, image):
         if isinstance(image, str):

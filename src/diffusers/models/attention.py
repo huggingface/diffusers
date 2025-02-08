@@ -639,37 +639,6 @@ class LuminaFeedForward(nn.Module):
         return self.linear_2(self.silu(self.linear_1(x)) * self.linear_3(x))
 
 
-class OmniGenFeedForward(nn.Module):
-    r"""
-    A feed-forward layer for OmniGen.
-
-    Parameters:
-        hidden_size (`int`):
-            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
-            hidden representations.
-        intermediate_size (`int`): The intermediate dimension of the feedforward layer.
-    """
-
-    def __init__(
-        self,
-        hidden_size: int,
-        intermediate_size: int,
-    ):
-        super().__init__()
-        self.gate_up_proj = nn.Linear(hidden_size, 2 * intermediate_size, bias=False)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-
-        self.activation_fn = nn.SiLU()
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        up_states = self.gate_up_proj(hidden_states)
-
-        gate, up_states = up_states.chunk(2, dim=-1)
-        up_states = up_states * self.activation_fn(gate)
-
-        return self.down_proj(up_states)
-
-
 @maybe_allow_in_graph
 class TemporalBasicTransformerBlock(nn.Module):
     r"""
