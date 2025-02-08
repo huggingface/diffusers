@@ -654,7 +654,7 @@ class OmniGenFeedForward(nn.Module):
 
         self.activation_fn = nn.SiLU()
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         up_states = self.gate_up_proj(hidden_states)
 
         gate, up_states = up_states.chunk(2, dim=-1)
