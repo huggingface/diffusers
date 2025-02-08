@@ -164,22 +164,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
 
-    bad_punct_regex = re.compile(
-        r"["
-        + "#®•©™&@·º½¾¿¡§~"
-        + r"\)"
-        + r"\("
-        + r"\]"
-        + r"\["
-        + r"\}"
-        + r"\{"
-        + r"\|"
-        + "\\"
-        + r"\/"
-        + r"\*"
-        + r"]{1,}"
-    )  # noqa
-
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -218,7 +202,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
     def _get_gemma_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
-        num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         max_sequence_length: int = 256,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -260,11 +243,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
-        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
-        prompt_attention_mask = prompt_attention_mask.view(batch_size * num_images_per_prompt, -1)
 
         return prompt_embeds, prompt_attention_mask
 
@@ -324,10 +302,16 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         if prompt_embeds is None:
             prompt_embeds, prompt_attention_mask = self._get_gemma_prompt_embeds(
                 prompt=prompt,
-                num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 max_sequence_length=max_sequence_length,
             )
+        
+        batch_size, seq_len, _ = prompt_embeds.shape
+        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+        prompt_attention_mask = prompt_attention_mask.view(batch_size * num_images_per_prompt, -1)
 
         # Get negative embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -351,10 +335,16 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 )
             negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
                 prompt=negative_prompt,
-                num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 max_sequence_length=max_sequence_length,
             )
+            
+            batch_size, seq_len, _ = negative_prompt_embeds.shape
+            # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.view(batch_size * num_images_per_prompt, -1)
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
@@ -694,7 +684,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             self.scheduler.config.get("base_image_seq_len", 256),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.5),
-            self.scheduler.config.get("max_shift", 1.16),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
