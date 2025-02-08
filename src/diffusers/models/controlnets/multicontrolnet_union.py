@@ -79,7 +79,7 @@ class MultiControlNetUnionModel(ModelMixin):
 
         return down_block_res_samples, mid_block_res_sample
 
-    # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.save_pretrained with MultiControlNetModel->MultiControlNetUnionModel
+    # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.save_pretrained with ControlNet->ControlNetUnion
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
@@ -119,7 +119,7 @@ class MultiControlNetUnionModel(ModelMixin):
             )
 
     @classmethod
-    # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.from_pretrained with MultiControlNetModel->MultiControlNetUnionModel
+    # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.from_pretrained with ControlNet->ControlNetUnion
     def from_pretrained(cls, pretrained_model_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
         Instantiate a pretrained MultiControlNetUnion model from multiple pre-trained controlnet models.
@@ -186,7 +186,7 @@ class MultiControlNetUnionModel(ModelMixin):
 
         if len(controlnets) == 0:
             raise ValueError(
-                f"No ControlNets found under {os.path.dirname(pretrained_model_path)}. Expected at least {pretrained_model_path + '_0'}."
+                f"No ControlNetUnions found under {os.path.dirname(pretrained_model_path)}. Expected at least {pretrained_model_path + '_0'}."
             )
 
         return cls(controlnets)
