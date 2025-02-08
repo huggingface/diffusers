@@ -158,8 +158,8 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
 
         components = {
-            "transformer": transformer.eval(),
-            "vae": vae.eval(),
+            "transformer": transformer,
+            "vae": vae,
             "scheduler": scheduler,
             "tokenizer": tokenizer,
         }
