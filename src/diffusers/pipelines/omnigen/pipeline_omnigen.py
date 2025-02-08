@@ -173,7 +173,7 @@ class OmniGenPipeline(
         )
         self.default_sample_size = 128
 
-    def encod_input_images(
+    def encode_input_images(
         self,
         input_pixel_values: List[torch.Tensor],
         device: Optional[torch.device] = None,
