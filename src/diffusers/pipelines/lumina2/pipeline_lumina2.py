@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-import re
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -207,8 +206,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self._execution_device
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
-
         text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
@@ -305,7 +302,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 device=device,
                 max_sequence_length=max_sequence_length,
             )
-        
+
         batch_size, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -338,13 +335,15 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 device=device,
                 max_sequence_length=max_sequence_length,
             )
-            
+
             batch_size, seq_len, _ = negative_prompt_embeds.shape
             # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
             negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
-            negative_prompt_attention_mask = negative_prompt_attention_mask.view(batch_size * num_images_per_prompt, -1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.view(
+                batch_size * num_images_per_prompt, -1
+            )
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
