@@ -348,7 +348,7 @@ class OmniGenPipeline(
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If the input includes images, need to add
                 placeholders `<img><|image_i|></img>` in the prompt to indicate the position of the i-th images.
-            input_images (`List[str]` or `List[List[str]]`, *optional*):
+            input_images (`PipelineImageInput`, *optional*):
                 The list of input images. We will replace the "<|image_i|>" in prompt with the i-th image in list.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
