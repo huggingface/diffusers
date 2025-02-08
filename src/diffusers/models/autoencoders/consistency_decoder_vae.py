@@ -60,7 +60,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
 
         >>> vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", vae=vae, torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", vae=vae, torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> image = pipe("horse", generator=torch.manual_seed(0)).images[0]

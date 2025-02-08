@@ -24,6 +24,7 @@ from ...models import PriorTransformer
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     BaseOutput,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -31,7 +32,15 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -518,6 +527,9 @@ class KandinskyPriorPipeline(DiffusionPipeline):
                 generator=generator,
                 prev_timestep=prev_timestep,
             ).prev_sample
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         latents = self.prior.post_process_latents(latents)
 

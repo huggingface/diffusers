@@ -11,14 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...image_processor import PipelineImageInput
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import logging
 from ..attention_processor import (
@@ -31,83 +29,11 @@ from ..attention_processor import (
 from ..embeddings import TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..unets.unet_2d_blocks import (
-    CrossAttnDownBlock2D,
-    DownBlock2D,
     UNetMidBlock2DCrossAttn,
     get_down_block,
 )
 from ..unets.unet_2d_condition import UNet2DConditionModel
 from .controlnet import ControlNetConditioningEmbedding, ControlNetOutput, zero_module
-
-
-@dataclass
-class ControlNetUnionInput:
-    """
-    The image input of [`ControlNetUnionModel`]:
-
-    - 0: openpose
-    - 1: depth
-    - 2: hed/pidi/scribble/ted
-    - 3: canny/lineart/anime_lineart/mlsd
-    - 4: normal
-    - 5: segment
-    """
-
-    openpose: Optional[PipelineImageInput] = None
-    depth: Optional[PipelineImageInput] = None
-    hed: Optional[PipelineImageInput] = None
-    canny: Optional[PipelineImageInput] = None
-    normal: Optional[PipelineImageInput] = None
-    segment: Optional[PipelineImageInput] = None
-
-    def __len__(self) -> int:
-        return len(vars(self))
-
-    def __iter__(self):
-        return iter(vars(self))
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __setitem__(self, key, value):
-        setattr(self, key, value)
-
-
-@dataclass
-class ControlNetUnionInputProMax:
-    """
-    The image input of [`ControlNetUnionModel`]:
-
-    - 0: openpose
-    - 1: depth
-    - 2: hed/pidi/scribble/ted
-    - 3: canny/lineart/anime_lineart/mlsd
-    - 4: normal
-    - 5: segment
-    - 6: tile
-    - 7: repaint
-    """
-
-    openpose: Optional[PipelineImageInput] = None
-    depth: Optional[PipelineImageInput] = None
-    hed: Optional[PipelineImageInput] = None
-    canny: Optional[PipelineImageInput] = None
-    normal: Optional[PipelineImageInput] = None
-    segment: Optional[PipelineImageInput] = None
-    tile: Optional[PipelineImageInput] = None
-    repaint: Optional[PipelineImageInput] = None
-
-    def __len__(self) -> int:
-        return len(vars(self))
-
-    def __iter__(self):
-        return iter(vars(self))
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __setitem__(self, key, value):
-        setattr(self, key, value)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -671,17 +597,14 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
-    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond: Union[ControlNetUnionInput, ControlNetUnionInputProMax],
+        controlnet_cond: List[torch.Tensor],
         control_type: torch.Tensor,
+        control_type_idx: List[int],
         conditioning_scale: float = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
@@ -701,11 +624,13 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
-            controlnet_cond (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
+            controlnet_cond (`List[torch.Tensor]`):
                 The conditional input tensors.
             control_type (`torch.Tensor`):
                 A tensor of shape `(batch, num_control_type)` with values `0` or `1` depending on whether the control
                 type is used.
+            control_type_idx (`List[int]`):
+                The indices of `control_type`.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):
@@ -733,20 +658,6 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 If `return_dict` is `True`, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
                 returned where the first element is the sample tensor.
         """
-        if not isinstance(controlnet_cond, (ControlNetUnionInput, ControlNetUnionInputProMax)):
-            raise ValueError(
-                "Expected type of `controlnet_cond` to be one of `ControlNetUnionInput` or `ControlNetUnionInputProMax`"
-            )
-        if len(controlnet_cond) != self.config.num_control_type:
-            if isinstance(controlnet_cond, ControlNetUnionInput):
-                raise ValueError(
-                    f"Expected num_control_type {self.config.num_control_type}, got {len(controlnet_cond)}. Try `ControlNetUnionInputProMax`."
-                )
-            elif isinstance(controlnet_cond, ControlNetUnionInputProMax):
-                raise ValueError(
-                    f"Expected num_control_type {self.config.num_control_type}, got {len(controlnet_cond)}. Try `ControlNetUnionInput`."
-                )
-
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
 
@@ -764,10 +675,11 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
             is_mps = sample.device.type == "mps"
+            is_npu = sample.device.type == "npu"
             if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
+                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
             else:
-                dtype = torch.int32 if is_mps else torch.int64
+                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
@@ -830,12 +742,10 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         inputs = []
         condition_list = []
 
-        for idx, image_type in enumerate(controlnet_cond):
-            if controlnet_cond[image_type] is None:
-                continue
-            condition = self.controlnet_cond_embedding(controlnet_cond[image_type])
+        for cond, control_idx in zip(controlnet_cond, control_type_idx):
+            condition = self.controlnet_cond_embedding(cond)
             feat_seq = torch.mean(condition, dim=(2, 3))
-            feat_seq = feat_seq + self.task_embedding[idx]
+            feat_seq = feat_seq + self.task_embedding[control_idx]
             inputs.append(feat_seq.unsqueeze(1))
             condition_list.append(condition)
 

@@ -1,3 +1,5 @@
+import unittest
+
 import torch
 import torch.nn.functional as F
 
@@ -52,5 +54,6 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
         for t in [0, 50, 99]:
             self.check_over_forward(time_step=t)
 
+    @unittest.skip("Test not supported.")
     def test_add_noise_device(self):
         pass

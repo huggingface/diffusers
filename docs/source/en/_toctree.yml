@@ -48,7 +48,7 @@
   - local: using-diffusers/inpaint
     title: Inpainting
   - local: using-diffusers/text-img2vid
-    title: Text or image-to-video
+    title: Video generation
   - local: using-diffusers/depth2img
     title: Depth-to-image
   title: Generative tasks
@@ -79,6 +79,8 @@
 - sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
+  - local: using-diffusers/consisid
+    title: ConsisID
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
@@ -159,6 +161,10 @@
     title: Getting Started
   - local: quantization/bitsandbytes
     title: bitsandbytes
+  - local: quantization/gguf
+    title: gguf
+  - local: quantization/torchao
+    title: torchao
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
@@ -177,6 +183,8 @@
     title: TGATE
   - local: optimization/xdit
     title: xDiT
+  - local: optimization/para_attn
+    title: ParaAttention
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
@@ -236,6 +244,8 @@
       title: Textual Inversion
     - local: api/loaders/unet
       title: UNet
+    - local: api/loaders/transformer_sd3
+      title: SD3Transformer2D
     - local: api/loaders/peft
       title: PEFT
     title: Loaders
@@ -264,6 +274,8 @@
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
+      - local: api/models/consisid_transformer3d
+        title: ConsisIDTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
         title: CogView3PlusTransformer2DModel
       - local: api/models/dit_transformer2d
@@ -272,10 +284,14 @@
         title: FluxTransformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
+      - local: api/models/hunyuan_video_transformer_3d
+        title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/ltx_video_transformer3d
+        title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
       - local: api/models/omnigen_transformer
@@ -286,6 +302,8 @@
         title: PriorTransformer
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
+      - local: api/models/sana_transformer2d
+        title: SanaTransformer2DModel
       - local: api/models/stable_audio_transformer
         title: StableAudioDiTModel
       - local: api/models/transformer2d
@@ -316,6 +334,10 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoder_kl_hunyuan_video
+        title: AutoencoderKLHunyuanVideo
+      - local: api/models/autoencoderkl_ltx_video
+        title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
@@ -358,6 +380,8 @@
       title: CogVideoX
     - local: api/pipelines/cogview3
       title: CogView3
+    - local: api/pipelines/consisid
+      title: ConsisID
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
@@ -390,8 +414,12 @@
       title: DiT
     - local: api/pipelines/flux
       title: Flux
+    - local: api/pipelines/control_flux_inpaint
+      title: FluxControlInpaint
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
+    - local: api/pipelines/hunyuan_video
+      title: HunyuanVideo
     - local: api/pipelines/i2vgenxl
       title: I2VGen-XL
     - local: api/pipelines/pix2pix
@@ -412,6 +440,8 @@
       title: Latte
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/ltx_video
+      title: LTXVideo
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
@@ -434,6 +464,8 @@
       title: PixArt-α
     - local: api/pipelines/pixart_sigma
       title: PixArt-Σ
+    - local: api/pipelines/sana
+      title: Sana
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
@@ -572,6 +604,8 @@
       title: Attention Processor
     - local: api/activations
       title: Custom activation functions
+    - local: api/cache
+      title: Caching methods
     - local: api/normalization
       title: Custom normalization layers
     - local: api/utilities

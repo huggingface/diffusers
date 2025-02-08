@@ -219,9 +219,7 @@ class RFInversionFluxPipeline(
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
@@ -419,7 +417,7 @@ class RFInversionFluxPipeline(
             )
         image = image.to(dtype)
 
-        x0 = self.vae.encode(image.to(self.device)).latent_dist.sample()
+        x0 = self.vae.encode(image.to(self._execution_device)).latent_dist.sample()
         x0 = (x0 - self.vae.config.shift_factor) * self.vae.config.scaling_factor
         x0 = x0.to(dtype)
         return x0, resized
@@ -648,6 +646,8 @@ class RFInversionFluxPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         eta: float = 1.0,
+        decay_eta: Optional[bool] = False,
+        eta_decay_power: Optional[float] = 1.0,
         strength: float = 1.0,
         start_timestep: float = 0,
         stop_timestep: float = 0.25,
@@ -820,10 +820,10 @@ class RFInversionFluxPipeline(
         image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.16),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -880,12 +880,9 @@ class RFInversionFluxPipeline(
                     v_t = -noise_pred
                     v_t_cond = (y_0 - latents) / (1 - t_i)
                     eta_t = eta if start_timestep <= i < stop_timestep else 0.0
-                    if start_timestep <= i < stop_timestep:
-                        # controlled vector field
-                        v_hat_t = v_t + eta * (v_t_cond - v_t)
-
-                    else:
-                        v_hat_t = v_t
+                    if decay_eta:
+                        eta_t = eta_t * (1 - i / num_inference_steps) ** eta_decay_power  # Decay eta over the loop
+                    v_hat_t = v_t + eta_t * (v_t_cond - v_t)
 
                     # SDE Eq: 17 from https://arxiv.org/pdf/2410.10792
                     latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
@@ -993,10 +990,10 @@ class RFInversionFluxPipeline(
         image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.16),
         )
         timesteps, num_inversion_steps = retrieve_timesteps(
             self.scheduler,
