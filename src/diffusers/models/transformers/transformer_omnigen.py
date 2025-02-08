@@ -332,7 +332,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         The [`OmniGenTransformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
+            hidden_states (`torch.Tensor` of shape `(batch size, channel, height, width)`):
                 Input `hidden_states`.
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
