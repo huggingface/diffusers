@@ -455,7 +455,7 @@ class OmniGenPipeline(
         processed_data["position_ids"] = processed_data["position_ids"].to(device)
 
         # 4. Encode input images
-        input_img_latents = self.encod_input_images(processed_data["input_pixel_values"], device=device)
+        input_img_latents = self.encode_input_images(processed_data["input_pixel_values"], device=device)
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1, 0, num_inference_steps + 1)[:num_inference_steps]
