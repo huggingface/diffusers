@@ -1,9 +1,20 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import torch
 
-from ...utils import get_module_from_name, is_accelerate_available, is_accelerate_version, is_optimum_quanto_available
+from ...utils import (
+    get_module_from_name,
+    is_accelerate_available,
+    is_accelerate_version,
+    is_optimum_quanto_available,
+    is_optimum_quanto_version,
+    logging,
+)
 from ..base import DiffusersQuantizer
+
+
+if TYPE_CHECKING:
+    from ...models.modeling_utils import ModelMixin
 
 
 if is_accelerate_available():
@@ -12,12 +23,15 @@ if is_accelerate_available():
 if is_optimum_quanto_available():
     from .utils import _replace_with_quanto_layers
 
+logger = logging.get_logger(__name__)
+
 
 class QuantoQuantizer(DiffusersQuantizer):
     r"""
     Diffusers Quantizer for Optimum Quanto
     """
 
+    use_keep_in_fp32_modules = True
     requires_calibration = False
     required_packages = ["quanto", "accelerate"]
 
@@ -28,6 +42,10 @@ class QuantoQuantizer(DiffusersQuantizer):
         if not is_optimum_quanto_available():
             raise ImportError(
                 "Loading an optimum-quanto quantized model requires optimum-quanto library (`pip install optimum-quanto`)"
+            )
+        if not is_optimum_quanto_version(">=", "0.2.6"):
+            raise RuntimeError(
+                "The minimum required version of `optimum-quanto` is 0.2.6. Please upgrade with `pip install -U optimum-quanto`."
             )
         if not is_accelerate_available():
             raise ImportError(
@@ -63,8 +81,9 @@ class QuantoQuantizer(DiffusersQuantizer):
         """
         Create the quantized parameter by calling .freeze() after setting it to the module.
         """
+        dtype = kwargs.get("dtype", torch.float32)
 
-        set_module_tensor_to_device(model, param_name, target_device, param_value)
+        set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
         module, _ = get_module_from_name(model, param_name)
         module.freeze()
         module.weight.requires_grad = False
@@ -89,6 +108,12 @@ class QuantoQuantizer(DiffusersQuantizer):
                 " the appropriate device map, you should upgrade your `accelerate` library,"
                 "`pip install --upgrade accelerate` or install it from source."
             )
+
+    def update_torch_dtype(self, torch_dtype: "torch.dtype" = None) -> "torch.dtype":
+        if torch_dtype is None:
+            logger.info("You did not specify `torch_dtype` in `from_pretrained`. Setting it to `torch.float32`.")
+            torch_dtype = torch.float32
+        return torch_dtype
 
     def update_missing_keys(self, model, missing_keys: List[str], prefix: str) -> List[str]:
         # Quanto imports diffusers internally. This is here to prevent circular imports
@@ -127,6 +152,10 @@ class QuantoQuantizer(DiffusersQuantizer):
 
     def _process_model_after_weight_loading(self, model, **kwargs):
         return model
+
+    def _dequantize(self, model):
+        logger.warning("Dequantizing the full model is currently not supported with the Quanto backend")
+        return
 
     @property
     def is_trainable(self, model: Optional["ModelMixin"] = None):

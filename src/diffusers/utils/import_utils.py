@@ -883,6 +883,21 @@ def is_k_diffusion_version(operation: str, version: str):
     return compare_versions(parse(_k_diffusion_version), operation, version)
 
 
+def is_optimum_quanto_version(operation: str, version: str):
+    """
+    Compares the current Accelerate version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _is_optimum_quanto_available:
+        return False
+    return compare_versions(parse(_optimum_quanto_version), operation, version)
+
+
 def get_objects_from_module(module):
     """
     Returns a dict of object names and values in a module, while skipping private/internal objects

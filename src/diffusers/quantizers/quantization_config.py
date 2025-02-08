@@ -698,12 +698,14 @@ class QuantoConfig(QuantizationConfigMixin):
         weights="int8",
         activations=None,
         modules_to_not_convert: Optional[List] = None,
+        compute_dtype: Optional["torch.dtype"] = None,
         **kwargs,
     ):
         self.quant_method = QuantizationMethod.QUANTO
         self.weights = weights
         self.activations = activations
         self.modules_to_not_convert = modules_to_not_convert
+
         self.post_init()
 
     def post_init(self):

@@ -21,15 +21,15 @@ from typing import Dict, Optional, Union
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
-from .quanto import QuantoQuantizer
 from .quantization_config import (
-    QuantoConfig,
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
     QuantizationConfigMixin,
     QuantizationMethod,
+    QuantoConfig,
     TorchAoConfig,
 )
+from .quanto import QuantoQuantizer
 from .torchao import TorchAoHfQuantizer
 
 

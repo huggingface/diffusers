@@ -80,6 +80,7 @@ from .import_utils import (
     is_note_seq_available,
     is_onnx_available,
     is_optimum_quanto_available,
+    is_optimum_quanto_version,
     is_peft_available,
     is_peft_version,
     is_safetensors_available,

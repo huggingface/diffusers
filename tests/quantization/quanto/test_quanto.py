@@ -8,15 +8,15 @@ from diffusers import (
 from diffusers.models.transformers.transformer_flux import FluxTransformer2DModel
 from diffusers.utils import is_optimum_quanto_available
 from diffusers.utils.testing_utils import (
-    torch_device,
     nightly,
     require_accelerate,
     require_big_gpu_with_torch_cuda,
+    torch_device,
 )
 
 
 if is_optimum_quanto_available():
-    from optimum.quanto import QLayerNorm, QLinear
+    from optimum.quanto import QLinear
 
 
 @nightly
@@ -27,6 +27,7 @@ class QuantoBaseTesterMixin:
     model_cls = None
     torch_dtype = torch.bfloat16
     expected_memory_use_in_gb = 5
+    keep_in_fp32_module = ""
 
     def get_dummy_init_kwargs(self):
         return {"weights": "float8"}
@@ -62,14 +63,9 @@ class QuantoBaseTesterMixin:
         Also ensures if inference works.
         """
         _keep_in_fp32_modules = self.model_cls._keep_in_fp32_modules
-        self.model_cls._keep_in_fp32_modules = ["proj_out"]
+        self.model_cls._keep_in_fp32_modules = self.keep_in_fp32_module
 
-        init_kwargs = self.get_dummy_init_kwargs()
-        quantization_config = QuantoConfig(**init_kwargs)
-
-        model = self.model_cls.from_pretrained(
-            self.model_id, quantization_config=quantization_config, torch_dtype=self.torch_dtype
-        )
+        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
         model.to("cuda")
 
         assert (model.get_memory_footprint() / 1024**3) < self.expected_memory_use_in_gb
@@ -80,12 +76,7 @@ class QuantoBaseTesterMixin:
         self.model_cls._keep_in_fp32_modules = _keep_in_fp32_modules
 
     def test_dtype_assignment(self):
-        init_kwargs = self.get_dummy_init_kwargs()
-        quantization_config = QuantoConfig(**init_kwargs)
-
-        model = self.model_cls.from_pretrained(
-            self.model_id, quantization_config=quantization_config, torch_dtype=self.torch_dtype
-        )
+        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
         assert (model.get_memory_footprint() / 1024**3) < self.expected_memory_use_in_gb
 
         with self.assertRaises(ValueError):
@@ -108,14 +99,11 @@ class QuantoBaseTesterMixin:
         model.to("cuda")
 
 
-class FluxTransformerFloat8(QuantoBaseTesterMixin, unittest.TestCase):
+class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
     model_id = "hf-internal-testing/tiny-flux-transformer"
     model_cls = FluxTransformer2DModel
     torch_dtype = torch.bfloat16
-    expected_memory_use_in_gb = 10
-
-    def get_dummy_init_kwargs(self):
-        return {"weights": "float8", "activations": "float8"}
+    keep_in_fp32_module = "proj_out"
 
     def get_dummy_inputs(self):
         return {
@@ -141,31 +129,29 @@ class FluxTransformerFloat8(QuantoBaseTesterMixin, unittest.TestCase):
         }
 
 
-class FluxTransformerInt8(QuantoBaseTesterMixin, unittest.TestCase):
-    model_id = "hf-internal-testing/tiny-flux-transformer"
-    model_cls = FluxTransformer2DModel
-    torch_dtype = torch.bfloat16
+class FluxTransformerFloat8(FluxTransformerQuantoMixin, unittest.TestCase):
+    expected_memory_use_in_gb = 10
+
+    def get_dummy_init_kwargs(self):
+        return {"weights": "float8"}
+
+
+class FluxTransformerInt8(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_use_in_gb = 10
 
     def get_dummy_init_kwargs(self):
         return {"weights": "int8"}
 
 
-class FluxTransformerInt4(QuantoBaseTesterMixin, unittest.TestCase):
-    model_id = "black-forest-labs/FLUX.1-dev"
-    model_cls = FluxTransformer2DModel
-    torch_dtype = torch.bfloat16
-    expected_memory_use_in_gb = 5
+class FluxTransformerInt4(FluxTransformerQuantoMixin, unittest.TestCase):
+    expected_memory_use_in_gb = 6
 
     def get_dummy_init_kwargs(self):
         return {"weights": "int4"}
 
 
-class FluxTransformerInt2(QuantoBaseTesterMixin, unittest.TestCase):
-    model_id = "black-forest-labs/FLUX.1-dev"
-    model_cls = FluxTransformer2DModel
-    torch_dtype = torch.bfloat16
-    expected_memory_use_in_gb = 5
+class FluxTransformerInt2(FluxTransformerQuantoMixin, unittest.TestCase):
+    expected_memory_use_in_gb = 6
 
     def get_dummy_init_kwargs(self):
         return {"weights": "int2"}

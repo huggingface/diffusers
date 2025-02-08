@@ -11,7 +11,7 @@ if is_accelerate_available():
 
 def _replace_with_quanto_layers(model, quantization_config, modules_to_not_convert: list):
     # Quanto imports diffusers internally. These are placed here to avoid circular imports
-    from optimum.quanto import QLayerNorm, QLinear, qfloat8, qint2, qint4, qint8
+    from optimum.quanto import QLinear, qfloat8, qint2, qint4, qint8
 
     def _get_weight_type(dtype: str):
         return {"float8": qfloat8, "int8": qint8, "int4": qint4, "int2": qint2}[dtype]
@@ -32,7 +32,7 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
 
             if isinstance(module, nn.Linear):
                 with init_empty_weights():
-                    model._modules[name] = QLinear(
+                    qlinear = QLinear(
                         in_features=module.in_features,
                         out_features=module.out_features,
                         bias=module.bias is not None,
@@ -40,6 +40,7 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
                         weights=_get_weight_type(quantization_config.weights),
                         activations=_get_activation_type(quantization_config.activations),
                     )
+                    model._modules[name] = qlinear
                     model._modules[name].source_cls = type(module)
                     model._modules[name].requires_grad_(False)
 
