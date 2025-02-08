@@ -321,7 +321,7 @@ class OmniGenPipeline(
         self,
         prompt: Union[str, List[str]],
         input_images: Optional[
-            Union[List[str], List[PIL.Image.Image], List[List[str]], List[List[PIL.Image.Image]]]
+            PipelineImageInput
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
