@@ -20,7 +20,7 @@ import PIL
 import torch
 from transformers import LlamaTokenizer
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import OmniGenTransformer2DModel
