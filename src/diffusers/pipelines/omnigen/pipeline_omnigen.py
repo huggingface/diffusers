@@ -199,6 +199,7 @@ class OmniGenPipeline(
         input_images,
         height,
         width,
+        use_input_image_size_as_output,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
@@ -219,6 +220,12 @@ class OmniGenPipeline(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
             )
 
+        if use_input_image_size_as_output:
+            if input_images is None or input_images[0] is None:
+                raise ValueError(
+                                f"`use_input_image_size_as_output` is set to True, but no input image was found. If you are performing a text-to-image task, please set it to False."
+                            )
+                            
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -406,6 +413,7 @@ class OmniGenPipeline(
             input_images,
             height,
             width,
+            use_input_image_size_as_output,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
