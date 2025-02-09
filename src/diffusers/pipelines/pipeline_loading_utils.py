@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import importlib
 import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
+import requests
 import torch
-from huggingface_hub import ModelCard, model_info
-from huggingface_hub.utils import validate_hf_hub_args
+from huggingface_hub import DDUFEntry, ModelCard, model_info, snapshot_download
+from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
+from requests.exceptions import HTTPError
 
 from .. import __version__
 from ..utils import (
@@ -38,14 +38,16 @@ from ..utils import (
     is_accelerate_available,
     is_peft_available,
     is_transformers_available,
+    is_transformers_version,
     logging,
 )
 from ..utils.torch_utils import is_compiled_module
+from .transformers_loading_utils import _load_tokenizer_from_dduf, _load_transformers_model_from_dduf
 
 
 if is_transformers_available():
     import transformers
-    from transformers import PreTrainedModel
+    from transformers import PreTrainedModel, PreTrainedTokenizerBase
     from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
@@ -627,6 +629,8 @@ def load_sub_model(
     low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
     use_safetensors: bool,
+    dduf_entries: Optional[Dict[str, DDUFEntry]],
+    provider_options: Any,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
 
@@ -663,7 +667,7 @@ def load_sub_model(
             f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
         )
 
-    load_method = getattr(class_obj, load_method_name)
+    load_method = _get_load_method(class_obj, load_method_name, is_dduf=dduf_entries is not None)
 
     # add kwargs to loading method
     diffusers_module = importlib.import_module(__name__.split(".")[0])
@@ -673,6 +677,7 @@ def load_sub_model(
     if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
         loading_kwargs["provider"] = provider
         loading_kwargs["sess_options"] = sess_options
+        loading_kwargs["provider_options"] = provider_options
 
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
@@ -721,7 +726,10 @@ def load_sub_model(
             loading_kwargs["low_cpu_mem_usage"] = False
 
     # check if the module is in a subdirectory
-    if os.path.isdir(os.path.join(cached_folder, name)):
+    if dduf_entries:
+        loading_kwargs["dduf_entries"] = dduf_entries
+        loaded_sub_model = load_method(name, **loading_kwargs)
+    elif os.path.isdir(os.path.join(cached_folder, name)):
         loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
     else:
         # else load from the root directory
@@ -744,6 +752,22 @@ def load_sub_model(
             dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
 
     return loaded_sub_model
+
+
+def _get_load_method(class_obj: object, load_method_name: str, is_dduf: bool) -> Callable:
+    """
+    Return the method to load the sub model.
+
+    In practice, this method will return the `"from_pretrained"` (or `load_method_name`) method of the class object
+    except if loading from a DDUF checkpoint. In that case, transformers models and tokenizers have a specific loading
+    method that we need to use.
+    """
+    if is_dduf:
+        if issubclass(class_obj, PreTrainedTokenizerBase):
+            return lambda *args, **kwargs: _load_tokenizer_from_dduf(class_obj, *args, **kwargs)
+        if issubclass(class_obj, PreTrainedModel):
+            return lambda *args, **kwargs: _load_transformers_model_from_dduf(class_obj, *args, **kwargs)
+    return getattr(class_obj, load_method_name)
 
 
 def _fetch_class_library_tuple(module):
@@ -968,3 +992,70 @@ def _get_ignore_patterns(
             )
 
     return ignore_patterns
+
+
+def _download_dduf_file(
+    pretrained_model_name: str,
+    dduf_file: str,
+    pipeline_class_name: str,
+    cache_dir: str,
+    proxies: str,
+    local_files_only: bool,
+    token: str,
+    revision: str,
+):
+    model_info_call_error = None
+    if not local_files_only:
+        try:
+            info = model_info(pretrained_model_name, token=token, revision=revision)
+        except (HTTPError, OfflineModeIsEnabled, requests.ConnectionError) as e:
+            logger.warning(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
+            local_files_only = True
+            model_info_call_error = e  # save error to reraise it if model is not cached locally
+
+    if (
+        not local_files_only
+        and dduf_file is not None
+        and dduf_file not in (sibling.rfilename for sibling in info.siblings)
+    ):
+        raise ValueError(f"Requested {dduf_file} file is not available in {pretrained_model_name}.")
+
+    try:
+        user_agent = {"pipeline_class": pipeline_class_name, "dduf": True}
+        cached_folder = snapshot_download(
+            pretrained_model_name,
+            cache_dir=cache_dir,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            allow_patterns=[dduf_file],
+            user_agent=user_agent,
+        )
+        return cached_folder
+    except FileNotFoundError:
+        # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
+        # This can happen in two cases:
+        # 1. If the user passed `local_files_only=True`                    => we raise the error directly
+        # 2. If we forced `local_files_only=True` when `model_info` failed => we raise the initial error
+        if model_info_call_error is None:
+            # 1. user passed `local_files_only=True`
+            raise
+        else:
+            # 2. we forced `local_files_only=True` when `model_info` failed
+            raise EnvironmentError(
+                f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occurred"
+                " while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace"
+                " above."
+            ) from model_info_call_error
+
+
+def _maybe_raise_error_for_incorrect_transformers(config_dict):
+    has_transformers_component = False
+    for k in config_dict:
+        if isinstance(config_dict[k], list):
+            has_transformers_component = config_dict[k][0] == "transformers"
+            if has_transformers_component:
+                break
+    if has_transformers_component and not is_transformers_version(">", "4.47.1"):
+        raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")

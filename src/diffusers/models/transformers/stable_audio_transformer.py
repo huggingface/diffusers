@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Union
+from typing import Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -29,7 +29,7 @@ from ...models.attention_processor import (
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_2d import Transformer2DModelOutput
-from ...utils import is_torch_version, logging
+from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 
 
@@ -211,6 +211,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["preprocess_conv", "postprocess_conv", "^proj_in$", "^proj_out$", "norm"]
 
     @register_to_config
     def __init__(
@@ -345,10 +346,6 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         """
         self.set_attn_processor(StableAudioAttnProcessor2_0())
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.FloatTensor,
@@ -415,25 +412,13 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
 
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     attention_mask,
                     cross_attention_hidden_states,
                     encoder_attention_mask,
                     rotary_embedding,
-                    **ckpt_kwargs,
                 )
 
             else:
