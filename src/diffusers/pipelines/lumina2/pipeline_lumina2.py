@@ -698,30 +698,17 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # compute whether apply classifier-free truncation on this timestep
+                do_classifier_free_truncation = (i + 1) / num_inference_steps > cfg_trunc_ratio
+                
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = (
                     torch.cat([latents] * 2)
-                    if do_classifier_free_guidance
-                    and 1 - t.item() / self.scheduler.config.num_train_timesteps < cfg_trunc_ratio
+                    if do_classifier_free_guidance and not do_classifier_free_truncation
                     else latents
                 )
+                
                 current_timestep = t
-                if not torch.is_tensor(current_timestep):
-                    # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-                    # This would be a good case for the `match` statement (Python 3.10+)
-                    is_mps = latent_model_input.device.type == "mps"
-                    if isinstance(current_timestep, float):
-                        dtype = torch.float32 if is_mps else torch.float64
-                    else:
-                        dtype = torch.int32 if is_mps else torch.int64
-                    current_timestep = torch.tensor(
-                        [current_timestep],
-                        dtype=dtype,
-                        device=latent_model_input.device,
-                    )
-                elif len(current_timestep.shape) == 0:
-                    current_timestep = current_timestep[None].to(latent_model_input.device)
-
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
@@ -736,7 +723,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 )[0]
 
                 # perform normalization-based guidance scale on a truncated timestep interval
-                if do_classifier_free_guidance and current_timestep[0] < cfg_trunc_ratio:
+                if self.do_classifier_free_guidance and not do_classifier_free_truncation:
                     noise_pred_cond, noise_pred_uncond = torch.split(noise_pred, len(noise_pred) // 2, dim=0)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
                     # apply normalization after classifier-free guidance
