@@ -158,6 +158,43 @@ In order to properly offload models after they're called, it is required to run 
 
 </Tip>
 
+## FP8 layerwise weight-casting
+
+PyTorch supports `torch.float8_e4m3fn` and `torch.float8_e5m2` as weight storage dtypes, but they can't be used for computation in many different tensor operations due to unimplemented kernel support. However, you can use these dtypes to store model weights in fp8 precision and upcast them on-the-fly when the layers are used in the forward pass. This is known as layerwise weight-casting.
+
+Typically, inference on most models is done with `torch.float16` or `torch.bfloat16` weight/computation precision. Layerwise weight-casting cuts down the memory footprint of the model weights by approximately half.
+
+```python
+import torch
+from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel
+from diffusers.utils import export_to_video
+
+model_id = "THUDM/CogVideoX-5b"
+
+# Load the model in bfloat16 and enable layerwise casting
+transformer = CogVideoXTransformer3DModel.from_pretrained(model_id, subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+
+# Load the pipeline
+pipe = CogVideoXPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+prompt = (
+    "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
+    "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
+    "pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, "
+    "casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. "
+    "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
+    "atmosphere of this unique musical performance."
+)
+video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
+export_to_video(video, "output.mp4", fps=8)
+```
+
+In the above example, layerwise casting is enabled on the transformer component of the pipeline. By default, certain layers are skipped from the FP8 weight casting because it can lead to significant degradation of generation quality. The normalization and modulation related weight parameters are also skipped by default.
+
+However, you gain more control and flexibility by directly utilizing the [`~hooks.layerwise_casting.apply_layerwise_casting`] function instead of [`~ModelMixin.enable_layerwise_casting`].
+
 ## Channels-last memory format
 
 The channels-last memory format is an alternative way of ordering NCHW tensors in memory to preserve dimension ordering. Channels-last tensors are ordered in such a way that the channels become the densest dimension (storing images pixel-per-pixel). Since not all operators currently support the channels-last format, it may result in worst performance but you should still try and see if it works for your model.
