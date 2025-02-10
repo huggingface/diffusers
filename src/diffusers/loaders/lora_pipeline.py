@@ -107,7 +107,28 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap TODO
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing adapter with the newly loaded adapter in-place.
+                This means that, instead of loading an additional adapter, this will take the existing adapter weights
+                and replace them with the weights of the new adapter. This can be faster and more memory efficient.
+                However, the main advantage of hotswapping is that when the model is compiled with torch.compile,
+                loading the new adapter does not require recompilation of the model.
+
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+
+                ```py
+                from peft.utils.hotswap import prepare_model_for_compiled_hotswap
+
+                model = ...  # load diffusers model with first LoRA adapter
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                prepare_model_for_compiled_hotswap(model, target_rank=max_rank)  # call *before* compiling
+                model = torch.compile(model)
+                model.load_lora_adapter(..., hotswap=True)  # now hotswap the 2nd adapter
+                ```
+
+                There are some limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
@@ -298,7 +319,28 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap TODO
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing adapter with the newly loaded adapter in-place.
+                This means that, instead of loading an additional adapter, this will take the existing adapter weights
+                and replace them with the weights of the new adapter. This can be faster and more memory efficient.
+                However, the main advantage of hotswapping is that when the model is compiled with torch.compile,
+                loading the new adapter does not require recompilation of the model.
+
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+
+                ```py
+                from peft.utils.hotswap import prepare_model_for_compiled_hotswap
+
+                model = ...  # load diffusers model with first LoRA adapter
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                prepare_model_for_compiled_hotswap(model, target_rank=max_rank)  # call *before* compiling
+                model = torch.compile(model)
+                model.load_lora_adapter(..., hotswap=True)  # now hotswap the 2nd adapter
+                ```
+
+                There are some limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -747,7 +789,28 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap TODO
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing adapter with the newly loaded adapter in-place.
+                This means that, instead of loading an additional adapter, this will take the existing adapter weights
+                and replace them with the weights of the new adapter. This can be faster and more memory efficient.
+                However, the main advantage of hotswapping is that when the model is compiled with torch.compile,
+                loading the new adapter does not require recompilation of the model.
+
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+
+                ```py
+                from peft.utils.hotswap import prepare_model_for_compiled_hotswap
+
+                model = ...  # load diffusers model with first LoRA adapter
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                prepare_model_for_compiled_hotswap(model, target_rank=max_rank)  # call *before* compiling
+                model = torch.compile(model)
+                model.load_lora_adapter(..., hotswap=True)  # now hotswap the 2nd adapter
+                ```
+
+                There are some limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")

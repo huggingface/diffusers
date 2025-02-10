@@ -64,12 +64,7 @@ class UNet2DConditionLoadersMixin:
     unet_name = UNET_NAME
 
     @validate_hf_hub_args
-    def load_attn_procs(
-        self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        hotswap: bool = False,
-        **kwargs,
-    ):
+    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
@@ -121,7 +116,6 @@ class UNet2DConditionLoadersMixin:
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap TODO
 
         Example:
 
@@ -227,7 +221,6 @@ class UNet2DConditionLoadersMixin:
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
                 low_cpu_mem_usage=low_cpu_mem_usage,
-                hotswap=hotswap,
             )
         else:
             raise ValueError(
@@ -386,7 +379,7 @@ class UNet2DConditionLoadersMixin:
 
             if hotswap:
                 try:
-                    from peft.utils.hotswap import _check_hotswap_configs_compatible, hotswap_adapter_from_state_dict
+                    from peft.utils.hotswap import check_hotswap_configs_compatible, hotswap_adapter_from_state_dict
                 except ImportError as exc:
                     msg = (
                         "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
@@ -411,7 +404,7 @@ class UNet2DConditionLoadersMixin:
             # we should also delete the `peft_config` associated to the `adapter_name`.
             try:
                 if hotswap:
-                    _check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
+                    check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
                     hotswap_adapter_from_state_dict(
                         model=self,
                         state_dict=state_dict,

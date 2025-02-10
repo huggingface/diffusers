@@ -2276,9 +2276,11 @@ class TestLoraHotSwapping(unittest.TestCase):
         with torch.inference_mode():
             output1_before = unet(**dummy_input)["sample"]
 
-        # sanity check:
+        # sanity checks:
         tol = 5e-3
         assert not torch.allclose(output0_before, output1_before, atol=tol, rtol=tol)
+        assert not (output0_before == 0).all()
+        assert not (output1_before == 0).all()
 
         with tempfile.TemporaryDirectory() as tmp_dirname:
             unet.save_lora_adapter(os.path.join(tmp_dirname, "0"), safe_serialization=True, adapter_name="adapter0")
@@ -2311,6 +2313,12 @@ class TestLoraHotSwapping(unittest.TestCase):
                 output1_after = unet(**dummy_input)["sample"]
             assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
 
+            # check error when not passing valid adapter name
+            name = "does-not-exist"
+            msg = f"Trying to hotswap LoRA adapter '{name}' but there is no existing adapter by that name"
+            with self.assertRaisesRegex(ValueError, msg):
+                unet.load_lora_adapter(file_name1, adapter_name=name, hotswap=True)
+
     @slow
     @require_torch_2
     @require_torch_accelerator
@@ -2328,3 +2336,98 @@ class TestLoraHotSwapping(unittest.TestCase):
         # It's important to add this context to raise an error on recompilation
         with torch._dynamo.config.patch(error_on_recompile=True):
             self.check_hotswap(do_compile=True, rank0=rank0, rank1=rank1)
+
+    ############
+    # PIPELINE #
+    ############
+
+    def get_lora_state_dicts(self, modules_to_save, adapter_name):
+        from peft import get_peft_model_state_dict
+
+        state_dicts = {}
+        for module_name, module in modules_to_save.items():
+            if module is not None:
+                state_dicts[f"{module_name}_lora_layers"] = get_peft_model_state_dict(
+                    module, adapter_name=adapter_name
+                )
+        return state_dicts
+
+    def get_dummy_input_pipeline(self):
+        pipeline_inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "num_inference_steps": 5,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+            "return_dict": False,
+        }
+        return pipeline_inputs
+
+    def check_pipeline_hotswap(self, rank0, rank1):
+        # Similar to check_hotswap but more realistic: check a whole pipeline to be closer to how users would use it
+        from peft.utils.hotswap import prepare_model_for_compiled_hotswap
+
+        dummy_input = self.get_dummy_input_pipeline()
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+
+        alpha0, alpha1 = rank0, rank1
+        max_rank = max([rank0, rank1])
+        lora_config0 = self.get_unet_lora_config(rank0, alpha0)
+        lora_config1 = self.get_unet_lora_config(rank1, alpha1)
+
+        pipeline.unet.add_adapter(lora_config0, adapter_name="adapter0")
+        output0_before = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
+
+        pipeline.unet.add_adapter(lora_config1, adapter_name="adapter1")
+        pipeline.unet.set_adapter("adapter1")
+        output1_before = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
+
+        # sanity check
+        tol = 1e-3
+        assert not np.allclose(output0_before, output1_before, atol=tol, rtol=tol)
+        assert not (output0_before == 0).all()
+        assert not (output1_before == 0).all()
+
+        with tempfile.TemporaryDirectory() as tmp_dirname:
+            lora0_state_dicts = self.get_lora_state_dicts({"unet": pipeline.unet}, adapter_name="adapter0")
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=os.path.join(tmp_dirname, "adapter0"), safe_serialization=True, **lora0_state_dicts
+            )
+            lora1_state_dicts = self.get_lora_state_dicts({"unet": pipeline.unet}, adapter_name="adapter1")
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=os.path.join(tmp_dirname, "adapter1"), safe_serialization=True, **lora1_state_dicts
+            )
+            del pipeline
+
+            pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+            file_name0 = os.path.join(tmp_dirname, "adapter0", "pytorch_lora_weights.safetensors")
+            file_name1 = os.path.join(tmp_dirname, "adapter1", "pytorch_lora_weights.safetensors")
+
+            pipeline.load_lora_weights(file_name0)
+            if rank0 != rank1:
+                prepare_model_for_compiled_hotswap(
+                    pipeline.unet,
+                    config={"adapter0": lora_config0, "adapter1": lora_config1},
+                    target_rank=max_rank,
+                )
+
+            pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead")
+            output0_after = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
+
+            # sanity check: still same result
+            assert np.allclose(output0_before, output0_after, atol=tol, rtol=tol)
+
+            pipeline.load_lora_weights(file_name1, hotswap=True, adapter_name="default_0")
+            output1_after = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
+
+            # sanity check: since it's the same LoRA, the results should be identical
+            assert np.allclose(output1_before, output1_after, atol=tol, rtol=tol)
+
+    @slow
+    @require_torch_2
+    @require_torch_accelerator
+    @require_peft_backend
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_diffusers_pipline(self, rank0, rank1):
+        # It's important to add this context to raise an error on recompilation
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            self.check_pipeline_hotswap(rank0=rank0, rank1=rank1)

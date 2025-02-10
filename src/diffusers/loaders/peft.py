@@ -205,7 +205,7 @@ class PeftAdapterMixin:
                 ```
 
                 There are some limitations to this technique, which are documented here:
-                https://huggingface.co/docs/peft/v0.14.0/en/package_reference/hotswap
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
@@ -327,7 +327,7 @@ class PeftAdapterMixin:
 
             if hotswap:
                 try:
-                    from peft.utils.hotswap import _check_hotswap_configs_compatible, hotswap_adapter_from_state_dict
+                    from peft.utils.hotswap import check_hotswap_configs_compatible, hotswap_adapter_from_state_dict
                 except ImportError as exc:
                     msg = (
                         "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
@@ -342,9 +342,9 @@ class PeftAdapterMixin:
                     new_sd = {}
                     for k, v in sd.items():
                         if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
-                            k = k[:-7] + f".{adapter_name}.weight"
+                            k = k[: -len(".weight")] + f".{adapter_name}.weight"
                         elif k.endswith("lora_B.bias"):  # lora_bias=True option
-                            k = k[:-5] + f".{adapter_name}.bias"
+                            k = k[: -len(".bias")] + f".{adapter_name}.bias"
                         new_sd[k] = v
                     return new_sd
 
@@ -353,7 +353,7 @@ class PeftAdapterMixin:
             try:
                 if hotswap:
                     state_dict = map_state_dict_for_hotswap(state_dict)
-                    _check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
+                    check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
                     hotswap_adapter_from_state_dict(
                         model=self,
                         state_dict=state_dict,
