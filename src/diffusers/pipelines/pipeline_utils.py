@@ -1036,13 +1036,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if obj_type in (list, set):
                 obj_origin_type = List if obj_type is list else Set
-                elems_type = Union[*{get_detailed_type(x) for x in obj}]
+                elems_type = Union[tuple({get_detailed_type(x) for x in obj})]
                 return obj_origin_type[elems_type]
             elif obj_type is tuple:
                 return Tuple[tuple(get_detailed_type(x) for x in obj)]
             elif obj_type is dict:
-                keys_type = Union[*{get_detailed_type(k) for k in obj.keys()}]
-                values_type = Union[*{get_detailed_type(k) for k in obj.values()}]
+                keys_type = Union[tuple({get_detailed_type(k) for k in obj.keys()})]
+                values_type = Union[tuple({get_detailed_type(k) for k in obj.values()})]
                 return Dict[keys_type, values_type]
             else:
                 return obj_type
