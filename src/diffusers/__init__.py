@@ -94,7 +94,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils import dummy_torchao_objects
 
-    _import_structure["utils.dummy_torchao_bjects"] = [
+    _import_structure["utils.dummy_torchao_objects"] = [
         name for name in dir(dummy_torchao_objects) if not name.startswith("_")
     ]
 else:
