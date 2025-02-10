@@ -64,20 +64,6 @@ _import_structure = {
     ],
 }
 
-"""
-try:
-    if not is_optimum_quanto_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_quanto_objects # noqa F403
-
-    _import_structure["utils.dummy_quanto_objects"] = [
-        name for name in dir(dummy_quanto_objects) if not name.startswith("_")
-    ]
-else:
-    _import_structure["quantizers.quantization_config"].extend("QuantoConfig")
-"""
-
 try:
     if not is_bitsandbytes_available():
         raise OptionalDependencyNotAvailable()
