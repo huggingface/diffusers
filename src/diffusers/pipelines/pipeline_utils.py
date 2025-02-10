@@ -876,7 +876,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if isinstance(expected_type, enum.EnumMeta):
                     _expected_class_types.extend(expected_type.__members__.keys())
                 else:
-                    _expected_class_types.append(expected_type.__name__)
+                    _expected_class_types.append(
+                        expected_type.__name__ if sys.version_info >= (3, 10)
+                        else getattr(expected_type, '__origin__', expected_type).__name__
+                    )
 
             _is_valid_type = class_obj.__class__.__name__ in _expected_class_types
             if not _is_valid_type:
