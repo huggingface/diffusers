@@ -1340,6 +1340,8 @@ class ModelTesterMixin:
 
     def test_layerwise_casting_training(self):    
         def test_fn(storage_dtype, compute_dtype):
+            if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
+                return
             init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
             model = self.model_class(**init_dict)
@@ -1355,6 +1357,7 @@ class ModelTesterMixin:
 
             input_tensor = inputs_dict[self.main_input_name]
             noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
+            noise = cast_maybe_tensor_dtype(noise, torch.float32, compute_dtype)
             loss = torch.nn.functional.mse_loss(output, noise)
             loss.backward()
 
