@@ -2319,19 +2319,19 @@ class TestLoraHotSwapping(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, msg):
                 unet.load_lora_adapter(file_name1, adapter_name=name, hotswap=True)
 
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     @slow
     @require_torch_2
     @require_torch_accelerator
     @require_peft_backend
-    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_diffusers_model(self, rank0, rank1):
         self.check_hotswap(do_compile=False, rank0=rank0, rank1=rank1)
 
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     @slow
     @require_torch_2
     @require_torch_accelerator
     @require_peft_backend
-    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_diffusers_model(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         with torch._dynamo.config.patch(error_on_recompile=True):
@@ -2422,11 +2422,11 @@ class TestLoraHotSwapping(unittest.TestCase):
             # sanity check: since it's the same LoRA, the results should be identical
             assert np.allclose(output1_before, output1_after, atol=tol, rtol=tol)
 
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     @slow
     @require_torch_2
     @require_torch_accelerator
     @require_peft_backend
-    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_diffusers_pipline(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         with torch._dynamo.config.patch(error_on_recompile=True):
