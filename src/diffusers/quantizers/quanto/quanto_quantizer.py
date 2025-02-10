@@ -1,13 +1,12 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import torch
-
 from ...utils import (
     get_module_from_name,
     is_accelerate_available,
     is_accelerate_version,
     is_optimum_quanto_available,
     is_optimum_quanto_version,
+    is_torch_available,
     logging,
 )
 from ..base import DiffusersQuantizer
@@ -16,6 +15,9 @@ from ..base import DiffusersQuantizer
 if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
 
+
+if is_torch_available():
+    import torch
 
 if is_accelerate_available():
     from accelerate.utils import CustomDtype, set_module_tensor_to_device
