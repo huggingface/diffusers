@@ -129,7 +129,8 @@ class Lumina2AttnProcessor2_0:
 
         # scaled_dot_product_attention expects attention_mask shape to be
         # (batch, heads, source_length, target_length)
-        attention_mask = attention_mask.bool().view(batch_size, 1, 1, -1)
+        if attention_mask is not None:
+            attention_mask = attention_mask.bool().view(batch_size, 1, 1, -1)
 
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
