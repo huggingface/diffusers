@@ -658,9 +658,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             system_prompt=system_prompt,
         )
-        if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
-            prompt_attention_mask = torch.cat([prompt_attention_mask, negative_prompt_attention_mask], dim=0)
 
         # 4. Prepare latents.
         latent_channels = self.transformer.config.in_channels
@@ -700,22 +697,13 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 # compute whether apply classifier-free truncation on this timestep
                 do_classifier_free_truncation = (i + 1) / num_inference_steps > cfg_trunc_ratio
-                
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2)
-                    if do_classifier_free_guidance and not do_classifier_free_truncation
-                    else latents
-                )
-                
-                current_timestep = t
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                current_timestep = current_timestep.expand(latent_model_input.shape[0])
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
-                current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
+                current_timestep = 1 - t / self.scheduler.config.num_train_timesteps
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                current_timestep = current_timestep.expand(latents.shape[0])
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
+                noise_pred_cond = self.transformer(
+                    hidden_states=latents,
                     timestep=current_timestep,
                     encoder_hidden_states=prompt_embeds,
                     attention_mask=prompt_attention_mask,
@@ -724,7 +712,13 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
 
                 # perform normalization-based guidance scale on a truncated timestep interval
                 if self.do_classifier_free_guidance and not do_classifier_free_truncation:
-                    noise_pred_cond, noise_pred_uncond = torch.split(noise_pred, len(noise_pred) // 2, dim=0)
+                    noise_pred_uncond = self.transformer(
+                        hidden_states=latents,
+                        timestep=current_timestep,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        attention_mask=negative_prompt_attention_mask,
+                        return_dict=False,
+                    )[0]
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
                     # apply normalization after classifier-free guidance
                     if cfg_normalization:

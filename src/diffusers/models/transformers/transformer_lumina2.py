@@ -130,7 +130,6 @@ class Lumina2AttnProcessor2_0:
         # scaled_dot_product_attention expects attention_mask shape to be
         # (batch, heads, source_length, target_length)
         attention_mask = attention_mask.bool().view(batch_size, 1, 1, -1)
-        attention_mask = attention_mask.expand(-1, attn.heads, sequence_length, -1)
 
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
@@ -493,10 +492,12 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         # 2. Context & noise refinement
         for layer in self.context_refiner:
-            encoder_hidden_states = layer(encoder_hidden_states, attention_mask, encoder_rotary_emb)
+            # NOTE: mask not used for performance
+            encoder_hidden_states = layer(encoder_hidden_states, None, encoder_rotary_emb)
 
         for layer in self.noise_refiner:
-            hidden_states = layer(hidden_states, hidden_mask, hidden_rotary_emb, temb)
+            # NOTE: mask not used for performance
+            hidden_states = layer(hidden_states, None, hidden_rotary_emb, temb)
 
         # 3. Attention mask preparation
         mask = hidden_states.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
@@ -511,10 +512,11 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         # 4. Transformer blocks
         for layer in self.layers:
+            # NOTE: mask not used for performance
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = self._gradient_checkpointing_func(layer, hidden_states, mask, joint_rotary_emb, temb)
+                hidden_states = self._gradient_checkpointing_func(layer, hidden_states, None, joint_rotary_emb, temb)
             else:
-                hidden_states = layer(hidden_states, mask, joint_rotary_emb, temb)
+                hidden_states = layer(hidden_states, None, joint_rotary_emb, temb)
 
         # 5. Output norm & projection & unpatchify
         hidden_states = self.norm_out(hidden_states, temb)

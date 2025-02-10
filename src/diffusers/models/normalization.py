@@ -515,19 +515,15 @@ class RMSNorm(nn.Module):
             if self.bias is not None:
                 hidden_states = hidden_states + self.bias
         else:
-            input_dtype = hidden_states.dtype
-            variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-            hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
-
             if self.weight is not None:
                 # convert into half-precision if necessary
                 if self.weight.dtype in [torch.float16, torch.bfloat16]:
                     hidden_states = hidden_states.to(self.weight.dtype)
-                hidden_states = hidden_states * self.weight
-                if self.bias is not None:
-                    hidden_states = hidden_states + self.bias
-            else:
-                hidden_states = hidden_states.to(input_dtype)
+            hidden_states = nn.functional.rms_norm(
+                hidden_states, normalized_shape=(hidden_states.shape[-1],), weight=self.weight, eps=self.eps
+            )
+            if self.bias is not None:
+                hidden_states = hidden_states + self.bias
 
         return hidden_states
 
