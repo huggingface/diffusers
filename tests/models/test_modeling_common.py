@@ -1338,6 +1338,33 @@ class ModelTesterMixin:
                 # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
                 assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
 
+    def test_layerwise_casting_training(self):    
+        def test_fn(storage_dtype, compute_dtype):
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+            model = self.model_class(**init_dict)
+            model = model.to(torch_device, dtype=compute_dtype)
+            model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+            model.train()
+
+            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
+
+            input_tensor = inputs_dict[self.main_input_name]
+            noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
+            loss = torch.nn.functional.mse_loss(output, noise)
+            loss.backward()
+
+
+        test_fn(torch.float16, torch.float32)
+        test_fn(torch.float8_e4m3fn, torch.float32)
+        test_fn(torch.float8_e5m2, torch.float32)
+        test_fn(torch.float8_e4m3fn, torch.bfloat16)
+
+
     def test_layerwise_casting_inference(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
