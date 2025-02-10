@@ -163,6 +163,8 @@
     title: gguf
   - local: quantization/torchao
     title: torchao
+  - local: quantization/quanto 
+    title: quanto
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
