@@ -1041,7 +1041,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         model,
                         state_dict,
                         device=param_device,
-                        dtype=torch_dtype,
                         model_name_or_path=pretrained_model_name_or_path,
                         hf_quantizer=hf_quantizer,
                         keep_in_fp32_modules=keep_in_fp32_modules,

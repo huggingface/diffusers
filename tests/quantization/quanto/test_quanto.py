@@ -9,6 +9,7 @@ from diffusers.models.transformers.transformer_flux import FluxTransformer2DMode
 from diffusers.utils import is_optimum_quanto_available
 from diffusers.utils.testing_utils import (
     nightly,
+    numpy_cosine_similarity_distance,
     require_accelerate,
     require_big_gpu_with_torch_cuda,
     torch_device,
@@ -141,6 +142,25 @@ class FluxTransformerInt8(FluxTransformerQuantoMixin, unittest.TestCase):
 
     def get_dummy_init_kwargs(self):
         return {"weights": "int8"}
+
+    def test_torch_compile(self):
+        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
+        compiled_model = torch.compile(model, mode="max-autotune", fullgraph=True)
+        inputs = self.get_dummy_inputs()
+
+        model.to(torch_device)
+        with torch.no_grad():
+            model_output = model(**inputs).sample
+        model.to("cpu")
+
+        compiled_model.to(torch_device)
+        with torch.no_grad():
+            compiled_model_output = compiled_model(**inputs).sample
+
+        max_diff = numpy_cosine_similarity_distance(
+            model_output.cpu().flatten(), compiled_model_output.cpu().flatten()
+        )
+        assert max_diff < 1e-4
 
 
 class FluxTransformerInt4(FluxTransformerQuantoMixin, unittest.TestCase):

@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 
 # Quanto
 
-[Quanto](https://github.com/huggingface/optimum-quanto) is a PyTorch quantization backend for [Optimum.](https://huggingface.co/docs/optimum/en/index) 
+[Quanto](https://github.com/huggingface/optimum-quanto) is a PyTorch quantization backend for [Optimum.](https://huggingface.co/docs/optimum/en/index)
 It has been designed with versatility and simplicity in mind:
 
 - All features are available in eager mode (works with non-traceable models)
@@ -27,10 +27,10 @@ In order to use the Quanto backend, you will first need to install `optimum-quan
 pip install optimum-quanto accelerate
 ```
 
-Now you can quantize a model by passing the `QuantoConfig` object to the `from_pretrained()` method. The following snippet demonstrates how to apply `float8` quantization with Quanto. 
+Now you can quantize a model by passing the `QuantoConfig` object to the `from_pretrained()` method. The following snippet demonstrates how to apply `float8` quantization with Quanto.
 
 ```python
-import torch 
+import torch
 from diffusers import FluxTransformer2DModel, QuantoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
@@ -46,12 +46,24 @@ image = pipe(
 ).images[0]
 image.save("output.png")
 ```
+
+## Using `from_single_file` with the Quanto Backend
+
+```python
+import torch
+from diffusers import FluxTransformer2DModel, QuantoConfig
+
+ckpt_path = "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
+quantization_config = QuantoConfig(weights="float8")
+transformer = FluxTransformer2DModel.from_single_file(ckpt_path, quantization_config=quantization_config, torch_dtype=torch.bfloat16)
+```
+
 ## Saving Quantized models
 
-Diffusers supports serializing and saving Quanto models using the `save_pretrained` method. 
-```python
+Diffusers supports serializing and saving Quanto models using the `save_pretrained` method.
 
-import torch 
+```python
+import torch
 from diffusers import FluxTransformer2DModel, QuantoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
@@ -59,11 +71,32 @@ quantization_config = QuantoConfig(weights="float8")
 transformer = FluxTransformer2DModel.from_pretrained(model_id, quantization_config=quantization_config, torch_dtype=torch.bfloat16)
 
 # save quantized model to reuse
-transformer.save_pretrained("<your save path>")
+transformer.save_pretrained("<your quantized model save path>")
+
+# you can reload your quantized model with
+model = FluxTransformer2DModel.from_pretrained("<your quantized model save path>")
+```
+
+## Using `torch.compile` with Quanto
+
+Currently the Quanto backend only supports `torch.compile` for `int8` weights and activations.
+
+```python
+import torch
+from diffusers import FluxTransformer2DModel, QuantoConfig
+
+model_id = "black-forest-labs/FLUX.1-dev"
+quantization_config = QuantoConfig(weights="int8")
+transformer = FluxTransformer2DModel.from_pretrained(model_id, quantization_config=quantization_config, torch_dtype=torch.bfloat16)
+transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
+
+pipe = FluxPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch_dtype)
+pipe.to("cuda")
+```
 
 ## Supported Quantization Types
 
-### Weights 
+### Weights
 
 - float8
 - int8
@@ -73,15 +106,3 @@ transformer.save_pretrained("<your save path>")
 ### Activations
 - float8
 - int8
-
-
-```
-```
-```
-
-
-```
-
-
-
-
