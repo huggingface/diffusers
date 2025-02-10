@@ -104,7 +104,7 @@ try:
     if not is_optimum_quanto_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from utils import dummy_optimum_quanto_objects
+    from .utils import dummy_optimum_quanto_objects
 
     _import_structure["utils.dummy_optimum_quanto_objects"] = [
         name for name in dir(dummy_optimum_quanto_objects) if not name.startswith("_")
