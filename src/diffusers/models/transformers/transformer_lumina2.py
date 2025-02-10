@@ -469,6 +469,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
+        use_mask_in_transformer: bool = True,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         batch_size = hidden_states.size(0)
@@ -493,11 +494,15 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # 2. Context & noise refinement
         for layer in self.context_refiner:
             # NOTE: mask not used for performance
-            encoder_hidden_states = layer(encoder_hidden_states, None, encoder_rotary_emb)
+            encoder_hidden_states = layer(
+                encoder_hidden_states, attention_mask if use_mask_in_transformer else None, encoder_rotary_emb
+            )
 
         for layer in self.noise_refiner:
             # NOTE: mask not used for performance
-            hidden_states = layer(hidden_states, None, hidden_rotary_emb, temb)
+            hidden_states = layer(
+                hidden_states, hidden_mask if use_mask_in_transformer else None, hidden_rotary_emb, temb
+            )
 
         # 3. Attention mask preparation
         mask = hidden_states.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
@@ -514,9 +519,11 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for layer in self.layers:
             # NOTE: mask not used for performance
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = self._gradient_checkpointing_func(layer, hidden_states, None, joint_rotary_emb, temb)
+                hidden_states = self._gradient_checkpointing_func(
+                    layer, hidden_states, mask if use_mask_in_transformer else None, joint_rotary_emb, temb
+                )
             else:
-                hidden_states = layer(hidden_states, None, joint_rotary_emb, temb)
+                hidden_states = layer(hidden_states, mask if use_mask_in_transformer else None, joint_rotary_emb, temb)
 
         # 5. Output norm & projection & unpatchify
         hidden_states = self.norm_out(hidden_states, temb)
