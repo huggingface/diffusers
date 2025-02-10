@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-from typing import Any, Dict, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -21,15 +20,11 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.attention import FeedForward
-from ...models.attention_processor import (
-    Attention,
-    AttentionProcessor,
-    CogView4AttnProcessor,
-)
+from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
-from ...utils import is_torch_version, logging
-from ..embeddings import CogView3CombinedTimestepSizeEmbeddings, CogView4PatchEmbed
+from ...utils import logging
+from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
 from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
 
@@ -37,28 +32,125 @@ from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class CogView4TransformerBlock(nn.Module):
-    r"""
-    Transformer block used in [CogView](https://github.com/THUDM/CogView3) model.
-
-    Args:
-        dim (`int`):
-            The number of channels in the input and output.
-        num_attention_heads (`int`):
-            The number of heads to use for multi-head attention.
-        attention_head_dim (`int`):
-            The number of channels in each head.
-        time_embed_dim (`int`):
-            The number of channels in timestep embedding.
-    """
-
+class CogView4PatchEmbed(nn.Module):
     def __init__(
         self,
-        dim: int = 2560,
-        num_attention_heads: int = 64,
-        attention_head_dim: int = 40,
-        time_embed_dim: int = 512,
+        in_channels: int = 16,
+        hidden_size: int = 2560,
+        patch_size: int = 2,
+        text_hidden_size: int = 4096,
+        pos_embed_max_size: int = 128,
     ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.hidden_size = hidden_size
+        self.patch_size = patch_size
+        self.text_hidden_size = text_hidden_size
+        self.pos_embed_max_size = pos_embed_max_size
+        # Linear projection for image patches
+        self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
+
+        # Linear projection for text embeddings
+        self.text_proj = nn.Linear(text_hidden_size, hidden_size)
+
+    def forward(
+        self, hidden_states: torch.Tensor, prompt_embeds: torch.Tensor, negative_prompt_embeds: torch.Tensor | None
+    ) -> torch.Tensor:
+        batch_size, channel, height, width = hidden_states.shape
+
+        if height % self.patch_size != 0 or width % self.patch_size != 0:
+            raise ValueError("Height and width must be divisible by patch size")
+
+        patch_height = height // self.patch_size
+        patch_width = width // self.patch_size
+
+        # b, c, h, w -> b, c, patch_height, patch_size, patch_width, patch_size
+        #            -> b, patch_height, patch_width, c, patch_size, patch_size
+        #            -> b, patch_height * patch_width, c * patch_size * patch_size
+        hidden_states = (
+            hidden_states.reshape(batch_size, channel, patch_height, self.patch_size, patch_width, self.patch_size)
+            .permute(0, 2, 4, 1, 3, 5)
+            .reshape(batch_size, patch_height * patch_width, channel * self.patch_size * self.patch_size)
+        )
+
+        # project
+        hidden_states = self.proj(hidden_states)  # embed_dim: 64 -> 4096
+        prompt_embeds = self.text_proj(prompt_embeds)  # embed_dim: 4096 -> 4096
+        if negative_prompt_embeds is not None:
+            negative_prompt_embeds = self.text_proj(negative_prompt_embeds)  # embed_dim: 4096 -> 4096
+        return hidden_states, prompt_embeds, negative_prompt_embeds
+
+
+class CogView4AttnProcessor:
+    """
+    Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
+    query and key vectors, but does not include spatial normalization.
+    """
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("CogView4AttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        text_seq_length = encoder_hidden_states.size(1)
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
+        # 1. QKV projections
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+        # 2. QK normalization
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # 3. Rotational positional embeddings applied to latent stream
+        if image_rotary_emb is not None:
+
+            def apply_rotary_emb(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+                cos, sin = freqs
+                x_real, x_imag = x.chunk(2, dim=-1)
+                x_rotated = torch.cat([-x_imag, x_real], dim=-1)
+                x_out = cos * x.float() + sin * x_rotated.float()
+                return x_out
+
+            query[:, :, text_seq_length:, :] = apply_rotary_emb(query[:, :, text_seq_length:, :], image_rotary_emb)
+            key[:, :, text_seq_length:, :] = apply_rotary_emb(key[:, :, text_seq_length:, :], image_rotary_emb)
+
+        # 4. Attention
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
+
+        # 5. Output projection
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        encoder_hidden_states, hidden_states = hidden_states.split(
+            [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
+        )
+        return hidden_states, encoder_hidden_states
+
+
+class CogView4TransformerBlock(nn.Module):
+    def __init__(
+        self, dim: int = 2560, num_attention_heads: int = 64, attention_head_dim: int = 40, time_embed_dim: int = 512
+    ) -> None:
         super().__init__()
 
         self.norm1 = CogView3PlusAdaLayerNormZeroTextImage(embedding_dim=time_embed_dim, dim=dim)
@@ -112,17 +204,16 @@ class CogView4TransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        time_embedding: torch.Tensor = None,
-        image_rotary_emb: torch.Tensor = None,
-        **kwargs,
+        temb: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         batch_size, encoder_hidden_states_len, hidden_dim = encoder_hidden_states.shape
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
         residual = hidden_states
         layernorm_factor = (
-            self.adaln(time_embedding)
+            self.adaln(temb)
             .view(
-                time_embedding.shape[0],
+                temb.shape[0],
                 6,
                 2,
                 hidden_states.shape[-1],
@@ -172,10 +263,48 @@ class CogView4TransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-def swap_scale_shift(weight, dim):
-    shift, scale = weight.chunk(2, dim=0)
-    new_weight = torch.cat([scale, shift], dim=0)
-    return new_weight
+class CogView4RotaryPosEmbed(nn.Module):
+    def __init__(self, dim: int, patch_size: int, rope_axes_dim: Tuple[int, int], theta: float = 10000.0) -> None:
+        super().__init__()
+
+        self.patch_size = patch_size
+        self.rope_axes_dim = rope_axes_dim
+
+        dim_h, dim_w = dim // 2, dim // 2
+        h_inv_freq = 1.0 / (theta ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: (dim_h // 2)].float() / dim_h))
+        w_inv_freq = 1.0 / (theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w))
+        h_seq = torch.arange(self.rope_axes_dim[0])
+        w_seq = torch.arange(self.rope_axes_dim[1])
+        self.freqs_h = torch.outer(h_seq, h_inv_freq)
+        self.freqs_w = torch.outer(w_seq, w_inv_freq)
+
+    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size, num_channels, height, width = hidden_states.shape
+        height, width = height // self.patch_size, width // self.patch_size
+
+        h_idx = torch.arange(height)
+        w_idx = torch.arange(width)
+        inner_h_idx = h_idx * self.rope_axes_dim[0] // height
+        inner_w_idx = w_idx * self.rope_axes_dim[1] // width
+
+        self.freqs_h = self.freqs_h.to(hidden_states.device)
+        self.freqs_w = self.freqs_w.to(hidden_states.device)
+        freqs_h = self.freqs_h[inner_h_idx]
+        freqs_w = self.freqs_w[inner_w_idx]
+
+        # Create position matrices for height and width
+        # [height, 1, dim//4] and [1, width, dim//4]
+        freqs_h = freqs_h.unsqueeze(1)
+        freqs_w = freqs_w.unsqueeze(0)
+        # Broadcast freqs_h and freqs_w to [height, width, dim//4]
+        freqs_h = freqs_h.expand(height, width, -1)
+        freqs_w = freqs_w.expand(height, width, -1)
+
+        # Concatenate along last dimension to get [height, width, dim//2]
+        freqs = torch.cat([freqs_h, freqs_w], dim=-1)
+        freqs = torch.cat([freqs, freqs], dim=-1)  # [height, width, dim]
+        freqs = freqs.reshape(height * width, -1)
+        return (freqs.cos(), freqs.sin())
 
 
 class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
@@ -212,6 +341,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["CogView4TransformerBlock", "CogView4PatchEmbed", "CogView4PatchEmbed"]
+    _skip_layerwise_casting_patterns = ["patch_embed", "norm", "proj_out"]
 
     @register_to_config
     def __init__(
@@ -227,26 +357,23 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         condition_dim: int = 256,
         pos_embed_max_size: int = 128,
         sample_size: int = 128,
+        rope_axes_dim: Tuple[int, int] = (256, 256),
     ):
         super().__init__()
-        self.out_channels = out_channels
-        self.inner_dim = num_attention_heads * attention_head_dim
 
         # CogView3 uses 3 additional SDXL-like conditions - original_size, target_size, crop_coords
         # Each of these are sincos embeddings of shape 2 * condition_dim
-        self.pooled_projection_dim = 3 * 2 * condition_dim
+        pooled_projection_dim = 3 * 2 * condition_dim
+        inner_dim = num_attention_heads * attention_head_dim
+        out_channels = out_channels
 
-        self.max_h = 256
-        self.max_w = 256
-        self.rope = self.prepare_rope(
-            embed_dim=self.config.attention_head_dim, max_h=self.max_h, max_w=self.max_w, rotary_base=10000
-        )
+        # 1. RoPE
+        self.rope = CogView4RotaryPosEmbed(attention_head_dim, patch_size, rope_axes_dim, theta=10000.0)
 
-        self.layernorm = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-5)
-
+        # 2. Patch & Text-timestep embedding
         self.patch_embed = CogView4PatchEmbed(
             in_channels=in_channels,
-            hidden_size=self.inner_dim,
+            hidden_size=inner_dim,
             patch_size=patch_size,
             text_hidden_size=text_embed_dim,
             pos_embed_max_size=pos_embed_max_size,
@@ -255,146 +382,29 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         self.time_condition_embed = CogView3CombinedTimestepSizeEmbeddings(
             embedding_dim=time_embed_dim,
             condition_dim=condition_dim,
-            pooled_projection_dim=self.pooled_projection_dim,
-            timesteps_dim=self.inner_dim,
+            pooled_projection_dim=pooled_projection_dim,
+            timesteps_dim=inner_dim,
         )
 
+        # 3. Transformer blocks
         self.transformer_blocks = nn.ModuleList(
             [
-                CogView4TransformerBlock(
-                    dim=self.inner_dim,
-                    num_attention_heads=num_attention_heads,
-                    attention_head_dim=attention_head_dim,
-                    time_embed_dim=time_embed_dim,
-                )
+                CogView4TransformerBlock(inner_dim, num_attention_heads, attention_head_dim, time_embed_dim)
                 for _ in range(num_layers)
             ]
         )
 
-        ######################################
-        self.norm_out = AdaLayerNormContinuous(
-            embedding_dim=self.inner_dim,
-            conditioning_embedding_dim=time_embed_dim,
-            elementwise_affine=False,
-        )
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
+        # 4. Output projection
+        self.norm_out = AdaLayerNormContinuous(inner_dim, time_embed_dim, elementwise_affine=False)
+        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels, bias=True)
 
         self.gradient_checkpointing = False
-
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
-    @staticmethod
-    def prepare_rope(embed_dim, max_h, max_w, rotary_base):
-        dim_h = embed_dim // 2
-        dim_w = embed_dim // 2
-        h_inv_freq = 1.0 / (
-            rotary_base ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: (dim_h // 2)].float() / dim_h)
-        )
-        w_inv_freq = 1.0 / (
-            rotary_base ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w)
-        )
-        h_seq = torch.arange(max_h, dtype=h_inv_freq.dtype)
-        w_seq = torch.arange(max_w, dtype=w_inv_freq.dtype)
-        freqs_h = torch.outer(h_seq, h_inv_freq)
-        freqs_w = torch.outer(w_seq, w_inv_freq)
-        return (freqs_h, freqs_w)
-
-    def get_rope_embedding(self, height, width, target_h, target_w, device):
-        # Get pre-computed frequencies
-        freqs_h, freqs_w = self.rope
-
-        h_idx = torch.arange(height)
-        w_idx = torch.arange(width)
-        inner_h_idx = (h_idx * self.max_h) // target_h
-        inner_w_idx = (w_idx * self.max_w) // target_w
-
-        freqs_h = freqs_h[inner_h_idx].to(device)
-        freqs_w = freqs_w[inner_w_idx].to(device)
-
-        # Create position matrices for height and width
-        # [height, 1, dim//4] and [1, width, dim//4]
-        freqs_h = freqs_h.unsqueeze(1)
-        freqs_w = freqs_w.unsqueeze(0)
-        # Broadcast freqs_h and freqs_w to [height, width, dim//4]
-        freqs_h = freqs_h.expand(height, width, -1)
-        freqs_w = freqs_w.expand(height, width, -1)
-
-        # Concatenate along last dimension to get [height, width, dim//2]
-        freqs = torch.cat([freqs_h, freqs_w], dim=-1)
-
-        freqs = torch.cat([freqs, freqs], dim=-1)  # [height, width, dim]
-        freqs = freqs.reshape(height * width, -1)
-
-        return freqs
-        # return freqs.cos(), freqs.sin()
 
     def forward(
         self,
         hidden_states: torch.Tensor,
         prompt_embeds: torch.Tensor,
-        negative_prompt_embeds: torch.Tensor | None,
+        negative_prompt_embeds: Optional[torch.Tensor],
         timestep: torch.LongTensor,
         original_size: torch.Tensor,
         target_size: torch.Tensor,
@@ -429,21 +439,18 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
             `torch.Tensor` or [`~models.transformer_2d.Transformer2DModelOutput`]:
                 The denoised latents using provided inputs as conditioning.
         """
-        batch_size, channel, height, width = hidden_states.shape
-        patch_height, patch_width = height // self.config.patch_size, width // self.config.patch_size
+        batch_size, num_channels, height, width = hidden_states.shape
         do_cfg = negative_prompt_embeds is not None
 
         if do_cfg:
-            assert batch_size == prompt_embeds.shape[0] + negative_prompt_embeds.shape[0], (
-                "batch size mismatch in CFG mode"
-            )
+            assert (
+                batch_size == prompt_embeds.shape[0] + negative_prompt_embeds.shape[0]
+            ), "batch size mismatch in CFG mode"
         else:
             assert batch_size == prompt_embeds.shape[0], "batch size mismatch in non-CFG mode"
 
         # 1. RoPE
-        image_rotary_emb = self.get_rope_embedding(
-            patch_height, patch_width, target_h=patch_height, target_w=patch_width, device=hidden_states.device
-        )
+        image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
         temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
@@ -459,20 +466,18 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                # TODO 微调使用
-                ...
+                hidden_states_cond, encoder_hidden_states_cond = self._gradient_checkpointing_func(
+                    block, hidden_states_cond, encoder_hidden_states_cond, temb_cond, image_rotary_emb
+                )
+                hidden_states_uncond, encoder_hidden_states_uncond = self._gradient_checkpointing_func(
+                    block, hidden_states_uncond, encoder_hidden_states_uncond, temb_uncond, image_rotary_emb
+                )
             else:
                 hidden_states_cond, encoder_hidden_states_cond = block(
-                    hidden_states=hidden_states_cond,
-                    encoder_hidden_states=encoder_hidden_states_cond,
-                    time_embedding=temb_cond,
-                    image_rotary_emb=image_rotary_emb,
+                    hidden_states_cond, encoder_hidden_states_cond, temb_cond, image_rotary_emb
                 )
                 hidden_states_uncond, encoder_hidden_states_uncond = block(
-                    hidden_states=hidden_states_uncond,
-                    encoder_hidden_states=encoder_hidden_states_uncond,
-                    time_embedding=temb_uncond,
-                    image_rotary_emb=image_rotary_emb,
+                    hidden_states_uncond, encoder_hidden_states_uncond, temb_uncond, image_rotary_emb
                 )
 
         hidden_states_cond, encoder_hidden_states_cond = (
@@ -493,20 +498,21 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         width = width // patch_size
 
         hidden_states_cond = hidden_states_cond.reshape(
-            shape=(hidden_states_cond.shape[0], height, width, self.out_channels, patch_size, patch_size)
+            shape=(hidden_states_cond.shape[0], height, width, -1, patch_size, patch_size)
         )
         hidden_states_cond = torch.einsum("nhwcpq->nchpwq", hidden_states_cond)
         output_cond = hidden_states_cond.reshape(
-            shape=(hidden_states_cond.shape[0], self.out_channels, height * patch_size, width * patch_size)
+            shape=(hidden_states_cond.shape[0], -1, height * patch_size, width * patch_size)
         )
 
         hidden_states_uncond = hidden_states_uncond.reshape(
-            shape=(hidden_states_uncond.shape[0], height, width, self.out_channels, patch_size, patch_size)
+            hidden_states_uncond.shape[0], height, width, -1, patch_size, patch_size
         )
         hidden_states_uncond = torch.einsum("nhwcpq->nchpwq", hidden_states_uncond)
         output_uncond = hidden_states_uncond.reshape(
-            shape=(hidden_states_uncond.shape[0], self.out_channels, height * patch_size, width * patch_size)
+            hidden_states_uncond.shape[0], -1, height * patch_size, width * patch_size
         )
+
         if not return_dict:
             return (output_cond, output_uncond)
         return Transformer2DModelOutput(sample=output_cond), Transformer2DModelOutput(sample=output_uncond)

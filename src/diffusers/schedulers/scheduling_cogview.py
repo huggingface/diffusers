@@ -311,9 +311,9 @@ class CogViewScheduler(SchedulerMixin, ConfigMixin):
         sqrt_alpha_prod = self.sqrt_alphas_cumprod[timesteps]
         sigmas = self.sigmas[timesteps]
         assert sqrt_alpha_prod.dim() == 1, f"sqrt_alpha_prod must be a 1D tensor, got {sqrt_alpha_prod.dim()}D"
-        assert sqrt_alpha_prod.shape == sigmas.shape, (
-            f"sigmas and sqrt_alpha_prod must have the same shape, got {sigmas.shape} and {sqrt_alpha_prod.shape}"
-        )
+        assert (
+            sqrt_alpha_prod.shape == sigmas.shape
+        ), f"sigmas and sqrt_alpha_prod must have the same shape, got {sigmas.shape} and {sqrt_alpha_prod.shape}"
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
             sigmas = sigmas.unsqueeze(-1)

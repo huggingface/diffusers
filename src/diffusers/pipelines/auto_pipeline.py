@@ -23,7 +23,6 @@ from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
 from .cogview4 import CogView4Pipeline
-
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,

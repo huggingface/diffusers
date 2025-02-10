@@ -22,9 +22,10 @@ Note: You must provide either --transformer_checkpoint_path or --vae_checkpoint_
 """
 
 import argparse
+
 import torch
-from transformers import PreTrainedTokenizerFast, GlmForCausalLM
 from tqdm import tqdm
+from transformers import GlmForCausalLM, PreTrainedTokenizerFast
 
 from diffusers import (
     AutoencoderKL,
@@ -33,6 +34,7 @@ from diffusers import (
     CogView4Transformer2DModel,
 )
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

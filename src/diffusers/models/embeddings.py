@@ -813,55 +813,6 @@ class CogView3PlusPatchEmbed(nn.Module):
         return (hidden_states + pos_embed).to(hidden_states.dtype)
 
 
-class CogView4PatchEmbed(nn.Module):
-    def __init__(
-        self,
-        in_channels: int = 16,
-        hidden_size: int = 2560,
-        patch_size: int = 2,
-        text_hidden_size: int = 4096,
-        pos_embed_max_size: int = 128,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.hidden_size = hidden_size
-        self.patch_size = patch_size
-        self.text_hidden_size = text_hidden_size
-        self.pos_embed_max_size = pos_embed_max_size
-        # Linear projection for image patches
-        self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
-
-        # Linear projection for text embeddings
-        self.text_proj = nn.Linear(text_hidden_size, hidden_size)
-
-    def forward(
-        self, hidden_states: torch.Tensor, prompt_embeds: torch.Tensor, negative_prompt_embeds: torch.Tensor | None
-    ) -> torch.Tensor:
-        batch_size, channel, height, width = hidden_states.shape
-
-        if height % self.patch_size != 0 or width % self.patch_size != 0:
-            raise ValueError("Height and width must be divisible by patch size")
-
-        patch_height = height // self.patch_size
-        patch_width = width // self.patch_size
-
-        # b, c, h, w -> b, c, patch_height, patch_size, patch_width, patch_size
-        #            -> b, patch_height, patch_width, c, patch_size, patch_size
-        #            -> b, patch_height * patch_width, c * patch_size * patch_size
-        hidden_states = (
-            hidden_states.reshape(batch_size, channel, patch_height, self.patch_size, patch_width, self.patch_size)
-            .permute(0, 2, 4, 1, 3, 5)
-            .reshape(batch_size, patch_height * patch_width, channel * self.patch_size * self.patch_size)
-        )
-
-        # project
-        hidden_states = self.proj(hidden_states)  # embed_dim: 64 -> 4096
-        prompt_embeds = self.text_proj(prompt_embeds)  # embed_dim: 4096 -> 4096
-        if negative_prompt_embeds is not None:
-            negative_prompt_embeds = self.text_proj(negative_prompt_embeds)  # embed_dim: 4096 -> 4096
-        return hidden_states, prompt_embeds, negative_prompt_embeds
-
-
 def get_3d_rotary_pos_embed(
     embed_dim,
     crops_coords,
@@ -1282,28 +1233,6 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
     w = apply_1d_rope(w, positions[2], w_cos, w_sin)
     x = torch.cat([t, h, w], dim=-1)
     return x
-
-def apply_rotary_emb_megatron(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-    """Apply rotary position embeddings to input tensor.
-
-    Args:
-        x: Input tensor of shape [batch_size, n_heads, seq_len, head_dim]
-        freqs: Frequency tensor of shape [seq_len, head_dim]
-
-    Returns:
-        Tensor with rotary position embeddings applied
-    """
-    batch_size, n_heads, seq_len, rot_dim = x.shape
-    assert rot_dim % 2 == 0 and rot_dim == freqs.shape[-1]
-
-    x_dim_first_half, x_dim_second_half = x.chunk(2, dim=-1)
-    x_rot_shifted = torch.cat([-x_dim_second_half, x_dim_first_half], dim=-1)
-
-    cos, sin = torch.cos(freqs), torch.sin(freqs)
-
-    x_out = cos * x + sin * x_rot_shifted
-
-    return x_out
 
 
 class FluxPosEmbed(nn.Module):

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -100,7 +99,6 @@ class CogView4Pipeline(DiffusionPipeline):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
-        self.image_factor = 16
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def _get_glm_embeds(
@@ -266,24 +264,6 @@ class CogView4Pipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(self, generator, eta):
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-        return extra_step_kwargs
-
     # Copied from diffusers.pipelines.latte.pipeline_latte.LattePipeline.check_inputs
     def check_inputs(
         self,
@@ -295,15 +275,8 @@ class CogView4Pipeline(DiffusionPipeline):
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
-        if height % self.image_factor != 0 or width % self.image_factor != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by {self.image_factor} but are {height} and {width}."
-            )
-
-        if height < 512 or height > 2048 or width < 512 or width > 2048:
-            raise ValueError(
-                f"`height` and `width` must be between 512 and 2048, but got height={height} and width={width}."
-            )
+        if height % 16 != 0 or width % 16 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -508,6 +481,7 @@ class CogView4Pipeline(DiffusionPipeline):
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = self.do_classifier_free_guidance
+
         # Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
@@ -519,14 +493,15 @@ class CogView4Pipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        # Prepare latents.
+
+        # Prepare latents
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
             height,
             width,
-            prompt_embeds.dtype,
+            torch.float32,
             device,
             generator,
             latents,
@@ -546,9 +521,6 @@ class CogView4Pipeline(DiffusionPipeline):
         target_size = target_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
         crops_coords_top_left = crops_coords_top_left.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
-        # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
         # Prepare timesteps
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
             self.transformer.config.patch_size**2
@@ -557,33 +529,38 @@ class CogView4Pipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # Denoising loop
+        transformer_dtype = self.transformer.dtype
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-                timestep = t.reshape((1,))
-                timestep = torch.cat([timestep] * num_images_per_prompt)
-                timestep = torch.cat([timestep] * 2) if do_classifier_free_guidance else t
+
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = latent_model_input.to(transformer_dtype)
+
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timestep = t.expand(latents.shape[0])
+
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     prompt_embeds=prompt_embeds,
                     negative_prompt_embeds=negative_prompt_embeds,
-                    timestep=timestep,  # Pass sigma as timestep for noise prediction
+                    timestep=timestep,
                     original_size=original_size,
                     target_size=target_size,
                     crop_coords=crops_coords_top_left,
                     return_dict=False,
                 )
+
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_cond, noise_pred_uncond = noise_pred
-                    noise_pred_guided = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
 
-                latents = self.scheduler.step(noise_pred_guided, latents, t).prev_sample
-                latents = latents.to(prompt_embeds.dtype)
+                latents = self.scheduler.step(noise_pred, latents, t).prev_sample
 
                 # call the callback, if provided
                 if callback_on_step_end is not None:
@@ -602,9 +579,8 @@ class CogView4Pipeline(DiffusionPipeline):
                     xm.mark_step()
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                0
-            ]
+            latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
+            image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
         else:
             image = latents
 

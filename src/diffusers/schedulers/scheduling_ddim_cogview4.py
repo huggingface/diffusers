@@ -18,14 +18,13 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
@@ -49,11 +48,11 @@ class CogView4DDIMScheduler(SchedulerMixin, ConfigMixin):
     CogView4 DDIM Scheduler.
 
     This scheduler is a modified version of the DDIM scheduler specifically designed for use with the CogView4 model.
-    It implements the denoising process using a deterministic approach based on the DDIM (Denoising Diffusion Implicit Models)
-    framework.
+    It implements the denoising process using a deterministic approach based on the DDIM (Denoising Diffusion Implicit
+    Models) framework.
 
-    The scheduler maintains the core DDIM functionality while being optimized for the CogView4 architecture and its specific
-    requirements for image generation tasks.
+    The scheduler maintains the core DDIM functionality while being optimized for the CogView4 architecture and its
+    specific requirements for image generation tasks.
 
     Args:
         num_train_timesteps (int, optional): The number of diffusion steps to train the model. Defaults to 1000.
@@ -172,8 +171,8 @@ class CogView4DDIMScheduler(SchedulerMixin, ConfigMixin):
         Predict the sample from the previous timestep by applying the flow matching update.
 
         This method implements the flow matching step for the CogView4 DDIM scheduler. It takes the model output
-        (predicted noise) and current sample, and computes the previous sample by following the flow matching
-        update rule.
+        (predicted noise) and current sample, and computes the previous sample by following the flow matching update
+        rule.
 
         Args:
             model_output (`torch.Tensor`):
@@ -187,8 +186,8 @@ class CogView4DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         Returns:
             `CogView4DDIMSchedulerOutput` or `tuple`:
-                If `return_dict` is True, returns a `CogView4DDIMSchedulerOutput` containing the predicted
-                sample at the previous timestep. Otherwise, returns a tuple with the predicted sample.
+                If `return_dict` is True, returns a `CogView4DDIMSchedulerOutput` containing the predicted sample at
+                the previous timestep. Otherwise, returns a tuple with the predicted sample.
         """
 
         if self.num_inference_steps is None:
