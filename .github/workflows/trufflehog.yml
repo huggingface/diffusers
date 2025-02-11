@@ -11,5 +11,6 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        extra_args: --results=verified,unknown
     - name: Secret Scanning
       uses: trufflesecurity/trufflehog@main
