@@ -5,8 +5,6 @@ import os
 import tempfile
 import unittest
 import uuid
-import textwrap
-import ast
 from typing import Any, Callable, Dict, Union
 
 import numpy as np
@@ -16,7 +14,7 @@ import torch.nn as nn
 from huggingface_hub import ModelCard, delete_repo
 from huggingface_hub.utils import is_jinja_available
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
-import importlib
+
 import diffusers
 from diffusers import (
     AsymmetricAutoencoderKL,
@@ -43,6 +41,7 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_accelerate_version_greater,
@@ -53,7 +52,6 @@ from diffusers.utils.testing_utils import (
     skip_mps,
     torch_device,
 )
-from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 
 from ..models.autoencoders.vae import (
     get_asym_autoencoder_kl_config,

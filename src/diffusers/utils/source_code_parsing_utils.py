@@ -1,14 +1,15 @@
 import ast
 import importlib
-import inspect 
+import inspect
 import textwrap
 
 
 class ReturnNameVisitor(ast.NodeVisitor):
     """Thanks to ChatGPT for pairing."""
+
     def __init__(self):
         self.return_names = []
-    
+
     def visit_Return(self, node):
         # Check if the return value is a tuple.
         if isinstance(node.value, ast.Tuple):
@@ -37,7 +38,7 @@ class ReturnNameVisitor(ast.NodeVisitor):
         if issubclass(cls, DiffusionPipeline):
             return "pipelines"
         elif issubclass(cls, ModelMixin):
-            return "models" 
+            return "models"
         else:
             raise NotImplementedError
 
