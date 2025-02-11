@@ -698,7 +698,6 @@ class QuantoConfig(QuantizationConfigMixin):
         weights="int8",
         activations=None,
         modules_to_not_convert: Optional[List] = None,
-        compute_dtype: Optional["torch.dtype"] = None,
         **kwargs,
     ):
         self.quant_method = QuantizationMethod.QUANTO

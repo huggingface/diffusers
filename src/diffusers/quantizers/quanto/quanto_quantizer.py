@@ -143,7 +143,10 @@ class QuantoQuantizer(DiffusersQuantizer):
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
 
         model = _replace_with_quanto_layers(
-            model, modules_to_not_convert=self.modules_to_not_convert, quantization_config=self.quantization_config
+            model,
+            modules_to_not_convert=self.modules_to_not_convert,
+            quantization_config=self.quantization_config,
+            pre_quantized=self.pre_quantized,
         )
         model.config.quantization_config = self.quantization_config
 
