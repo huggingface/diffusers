@@ -598,6 +598,8 @@
       title: Attention Processor
     - local: api/activations
       title: Custom activation functions
+    - local: api/cache
+      title: Caching methods
     - local: api/normalization
       title: Custom normalization layers
     - local: api/utilities

@@ -68,6 +68,7 @@ from diffusers.utils.testing_utils import (
     torch_all_close,
     torch_device,
 )
+from diffusers.utils.torch_utils import get_torch_cuda_device_capability
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
@@ -953,23 +954,14 @@ class ModelTesterMixin:
             init_dict["block_out_channels"] = block_out_channels
 
         model_class_copy = copy.copy(self.model_class)
-
-        modules_with_gc_enabled = {}
-
-        # now monkey patch the following function:
-        #     def _set_gradient_checkpointing(self, module, value=False):
-        #         if hasattr(module, "gradient_checkpointing"):
-        #             module.gradient_checkpointing = value
-
-        def _set_gradient_checkpointing_new(self, module, value=False):
-            if hasattr(module, "gradient_checkpointing"):
-                module.gradient_checkpointing = value
-                modules_with_gc_enabled[module.__class__.__name__] = True
-
-        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
-
         model = model_class_copy(**init_dict)
         model.enable_gradient_checkpointing()
+
+        modules_with_gc_enabled = {}
+        for submodule in model.modules():
+            if hasattr(submodule, "gradient_checkpointing"):
+                self.assertTrue(submodule.gradient_checkpointing)
+                modules_with_gc_enabled[submodule.__class__.__name__] = True
 
         assert set(modules_with_gc_enabled.keys()) == expected_set
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
@@ -1346,6 +1338,36 @@ class ModelTesterMixin:
                 # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
                 assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
 
+    def test_layerwise_casting_training(self):
+        def test_fn(storage_dtype, compute_dtype):
+            if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
+                return
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+            model = self.model_class(**init_dict)
+            model = model.to(torch_device, dtype=compute_dtype)
+            model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+            model.train()
+
+            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            with torch.amp.autocast(device_type=torch.device(torch_device).type):
+                output = model(**inputs_dict)
+
+                if isinstance(output, dict):
+                    output = output.to_tuple()[0]
+
+                input_tensor = inputs_dict[self.main_input_name]
+                noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
+                noise = cast_maybe_tensor_dtype(noise, torch.float32, compute_dtype)
+                loss = torch.nn.functional.mse_loss(output, noise)
+
+            loss.backward()
+
+        test_fn(torch.float16, torch.float32)
+        test_fn(torch.float8_e4m3fn, torch.float32)
+        test_fn(torch.float8_e5m2, torch.float32)
+        test_fn(torch.float8_e4m3fn, torch.bfloat16)
+
     def test_layerwise_casting_inference(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
@@ -1393,6 +1415,7 @@ class ModelTesterMixin:
     @require_torch_gpu
     def test_layerwise_casting_memory(self):
         MB_TOLERANCE = 0.2
+        LEAST_COMPUTE_CAPABILITY = 8.0
 
         def reset_memory_stats():
             gc.collect()
@@ -1421,10 +1444,12 @@ class ModelTesterMixin:
             torch.float8_e4m3fn, torch.bfloat16
         )
 
+        compute_capability = get_torch_cuda_device_capability()
         self.assertTrue(fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint < fp32_memory_footprint)
-        # NOTE: the following assertion will fail on our CI (running Tesla T4) due to bf16 using more memory than fp32.
-        # On other devices, such as DGX (Ampere) and Audace (Ada), the test passes.
-        self.assertTrue(fp8_e4m3_bf16_max_memory < fp8_e4m3_fp32_max_memory)
+        # NOTE: the following assertion would fail on our CI (running Tesla T4) due to bf16 using more memory than fp32.
+        # On other devices, such as DGX (Ampere) and Audace (Ada), the test passes. So, we conditionally check it.
+        if compute_capability and compute_capability >= LEAST_COMPUTE_CAPABILITY:
+            self.assertTrue(fp8_e4m3_bf16_max_memory < fp8_e4m3_fp32_max_memory)
         # On this dummy test case with a small model, sometimes fp8_e4m3_fp32 max memory usage is higher than fp32 by a few
         # bytes. This only happens for some models, so we allow a small tolerance.
         # For any real model being tested, the order would be fp8_e4m3_bf16 < fp8_e4m3_fp32 < fp32.

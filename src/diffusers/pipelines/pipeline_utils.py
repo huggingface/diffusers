@@ -41,6 +41,7 @@ from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
+from typing_extensions import Self
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
@@ -513,7 +514,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs) -> Self:
         r"""
         Instantiate a PyTorch diffusion pipeline from pretrained pipeline weights.
 
@@ -676,6 +677,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
+        provider_options = kwargs.pop("provider_options", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
@@ -970,6 +972,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
                     dduf_entries=dduf_entries,
+                    provider_options=provider_options,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -1133,11 +1136,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     def maybe_free_model_hooks(self):
         r"""
-        Function that offloads all components, removes all model hooks that were added when using
-        `enable_model_cpu_offload` and then applies them again. In case the model has not been offloaded this function
-        is a no-op. Make sure to add this function to the end of the `__call__` function of your pipeline so that it
-        functions correctly when applying enable_model_cpu_offload.
+        Method that performs the following:
+        - Offloads all components.
+        - Removes all model hooks that were added when using `enable_model_cpu_offload`, and then applies them again.
+          In case the model has not been offloaded, this function is a no-op.
+        - Resets stateful diffusers hooks of denoiser components if they were added with
+          [`~hooks.HookRegistry.register_hook`].
+
+        Make sure to add this function to the end of the `__call__` function of your pipeline so that it functions
+        correctly when applying `enable_model_cpu_offload`.
         """
+        for component in self.components.values():
+            if hasattr(component, "_reset_stateful_cache"):
+                component._reset_stateful_cache()
+
         if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
             # `enable_model_cpu_offload` has not be called, so silently do nothing
             return

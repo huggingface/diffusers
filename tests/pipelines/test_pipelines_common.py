@@ -24,10 +24,12 @@ from diffusers import (
     DDIMScheduler,
     DiffusionPipeline,
     KolorsPipeline,
+    PyramidAttentionBroadcastConfig,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
+from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
@@ -2320,6 +2322,141 @@ class SDXLOptionalComponentsTesterMixin:
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
+
+
+class PyramidAttentionBroadcastTesterMixin:
+    pab_config = PyramidAttentionBroadcastConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(100, 800),
+        spatial_attention_block_identifiers=["transformer_blocks"],
+    )
+
+    def test_pyramid_attention_broadcast_layers(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        num_layers = 0
+        num_single_layers = 0
+        dummy_component_kwargs = {}
+        dummy_component_parameters = inspect.signature(self.get_dummy_components).parameters
+        if "num_layers" in dummy_component_parameters:
+            num_layers = 2
+            dummy_component_kwargs["num_layers"] = num_layers
+        if "num_single_layers" in dummy_component_parameters:
+            num_single_layers = 2
+            dummy_component_kwargs["num_single_layers"] = num_single_layers
+
+        components = self.get_dummy_components(**dummy_component_kwargs)
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        self.pab_config.current_timestep_callback = lambda: pipe.current_timestep
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_cache(self.pab_config)
+
+        expected_hooks = 0
+        if self.pab_config.spatial_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.pab_config.temporal_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.pab_config.cross_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        count = 0
+        for module in denoiser.modules():
+            if hasattr(module, "_diffusers_hook"):
+                hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                if hook is None:
+                    continue
+                count += 1
+                self.assertTrue(
+                    isinstance(hook, PyramidAttentionBroadcastHook),
+                    "Hook should be of type PyramidAttentionBroadcastHook.",
+                )
+                self.assertTrue(hook.state.cache is None, "Cache should be None at initialization.")
+        self.assertEqual(count, expected_hooks, "Number of hooks should match the expected number.")
+
+        # Perform dummy inference step to ensure state is updated
+        def pab_state_check_callback(pipe, i, t, kwargs):
+            for module in denoiser.modules():
+                if hasattr(module, "_diffusers_hook"):
+                    hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                    if hook is None:
+                        continue
+                    self.assertTrue(
+                        hook.state.cache is not None,
+                        "Cache should have updated during inference.",
+                    )
+                    self.assertTrue(
+                        hook.state.iteration == i + 1,
+                        "Hook iteration state should have updated during inference.",
+                    )
+            return {}
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 2
+        inputs["callback_on_step_end"] = pab_state_check_callback
+        pipe(**inputs)[0]
+
+        # After inference, reset_stateful_hooks is called within the pipeline, which should have reset the states
+        for module in denoiser.modules():
+            if hasattr(module, "_diffusers_hook"):
+                hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                if hook is None:
+                    continue
+                self.assertTrue(
+                    hook.state.cache is None,
+                    "Cache should be reset to None after inference.",
+                )
+                self.assertTrue(
+                    hook.state.iteration == 0,
+                    "Iteration should be reset to 0 after inference.",
+                )
+
+    def test_pyramid_attention_broadcast_inference(self, expected_atol: float = 0.2):
+        # We need to use higher tolerance because we are using a random model. With a converged/trained
+        # model, the tolerance can be lower.
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        num_layers = 2
+        components = self.get_dummy_components(num_layers=num_layers)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # Run inference without PAB
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        original_image_slice = output.flatten()
+        original_image_slice = np.concatenate((original_image_slice[:8], original_image_slice[-8:]))
+
+        # Run inference with PAB enabled
+        self.pab_config.current_timestep_callback = lambda: pipe.current_timestep
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_cache(self.pab_config)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        image_slice_pab_enabled = output.flatten()
+        image_slice_pab_enabled = np.concatenate((image_slice_pab_enabled[:8], image_slice_pab_enabled[-8:]))
+
+        # Run inference with PAB disabled
+        denoiser.disable_cache()
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        image_slice_pab_disabled = output.flatten()
+        image_slice_pab_disabled = np.concatenate((image_slice_pab_disabled[:8], image_slice_pab_disabled[-8:]))
+
+        assert np.allclose(
+            original_image_slice, image_slice_pab_enabled, atol=expected_atol
+        ), "PAB outputs should not differ much in specified timestep range."
+        assert np.allclose(
+            original_image_slice, image_slice_pab_disabled, atol=1e-4
+        ), "Outputs from normal inference and after disabling cache should not differ."
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
