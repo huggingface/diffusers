@@ -637,11 +637,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
-
         # 3. Encode input prompt
         (
             prompt_embeds,
@@ -650,7 +645,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             negative_prompt_attention_mask,
         ) = self.encode_prompt(
             prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             num_images_per_prompt=num_images_per_prompt,
             device=device,
@@ -730,6 +725,8 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                         cond_norm = torch.norm(noise_pred_cond, dim=-1, keepdim=True)
                         noise_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
                         noise_pred = noise_pred * (cond_norm / noise_norm)
+                else:
+                    noise_pred = noise_pred_cond
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
