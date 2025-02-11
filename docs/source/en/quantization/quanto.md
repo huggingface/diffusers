@@ -13,8 +13,7 @@ specific language governing permissions and limitations under the License.
 
 # Quanto
 
-[Quanto](https://github.com/huggingface/optimum-quanto) is a PyTorch quantization backend for [Optimum.](https://huggingface.co/docs/optimum/en/index)
-It has been designed with versatility and simplicity in mind:
+[Quanto](https://github.com/huggingface/optimum-quanto) is a PyTorch quantization backend for [Optimum](https://huggingface.co/docs/optimum/en/index). It has been designed with versatility and simplicity in mind:
 
 - All features are available in eager mode (works with non-traceable models)
 - Supports quantization aware training
