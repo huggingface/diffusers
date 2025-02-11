@@ -89,6 +89,8 @@
     title: Kandinsky
   - local: using-diffusers/ip_adapter
     title: IP-Adapter
+  - local: using-diffusers/omnigen
+    title: OmniGen
   - local: using-diffusers/pag
     title: PAG
   - local: using-diffusers/controlnet
@@ -292,6 +294,8 @@
         title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
+      - local: api/models/omnigen_transformer
+        title: OmniGenTransformer2DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -448,6 +452,8 @@
       title: MultiDiffusion
     - local: api/pipelines/musicldm
       title: MusicLDM
+    - local: api/pipelines/omnigen
+      title: OmniGen
     - local: api/pipelines/pag
       title: PAG
     - local: api/pipelines/paint_by_example
