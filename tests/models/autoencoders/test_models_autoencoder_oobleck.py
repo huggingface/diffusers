@@ -114,7 +114,9 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
     def test_set_attn_processor_for_determinism(self):
         return
 
-    @unittest.skip("Test not supported because of 'weight_norm_fwd_first_dim_kernel' not implemented for 'Float8_e4m3fn'")
+    @unittest.skip(
+        "Test not supported because of 'weight_norm_fwd_first_dim_kernel' not implemented for 'Float8_e4m3fn'"
+    )
     def test_layerwise_casting_training(self):
         return super().test_layerwise_casting_training()
 

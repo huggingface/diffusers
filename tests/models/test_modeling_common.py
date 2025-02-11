@@ -1338,7 +1338,7 @@ class ModelTesterMixin:
                 # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
                 assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
 
-    def test_layerwise_casting_training(self):    
+    def test_layerwise_casting_training(self):
         def test_fn(storage_dtype, compute_dtype):
             if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
                 return
@@ -1360,14 +1360,13 @@ class ModelTesterMixin:
                 noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
                 noise = cast_maybe_tensor_dtype(noise, torch.float32, compute_dtype)
                 loss = torch.nn.functional.mse_loss(output, noise)
-            
+
             loss.backward()
 
         test_fn(torch.float16, torch.float32)
         test_fn(torch.float8_e4m3fn, torch.float32)
         test_fn(torch.float8_e5m2, torch.float32)
         test_fn(torch.float8_e4m3fn, torch.bfloat16)
-
 
     def test_layerwise_casting_inference(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
