@@ -771,6 +771,7 @@ def main():
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             data_dir=args.train_data_dir,
+            trust_remote_code=args.trust_remote_code
         )
     else:
         data_files = {}
@@ -780,6 +781,7 @@ def main():
             "imagefolder",
             data_files=data_files,
             cache_dir=args.cache_dir,
+            trust_remote_code=args.trust_remote_code
         )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
