@@ -241,8 +241,10 @@ class Lumina2RotaryPosEmbed(nn.Module):
 
     def _precompute_freqs_cis(self, axes_dim: List[int], axes_lens: List[int], theta: int) -> List[torch.Tensor]:
         freqs_cis = []
+        # Use float32 for MPS compatibility
+        dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         for i, (d, e) in enumerate(zip(axes_dim, axes_lens)):
-            emb = get_1d_rotary_pos_embed(d, e, theta=self.theta, freqs_dtype=torch.float64)
+            emb = get_1d_rotary_pos_embed(d, e, theta=self.theta, freqs_dtype=dtype)
             freqs_cis.append(emb)
         return freqs_cis
 
