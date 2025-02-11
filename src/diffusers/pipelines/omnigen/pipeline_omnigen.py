@@ -139,7 +139,7 @@ class OmniGenPipeline(
 
     model_cpu_offload_seq = "transformer->vae"
     _optional_components = []
-    _callback_tensor_inputs = ["latents", "input_images_latents"]
+    _callback_tensor_inputs = ["latents"]
 
     def __init__(
         self,
@@ -435,6 +435,7 @@ class OmniGenPipeline(
             width=width,
             use_img_cfg=use_img_cfg,
             use_input_image_size_as_output=use_input_image_size_as_output,
+            num_images_per_prompt=num_images_per_prompt,
         )
         processed_data["input_ids"] = processed_data["input_ids"].to(device)
         processed_data["attention_mask"] = processed_data["attention_mask"].to(device)
@@ -448,6 +449,7 @@ class OmniGenPipeline(
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas=sigmas
         )
+        self._num_timesteps = len(timesteps)
 
         # 6. Prepare latents.
         if use_input_image_size_as_output:
@@ -495,6 +497,14 @@ class OmniGenPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():

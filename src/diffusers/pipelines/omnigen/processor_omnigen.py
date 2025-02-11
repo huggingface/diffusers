@@ -135,6 +135,7 @@ class OmniGenMultiModalProcessor:
         use_img_cfg: bool = True,
         separate_cfg_input: bool = False,
         use_input_image_size_as_output: bool = False,
+        num_images_per_prompt: int = 1,
     ) -> Dict:
         if isinstance(instructions, str):
             instructions = [instructions]
@@ -161,17 +162,18 @@ class OmniGenMultiModalProcessor:
                 else:
                     img_cfg_mllm_input = neg_mllm_input
 
-            if use_input_image_size_as_output:
-                input_data.append(
-                    (
-                        mllm_input,
-                        neg_mllm_input,
-                        img_cfg_mllm_input,
-                        [mllm_input["pixel_values"][0].size(-2), mllm_input["pixel_values"][0].size(-1)],
+            for _ in range(num_images_per_prompt):
+                if use_input_image_size_as_output:
+                    input_data.append(
+                        (
+                            mllm_input,
+                            neg_mllm_input,
+                            img_cfg_mllm_input,
+                            [mllm_input["pixel_values"][0].size(-2), mllm_input["pixel_values"][0].size(-1)],
+                        )
                     )
-                )
-            else:
-                input_data.append((mllm_input, neg_mllm_input, img_cfg_mllm_input, [height, width]))
+                else:
+                    input_data.append((mllm_input, neg_mllm_input, img_cfg_mllm_input, [height, width]))
 
         return self.collator(input_data)
 
