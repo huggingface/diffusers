@@ -290,6 +290,8 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/lumina2_transformer2d
+        title: Lumina2Transformer2DModel
       - local: api/models/ltx_video_transformer3d
         title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
@@ -442,6 +444,8 @@
       title: LEDITS++
     - local: api/pipelines/ltx_video
       title: LTXVideo
+    - local: api/pipelines/lumina2
+      title: Lumina 2.0
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
