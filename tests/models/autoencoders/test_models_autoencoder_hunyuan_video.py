@@ -204,4 +204,7 @@ class AutoencoderKLHunyuanVideoTests(ModelTesterMixin, UNetTesterMixin, unittest
         new_mask = prepare_causal_attention_mask(
             num_frames=31, height_width=111, dtype=torch.float32, device=torch_device
         )
-        self.assertEqual(original_mask, new_mask)
+        self.assertTrue(
+            torch.allclose(original_mask, new_mask),
+            "Causal attention mask should be the same",
+        )
