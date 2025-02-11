@@ -460,6 +460,12 @@ def parse_args():
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether to trust and execute remote code for loading datasets.",
+    )
+
     args = parser.parse_args()
     args.output_dir = args.output_dir.replace("{timestamp}", time.strftime("%Y%m%d_%H%M%S"))
 

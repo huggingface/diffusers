@@ -641,6 +641,11 @@ def parse_args(input_args=None):
         action="store_true",
         help="Enable model cpu offload and save memory.",
     )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether to trust and execute remote code for loading datasets.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)

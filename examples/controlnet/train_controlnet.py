@@ -563,9 +563,9 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-            "--trust_remote_code",
-            action="store_true",
-            help="Whether to trust and execute remote code for loading datasets.",
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether to trust and execute remote code for loading datasets.",
     )
 
     if input_args is not None:

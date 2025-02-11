@@ -65,13 +65,13 @@ export OUTPUT_DIR="path to save model"
 accelerate launch train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
+ --dataset_name=fusing/fill50k \ 
+ --trust_remote_code \
  --resolution=512 \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
- --train_batch_size=4 \
- --trust_remote_code
+ --train_batch_size=4
 ```
 
 This default configuration requires ~38GB VRAM.
@@ -88,14 +88,14 @@ export OUTPUT_DIR="path to save model"
 accelerate launch train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
+ --dataset_name=fusing/fill50k \ 
+ --trust_remote_code \
  --resolution=512 \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
- --gradient_accumulation_steps=4 \
- --trust_remote_code
+ --gradient_accumulation_steps=4
 ```
 
 ## Training with multiple GPUs
@@ -110,7 +110,8 @@ export OUTPUT_DIR="path to save model"
 accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
+ --dataset_name=fusing/fill50k \ 
+ --trust_remote_code \
  --resolution=512 \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
@@ -118,8 +119,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
  --train_batch_size=4 \
  --mixed_precision="fp16" \
  --tracker_project_name="controlnet-demo" \
- --report_to=wandb \
- --trust_remote_code
+ --report_to=wandb
 ```
 
 ## Example results
@@ -158,7 +158,8 @@ export OUTPUT_DIR="path to save model"
 accelerate launch train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
+ --dataset_name=fusing/fill50k \ 
+ --trust_remote_code \
  --resolution=512 \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
@@ -166,8 +167,7 @@ accelerate launch train_controlnet.py \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
  --gradient_checkpointing \
- --use_8bit_adam \
- --trust_remote_code
+ --use_8bit_adam
 ```
 
 ## Training on a 12 GB GPU
@@ -185,7 +185,8 @@ export OUTPUT_DIR="path to save model"
 accelerate launch train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
+ --dataset_name=fusing/fill50k \ 
+ --trust_remote_code \
  --resolution=512 \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
@@ -195,8 +196,7 @@ accelerate launch train_controlnet.py \
  --gradient_checkpointing \
  --use_8bit_adam \
  --enable_xformers_memory_efficient_attention \
- --set_grads_to_none \
- --trust_remote_code
+ --set_grads_to_none
 ```
 
 When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`.
@@ -246,7 +246,8 @@ export OUTPUT_DIR="path to save model"
 accelerate launch train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
+ --dataset_name=fusing/fill50k \ 
+ --trust_remote_code \
  --resolution=512 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
@@ -255,8 +256,7 @@ accelerate launch train_controlnet.py \
  --gradient_checkpointing \
  --enable_xformers_memory_efficient_attention \
  --set_grads_to_none \
- --mixed_precision fp16 \
- --trust_remote_code
+ --mixed_precision fp16
 ```
 
 ## Performing inference with the trained ControlNet
@@ -382,7 +382,8 @@ And finally start the training
 python3 train_controlnet_flax.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
+ --dataset_name=fusing/fill50k \ 
+ --trust_remote_code \
  --resolution=512 \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
@@ -395,8 +396,7 @@ python3 train_controlnet_flax.py \
  --tracker_project_name=$HUB_MODEL_ID \
  --num_train_epochs=11 \
  --push_to_hub \
- --hub_model_id=$HUB_MODEL_ID \
- --trust_remote_code
+ --hub_model_id=$HUB_MODEL_ID
  ```
 
 Since we passed the `--push_to_hub` flag, it will automatically create a model repo under your huggingface account based on `$HUB_MODEL_ID`. By the end of training, the final checkpoint will be automatically stored on the hub. You can find an example model repo [here](https://huggingface.co/YiYiXu/fill-circle-controlnet).
