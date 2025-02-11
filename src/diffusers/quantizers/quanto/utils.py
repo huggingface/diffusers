@@ -2,8 +2,10 @@ from typing import Optional
 
 import torch.nn as nn
 
-from ...utils import is_accelerate_available
+from ...utils import is_accelerate_available, logging
 
+
+logger = logging.get_logger(__name__)
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -47,5 +49,13 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
         return model
 
     model = _replace_layers(model, quantization_config, modules_to_not_convert)
+    has_been_replaced = any(isinstance(replaced_module, QLinear) for _, replaced_module in model.named_modules())
+
+    if not has_been_replaced:
+        logger.warning(
+            f"{model.__class__.__name__} does not appear to have any `nn.Linear` modules. Quantization will not be applied."
+            " Please check your model architecture, or submit an issue on Github if you think this is a bug."
+            " https://github.com/huggingface/diffusers"
+        )
 
     return model

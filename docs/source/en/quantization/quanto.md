@@ -47,6 +47,19 @@ image = pipe(
 image.save("output.png")
 ```
 
+## Skipping Quantization on specific modules
+
+It is possible to skip applying quantization on certain modules using the `modules_to_not_convert` argument in the `QuantoConfig`. Please ensure that the modules passed in to this argument match the keys of the modules in the `state_dict`  
+
+```python
+import torch
+from diffusers import FluxTransformer2DModel, QuantoConfig
+
+model_id = "black-forest-labs/FLUX.1-dev"
+quantization_config = QuantoConfig(weights="float8", modules_to_not_convert=["proj_out"])
+transformer = FluxTransformer2DModel.from_pretrained(model_id, quantization_config=quantization_config, torch_dtype=torch.bfloat16)
+```
+
 ## Using `from_single_file` with the Quanto Backend
 
 ```python
