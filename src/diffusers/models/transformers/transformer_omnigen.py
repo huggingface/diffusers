@@ -16,9 +16,8 @@ import math
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint
-from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
