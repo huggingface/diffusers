@@ -2043,8 +2043,8 @@ class PipelineTesterMixin:
         encode_prompt_tree = ast_vistor.get_ast_tree(cls=self.pipeline_class)
         ast_vistor.visit(encode_prompt_tree)
         prompt_embed_kwargs = ast_vistor.return_names
-        print(f"{prompt_embed_kwargs=}")
         prompt_embeds_kwargs = dict(zip(prompt_embed_kwargs, encoded_prompt_outputs))
+        
         # Pack the outputs of `encode_prompt`.
         adapted_prompt_embeds_kwargs = {
             k: prompt_embeds_kwargs.pop(k) for k in list(prompt_embeds_kwargs.keys()) if k in pipe_call_parameters
