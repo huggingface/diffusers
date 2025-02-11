@@ -17,18 +17,15 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import (
-    CLIPImageProcessor,
+from transformers import (    
     CLIPTextModel,
     CLIPTextModelWithProjection,
-    CLIPTokenizer,
-    CLIPVisionModelWithProjection,
+    CLIPTokenizer,    
 )
 
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import (
-    FromSingleFileMixin,
-    IPAdapterMixin,
+    FromSingleFileMixin,    
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
@@ -247,8 +244,7 @@ class StableDiffusionXLTilingPipeline(
     StableDiffusionMixin,
     FromSingleFileMixin,
     StableDiffusionXLLoraLoaderMixin,
-    TextualInversionLoaderMixin,
-    IPAdapterMixin,
+    TextualInversionLoaderMixin,    
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -260,8 +256,7 @@ class StableDiffusionXLTilingPipeline(
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
         - [`~loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
-        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
+        - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights        
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -300,9 +295,7 @@ class StableDiffusionXLTilingPipeline(
         "tokenizer",
         "tokenizer_2",
         "text_encoder",
-        "text_encoder_2",
-        "image_encoder",
-        "feature_extractor",
+        "text_encoder_2",        
     ]
 
     def __init__(
@@ -313,9 +306,7 @@ class StableDiffusionXLTilingPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
-        image_encoder: CLIPVisionModelWithProjection = None,
-        feature_extractor: CLIPImageProcessor = None,
+        scheduler: KarrasDiffusionSchedulers,        
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
     ):
@@ -328,9 +319,7 @@ class StableDiffusionXLTilingPipeline(
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
             unet=unet,
-            scheduler=scheduler,
-            image_encoder=image_encoder,
-            feature_extractor=feature_extractor,
+            scheduler=scheduler,            
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
@@ -1089,15 +1078,15 @@ class StableDiffusionXLTilingPipeline(
                             "text_embeds": embeddings_and_added_time[row][col][1],
                             "time_ids": embeddings_and_added_time[row][col][2],
                         }
-                        #with torch.amp.autocast(device.type, dtype=dtype, enabled=dtype != self.unet.dtype):
-                        noise_pred = self.unet(
-                            latent_model_input,
-                            t,
-                            encoder_hidden_states=embeddings_and_added_time[row][col][0],
-                            cross_attention_kwargs=self.cross_attention_kwargs,
-                            added_cond_kwargs=added_cond_kwargs,
-                            return_dict=False,
-                        )[0]
+                        with torch.amp.autocast(device.type, dtype=dtype, enabled=dtype != self.unet.dtype):
+                            noise_pred = self.unet(
+                                latent_model_input,
+                                t,
+                                encoder_hidden_states=embeddings_and_added_time[row][col][0],
+                                cross_attention_kwargs=self.cross_attention_kwargs,
+                                added_cond_kwargs=added_cond_kwargs,
+                                return_dict=False,
+                            )[0]
 
                         # perform guidance
                         if self.do_classifier_free_guidance:
