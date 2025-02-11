@@ -1350,17 +1350,18 @@ class ModelTesterMixin:
             model.train()
 
             inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
-            output = model(**inputs_dict)
+            with torch.amp.autocast(device_type=torch.device(torch_device).type):
+                output = model(**inputs_dict)
 
-            if isinstance(output, dict):
-                output = output.to_tuple()[0]
+                if isinstance(output, dict):
+                    output = output.to_tuple()[0]
 
-            input_tensor = inputs_dict[self.main_input_name]
-            noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
-            noise = cast_maybe_tensor_dtype(noise, torch.float32, compute_dtype)
-            loss = torch.nn.functional.mse_loss(output, noise)
+                input_tensor = inputs_dict[self.main_input_name]
+                noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
+                noise = cast_maybe_tensor_dtype(noise, torch.float32, compute_dtype)
+                loss = torch.nn.functional.mse_loss(output, noise)
+            
             loss.backward()
-
 
         test_fn(torch.float16, torch.float32)
         test_fn(torch.float8_e4m3fn, torch.float32)
