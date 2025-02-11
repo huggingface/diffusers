@@ -70,8 +70,8 @@ accelerate launch train_controlnet.py \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
- --train_batch_size=4
- --trust_remote_code=True
+ --train_batch_size=4 \
+ --trust_remote_code
 ```
 
 This default configuration requires ~38GB VRAM.
@@ -94,7 +94,8 @@ accelerate launch train_controlnet.py \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
- --gradient_accumulation_steps=4
+ --gradient_accumulation_steps=4 \
+ --trust_remote_code
 ```
 
 ## Training with multiple GPUs
@@ -117,7 +118,8 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
  --train_batch_size=4 \
  --mixed_precision="fp16" \
  --tracker_project_name="controlnet-demo" \
- --report_to=wandb
+ --report_to=wandb \
+ --trust_remote_code
 ```
 
 ## Example results
@@ -164,7 +166,8 @@ accelerate launch train_controlnet.py \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
  --gradient_checkpointing \
- --use_8bit_adam
+ --use_8bit_adam \
+ --trust_remote_code
 ```
 
 ## Training on a 12 GB GPU
@@ -192,7 +195,8 @@ accelerate launch train_controlnet.py \
  --gradient_checkpointing \
  --use_8bit_adam \
  --enable_xformers_memory_efficient_attention \
- --set_grads_to_none
+ --set_grads_to_none \
+ --trust_remote_code
 ```
 
 When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`.
@@ -251,7 +255,8 @@ accelerate launch train_controlnet.py \
  --gradient_checkpointing \
  --enable_xformers_memory_efficient_attention \
  --set_grads_to_none \
- --mixed_precision fp16
+ --mixed_precision fp16 \
+ --trust_remote_code
 ```
 
 ## Performing inference with the trained ControlNet
@@ -390,7 +395,8 @@ python3 train_controlnet_flax.py \
  --tracker_project_name=$HUB_MODEL_ID \
  --num_train_epochs=11 \
  --push_to_hub \
- --hub_model_id=$HUB_MODEL_ID
+ --hub_model_id=$HUB_MODEL_ID \
+ --trust_remote_code
  ```
 
 Since we passed the `--push_to_hub` flag, it will automatically create a model repo under your huggingface account based on `$HUB_MODEL_ID`. By the end of training, the final checkpoint will be automatically stored on the hub. You can find an example model repo [here](https://huggingface.co/YiYiXu/fill-circle-controlnet).
