@@ -103,13 +103,8 @@ class QuantoQuantizer(DiffusersQuantizer):
                 "int2": CustomDtype.INT2,
             }
             target_dtype = mapping[self.quantization_config.weights]
-            return target_dtype
-        else:
-            raise ValueError(
-                "You are using `device_map='auto'` on an optimum-quanto quantized model. To automatically compute"
-                " the appropriate device map, you should upgrade your `accelerate` library,"
-                "`pip install --upgrade accelerate` or install it from source."
-            )
+
+        return target_dtype
 
     def update_torch_dtype(self, torch_dtype: "torch.dtype" = None) -> "torch.dtype":
         if torch_dtype is None:
