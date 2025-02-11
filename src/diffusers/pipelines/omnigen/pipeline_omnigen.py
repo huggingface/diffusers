@@ -16,7 +16,6 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
 import torch
 from transformers import LlamaTokenizer
 
@@ -223,9 +222,9 @@ class OmniGenPipeline(
         if use_input_image_size_as_output:
             if input_images is None or input_images[0] is None:
                 raise ValueError(
-                                f"`use_input_image_size_as_output` is set to True, but no input image was found. If you are performing a text-to-image task, please set it to False."
-                            )
-                            
+                    "`use_input_image_size_as_output` is set to True, but no input image was found. If you are performing a text-to-image task, please set it to False."
+                )
+
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):

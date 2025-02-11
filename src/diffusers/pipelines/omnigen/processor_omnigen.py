@@ -62,7 +62,7 @@ class OmniGenMultiModalProcessor:
         )
 
         self.collator = OmniGenCollator()
-    
+
     def reset_max_image_size(self, max_image_size):
         self.max_image_size = max_image_size
         self.image_transform = transforms.Compose(

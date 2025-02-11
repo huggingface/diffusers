@@ -16,9 +16,9 @@ import math
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
-import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
@@ -91,7 +91,11 @@ class OmniGenPatchEmbed(nn.Module):
         self.pos_embed_max_size = pos_embed_max_size
 
         pos_embed = get_2d_sincos_pos_embed(
-            embed_dim, self.pos_embed_max_size, base_size=base_size, interpolation_scale=self.interpolation_scale, output_type="pt"
+            embed_dim,
+            self.pos_embed_max_size,
+            base_size=base_size,
+            interpolation_scale=self.interpolation_scale,
+            output_type="pt",
         )
         self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=True)
 
@@ -227,7 +231,7 @@ def apply_rotary_emb(
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
     """
-    
+
     cos, sin = freqs_cis  # [S, D]
     if len(cos.shape) == 2:
         cos = cos[None, None]
@@ -241,10 +245,10 @@ def apply_rotary_emb(
     x1 = x[..., : x.shape[-1] // 2]
     x2 = x[..., x.shape[-1] // 2 :]
     x_rotated = torch.cat((-x2, x1), dim=-1)
-       
+
     out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
     return out
-    
+
 
 class OmniGenAttnProcessor2_0:
     r"""
@@ -264,7 +268,6 @@ class OmniGenAttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
         batch_size, sequence_length, _ = hidden_states.shape
 
         # Get Query-Key-Value Pair
@@ -674,9 +677,13 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         image_rotary_emb = self.rotary_emb(hidden_states, position_ids)
         for decoder_layer in self.layers:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = self._gradient_checkpointing_func(decoder_layer, hidden_states, attention_mask, image_rotary_emb)
+                hidden_states = self._gradient_checkpointing_func(
+                    decoder_layer, hidden_states, attention_mask, image_rotary_emb
+                )
             else:
-                hidden_states = decoder_layer(hidden_states, attention_mask=attention_mask, image_rotary_emb=image_rotary_emb)
+                hidden_states = decoder_layer(
+                    hidden_states, attention_mask=attention_mask, image_rotary_emb=image_rotary_emb
+                )
 
         hidden_states = self.norm(hidden_states)
 

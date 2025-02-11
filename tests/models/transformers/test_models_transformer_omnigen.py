@@ -25,6 +25,7 @@ from ..test_modeling_common import ModelTesterMixin
 
 enable_full_determinism()
 
+
 class OmniGenTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = OmniGenTransformer2DModel
     main_input_name = "hidden_states"
@@ -42,11 +43,11 @@ class OmniGenTransformerTests(ModelTesterMixin, unittest.TestCase):
         timestep = torch.rand(size=(batch_size,), dtype=hidden_states.dtype).to(torch_device)
         input_ids = torch.randint(0, 10, (batch_size, sequence_length)).to(torch_device)
         input_img_latents = [torch.randn((1, num_channels, height, width)).to(torch_device)]
-        input_image_sizes = {0: [[0, 0+height*width//2//2]]}
+        input_image_sizes = {0: [[0, 0 + height * width // 2 // 2]]}
 
-        attn_seq_length = sequence_length + 1 + height*width//2//2
+        attn_seq_length = sequence_length + 1 + height * width // 2 // 2
         attention_mask = torch.ones((batch_size, attn_seq_length, attn_seq_length)).to(torch_device)
-        position_ids = torch.LongTensor([list(range(attn_seq_length))]*batch_size).to(torch_device)
+        position_ids = torch.LongTensor([list(range(attn_seq_length))] * batch_size).to(torch_device)
 
         return {
             "hidden_states": hidden_states,
@@ -77,7 +78,7 @@ class OmniGenTransformerTests(ModelTesterMixin, unittest.TestCase):
             "vocab_size": 100,
             "in_channels": 4,
             "time_step_dim": 4,
-            "rope_scaling": {"long_factor": list(range(1, 3)), "short_factor": list(range(1, 3))}
+            "rope_scaling": {"long_factor": list(range(1, 3)), "short_factor": list(range(1, 3))},
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -85,4 +86,3 @@ class OmniGenTransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"OmniGenTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
