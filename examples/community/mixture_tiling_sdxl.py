@@ -17,15 +17,15 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import (    
+from transformers import (
     CLIPTextModel,
     CLIPTextModelWithProjection,
-    CLIPTokenizer,    
+    CLIPTokenizer,
 )
 
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import (
-    FromSingleFileMixin,    
+    FromSingleFileMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
@@ -244,7 +244,7 @@ class StableDiffusionXLTilingPipeline(
     StableDiffusionMixin,
     FromSingleFileMixin,
     StableDiffusionXLLoraLoaderMixin,
-    TextualInversionLoaderMixin,    
+    TextualInversionLoaderMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -256,7 +256,7 @@ class StableDiffusionXLTilingPipeline(
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
         - [`~loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights        
+        - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -295,7 +295,7 @@ class StableDiffusionXLTilingPipeline(
         "tokenizer",
         "tokenizer_2",
         "text_encoder",
-        "text_encoder_2",        
+        "text_encoder_2",
     ]
 
     def __init__(
@@ -306,7 +306,7 @@ class StableDiffusionXLTilingPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,        
+        scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
     ):
@@ -319,7 +319,7 @@ class StableDiffusionXLTilingPipeline(
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
             unet=unet,
-            scheduler=scheduler,            
+            scheduler=scheduler,
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
