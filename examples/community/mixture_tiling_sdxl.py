@@ -1080,7 +1080,7 @@ class StableDiffusionXLTilingPipeline(
                         tile_latents = latents[:, :, px_row_init:px_row_end, px_col_init:px_col_end]
                         # expand the latents if we are doing classifier free guidance
                         latent_model_input = (
-                            torch.cat([tile_latents] * 2) if self.do_classifier_free_guidance else latents
+                            torch.cat([tile_latents] * 2) if self.do_classifier_free_guidance else tile_latents
                         )
                         latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -1089,15 +1089,15 @@ class StableDiffusionXLTilingPipeline(
                             "text_embeds": embeddings_and_added_time[row][col][1],
                             "time_ids": embeddings_and_added_time[row][col][2],
                         }
-                        with torch.amp.autocast(device.type, dtype=dtype, enabled=dtype != self.unet.dtype):
-                            noise_pred = self.unet(
-                                latent_model_input,
-                                t,
-                                encoder_hidden_states=embeddings_and_added_time[row][col][0],
-                                cross_attention_kwargs=self.cross_attention_kwargs,
-                                added_cond_kwargs=added_cond_kwargs,
-                                return_dict=False,
-                            )[0]
+                        #with torch.amp.autocast(device.type, dtype=dtype, enabled=dtype != self.unet.dtype):
+                        noise_pred = self.unet(
+                            latent_model_input,
+                            t,
+                            encoder_hidden_states=embeddings_and_added_time[row][col][0],
+                            cross_attention_kwargs=self.cross_attention_kwargs,
+                            added_cond_kwargs=added_cond_kwargs,
+                            return_dict=False,
+                        )[0]
 
                         # perform guidance
                         if self.do_classifier_free_guidance:
