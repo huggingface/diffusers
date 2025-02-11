@@ -31,7 +31,6 @@ class FluxPipelineFastTests(
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
-    prompt_embed_kwargs = ("prompt_embeds", "pooled_prompt_embeds", "text_ids")
 
     # there is no xformers processor for Flux
     test_xformers_attention = False

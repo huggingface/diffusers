@@ -993,8 +993,6 @@ class PipelineTesterMixin:
     test_layerwise_casting = False
     supports_dduf = True
 
-    prompt_embed_kwargs = ("prompt_embeds", "negative_prompt_embeds")  # most common return-type across the pipelines.
-
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
         generator = torch.Generator(device).manual_seed(seed)
