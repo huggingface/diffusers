@@ -401,6 +401,7 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
         csv_dict = generate_csv_dict_model(
             model_cls=self.model_class_name, ckpt=self.pretrained_model_name_or_path, benchmark_info=benchmark_info, **kwargs,
         )
+        print(f"{self.model_class_name} decode - shape: {list(tensor.shape)}, time: {time}, memory: {memory}")
         return csv_dict
 
     def test_decode(self):
