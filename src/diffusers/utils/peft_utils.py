@@ -253,9 +253,10 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
         parts = module_name.split(".")
         # e.g. key = "down_blocks.1.attentions.0"
         key = f"{parts[0]}.{parts[1]}.attentions.{parts[3]}"
-        return weight_for_adapter.get(key, 1.0)
+        block_weight = weight_for_adapter.get(key, 1.0)
+        
+        return block_weight
 
-    # Iterate over modules once
     for module_name, module in model.named_modules():
         if isinstance(module, BaseTunerLayer):
             # For backward compatibility with previous PEFT versions, set multiple active adapters
