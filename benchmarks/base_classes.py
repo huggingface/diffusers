@@ -15,6 +15,7 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     T2IAdapter,
     WuerstchenCombinedPipeline,
+    AutoencoderKL,
 )
 from diffusers.utils import load_image
 
@@ -29,6 +30,7 @@ from utils import (  # noqa: E402
     bytes_to_giga_bytes,
     flush,
     generate_csv_dict,
+    generate_csv_dict_model,
     write_to_csv,
 )
 
@@ -169,7 +171,7 @@ class LCMLoRATextToImageBenchmark(TextToImageBenchmark):
         print(f"[INFO] {self.pipe.__class__.__name__}: Running benchmark with: {vars(args)}\n")
 
         time = benchmark_fn(self.run_inference, self.pipe, args)  # in seconds.
-        memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
+        memory = bytes_to_giga_bytes(torch.cuda.reset_peak_memory_stats())  # in GBs.
         benchmark_info = BenchmarkInfo(time=time, memory=memory)
 
         pipeline_class_name = str(self.pipe.__class__.__name__)
@@ -344,3 +346,70 @@ class T2IAdapterSDXLBenchmark(T2IAdapterBenchmark):
 
     def __init__(self, args):
         super().__init__(args)
+
+
+class BaseBenchmarkTestCase:
+    model_class = None
+    pretrained_model_name_or_path = None
+    model_class_name = None
+
+    def __init__(self):
+        super().__init__()
+
+    def get_result_filepath(self, suffix):
+        name = (
+            self.model_class_name
+            + "_"
+            + self.pretrained_model_name_or_path.replace("/", "_")
+            + "_"
+            + f"{suffix}.csv"
+        )
+        filepath = os.path.join(BASE_PATH, name)
+        return filepath
+
+
+class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
+    model_class = AutoencoderKL
+
+    def __init__(self, pretrained_model_name_or_path, dtype, **kwargs):
+        super().__init__()
+        self.dtype = getattr(torch, dtype)
+        model = self.model_class.from_pretrained(pretrained_model_name_or_path, torch_dtype=self.dtype, **kwargs).eval()
+        model = model.to("cuda")
+        self.model = model
+        self.model_class_name = str(self.model.__class__.__name__)
+        self.pretrained_model_name_or_path = pretrained_model_name_or_path
+
+    @torch.no_grad
+    def run_decode(self, model, tensor):
+        _ = model.decode(tensor)
+
+    @torch.no_grad
+    def _test_decode(self, **kwargs):
+        flush()
+
+        batch = kwargs.get("batch")
+        height = kwargs.get("height")
+        width = kwargs.get("width")
+
+        tensor = torch.randn((batch, self.model.config.latent_channels, height, width), dtype=self.dtype, device="cuda")
+
+        time = benchmark_fn(self.run_decode, self.model, tensor)
+        memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())
+        benchmark_info = BenchmarkInfo(time=time, memory=memory)
+
+        flush()
+        csv_dict = generate_csv_dict_model(
+            model_cls=self.model_class_name, ckpt=self.pretrained_model_name_or_path, benchmark_info=benchmark_info, **kwargs,
+        )
+        filepath = self.get_result_filepath(f"decode_nchw_{batch}-{self.model.config.latent_channels}-{height}-{width}")
+        write_to_csv(filepath, csv_dict)
+
+    def test_decode(self):
+        batches = (1,)
+        heights = (32, 64, 128, 256,)
+        widths = (32, 64, 128, 256,)
+        for batch in batches:
+            for height in heights:
+                for width in widths:
+                    self._test_decode(batch=batch, height=height, width=width)

@@ -77,10 +77,25 @@ def generate_csv_dict(
     return data_dict
 
 
+def generate_csv_dict_model(
+    model_cls: str, ckpt: str, benchmark_info: BenchmarkInfo, **kwargs,
+) -> Dict[str, Union[str, bool, float]]:
+    """Packs benchmarking data into a dictionary for latter serialization."""
+    data_dict = {
+        "model_cls": model_cls,
+        "ckpt_id": ckpt,
+        "time (secs)": benchmark_info.time,
+        "memory (gbs)": benchmark_info.memory,
+        "actual_gpu_memory (gbs)": f"{(TOTAL_GPU_MEMORY):.3f}",
+        "github_sha": GITHUB_SHA,
+        **kwargs,
+    }
+    return data_dict
+
 def write_to_csv(file_name: str, data_dict: Dict[str, Union[str, bool, float]]):
     """Serializes a dictionary into a CSV file."""
     with open(file_name, mode="w", newline="") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=BENCHMARK_FIELDS)
+        writer = csv.DictWriter(csvfile, fieldnames=list(data_dict.keys()))
         writer.writeheader()
         writer.writerow(data_dict)
 
