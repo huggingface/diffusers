@@ -18,6 +18,7 @@ if is_torch_available():
     from .controlnet_union import ControlNetUnionModel
     from .controlnet_xs import ControlNetXSAdapter, ControlNetXSOutput, UNetControlNetXSModel
     from .multicontrolnet import MultiControlNetModel
+    from .multicontrolnet_union import MultiControlNetUnionModel
 
 if is_flax_available():
     from .controlnet_flax import FlaxControlNetModel
