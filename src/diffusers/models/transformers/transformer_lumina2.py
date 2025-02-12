@@ -260,9 +260,10 @@ class Lumina2RotaryPosEmbed(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor):
         # Get batch info and dimensions
-        batch_size, _, height, width = hidden_states.shape
-        patch_height, patch_width = height // self.patch_size, width // self.patch_size
-        num_patches = patch_height * patch_width
+        batch_size, channels, height, width = hidden_states.shape
+        p = self.patch_size
+        post_patch_height, post_patch_width = height // p, width // p
+        num_patches = post_patch_height * post_patch_width
         device = hidden_states.device
 
         # Get caption lengths and calculate max sequence length
@@ -271,17 +272,27 @@ class Lumina2RotaryPosEmbed(nn.Module):
 
         # Create position IDs
         position_ids = torch.zeros(batch_size, max_seq_len, 3, dtype=torch.int32, device=device)
-        
+
         for i in range(batch_size):
             cap_len = l_effective_cap_len[i]
-            
+
             # Set caption positions
             position_ids[i, :cap_len, 0] = torch.arange(cap_len, dtype=torch.int32, device=device)
             position_ids[i, cap_len : cap_len + num_patches, 0] = cap_len
-            
+
             # Set image patch positions
-            row_ids = torch.arange(patch_height, dtype=torch.int32, device=device).view(-1, 1).repeat(1, patch_width).flatten()
-            col_ids = torch.arange(patch_width, dtype=torch.int32, device=device).view(1, -1).repeat(patch_height, 1).flatten()
+            row_ids = (
+                torch.arange(post_patch_height, dtype=torch.int32, device=device)
+                .view(-1, 1)
+                .repeat(1, post_patch_width)
+                .flatten()
+            )
+            col_ids = (
+                torch.arange(post_patch_width, dtype=torch.int32, device=device)
+                .view(1, -1)
+                .repeat(post_patch_height, 1)
+                .flatten()
+            )
             position_ids[i, cap_len : cap_len + num_patches, 1] = row_ids
             position_ids[i, cap_len : cap_len + num_patches, 2] = col_ids
 
@@ -289,7 +300,9 @@ class Lumina2RotaryPosEmbed(nn.Module):
         freqs_cis = self._get_freqs_cis(position_ids)
 
         # Split frequencies for captions and images
-        cap_freqs_cis = torch.zeros(batch_size, attention_mask.shape[1], freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype)
+        cap_freqs_cis = torch.zeros(
+            batch_size, attention_mask.shape[1], freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype
+        )
         img_freqs_cis = torch.zeros(batch_size, num_patches, freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype)
 
         for i in range(batch_size):
@@ -297,7 +310,17 @@ class Lumina2RotaryPosEmbed(nn.Module):
             cap_freqs_cis[i, :cap_len] = freqs_cis[i, :cap_len]
             img_freqs_cis[i, :num_patches] = freqs_cis[i, cap_len : cap_len + num_patches]
 
-        return cap_freqs_cis, img_freqs_cis
+        # patch embeddings
+        hidden_states = (
+            hidden_states.view(
+                batch_size, channels, post_patch_height, self.patch_size, post_patch_width, self.patch_size
+            )
+            .permute(0, 2, 4, 3, 5, 1)
+            .flatten(3)
+            .flatten(1, 2)
+        )
+
+        return hidden_states, freqs_cis, cap_freqs_cis, img_freqs_cis
 
 
 class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -438,71 +461,69 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: torch.Tensor,
+        encoder_attention_mask: torch.Tensor,
         use_mask_in_transformer: bool = True,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
-       
-        batch_size, _, height, width = hidden_states.shape
-        image_seq_len = (height // self.config.patch_size) * (width // self.config.patch_size)
-
-        text_seq_len = encoder_hidden_states.shape[1]
-        
-        l_effective_text_seq_len = attention_mask.sum(dim=1).tolist()
-        max_seq_len = max(l_effective_text_seq_len) + image_seq_len
-
         # 1. Condition, positional & patch embedding
+        batch_size, _, height, width = hidden_states.shape
+        p = self.config.patch_size
+        post_patch_height, post_patch_width = height // p, width // p
+        num_patches = post_patch_height * post_patch_width
+
+        # effective_text_seq_lengths is based on actual caption length, so it's different for each prompt in a batch
+        effective_encoder_seq_lengths = encoder_attention_mask.sum(dim=1).tolist()
+        seq_lengths = [
+            encoder_seq_len + num_patches for encoder_seq_len in effective_encoder_seq_lengths
+        ]  # Add num_patches to each length
+        max_seq_len = max(seq_lengths)
+
         temb, encoder_hidden_states = self.time_caption_embed(hidden_states, timestep, encoder_hidden_states)
 
-        encoder_rotary_emb, hidden_rotary_emb = self.rope_embedder(hidden_states, attention_mask)
+        hidden_states, rotary_emb, context_rotary_emb, noise_rotary_emb = self.rope_embedder(
+            hidden_states, encoder_attention_mask
+        )
 
         hidden_states = self.x_embedder(hidden_states)
 
         # 2. Context & noise refinement
         for layer in self.context_refiner:
-            # NOTE: mask not used for performance
             encoder_hidden_states = layer(
-                encoder_hidden_states, attention_mask if use_mask_in_transformer else None, encoder_rotary_emb
+                encoder_hidden_states, encoder_attention_mask if use_mask_in_transformer else None, context_rotary_emb
             )
 
         for layer in self.noise_refiner:
-            # NOTE: mask not used for performance
-            hidden_states = layer(
-                hidden_states, None, hidden_rotary_emb, temb
-            )
+            hidden_states = layer(hidden_states, None, noise_rotary_emb, temb)
 
-        # 3. Attention mask preparation
-        mask = hidden_states.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
-        padded_hidden_states = hidden_states.new_zeros(batch_size, max_seq_len, self.config.hidden_size)
-        for i in range(batch_size):
-            cap_len = l_effective_text_seq_len[i]
-            img_len = image_seq_len
-            mask[i, : cap_len + img_len] = True
-            padded_hidden_states[i, :cap_len] = encoder_hidden_states[i, :cap_len]
-            padded_hidden_states[i, cap_len : cap_len + img_len] = hidden_states[i, :img_len]
-        hidden_states = padded_hidden_states
+        # 3. Joint Transformer blocks
+        attention_mask = hidden_states.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
+        joint_hidden_states = hidden_states.new_zeros(batch_size, max_seq_len, self.config.hidden_size)
+        for i, (effective_encoder_seq_len, seq_len) in enumerate(zip(effective_encoder_seq_lengths, seq_lengths)):
+            attention_mask[i, :seq_len] = True
+            joint_hidden_states[i, :effective_encoder_seq_len] = encoder_hidden_states[i, :effective_encoder_seq_len]
+            joint_hidden_states[i, effective_encoder_seq_len:seq_len] = hidden_states[i]
 
-        # 4. Transformer blocks
+        hidden_states = joint_hidden_states
+
         for layer in self.layers:
-            # NOTE: mask not used for performance
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
-                    layer, hidden_states, mask if use_mask_in_transformer else None, joint_rotary_emb, temb
+                    layer, hidden_states, attention_mask if use_mask_in_transformer else None, rotary_emb, temb
                 )
             else:
-                hidden_states = layer(hidden_states, mask if use_mask_in_transformer else None, joint_rotary_emb, temb)
+                hidden_states = layer(
+                    hidden_states, attention_mask if use_mask_in_transformer else None, rotary_emb, temb
+                )
 
-        # 5. Output norm & projection & unpatchify
+        # 4. Output norm & projection
         hidden_states = self.norm_out(hidden_states, temb)
 
-        height_tokens = width_tokens = self.config.patch_size
+        # 5. Unpatchify
         output = []
-        for i in range(batch_size):
-            begin = l_effective_text_seq_len[i]
-            end = begin + image_seq_len
+        for i, (effective_encoder_seq_len, seq_len) in enumerate(zip(effective_encoder_seq_lengths, seq_lengths)):
             output.append(
-                hidden_states[i][begin:end]
-                .view(height // height_tokens, width // width_tokens, height_tokens, width_tokens, self.out_channels)
+                hidden_states[i][effective_encoder_seq_len:seq_len]
+                .view(post_patch_height, post_patch_width, p, p, self.out_channels)
                 .permute(4, 0, 2, 1, 3)
                 .flatten(3, 4)
                 .flatten(1, 2)

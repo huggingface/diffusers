@@ -696,7 +696,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     hidden_states=latents,
                     timestep=current_timestep,
                     encoder_hidden_states=prompt_embeds,
-                    attention_mask=prompt_attention_mask,
+                    encoder_attention_mask=prompt_attention_mask,
                     use_mask_in_transformer=use_mask_in_transformer,
                     return_dict=False,
                 )[0]
@@ -707,7 +707,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                         hidden_states=latents,
                         timestep=current_timestep,
                         encoder_hidden_states=negative_prompt_embeds,
-                        attention_mask=negative_prompt_attention_mask,
+                        encoder_attention_mask=negative_prompt_attention_mask,
                         use_mask_in_transformer=use_mask_in_transformer,
                         return_dict=False,
                     )[0]
