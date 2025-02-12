@@ -26,6 +26,7 @@ BENCHMARK_FIELDS = [
 PROMPT = "ghibli style, a fantasy landscape with castles"
 BASE_PATH = os.getenv("BASE_PATH", ".")
 TOTAL_GPU_MEMORY = float(os.getenv("TOTAL_GPU_MEMORY", torch.cuda.get_device_properties(0).total_memory / (1024**3)))
+DEVICE_NAME = torch.cuda.get_device_name()
 
 REPO_ID = "diffusers/benchmarks"
 FINAL_CSV_FILE = "collated_results.csv"
@@ -87,6 +88,7 @@ def generate_csv_dict_model(
         "time (secs)": benchmark_info.time,
         "memory (gbs)": benchmark_info.memory,
         "actual_gpu_memory (gbs)": f"{(TOTAL_GPU_MEMORY):.3f}",
+        "device": DEVICE_NAME,
         "github_sha": GITHUB_SHA,
         **kwargs,
     }
