@@ -32,6 +32,7 @@ from utils import (  # noqa: E402
     generate_csv_dict,
     generate_csv_dict_model,
     write_to_csv,
+    write_list_to_csv,
 )
 
 
@@ -397,19 +398,22 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
         time = benchmark_fn(self.run_decode, self.model, tensor)
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())
         benchmark_info = BenchmarkInfo(time=time, memory=memory)
-
-        flush()
         csv_dict = generate_csv_dict_model(
             model_cls=self.model_class_name, ckpt=self.pretrained_model_name_or_path, benchmark_info=benchmark_info, **kwargs,
         )
-        filepath = self.get_result_filepath(f"decode_nchw_{batch}-{self.model.config.latent_channels}-{height}-{width}")
-        write_to_csv(filepath, csv_dict)
+        return csv_dict
 
     def test_decode(self):
+        benchmark_infos = []
+
         batches = (1,)
         heights = (32, 64, 128, 256,)
         widths = (32, 64, 128, 256,)
         for batch in batches:
             for height in heights:
                 for width in widths:
-                    self._test_decode(batch=batch, height=height, width=width)
+                    benchmark_info = self._test_decode(batch=batch, height=height, width=width)
+                    benchmark_infos.append(benchmark_info)
+
+        filepath = self.get_result_filepath(f"decode")
+        write_list_to_csv(filepath, benchmark_infos)

@@ -100,6 +100,15 @@ def write_to_csv(file_name: str, data_dict: Dict[str, Union[str, bool, float]]):
         writer.writerow(data_dict)
 
 
+def write_list_to_csv(file_name: str, data_dict: List[Dict[str, Union[str, bool, float]]]):
+    """Serializes a dictionary into a CSV file."""
+    with open(file_name, mode="w", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=list(data_dict[0].keys()))
+        writer.writeheader()
+        for row in data_dict:
+            writer.writerow(row)
+
+
 def collate_csv(input_files: List[str], output_file: str):
     """Collates multiple identically structured CSVs into a single CSV file."""
     with open(output_file, mode="w", newline="") as outfile:
