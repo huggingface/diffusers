@@ -60,6 +60,10 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_training(self):
         pass
 
+    @unittest.skip("Test not supported.")
+    def test_layerwise_casting_training(self):
+        pass
+
     def test_determinism(self):
         super().test_determinism()
 
@@ -237,6 +241,10 @@ class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
     @unittest.skip("Test not supported.")
     def test_training(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_layerwise_casting_training(self):
         pass
 
     def prepare_init_args_and_inputs_for_common(self):
