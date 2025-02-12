@@ -259,80 +259,45 @@ class Lumina2RotaryPosEmbed(nn.Module):
         return torch.cat(result, dim=-1).to(device)
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor):
-        batch_size = len(hidden_states)
-        p_h = p_w = self.patch_size
-        device = hidden_states[0].device
+        # Get batch info and dimensions
+        batch_size, _, height, width = hidden_states.shape
+        patch_height, patch_width = height // self.patch_size, width // self.patch_size
+        num_patches = patch_height * patch_width
+        device = hidden_states.device
 
+        # Get caption lengths and calculate max sequence length
         l_effective_cap_len = attention_mask.sum(dim=1).tolist()
-        # TODO: this should probably be refactored because all subtensors of hidden_states will be of same shape
-        img_sizes = [(img.size(1), img.size(2)) for img in hidden_states]
-        l_effective_img_len = [(H // p_h) * (W // p_w) for (H, W) in img_sizes]
+        max_seq_len = max(l_effective_cap_len) + num_patches
 
-        max_seq_len = max((cap_len + img_len for cap_len, img_len in zip(l_effective_cap_len, l_effective_img_len)))
-        max_img_len = max(l_effective_img_len)
-
+        # Create position IDs
         position_ids = torch.zeros(batch_size, max_seq_len, 3, dtype=torch.int32, device=device)
-
+        
         for i in range(batch_size):
             cap_len = l_effective_cap_len[i]
-            img_len = l_effective_img_len[i]
-            H, W = img_sizes[i]
-            H_tokens, W_tokens = H // p_h, W // p_w
-            assert H_tokens * W_tokens == img_len
-
+            
+            # Set caption positions
             position_ids[i, :cap_len, 0] = torch.arange(cap_len, dtype=torch.int32, device=device)
-            position_ids[i, cap_len : cap_len + img_len, 0] = cap_len
-            row_ids = (
-                torch.arange(H_tokens, dtype=torch.int32, device=device).view(-1, 1).repeat(1, W_tokens).flatten()
-            )
-            col_ids = (
-                torch.arange(W_tokens, dtype=torch.int32, device=device).view(1, -1).repeat(H_tokens, 1).flatten()
-            )
-            position_ids[i, cap_len : cap_len + img_len, 1] = row_ids
-            position_ids[i, cap_len : cap_len + img_len, 2] = col_ids
+            position_ids[i, cap_len : cap_len + num_patches, 0] = cap_len
+            
+            # Set image patch positions
+            row_ids = torch.arange(patch_height, dtype=torch.int32, device=device).view(-1, 1).repeat(1, patch_width).flatten()
+            col_ids = torch.arange(patch_width, dtype=torch.int32, device=device).view(1, -1).repeat(patch_height, 1).flatten()
+            position_ids[i, cap_len : cap_len + num_patches, 1] = row_ids
+            position_ids[i, cap_len : cap_len + num_patches, 2] = col_ids
 
+        # Get frequencies
         freqs_cis = self._get_freqs_cis(position_ids)
 
-        cap_freqs_cis_shape = list(freqs_cis.shape)
-        cap_freqs_cis_shape[1] = attention_mask.shape[1]
-        cap_freqs_cis = torch.zeros(*cap_freqs_cis_shape, device=device, dtype=freqs_cis.dtype)
-
-        img_freqs_cis_shape = list(freqs_cis.shape)
-        img_freqs_cis_shape[1] = max_img_len
-        img_freqs_cis = torch.zeros(*img_freqs_cis_shape, device=device, dtype=freqs_cis.dtype)
+        # Split frequencies for captions and images
+        cap_freqs_cis = torch.zeros(batch_size, attention_mask.shape[1], freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype)
+        img_freqs_cis = torch.zeros(batch_size, num_patches, freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype)
 
         for i in range(batch_size):
             cap_len = l_effective_cap_len[i]
-            img_len = l_effective_img_len[i]
             cap_freqs_cis[i, :cap_len] = freqs_cis[i, :cap_len]
-            img_freqs_cis[i, :img_len] = freqs_cis[i, cap_len : cap_len + img_len]
+            img_freqs_cis[i, :num_patches] = freqs_cis[i, cap_len : cap_len + num_patches]
 
-        flat_hidden_states = []
-        for i in range(batch_size):
-            img = hidden_states[i]
-            C, H, W = img.size()
-            img = img.view(C, H // p_h, p_h, W // p_w, p_w).permute(1, 3, 2, 4, 0).flatten(2).flatten(0, 1)
-            flat_hidden_states.append(img)
-        hidden_states = flat_hidden_states
-        padded_img_embed = torch.zeros(
-            batch_size, max_img_len, hidden_states[0].shape[-1], device=device, dtype=hidden_states[0].dtype
-        )
-        padded_img_mask = torch.zeros(batch_size, max_img_len, dtype=torch.bool, device=device)
-        for i in range(batch_size):
-            padded_img_embed[i, : l_effective_img_len[i]] = hidden_states[i]
-            padded_img_mask[i, : l_effective_img_len[i]] = True
-
-        return (
-            padded_img_embed,
-            padded_img_mask,
-            img_sizes,
-            l_effective_cap_len,
-            l_effective_img_len,
-            freqs_cis,
-            cap_freqs_cis,
-            img_freqs_cis,
-            max_seq_len,
-        )
+        return cap_freqs_cis, img_freqs_cis
 
 
 class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -477,22 +442,19 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         use_mask_in_transformer: bool = True,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
-        batch_size = hidden_states.size(0)
+       
+        batch_size, _, height, width = hidden_states.shape
+        image_seq_len = (height // self.config.patch_size) * (width // self.config.patch_size)
+
+        text_seq_len = encoder_hidden_states.shape[1]
+        
+        l_effective_text_seq_len = attention_mask.sum(dim=1).tolist()
+        max_seq_len = max(l_effective_text_seq_len) + image_seq_len
 
         # 1. Condition, positional & patch embedding
         temb, encoder_hidden_states = self.time_caption_embed(hidden_states, timestep, encoder_hidden_states)
 
-        (
-            hidden_states,
-            hidden_mask,
-            hidden_sizes,
-            encoder_hidden_len,
-            hidden_len,
-            joint_rotary_emb,
-            encoder_rotary_emb,
-            hidden_rotary_emb,
-            max_seq_len,
-        ) = self.rope_embedder(hidden_states, attention_mask)
+        encoder_rotary_emb, hidden_rotary_emb = self.rope_embedder(hidden_states, attention_mask)
 
         hidden_states = self.x_embedder(hidden_states)
 
@@ -506,15 +468,15 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for layer in self.noise_refiner:
             # NOTE: mask not used for performance
             hidden_states = layer(
-                hidden_states, hidden_mask if use_mask_in_transformer else None, hidden_rotary_emb, temb
+                hidden_states, None, hidden_rotary_emb, temb
             )
 
         # 3. Attention mask preparation
         mask = hidden_states.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
         padded_hidden_states = hidden_states.new_zeros(batch_size, max_seq_len, self.config.hidden_size)
         for i in range(batch_size):
-            cap_len = encoder_hidden_len[i]
-            img_len = hidden_len[i]
+            cap_len = l_effective_text_seq_len[i]
+            img_len = image_seq_len
             mask[i, : cap_len + img_len] = True
             padded_hidden_states[i, :cap_len] = encoder_hidden_states[i, :cap_len]
             padded_hidden_states[i, cap_len : cap_len + img_len] = hidden_states[i, :img_len]
@@ -535,10 +497,9 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         height_tokens = width_tokens = self.config.patch_size
         output = []
-        for i in range(len(hidden_sizes)):
-            height, width = hidden_sizes[i]
-            begin = encoder_hidden_len[i]
-            end = begin + (height // height_tokens) * (width // width_tokens)
+        for i in range(batch_size):
+            begin = l_effective_text_seq_len[i]
+            end = begin + image_seq_len
             output.append(
                 hidden_states[i][begin:end]
                 .view(height // height_tokens, width // width_tokens, height_tokens, width_tokens, self.out_channels)
