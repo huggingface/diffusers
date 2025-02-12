@@ -73,7 +73,7 @@ if is_torch_npu_available():
 
 
 def log_validation(
-        vae, flux_transformer, flux_controlnet, args, accelerator, weight_dtype, step, is_final_validation=False
+    vae, flux_transformer, flux_controlnet, args, accelerator, weight_dtype, step, is_final_validation=False
 ):
     logger.info("Running validation... ")
 
@@ -266,7 +266,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="Path to pretrained controlnet model or model identifier from huggingface.co/models."
-             " If not specified controlnet weights are initialized from unet.",
+        " If not specified controlnet weights are initialized from unet.",
     )
     parser.add_argument(
         "--variant",
@@ -668,11 +668,11 @@ def parse_args(input_args=None):
         raise ValueError("`--validation_prompt` must be set if `--validation_image` is set")
 
     if (
-            args.validation_image is not None
-            and args.validation_prompt is not None
-            and len(args.validation_image) != 1
-            and len(args.validation_prompt) != 1
-            and len(args.validation_image) != len(args.validation_prompt)
+        args.validation_image is not None
+        and args.validation_prompt is not None
+        and len(args.validation_image) != 1
+        and len(args.validation_prompt) != 1
+        and len(args.validation_image) != len(args.validation_prompt)
     ):
         raise ValueError(
             "Must provide either 1 `--validation_image`, 1 `--validation_prompt`,"
@@ -695,12 +695,13 @@ def get_train_dataset(args, accelerator):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
-            trust_remote_code=args.trust_remote_code
+            trust_remote_code=args.trust_remote_code,
         )
     if args.jsonl_for_train is not None:
         # load from json
-        dataset = load_dataset("json", data_files=args.jsonl_for_train, cache_dir=args.cache_dir,
-                               trust_remote_code=args.trust_remote_code)
+        dataset = load_dataset(
+            "json", data_files=args.jsonl_for_train, cache_dir=args.cache_dir, trust_remote_code=args.trust_remote_code
+        )
         dataset = dataset.flatten_indices()
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -1020,7 +1021,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
@@ -1132,7 +1133,7 @@ def main(args):
         len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
         num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
         num_training_steps_for_scheduler = (
-                args.num_train_epochs * num_update_steps_per_epoch * accelerator.num_processes
+            args.num_train_epochs * num_update_steps_per_epoch * accelerator.num_processes
         )
     else:
         num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes

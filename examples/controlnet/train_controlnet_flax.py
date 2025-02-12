@@ -521,7 +521,7 @@ def make_train_dataset(args, tokenizer, batch_size=None):
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             streaming=args.streaming,
-            trust_remote_code=args.trust_remote_code
+            trust_remote_code=args.trust_remote_code,
         )
     else:
         if args.train_data_dir is not None:
@@ -531,9 +531,7 @@ def make_train_dataset(args, tokenizer, batch_size=None):
                 )
             else:
                 dataset = load_dataset(
-                    args.train_data_dir,
-                    cache_dir=args.cache_dir,
-                    trust_remote_code=args.trust_remote_code
+                    args.train_data_dir, cache_dir=args.cache_dir, trust_remote_code=args.trust_remote_code
                 )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
