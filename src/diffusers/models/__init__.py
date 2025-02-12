@@ -72,7 +72,9 @@ if is_torch_available():
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
+    _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
+    _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
@@ -140,8 +142,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             LatteTransformer3DModel,
             LTXVideoTransformer3DModel,
+            Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
+            OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             SanaTransformer2DModel,
