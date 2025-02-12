@@ -1001,7 +1001,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             obj_type = type(obj)
             # Classes with obj's type
-            class_or_tuple = {t for t in class_or_tuple if (get_origin(t) or t) is obj_type}
+            class_or_tuple = {t for t in class_or_tuple if isinstance(obj, get_origin(t) or t)}
 
             # Singular types (e.g. int, ControlNet, ...)
             # Untyped collections (e.g. List, but not List[int])

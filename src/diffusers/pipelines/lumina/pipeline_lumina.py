@@ -20,7 +20,7 @@ import urllib.parse as ul
 from typing import List, Optional, Tuple, Union
 
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
@@ -143,13 +143,13 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`AutoModel`]):
+        text_encoder ([`PreTrainedModel`]):
             Frozen text-encoder. Lumina-T2I uses
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.AutoModel), specifically the
             [t5-v1_1-xxl](https://huggingface.co/Alpha-VLLM/tree/main/t5-v1_1-xxl) variant.
-        tokenizer (`AutoModel`):
+        tokenizer (`AutoTokenizer`):
             Tokenizer of class
-            [AutoModel](https://huggingface.co/docs/transformers/model_doc/t5#transformers.AutoModel).
+            [AutoTokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.AutoModel).
         transformer ([`Transformer2DModel`]):
             A text conditioned `Transformer2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
@@ -180,8 +180,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         transformer: LuminaNextDiT2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
-        text_encoder: AutoModel,
-        tokenizer: AutoTokenizer,
+        text_encoder: PreTrainedModel,
+        tokenizer: PreTrainedTokenizerBase,
     ):
         super().__init__()
 
