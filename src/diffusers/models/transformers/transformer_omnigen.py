@@ -424,9 +424,9 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states = self.patch_embedding(hidden_states, is_input_image=False)
         num_tokens_for_output_image = hidden_states.size(1)
 
-        time_token = self.time_token(self.time_proj(timestep).to(hidden_states.dtype)).unsqueeze(1)
-        timestep_proj = self.time_proj(timestep)
-        temb = self.t_embedder(timestep_proj.type_as(hidden_states))
+        timestep_proj = self.time_proj(timestep).type_as(hidden_states)
+        time_token = self.time_token(timestep_proj).unsqueeze(1)
+        temb = self.t_embedder(timestep_proj)
 
         condition_tokens = self._get_multimodal_embeddings(input_ids, input_img_latents, input_image_sizes)
         if condition_tokens is not None:
