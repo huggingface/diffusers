@@ -65,6 +65,8 @@ class QuantoQuantizer(DiffusersQuantizer):
         # Quanto imports diffusers internally. This is here to prevent circular imports
         from optimum.quanto import QModuleMixin
 
+        if self.pre_quantized:
+            __import__("ipdb").set_trace()
         module, tensor_name = get_module_from_name(model, param_name)
         if isinstance(module, QModuleMixin) and "weight" in tensor_name:
             return not module.frozen
@@ -85,10 +87,13 @@ class QuantoQuantizer(DiffusersQuantizer):
         """
         dtype = kwargs.get("dtype", torch.float32)
 
-        set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
-        module, _ = get_module_from_name(model, param_name)
-        module.freeze()
-        module.weight.requires_grad = False
+        if not self.pre_quantized:
+            set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
+            module, _ = get_module_from_name(model, param_name)
+            module.freeze()
+            module.weight.requires_grad = False
+        else:
+            __import__("ipdb").set_trace()
 
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}

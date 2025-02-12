@@ -14,7 +14,7 @@ if is_accelerate_available():
 
 def _replace_with_quanto_layers(model, quantization_config, modules_to_not_convert: list, pre_quantized=False):
     # Quanto imports diffusers internally. These are placed here to avoid circular imports
-    from optimum.quanto import QLinear, WeightQBytesTensor, qfloat8, qint2, qint4, qint8
+    from optimum.quanto import QLinear, freeze, WeightQBytesTensor, qfloat8, qint2, qint4, qint8
 
     def _get_weight_type(dtype: str):
         return {"float8": qfloat8, "int8": qint8, "int4": qint4, "int2": qint2}[dtype]
@@ -44,6 +44,8 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
                         activations=_get_activation_type(quantization_config.activations),
                     )
                     if pre_quantized:
+                        print()
+                        """
                         qlinear.weight = WeightQBytesTensor(
                             qtype=_get_activation_type(quantization_config.weights),
                             axis=0,
@@ -53,6 +55,9 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
                             data=torch.zeros_like(module.weight),
                             scale=torch.nn.Parameter(torch.zeros(1)),
                         )
+                        """
+                        # qlinear.freeze()
+                        # qlinear.weight = torch.nn.Parameter(qlinear.qweight)
                     model._modules[name] = qlinear
                     model._modules[name].source_cls = type(module)
                     model._modules[name].requires_grad_(False)
@@ -68,5 +73,8 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
             " Please check your model architecture, or submit an issue on Github if you think this is a bug."
             " https://github.com/huggingface/diffusers"
         )
+
+    if pre_quantized:
+        freeze(model)
 
     return model
