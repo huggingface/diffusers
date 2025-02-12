@@ -497,6 +497,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXVideoToVideoPipeline,
         )
         from .cogview3 import CogView3PlusPipeline
+        from .cogview4 import CogView4Pipeline
         from .consisid import ConsisIDPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,

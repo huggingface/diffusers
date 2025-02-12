@@ -16,7 +16,7 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import GlmModel
+from transformers import AutoTokenizer, GlmModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
@@ -82,7 +82,7 @@ class CogView4Pipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        tokenizer: GlmModel,
+        tokenizer: AutoTokenizer,
         text_encoder: GlmModel,
         vae: AutoencoderKL,
         transformer: CogView4Transformer2DModel,
@@ -493,6 +493,7 @@ class CogView4Pipeline(DiffusionPipeline):
         )
         self.scheduler.set_timesteps(num_inference_steps, image_seq_len, device)
         timesteps = self.scheduler.timesteps
+        self._num_timesteps = len(timesteps)
 
         # Denoising loop
         transformer_dtype = self.transformer.dtype
