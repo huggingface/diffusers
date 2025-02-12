@@ -938,6 +938,7 @@ class StableDiffusionXLTilingPipeline(
 
         grid_rows = len(prompt)
         grid_cols = len(prompt[0])
+
         tiles_mode = [mode.value for mode in self.SeedTilesMode]
 
         if isinstance(seed_tiles_mode, str):

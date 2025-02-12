@@ -15,8 +15,8 @@
 # limitations under the License.
 
 """
-Script to fine-tune Stable Diffusion for LORA InstructPix2Pix.
-Base code referred from: https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py
+    Script to fine-tune Stable Diffusion for LORA InstructPix2Pix.
+    Base code referred from: https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py
 """
 
 import argparse
