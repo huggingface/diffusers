@@ -19,25 +19,22 @@ For more information, please refer to the [paper](https://arxiv.org/pdf/2409.113
 This guide will walk you through using OmniGen for various tasks and use cases.
 
 ## Load model checkpoints
+
 Model weights may be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~DiffusionPipeline.from_pretrained`] method.
 
-```py
+```python
 import torch
 from diffusers import OmniGenPipeline
-pipe = OmniGenPipeline.from_pretrained(
-    "Shitao/OmniGen-v1-diffusers",
-    torch_dtype=torch.bfloat16
-)
+
+pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", torch_dtype=torch.bfloat16)
 ```
-
-
 
 ## Text-to-image
 
 For text-to-image, pass a text prompt. By default, OmniGen generates a 1024x1024 image. 
 You can try setting the `height` and `width` parameters to generate images with different size.
 
-```py
+```python
 import torch
 from diffusers import OmniGenPipeline
 
@@ -55,8 +52,9 @@ image = pipe(
     guidance_scale=3,
     generator=torch.Generator(device="cpu").manual_seed(111),
 ).images[0]
-image
+image.save("output.png")
 ```
+
 <div class="flex justify-center">
     <img src="https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/t2i_woman_with_book.png" alt="generated image"/>
 </div>
@@ -67,7 +65,7 @@ OmniGen supports multimodal inputs.
 When the input includes an image, you need to add a placeholder `<img><|image_1|></img>` in the text prompt to represent the image. 
 It is recommended to enable `use_input_image_size_as_output` to keep the edited image the same size as the original image.
 
-```py
+```python
 import torch
 from diffusers import OmniGenPipeline
 from diffusers.utils import load_image 
@@ -86,9 +84,11 @@ image = pipe(
     guidance_scale=2, 
     img_guidance_scale=1.6,
     use_input_image_size_as_output=True,
-    generator=torch.Generator(device="cpu").manual_seed(222)).images[0]
-image
+    generator=torch.Generator(device="cpu").manual_seed(222)
+).images[0]
+image.save("output.png")
 ```
+
 <div class="flex flex-row gap-4">
   <div class="flex-1">
     <img class="rounded-xl" src="https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/t2i_woman_with_book.png"/>
@@ -101,7 +101,8 @@ image
 </div>
 
 OmniGen has some interesting features, such as visual reasoning, as shown in the example below.
-```py
+
+```python
 prompt="If the woman is thirsty, what should she take? Find it in the image and highlight it in blue. <img><|image_1|></img>"
 input_images=[load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/edit.png")]
 image = pipe(
@@ -110,20 +111,20 @@ image = pipe(
     guidance_scale=2, 
     img_guidance_scale=1.6,
     use_input_image_size_as_output=True,
-    generator=torch.Generator(device="cpu").manual_seed(0)).images[0]
-image
+    generator=torch.Generator(device="cpu").manual_seed(0)
+).images[0]
+image.save("output.png")
 ```
+
 <div class="flex justify-center">
     <img src="https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/reasoning.png" alt="generated image"/>
 </div>
 
-
 ## Controllable generation
 
- OmniGen can handle several classic computer vision tasks. 
- As shown below, OmniGen can detect human skeletons in input images, which can be used as control conditions to generate new images.
+OmniGen can handle several classic computer vision tasks. As shown below, OmniGen can detect human skeletons in input images, which can be used as control conditions to generate new images.
 
-```py
+```python
 import torch
 from diffusers import OmniGenPipeline
 from diffusers.utils import load_image 
@@ -142,8 +143,9 @@ image1 = pipe(
     guidance_scale=2, 
     img_guidance_scale=1.6,
     use_input_image_size_as_output=True,
-    generator=torch.Generator(device="cpu").manual_seed(333)).images[0]
-image1
+    generator=torch.Generator(device="cpu").manual_seed(333)
+).images[0]
+image1.save("image1.png")
 
 prompt="Generate a new photo using the following picture and text as conditions: <img><|image_1|></img>\n A young boy is sitting on a sofa in the library, holding a book. His hair is neatly combed, and a faint smile plays on his lips, with a few freckles scattered across his cheeks. The library is quiet, with rows of shelves filled with books stretching out behind him."
 input_images=[load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/skeletal.png")]
@@ -153,8 +155,9 @@ image2 = pipe(
     guidance_scale=2, 
     img_guidance_scale=1.6,
     use_input_image_size_as_output=True,
-    generator=torch.Generator(device="cpu").manual_seed(333)).images[0]
-image2
+    generator=torch.Generator(device="cpu").manual_seed(333)
+).images[0]
+image2.save("image2.png")
 ```
 
 <div class="flex flex-row gap-4">
@@ -174,7 +177,8 @@ image2
 
 
 OmniGen can also directly use relevant information from input images to generate new images.
-```py
+
+```python
 import torch
 from diffusers import OmniGenPipeline
 from diffusers.utils import load_image 
@@ -193,9 +197,11 @@ image = pipe(
     guidance_scale=2, 
     img_guidance_scale=1.6,
     use_input_image_size_as_output=True,
-    generator=torch.Generator(device="cpu").manual_seed(0)).images[0]
-image
+    generator=torch.Generator(device="cpu").manual_seed(0)
+).images[0]
+image.save("output.png")
 ```
+
 <div class="flex flex-row gap-4">
   <div class="flex-1">
     <img class="rounded-xl" src="https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/same_pose.png"/>
@@ -203,13 +209,12 @@ image
   </div>
 </div>
 
-
 ## ID and object preserving
 
 OmniGen can generate multiple images based on the people and objects in the input image and supports inputting multiple images simultaneously. 
 Additionally, OmniGen can extract desired objects from an image containing multiple objects based on instructions.
 
-```py
+```python
 import torch
 from diffusers import OmniGenPipeline
 from diffusers.utils import load_image 
@@ -231,9 +236,11 @@ image = pipe(
     width=1024,
     guidance_scale=2.5, 
     img_guidance_scale=1.6,
-    generator=torch.Generator(device="cpu").manual_seed(666)).images[0]
-image
+    generator=torch.Generator(device="cpu").manual_seed(666)
+).images[0]
+image.save("output.png")
 ```
+
 <div class="flex flex-row gap-4">
   <div class="flex-1">
     <img class="rounded-xl" src="https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/3.png"/>
@@ -249,7 +256,6 @@ image
   </div>
 </div>
 
-
 ```py
 import torch
 from diffusers import OmniGenPipeline
@@ -260,7 +266,6 @@ pipe = OmniGenPipeline.from_pretrained(
     torch_dtype=torch.bfloat16
 )
 pipe.to("cuda")
-
 
 prompt="A woman is walking down the street, wearing a white long-sleeve blouse with lace details on the sleeves, paired with a blue pleated skirt. The woman is <img><|image_1|></img>. The long-sleeve blouse and a pleated skirt are <img><|image_2|></img>."
 input_image_1 = load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/emma.jpeg")
@@ -273,8 +278,9 @@ image = pipe(
     width=1024,
     guidance_scale=2.5, 
     img_guidance_scale=1.6,
-    generator=torch.Generator(device="cpu").manual_seed(666)).images[0]
-image
+    generator=torch.Generator(device="cpu").manual_seed(666)
+).images[0]
+image.save("output.png")
 ```
 
 <div class="flex flex-row gap-4">
@@ -292,13 +298,12 @@ image
   </div>
 </div>
 
-
-## Optimization when inputting multiple images 
+## Optimization when using multiple images 
 
 For text-to-image task, OmniGen requires minimal memory and time costs (9GB memory and 31s for a 1024x1024 image on A800 GPU). 
 However, when using input images, the computational cost increases. 
 
-Here are some guidelines to help you reduce computational costs when inputting multiple images. The experiments are conducted on an A800 GPU with two input images.
+Here are some guidelines to help you reduce computational costs when using multiple images. The experiments are conducted on an A800 GPU with two input images.
 
 Like other pipelines, you can reduce memory usage by offloading the model: `pipe.enable_model_cpu_offload()` or `pipe.enable_sequential_cpu_offload() `. 
 In OmniGen, you can also decrease computational overhead by reducing the `max_input_image_size`. 
@@ -309,6 +314,4 @@ The memory consumption for different image sizes is shown in the table below:
 | max_input_image_size=1024 | 40GB         |
 | max_input_image_size=512  | 17GB         |
 | max_input_image_size=256  | 14GB         |
-
-
 
