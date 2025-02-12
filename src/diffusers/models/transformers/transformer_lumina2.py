@@ -241,20 +241,22 @@ class Lumina2RotaryPosEmbed(nn.Module):
 
     def _precompute_freqs_cis(self, axes_dim: List[int], axes_lens: List[int], theta: int) -> List[torch.Tensor]:
         freqs_cis = []
-        # Use float32 for MPS compatibility
-        dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         for i, (d, e) in enumerate(zip(axes_dim, axes_lens)):
-            emb = get_1d_rotary_pos_embed(d, e, theta=self.theta, freqs_dtype=dtype)
+            emb = get_1d_rotary_pos_embed(d, e, theta=self.theta, freqs_dtype=torch.float64)
             freqs_cis.append(emb)
         return freqs_cis
 
     def _get_freqs_cis(self, ids: torch.Tensor) -> torch.Tensor:
+        device = ids.device
+        if ids.device.type == "mps":
+            ids = ids.to("cpu")
+
         result = []
         for i in range(len(self.axes_dim)):
             freqs = self.freqs_cis[i].to(ids.device)
             index = ids[:, :, i : i + 1].repeat(1, 1, freqs.shape[-1]).to(torch.int64)
             result.append(torch.gather(freqs.unsqueeze(0).repeat(index.shape[0], 1, 1), dim=1, index=index))
-        return torch.cat(result, dim=-1)
+        return torch.cat(result, dim=-1).to(device)
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor):
         batch_size = len(hidden_states)

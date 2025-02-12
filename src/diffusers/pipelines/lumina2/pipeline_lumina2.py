@@ -24,8 +24,6 @@ from ...models import AutoencoderKL
 from ...models.transformers.transformer_lumina2 import Lumina2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
-    is_bs4_available,
-    is_ftfy_available,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -43,12 +41,6 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-if is_bs4_available():
-    pass
-
-if is_ftfy_available():
-    pass
 
 EXAMPLE_DOC_STRING = """
     Examples:
