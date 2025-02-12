@@ -1525,6 +1525,11 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
 
+@slow
+@require_torch_2
+@require_torch_accelerator
+@require_peft_backend
+@is_torch_compile
 class TestLoraHotSwappingForModel(unittest.TestCase):
     """Test that hotswapping does not result in recompilation on the model directly.
 
@@ -1667,20 +1672,12 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
                 unet.load_lora_adapter(file_name1, adapter_name=name, hotswap=True)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
-    @slow
-    @require_torch_2
-    @require_torch_accelerator
-    @require_peft_backend
     def test_hotswapping_model(self, rank0, rank1):
         self.check_model_hotswap(
             do_compile=False, rank0=rank0, rank1=rank1, target_modules=["to_q", "to_k", "to_v", "to_out.0"]
         )
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
-    @slow
-    @require_torch_2
-    @require_torch_accelerator
-    @require_peft_backend
     def test_hotswapping_compiled_model_linear(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
@@ -1688,10 +1685,6 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
-    @slow
-    @require_torch_2
-    @require_torch_accelerator
-    @require_peft_backend
     def test_hotswapping_compiled_model_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
@@ -1699,10 +1692,6 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
-    @slow
-    @require_torch_2
-    @require_torch_accelerator
-    @require_peft_backend
     def test_hotswapping_compiled_model_both_linear_and_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]

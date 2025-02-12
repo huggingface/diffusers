@@ -2178,6 +2178,11 @@ class PipelineNightlyTests(unittest.TestCase):
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
 
 
+@slow
+@require_torch_2
+@require_torch_accelerator
+@require_peft_backend
+@is_torch_compile
 class TestLoraHotSwappingForPipeline(unittest.TestCase):
     """Test that hotswapping does not result in recompilation in a pipeline.
 
@@ -2297,20 +2302,12 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
             assert np.allclose(output1_before, output1_after, atol=tol, rtol=tol)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
-    @slow
-    @require_torch_2
-    @require_torch_accelerator
-    @require_peft_backend
     def test_hotswapping_pipeline(self, rank0, rank1):
         self.check_pipeline_hotswap(
             do_compile=False, rank0=rank0, rank1=rank1, target_modules=["to_q", "to_k", "to_v", "to_out.0"]
         )
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
-    @slow
-    @require_torch_2
-    @require_torch_accelerator
-    @require_peft_backend
     def test_hotswapping_compiled_pipline_linear(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
@@ -2318,10 +2315,6 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
-    @slow
-    @require_torch_2
-    @require_torch_accelerator
-    @require_peft_backend
     def test_hotswapping_compiled_pipline_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
@@ -2329,10 +2322,6 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
-    @slow
-    @require_torch_2
-    @require_torch_accelerator
-    @require_peft_backend
     def test_hotswapping_compiled_pipline_both_linear_and_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
