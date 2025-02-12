@@ -400,7 +400,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
-            if self.config.beta_schedule ! = "squaredcos_cap_v2":
+            if self.config.beta_schedule != "squaredcos_cap_v2":
                 timesteps = timesteps.round()
         elif self.config.use_lu_lambdas:
             lambdas = np.flip(log_sigmas.copy())
