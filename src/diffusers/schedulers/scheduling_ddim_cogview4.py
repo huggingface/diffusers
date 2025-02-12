@@ -28,7 +28,6 @@ from ..utils import BaseOutput
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
-# Copied from diffusers.schedulers.scheduling_flow_match_heun_discrete.FlowMatchHeunDiscreteSchedulerOutput
 @dataclass
 class CogView4DDIMSchedulerOutput(BaseOutput):
     """
