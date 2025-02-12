@@ -37,6 +37,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 
 
 if is_torch_xla_available():

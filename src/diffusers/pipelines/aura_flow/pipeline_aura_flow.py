@@ -24,6 +24,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 
 
 if is_torch_xla_available():
@@ -131,6 +132,12 @@ class AuraFlowPipeline(DiffusionPipeline):
 
     _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "add_text_embeds",
+        "add_time_ids",
+    ]
 
     def __init__(
         self,
