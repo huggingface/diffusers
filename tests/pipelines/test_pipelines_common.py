@@ -1982,7 +1982,7 @@ class PipelineTesterMixin:
 
             assert f"You are trying to load the model files of the `variant={variant}`" in str(error.exception)
 
-    def test_encode_prompt_works_in_isolation(self):
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         if not hasattr(self.pipeline_class, "encode_prompt"):
             return
 
@@ -2028,6 +2028,8 @@ class PipelineTesterMixin:
                 if pipe_call_param is not None and pipe_call_param.default is not inspect.Parameter.empty:
                     # Use the default from pipe.__call__
                     encode_prompt_inputs[required_param_name] = pipe_call_param.default
+                elif extra_required_param_value_dict is not None and isinstance(extra_required_param_value_dict, dict):
+                    encode_prompt_inputs[required_param_name] = extra_required_param_value_dict[required_param_name]
                 else:
                     raise ValueError(
                         f"Required parameter '{required_param_name}' in "
@@ -2064,15 +2066,27 @@ class PipelineTesterMixin:
         # if it was present in `inputs`. This is because otherwise we will interfere wrongly
         # for non-None `negative_prompt` values as defaults (PixArt for example).
         pipe_without_tes_inputs = {**inputs, **adapted_prompt_embeds_kwargs}
-        if pipe_call_parameters.get("negative_prompt", None) is not None:
+        if (
+            pipe_call_parameters.get("negative_prompt", None) is not None
+            and pipe_call_parameters.get("negative_prompt").default is not None
+        ):
             pipe_without_tes_inputs.update({"negative_prompt": None})
+
+        # Pipelines like attend and excite have `prompt` as a required argument.
+        if (
+            pipe_call_parameters.get("prompt", None) is not None
+            and pipe_call_parameters.get("prompt").default is inspect.Parameter.empty
+            and pipe_call_parameters.get("prompt_embeds", None) is not None
+            and pipe_call_parameters.get("prompt_embeds").default is None
+        ):
+            pipe_without_tes_inputs.update({"prompt": None})
         pipe_out = pipe_without_text_encoders(**pipe_without_tes_inputs)[0]
 
         # Compare against regular pipeline outputs.
         full_pipe = self.pipeline_class(**components).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
         pipe_out_2 = full_pipe(**inputs)[0]
-        self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=1e-4, rtol=1e-4))
+        self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
 
     def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
