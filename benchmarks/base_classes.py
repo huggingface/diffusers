@@ -387,8 +387,6 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
 
     @torch.no_grad
     def _test_decode(self, **kwargs):
-        flush()
-
         batch = kwargs.get("batch")
         height = kwargs.get("height")
         width = kwargs.get("width")
@@ -396,7 +394,7 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
         tensor = torch.randn((batch, self.model.config.latent_channels, height, width), dtype=self.dtype, device="cuda")
 
         time = benchmark_fn(self.run_decode, self.model, tensor)
-        memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())
+        memory = bytes_to_giga_bytes(torch.cuda.max_memory_reserved())
         benchmark_info = BenchmarkInfo(time=time, memory=memory)
         csv_dict = generate_csv_dict_model(
             model_cls=self.model_class_name, ckpt=self.pretrained_model_name_or_path, benchmark_info=benchmark_info, **kwargs,
@@ -408,12 +406,12 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
         benchmark_infos = []
 
         batches = (1,)
-        heights = (32, 64, 128, 256,)
+        # heights = (32, 64, 128, 256,)
         widths = (32, 64, 128, 256,)
         for batch in batches:
-            for height in heights:
+            # for height in heights:
                 for width in widths:
-                    benchmark_info = self._test_decode(batch=batch, height=height, width=width)
+                    benchmark_info = self._test_decode(batch=batch, height=width, width=width)
                     benchmark_infos.append(benchmark_info)
 
         filepath = self.get_result_filepath(f"decode")
