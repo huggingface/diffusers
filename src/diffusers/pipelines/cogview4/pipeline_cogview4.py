@@ -78,12 +78,7 @@ class CogView4Pipeline(DiffusionPipeline):
 
     _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-    ]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -159,9 +154,9 @@ class CogView4Pipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 1024,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
+        max_sequence_length: int = 1024,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -184,12 +179,12 @@ class CogView4Pipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            max_sequence_length (`int`, defaults to `1024`):
-                Maximum sequence length in encoded prompt. Can be set to other values but may lead to poorer results.
             device: (`torch.device`, *optional*):
                 torch device
             dtype: (`torch.dtype`, *optional*):
                 torch dtype
+            max_sequence_length (`int`, defaults to `1024`):
+                Maximum sequence length in encoded prompt. Can be set to other values but may lead to poorer results.
         """
         device = device or self._execution_device
 
@@ -200,24 +195,10 @@ class CogView4Pipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds = self._get_glm_embeds(
-                prompt=prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
-            )
-
-        if do_classifier_free_guidance and negative_prompt is None:
-            negative_prompt_embeds = self._get_glm_embeds(
-                prompt="",
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
-            )
+            prompt_embeds = self._get_glm_embeds(prompt, num_images_per_prompt, max_sequence_length, device, dtype)
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
+            negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
             if prompt is not None and type(prompt) is not type(negative_prompt):
@@ -233,11 +214,7 @@ class CogView4Pipeline(DiffusionPipeline):
                 )
 
             negative_prompt_embeds = self._get_glm_embeds(
-                prompt=negative_prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
+                negative_prompt, num_images_per_prompt, max_sequence_length, device, dtype
             )
 
         return prompt_embeds, negative_prompt_embeds
@@ -347,7 +324,6 @@ class CogView4Pipeline(DiffusionPipeline):
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 5.0,
         num_images_per_prompt: int = 1,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,

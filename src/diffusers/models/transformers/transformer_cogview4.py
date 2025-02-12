@@ -26,7 +26,6 @@ from ...models.normalization import AdaLayerNormContinuous
 from ...utils import logging
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
-from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -81,6 +80,53 @@ class CogView4PatchEmbed(nn.Module):
         return hidden_states, prompt_embeds, negative_prompt_embeds
 
 
+class CogView4AdaLayerNormZero(nn.Module):
+    def __init__(self, embedding_dim: int, dim: int) -> None:
+        super().__init__()
+
+        self.norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
+        self.norm_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
+        self.linear = nn.Linear(embedding_dim, 12 * dim, bias=True)
+
+    def forward(
+        self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        norm_hidden_states = self.norm(hidden_states)
+        norm_encoder_hidden_states = self.norm_context(encoder_hidden_states)
+
+        emb = self.linear(temb)
+        (
+            shift_msa,
+            c_shift_msa,
+            scale_msa,
+            c_scale_msa,
+            gate_msa,
+            c_gate_msa,
+            shift_mlp,
+            c_shift_mlp,
+            scale_mlp,
+            c_scale_mlp,
+            gate_mlp,
+            c_gate_mlp,
+        ) = emb.chunk(12, dim=1)
+
+        hidden_states = norm_hidden_states * (1 + scale_msa.unsqueeze(1)) + shift_msa.unsqueeze(1)
+        encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_msa.unsqueeze(1)) + c_shift_msa.unsqueeze(1)
+
+        return (
+            hidden_states,
+            gate_msa,
+            shift_mlp,
+            scale_mlp,
+            gate_mlp,
+            encoder_hidden_states,
+            c_gate_msa,
+            c_shift_mlp,
+            c_scale_mlp,
+            c_gate_mlp,
+        )
+
+
 class CogView4AttnProcessor:
     """
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
@@ -89,7 +135,7 @@ class CogView4AttnProcessor:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("CogView4AttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("CogView4AttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -153,10 +199,8 @@ class CogView4TransformerBlock(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.norm1 = CogView3PlusAdaLayerNormZeroTextImage(embedding_dim=time_embed_dim, dim=dim)
-        self.adaln = self.norm1.linear
-        self.layernorm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
-
+        # 1. Attention
+        self.norm1 = CogView4AdaLayerNormZero(time_embed_dim, dim)
         self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -169,36 +213,10 @@ class CogView4TransformerBlock(nn.Module):
             processor=CogView4AttnProcessor(),
         )
 
+        # 2. Feedforward
+        self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
+        self.norm2_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
         self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
-
-    def multi_modulate(self, hidden_states, encoder_hidden_states, factors) -> torch.Tensor:
-        _, _, h = factors[0].shape
-        shift_factor, scale_factor = factors[0].view(-1, h), factors[1].view(-1, h)
-
-        shift_factor_hidden_states, shift_factor_encoder_hidden_states = shift_factor.chunk(2, dim=0)
-        scale_factor_hidden_states, scale_factor_encoder_hidden_states = scale_factor.chunk(2, dim=0)
-        shift_factor_hidden_states = shift_factor_hidden_states.unsqueeze(1)
-        scale_factor_hidden_states = scale_factor_hidden_states.unsqueeze(1)
-        hidden_states = torch.addcmul(shift_factor_hidden_states, hidden_states, (1 + scale_factor_hidden_states))
-
-        shift_factor_encoder_hidden_states = shift_factor_encoder_hidden_states.unsqueeze(1)
-        scale_factor_encoder_hidden_states = scale_factor_encoder_hidden_states.unsqueeze(1)
-        encoder_hidden_states = torch.addcmul(
-            shift_factor_encoder_hidden_states, encoder_hidden_states, (1 + scale_factor_encoder_hidden_states)
-        )
-
-        return hidden_states, encoder_hidden_states
-
-    def multi_gate(self, hidden_states, encoder_hidden_states, factor):
-        _, _, hidden_dim = hidden_states.shape
-        gate_factor = factor.view(-1, hidden_dim)
-        gate_factor_hidden_states, gate_factor_encoder_hidden_states = gate_factor.chunk(2, dim=0)
-        gate_factor_hidden_states = gate_factor_hidden_states.unsqueeze(1)
-        gate_factor_encoder_hidden_states = gate_factor_encoder_hidden_states.unsqueeze(1)
-        hidden_states = gate_factor_hidden_states * hidden_states
-        encoder_hidden_states = gate_factor_encoder_hidden_states * encoder_hidden_states
-
-        return hidden_states, encoder_hidden_states
 
     def forward(
         self,
@@ -207,59 +225,40 @@ class CogView4TransformerBlock(nn.Module):
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        batch_size, encoder_hidden_states_len, hidden_dim = encoder_hidden_states.shape
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-        residual = hidden_states
-        layernorm_factor = (
-            self.adaln(temb)
-            .view(
-                temb.shape[0],
-                6,
-                2,
-                hidden_states.shape[-1],
-            )
-            .permute(1, 2, 0, 3)
-            .contiguous()
-        )
-        hidden_states = self.layernorm(hidden_states)
-        hidden_states, encoder_hidden_states = self.multi_modulate(
-            hidden_states=hidden_states[:, encoder_hidden_states_len:],
-            encoder_hidden_states=hidden_states[:, :encoder_hidden_states_len],
-            factors=(layernorm_factor[0], layernorm_factor[1]),
-        )
-        hidden_states, encoder_hidden_states = self.attn1(
-            hidden_states=hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
+        # 1. Timestep conditioning
+        (
+            norm_hidden_states,
+            gate_msa,
+            shift_mlp,
+            scale_mlp,
+            gate_mlp,
+            norm_encoder_hidden_states,
+            c_gate_msa,
+            c_shift_mlp,
+            c_scale_mlp,
+            c_gate_mlp,
+        ) = self.norm1(hidden_states, encoder_hidden_states, temb)
+
+        # 2. Attention
+        attn_hidden_states, attn_encoder_hidden_states = self.attn1(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
         )
-        hidden_states, encoder_hidden_states = self.multi_gate(
-            hidden_states=hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            factor=layernorm_factor[2],
-        )
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-        hidden_states += residual
+        hidden_states = hidden_states + attn_hidden_states * gate_msa.unsqueeze(1)
+        encoder_hidden_states = encoder_hidden_states + attn_encoder_hidden_states * c_gate_msa.unsqueeze(1)
 
-        residual = hidden_states
-        hidden_states = self.layernorm(hidden_states)
-        hidden_states, encoder_hidden_states = self.multi_modulate(
-            hidden_states=hidden_states[:, encoder_hidden_states_len:],
-            encoder_hidden_states=hidden_states[:, :encoder_hidden_states_len],
-            factors=(layernorm_factor[3], layernorm_factor[4]),
-        )
-        hidden_states = self.ff(hidden_states)
-        encoder_hidden_states = self.ff(encoder_hidden_states)
-        hidden_states, encoder_hidden_states = self.multi_gate(
-            hidden_states=hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            factor=layernorm_factor[5],
-        )
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-        hidden_states += residual
-        hidden_states, encoder_hidden_states = (
-            hidden_states[:, encoder_hidden_states_len:],
-            hidden_states[:, :encoder_hidden_states_len],
-        )
+        # 3. Feedforward
+        norm_hidden_states = self.norm2(hidden_states) * (1 + scale_mlp.unsqueeze(1)) + shift_mlp.unsqueeze(1)
+        norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states) * (
+            1 + c_scale_mlp.unsqueeze(1)
+        ) + c_shift_mlp.unsqueeze(1)
+
+        ff_output = self.ff(norm_hidden_states)
+        ff_output_context = self.ff(norm_encoder_hidden_states)
+        hidden_states = hidden_states + ff_output * gate_mlp.unsqueeze(1)
+        encoder_hidden_states = encoder_hidden_states + ff_output_context * c_gate_mlp.unsqueeze(1)
+
         return hidden_states, encoder_hidden_states
 
 
