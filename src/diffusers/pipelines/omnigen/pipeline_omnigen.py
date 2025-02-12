@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -23,11 +23,7 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import OmniGenTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .processor_omnigen import OmniGenMultiModalProcessor
@@ -48,11 +44,12 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
+
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(prompt, num_inference_steps=50, guidance_scale=2.5).images[0]
-        >>> image.save("t2i.png")
+        >>> image.save("output.png")
         ```
 """
 
@@ -200,7 +197,6 @@ class OmniGenPipeline(
         width,
         use_input_image_size_as_output,
         callback_on_step_end_tensor_inputs=None,
-        max_sequence_length=None,
     ):
         if input_images is not None:
             if len(input_images) != len(prompt):
@@ -324,10 +320,8 @@ class OmniGenPipeline(
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: int = 120000,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -376,10 +370,6 @@ class OmniGenPipeline(
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.flux.FluxPipelineOutput`] instead of a plain tuple.
-            attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -389,7 +379,6 @@ class OmniGenPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -414,11 +403,9 @@ class OmniGenPipeline(
             width,
             use_input_image_size_as_output,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            max_sequence_length=max_sequence_length,
         )
 
         self._guidance_scale = guidance_scale
-        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -451,7 +438,8 @@ class OmniGenPipeline(
         )
         self._num_timesteps = len(timesteps)
 
-        # 6. Prepare latents.
+        # 6. Prepare latents
+        transformer_dtype = self.transformer.dtype
         if use_input_image_size_as_output:
             height, width = processed_data["input_pixel_values"][0].shape[-2:]
         latent_channels = self.transformer.config.in_channels
@@ -460,7 +448,7 @@ class OmniGenPipeline(
             latent_channels,
             height,
             width,
-            self.transformer.dtype,
+            torch.float32,
             device,
             generator,
             latents,
@@ -471,6 +459,7 @@ class OmniGenPipeline(
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * (num_cfg + 1))
+                latent_model_input = latent_model_input.to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
@@ -483,7 +472,6 @@ class OmniGenPipeline(
                     input_image_sizes=processed_data["input_image_sizes"],
                     attention_mask=processed_data["attention_mask"],
                     position_ids=processed_data["position_ids"],
-                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -495,7 +483,6 @@ class OmniGenPipeline(
                     noise_pred = uncond + guidance_scale * (cond - uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
@@ -505,11 +492,6 @@ class OmniGenPipeline(
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
-
-                if latents.dtype != latents_dtype:
-                    if torch.backends.mps.is_available():
-                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-                        latents = latents.to(latents_dtype)
 
                 progress_bar.update()
 
