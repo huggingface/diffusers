@@ -254,7 +254,7 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
         # e.g. key = "down_blocks.1.attentions.0"
         key = f"{parts[0]}.{parts[1]}.attentions.{parts[3]}"
         block_weight = weight_for_adapter.get(key, 1.0)
-        
+
         return block_weight
 
     for module_name, module in model.named_modules():
