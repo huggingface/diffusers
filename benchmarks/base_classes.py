@@ -372,11 +372,14 @@ class BaseBenchmarkTestCase:
 class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
     model_class = AutoencoderKL
 
-    def __init__(self, pretrained_model_name_or_path, dtype, **kwargs):
+    def __init__(self, pretrained_model_name_or_path, dtype, tiling, **kwargs):
         super().__init__()
         self.dtype = getattr(torch, dtype)
         model = self.model_class.from_pretrained(pretrained_model_name_or_path, torch_dtype=self.dtype, **kwargs).eval()
         model = model.to("cuda")
+        if tiling:
+            model.enable_tiling()
+        self.tiling = True
         self.model = model
         self.model_class_name = str(self.model.__class__.__name__)
         self.pretrained_model_name_or_path = pretrained_model_name_or_path
@@ -414,5 +417,8 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
                     benchmark_info = self._test_decode(batch=batch, height=width, width=width)
                     benchmark_infos.append(benchmark_info)
 
-        filepath = self.get_result_filepath(f"decode")
+        suffix = "decode"
+        if self.tiling:
+            suffix = "tiled_decode"
+        filepath = self.get_result_filepath(suffix)
         write_list_to_csv(filepath, benchmark_infos)

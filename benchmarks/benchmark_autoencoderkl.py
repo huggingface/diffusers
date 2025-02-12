@@ -23,7 +23,11 @@ if __name__ == "__main__":
         type=str,
         default="float16",
     )
+    parser.add_argument(
+        "--tiling",
+        action="store_true"
+    )
     args = parser.parse_args()
 
-    benchmark = AutoencoderKLBenchmark(pretrained_model_name_or_path=args.pretrained_model_name_or_path, dtype=args.dtype, subfolder=args.subfolder)
+    benchmark = AutoencoderKLBenchmark(pretrained_model_name_or_path=args.pretrained_model_name_or_path, dtype=args.dtype, tiling=args.tiling, subfolder=args.subfolder)
     benchmark.test_decode()
