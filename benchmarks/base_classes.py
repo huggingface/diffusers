@@ -400,6 +400,7 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
             time = benchmark_fn(self.run_decode, self.model, tensor)
             memory = bytes_to_giga_bytes(torch.cuda.max_memory_reserved())
         except torch.OutOfMemoryError:
+            time = "OOM"
             memory = "OOM"
 
         benchmark_info = BenchmarkInfo(time=time, memory=memory)
