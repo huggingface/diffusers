@@ -746,7 +746,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, StableDiffusionM
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt,
+        prompt: Union[str, List[str]],
         token_indices: Union[List[int], List[List[int]]],
         height: Optional[int] = None,
         width: Optional[int] = None,
