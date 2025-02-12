@@ -26,6 +26,54 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
+## Using Single File loading with Lumina Image 2.0
+
+Single file loading for Lumina Image 2.0 is available for the `Lumina2Transformer2DModel`
+
+```python
+import torch
+from diffusers import Lumina2Transformer2DModel, Lumina2Text2ImgPipeline
+
+ckpt_path = "https://huggingface.co/Alpha-VLLM/Lumina-Image-2.0/blob/main/consolidated.00-of-01.pth"
+transformer = Lumina2Transformer2DModel.from_single_file(
+    ckpt_path, torch_dtype=torch.bfloat16
+)
+
+pipe = Lumina2Text2ImgPipeline.from_pretrained(
+    "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, torch_dtype=torch.bfloat16
+)
+pipe.enable_model_cpu_offload()
+image = pipe(
+    "a cat holding a sign that says hello",
+    generator=torch.Generator("cpu").manual_seed(0),
+).images[0]
+image.save("lumina-single-file.png")
+
+```
+
+## Using GGUF Quantized Checkpoints with Lumina Image 2.0
+
+```python
+from diffusers import Lumina2Transformer2DModel, Lumina2Text2ImgPipeline, GGUFQuantizationConfig 
+
+ckpt_path = "https://huggingface.co/calcuis/lumina-gguf/blob/main/lumina2-q4_0.gguf"
+transformer = Lumina2Transformer2DModel.from_single_file(
+    ckpt_path,
+    quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+    torch_dtype=torch.bfloat16,
+)
+
+pipe = Lumina2Text2ImgPipeline.from_pretrained(
+    "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, torch_dtype=torch.bfloat16
+)
+pipe.enable_model_cpu_offload()
+image = pipe(
+    "a cat holding a sign that says hello",
+    generator=torch.Generator("cpu").manual_seed(0),
+).images[0]
+image.save("lumina-gguf.png")
+```
+
 ## Lumina2Text2ImgPipeline
 
 [[autodoc]] Lumina2Text2ImgPipeline
