@@ -46,38 +46,23 @@ class CogView4PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.text_hidden_size = text_hidden_size
         self.pos_embed_max_size = pos_embed_max_size
-        # Linear projection for image patches
-        self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
 
-        # Linear projection for text embeddings
+        self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
         self.text_proj = nn.Linear(text_hidden_size, hidden_size)
 
-    def forward(
-        self, hidden_states: torch.Tensor, prompt_embeds: torch.Tensor, negative_prompt_embeds: torch.Tensor | None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, channel, height, width = hidden_states.shape
+        post_patch_height = height // self.patch_size
+        post_patch_width = width // self.patch_size
 
-        if height % self.patch_size != 0 or width % self.patch_size != 0:
-            raise ValueError("Height and width must be divisible by patch size")
-
-        patch_height = height // self.patch_size
-        patch_width = width // self.patch_size
-
-        # b, c, h, w -> b, c, patch_height, patch_size, patch_width, patch_size
-        #            -> b, patch_height, patch_width, c, patch_size, patch_size
-        #            -> b, patch_height * patch_width, c * patch_size * patch_size
-        hidden_states = (
-            hidden_states.reshape(batch_size, channel, patch_height, self.patch_size, patch_width, self.patch_size)
-            .permute(0, 2, 4, 1, 3, 5)
-            .reshape(batch_size, patch_height * patch_width, channel * self.patch_size * self.patch_size)
+        hidden_states = hidden_states.reshape(
+            batch_size, channel, post_patch_height, self.patch_size, post_patch_width, self.patch_size
         )
+        hidden_states = hidden_states.permute(0, 2, 4, 1, 3, 5).flatten(3, 5).flatten(1, 2)
+        hidden_states = self.proj(hidden_states)
+        encoder_hidden_states = self.text_proj(encoder_hidden_states)
 
-        # project
-        hidden_states = self.proj(hidden_states)  # embed_dim: 64 -> 4096
-        prompt_embeds = self.text_proj(prompt_embeds)  # embed_dim: 4096 -> 4096
-        if negative_prompt_embeds is not None:
-            negative_prompt_embeds = self.text_proj(negative_prompt_embeds)  # embed_dim: 4096 -> 4096
-        return hidden_states, prompt_embeds, negative_prompt_embeds
+        return hidden_states, encoder_hidden_states
 
 
 class CogView4AdaLayerNormZero(nn.Module):
@@ -347,10 +332,10 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         self,
         patch_size: int = 2,
         in_channels: int = 16,
+        out_channels: int = 16,
         num_layers: int = 30,
         attention_head_dim: int = 40,
         num_attention_heads: int = 64,
-        out_channels: int = 16,
         text_embed_dim: int = 4096,
         time_embed_dim: int = 512,
         condition_dim: int = 256,
@@ -402,116 +387,46 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        prompt_embeds: torch.Tensor,
-        negative_prompt_embeds: Optional[torch.Tensor],
+        encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         original_size: torch.Tensor,
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
-        """
-        The [`CogView3PlusTransformer2DModel`] forward method.
-
-        Args:
-            hidden_states (`torch.Tensor`):
-                Input `hidden_states` of shape `(batch size, channel, height, width)`.
-            encoder_hidden_states (`torch.Tensor`):
-                Conditional embeddings (embeddings computed from the input conditions such as prompts) of shape
-                `(batch_size, sequence_len, text_embed_dim)`
-            timestep (`torch.LongTensor`):
-                Used to indicate denoising step.
-            original_size (`torch.Tensor`):
-                CogView3 uses SDXL-like micro-conditioning for original image size as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            target_size (`torch.Tensor`):
-                CogView3 uses SDXL-like micro-conditioning for target image size as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            crop_coords (`torch.Tensor`):
-                CogView3 uses SDXL-like micro-conditioning for crop coordinates as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
-                tuple.
-
-        Returns:
-            `torch.Tensor` or [`~models.transformer_2d.Transformer2DModelOutput`]:
-                The denoised latents using provided inputs as conditioning.
-        """
         batch_size, num_channels, height, width = hidden_states.shape
-        do_cfg = negative_prompt_embeds is not None
-
-        if do_cfg:
-            assert (
-                batch_size == prompt_embeds.shape[0] + negative_prompt_embeds.shape[0]
-            ), "batch size mismatch in CFG mode"
-        else:
-            assert batch_size == prompt_embeds.shape[0], "batch size mismatch in non-CFG mode"
 
         # 1. RoPE
         image_rotary_emb = self.rope(hidden_states)
 
-        # 2. Conditional embeddings
+        # 2. Patch & Timestep embeddings
+        p = self.config.patch_size
+        post_patch_height = height // p
+        post_patch_width = width // p
+
+        hidden_states, encoder_hidden_states = self.patch_embed(hidden_states, encoder_hidden_states)
+
         temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
         temb = F.silu(temb)
-        temb_cond, temb_uncond = temb.chunk(2)
-        hidden_states, prompt_embeds, negative_prompt_embeds = self.patch_embed(
-            hidden_states, prompt_embeds, negative_prompt_embeds
-        )
-        hidden_states_cond, hidden_states_uncond = hidden_states.chunk(2)
 
-        encoder_hidden_states_cond = prompt_embeds
-        encoder_hidden_states_uncond = negative_prompt_embeds
-
-        for index_block, block in enumerate(self.transformer_blocks):
+        # 3. Transformer blocks
+        for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states_cond, encoder_hidden_states_cond = self._gradient_checkpointing_func(
-                    block, hidden_states_cond, encoder_hidden_states_cond, temb_cond, image_rotary_emb
-                )
-                hidden_states_uncond, encoder_hidden_states_uncond = self._gradient_checkpointing_func(
-                    block, hidden_states_uncond, encoder_hidden_states_uncond, temb_uncond, image_rotary_emb
+                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb
                 )
             else:
-                hidden_states_cond, encoder_hidden_states_cond = block(
-                    hidden_states_cond, encoder_hidden_states_cond, temb_cond, image_rotary_emb
-                )
-                hidden_states_uncond, encoder_hidden_states_uncond = block(
-                    hidden_states_uncond, encoder_hidden_states_uncond, temb_uncond, image_rotary_emb
+                hidden_states, encoder_hidden_states = block(
+                    hidden_states, encoder_hidden_states, temb, image_rotary_emb
                 )
 
-        hidden_states_cond, encoder_hidden_states_cond = (
-            self.norm_out(hidden_states_cond, temb_cond),
-            self.norm_out(encoder_hidden_states_cond, temb_cond),
-        )
-        hidden_states_uncond, encoder_hidden_states_uncond = (
-            self.norm_out(hidden_states_uncond, temb_uncond),
-            self.norm_out(encoder_hidden_states_uncond, temb_uncond),
-        )
+        hidden_states = self.norm_out(hidden_states, temb)
+        hidden_states = self.proj_out(hidden_states)
 
-        hidden_states_cond = self.proj_out(hidden_states_cond)
-        hidden_states_uncond = self.proj_out(hidden_states_uncond)
-
-        # unpatchify
-        patch_size = self.config.patch_size
-        height = height // patch_size
-        width = width // patch_size
-
-        hidden_states_cond = hidden_states_cond.reshape(
-            shape=(hidden_states_cond.shape[0], height, width, -1, patch_size, patch_size)
-        )
-        hidden_states_cond = torch.einsum("nhwcpq->nchpwq", hidden_states_cond)
-        output_cond = hidden_states_cond.reshape(
-            shape=(hidden_states_cond.shape[0], -1, height * patch_size, width * patch_size)
-        )
-
-        hidden_states_uncond = hidden_states_uncond.reshape(
-            hidden_states_uncond.shape[0], height, width, -1, patch_size, patch_size
-        )
-        hidden_states_uncond = torch.einsum("nhwcpq->nchpwq", hidden_states_uncond)
-        output_uncond = hidden_states_uncond.reshape(
-            hidden_states_uncond.shape[0], -1, height * patch_size, width * patch_size
-        )
+        # 4. Unpatchify
+        hidden_states = hidden_states.reshape(batch_size, post_patch_height, post_patch_width, -1, p, p)
+        output = hidden_states.permute(0, 3, 1, 4, 2, 5).flatten(4, 5).flatten(2, 3)
 
         if not return_dict:
-            return (output_cond, output_uncond)
-        return Transformer2DModelOutput(sample=output_cond), Transformer2DModelOutput(sample=output_uncond)
+            return (output,)
+        return Transformer2DModelOutput(sample=output)

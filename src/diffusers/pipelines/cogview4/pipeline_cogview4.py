@@ -453,16 +453,11 @@ class CogView4Pipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = self.do_classifier_free_guidance
-
         # Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             negative_prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -484,18 +479,13 @@ class CogView4Pipeline(DiffusionPipeline):
         )
 
         # Prepare additional timestep conditions
-        original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype)
-        target_size = torch.tensor([target_size], dtype=prompt_embeds.dtype)
-        crops_coords_top_left = torch.tensor([crops_coords_top_left], dtype=prompt_embeds.dtype)
+        original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype, device=device)
+        target_size = torch.tensor([target_size], dtype=prompt_embeds.dtype, device=device)
+        crops_coords_top_left = torch.tensor([crops_coords_top_left], dtype=prompt_embeds.dtype, device=device)
 
-        if do_classifier_free_guidance:
-            original_size = torch.cat([original_size, original_size])
-            target_size = torch.cat([target_size, target_size])
-            crops_coords_top_left = torch.cat([crops_coords_top_left, crops_coords_top_left])
-
-        original_size = original_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
-        target_size = target_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
-        crops_coords_top_left = crops_coords_top_left.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        original_size = original_size.repeat(batch_size * num_images_per_prompt, 1)
+        target_size = target_size.repeat(batch_size * num_images_per_prompt, 1)
+        crops_coords_top_left = crops_coords_top_left.repeat(batch_size * num_images_per_prompt, 1)
 
         # Prepare timesteps
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
@@ -513,28 +503,37 @@ class CogView4Pipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = self.scheduler.scale_model_input(latents, t)
                 latent_model_input = latent_model_input.to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
 
-                noise_pred = self.transformer(
+                noise_pred_cond = self.transformer(
                     hidden_states=latent_model_input,
-                    prompt_embeds=prompt_embeds,
-                    negative_prompt_embeds=negative_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     original_size=original_size,
                     target_size=target_size,
                     crop_coords=crops_coords_top_left,
                     return_dict=False,
-                )
+                )[0]
 
                 # perform guidance
-                if do_classifier_free_guidance:
-                    noise_pred_cond, noise_pred_uncond = noise_pred
+                if self.do_classifier_free_guidance:
+                    noise_pred_uncond = self.transformer(
+                        hidden_states=latent_model_input,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        timestep=timestep,
+                        original_size=original_size,
+                        target_size=target_size,
+                        crop_coords=crops_coords_top_left,
+                        return_dict=False,
+                    )[0]
+
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                else:
+                    noise_pred = noise_pred_cond
 
                 latents = self.scheduler.step(noise_pred, latents, t).prev_sample
 
