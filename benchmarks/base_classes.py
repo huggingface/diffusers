@@ -384,7 +384,7 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
         self.model_class_name = str(self.model.__class__.__name__)
         self.pretrained_model_name_or_path = pretrained_model_name_or_path
 
-    @torch.no_grad
+    @torch.no_grad()
     def run_decode(self, model, tensor):
         _ = model.decode(tensor)
 
@@ -396,8 +396,12 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
 
         tensor = torch.randn((batch, self.model.config.latent_channels, height, width), dtype=self.dtype, device="cuda")
 
-        time = benchmark_fn(self.run_decode, self.model, tensor)
-        memory = bytes_to_giga_bytes(torch.cuda.max_memory_reserved())
+        try:
+            time = benchmark_fn(self.run_decode, self.model, tensor)
+            memory = bytes_to_giga_bytes(torch.cuda.max_memory_reserved())
+        except torch.OutOfMemoryError:
+            memory = "OOM"
+
         benchmark_info = BenchmarkInfo(time=time, memory=memory)
         csv_dict = generate_csv_dict_model(
             model_cls=self.model_class_name, ckpt=self.pretrained_model_name_or_path, benchmark_info=benchmark_info, **kwargs,
