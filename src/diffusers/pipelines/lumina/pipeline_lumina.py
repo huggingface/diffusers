@@ -175,6 +175,13 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
     _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "add_text_embeds",
+        "add_time_ids",
+    ]
+
 
     def __init__(
         self,
