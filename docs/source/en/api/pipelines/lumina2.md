@@ -53,6 +53,8 @@ image.save("lumina-single-file.png")
 
 ## Using GGUF Quantized Checkpoints with Lumina Image 2.0
 
+GGUF Quantized checkpoints for the `Lumina2Transformer2DModel` can be loaded via `from_single_file` with the `GGUFQuantizationConfig` 
+
 ```python
 from diffusers import Lumina2Transformer2DModel, Lumina2Text2ImgPipeline, GGUFQuantizationConfig 
 
