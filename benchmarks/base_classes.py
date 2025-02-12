@@ -377,9 +377,10 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
         self.dtype = getattr(torch, dtype)
         model = self.model_class.from_pretrained(pretrained_model_name_or_path, torch_dtype=self.dtype, **kwargs).eval()
         model = model.to("cuda")
+        self.tiling = False
         if tiling:
             model.enable_tiling()
-        self.tiling = True
+            self.tiling = True
         self.model = model
         self.model_class_name = str(self.model.__class__.__name__)
         self.pretrained_model_name_or_path = pretrained_model_name_or_path
