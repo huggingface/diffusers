@@ -134,8 +134,6 @@ class AuraFlowPipeline(DiffusionPipeline):
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
-        "add_text_embeds",
-        "add_time_ids",
     ]
 
     def __init__(
@@ -421,7 +419,9 @@ class AuraFlowPipeline(DiffusionPipeline):
         max_sequence_length: int = 256,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
