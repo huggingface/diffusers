@@ -66,6 +66,7 @@ class MultiControlNetUnionModel(ModelMixin):
                 attention_mask=attention_mask,
                 added_cond_kwargs=added_cond_kwargs,
                 cross_attention_kwargs=cross_attention_kwargs,
+                from_multi=True,
                 guess_mode=guess_mode,
                 return_dict=return_dict,
             )
