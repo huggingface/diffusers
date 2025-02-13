@@ -17,7 +17,7 @@ import inspect
 import math
 import re
 import urllib.parse as ul
-from typing import List, Optional, Tuple, Union, Dict, Callable
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoModel, AutoTokenizer
@@ -37,7 +37,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 
 
 if is_torch_xla_available():
@@ -409,7 +408,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             raise ValueError(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}."
             )
-        
+
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
