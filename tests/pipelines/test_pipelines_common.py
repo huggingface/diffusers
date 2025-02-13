@@ -2080,13 +2080,18 @@ class PipelineTesterMixin:
             and pipe_call_parameters.get("prompt_embeds").default is None
         ):
             pipe_without_tes_inputs.update({"prompt": None})
+
         pipe_out = pipe_without_text_encoders(**pipe_without_tes_inputs)[0]
 
         # Compare against regular pipeline outputs.
         full_pipe = self.pipeline_class(**components).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
         pipe_out_2 = full_pipe(**inputs)[0]
-        self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
+
+        if isinstance(pipe_out, np.ndarray) and isinstance(pipe_out_2, np.ndarray):
+            self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
+        elif isinstance(pipe_out, torch.Tensor) and isinstance(pipe_out_2, torch.Tensor):
+            self.assertTrue(torch.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
 
     def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
