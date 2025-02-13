@@ -394,9 +394,9 @@ class UNet2DConditionLoadersMixin:
                     new_sd = {}
                     for k, v in sd.items():
                         if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
-                            k = k[:-7] + f".{adapter_name}.weight"
+                            k = k[: -len(".weight")] + f".{adapter_name}.weight"
                         elif k.endswith("lora_B.bias"):  # lora_bias=True option
-                            k = k[:-5] + f".{adapter_name}.bias"
+                            k = k[: -len(".bias")] + f".{adapter_name}.bias"
                         new_sd[k] = v
                     return new_sd
 
