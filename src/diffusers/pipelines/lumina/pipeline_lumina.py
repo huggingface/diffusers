@@ -658,7 +658,9 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         max_sequence_length: int = 256,
         scaling_watershed: Optional[float] = 1.0,
         proportional_attn: Optional[bool] = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
