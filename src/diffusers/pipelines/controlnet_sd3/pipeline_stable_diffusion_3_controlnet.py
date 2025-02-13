@@ -17,9 +17,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import (
-    SiglipImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
+    SiglipImageProcessor,
     SiglipVisionModel,
     T5EncoderModel,
     T5TokenizerFast,

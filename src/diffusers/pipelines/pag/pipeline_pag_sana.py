@@ -20,7 +20,7 @@ import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import Gemma2PreTrainedModel, GemmaTokenizerFast, GemmaTokenizer
+from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor

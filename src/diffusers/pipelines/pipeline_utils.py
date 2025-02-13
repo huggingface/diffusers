@@ -1057,7 +1057,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 continue
             elif (
                 arg is not None
-                and expected_types[kw] is not inspect.Signature.empty # no type annotations
+                and expected_types[kw] is not inspect.Signature.empty  # no type annotations
                 and not is_valid_type(arg, expected_types[kw])
             ):
                 logger.warning(f"Expected types for {kw}: {expected_types[kw]}, got {get_detailed_type(arg)}.")
