@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import is_torch_version
+from ..utils import is_torch_npu_available, is_torch_version
 from .activations import get_activation
 from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
@@ -71,7 +71,7 @@ class AdaLayerNorm(nn.Module):
 
         if self.chunk_dim == 1:
             # This is a bit weird why we have the order of "shift, scale" here and "scale, shift" in the
-            # other if-branch. This branch is specific to CogVideoX for now.
+            # other if-branch. This branch is specific to CogVideoX and OmniGen for now.
             shift, scale = temb.chunk(2, dim=1)
             shift = shift[:, None, :]
             scale = scale[:, None, :]
@@ -219,14 +219,13 @@ class LuminaRMSNormZero(nn.Module):
             4 * embedding_dim,
             bias=True,
         )
-        self.norm = RMSNorm(embedding_dim, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
+        self.norm = RMSNorm(embedding_dim, eps=norm_eps)
 
     def forward(
         self,
         x: torch.Tensor,
         emb: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # emb = self.emb(timestep, encoder_hidden_states, encoder_mask)
         emb = self.linear(self.silu(emb))
         scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None])
@@ -505,19 +504,40 @@ class RMSNorm(nn.Module):
                 self.bias = nn.Parameter(torch.zeros(dim))
 
     def forward(self, hidden_states):
-        input_dtype = hidden_states.dtype
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+        if is_torch_npu_available():
+            import torch_npu
 
-        if self.weight is not None:
-            # convert into half-precision if necessary
-            if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                hidden_states = hidden_states.to(self.weight.dtype)
-            hidden_states = hidden_states * self.weight
+            if self.weight is not None:
+                # convert into half-precision if necessary
+                if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                    hidden_states = hidden_states.to(self.weight.dtype)
+            hidden_states = torch_npu.npu_rms_norm(hidden_states, self.weight, epsilon=self.eps)[0]
+            if self.bias is not None:
+                hidden_states = hidden_states + self.bias
+        elif is_torch_version(">=", "2.4"):
+            if self.weight is not None:
+                # convert into half-precision if necessary
+                if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                    hidden_states = hidden_states.to(self.weight.dtype)
+            hidden_states = nn.functional.rms_norm(
+                hidden_states, normalized_shape=(hidden_states.shape[-1],), weight=self.weight, eps=self.eps
+            )
             if self.bias is not None:
                 hidden_states = hidden_states + self.bias
         else:
-            hidden_states = hidden_states.to(input_dtype)
+            input_dtype = hidden_states.dtype
+            variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+            hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+
+            if self.weight is not None:
+                # convert into half-precision if necessary
+                if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                    hidden_states = hidden_states.to(self.weight.dtype)
+                hidden_states = hidden_states * self.weight
+                if self.bias is not None:
+                    hidden_states = hidden_states + self.bias
+            else:
+                hidden_states = hidden_states.to(input_dtype)
 
         return hidden_states
 

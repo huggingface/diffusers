@@ -34,6 +34,7 @@ from .single_file_utils import (
     convert_ldm_vae_checkpoint,
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
+    convert_lumina2_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
@@ -109,6 +110,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "AuraFlowTransformer2DModel": {
         "checkpoint_mapping_fn": convert_auraflow_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Lumina2Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_lumina2_to_diffusers,
         "default_subfolder": "transformer",
     },
 }
@@ -362,6 +367,7 @@ class FromOriginalModelMixin:
 
         if is_accelerate_available():
             param_device = torch.device(device) if device else torch.device("cpu")
+            named_buffers = model.named_buffers()
             unexpected_keys = load_model_dict_into_meta(
                 model,
                 diffusers_format_checkpoint,
@@ -369,6 +375,7 @@ class FromOriginalModelMixin:
                 device=param_device,
                 hf_quantizer=hf_quantizer,
                 keep_in_fp32_modules=keep_in_fp32_modules,
+                named_buffers=named_buffers,
             )
 
         else:

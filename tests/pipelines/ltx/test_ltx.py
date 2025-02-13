@@ -46,6 +46,7 @@ class LTXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
     test_xformers_attention = False
+    test_layerwise_casting = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)

@@ -154,6 +154,7 @@ else:
         "CogVideoXFunControlPipeline",
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
+    _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -255,6 +256,7 @@ else:
     _import_structure["latte"] = ["LattePipeline"]
     _import_structure["ltx"] = ["LTXPipeline", "LTXImageToVideoPipeline"]
     _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
+    _import_structure["lumina2"] = ["Lumina2Text2ImgPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -263,6 +265,7 @@ else:
     )
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
+    _import_structure["omnigen"] = ["OmniGenPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
@@ -496,6 +499,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXVideoToVideoPipeline,
         )
         from .cogview3 import CogView3PlusPipeline
+        from .consisid import ConsisIDPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
@@ -594,12 +598,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .ltx import LTXImageToVideoPipeline, LTXPipeline
         from .lumina import LuminaText2ImgPipeline
+        from .lumina2 import Lumina2Text2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
+        from .omnigen import OmniGenPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,

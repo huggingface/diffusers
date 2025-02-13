@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -365,8 +365,8 @@ def parse_args():
         "--dream_training",
         action="store_true",
         help=(
-            "Use the DREAM training method, which makes training more efficient and accurate at the ",
-            "expense of doing an extra forward pass. See: https://arxiv.org/abs/2312.00210",
+            "Use the DREAM training method, which makes training more efficient and accurate at the "
+            "expense of doing an extra forward pass. See: https://arxiv.org/abs/2312.00210"
         ),
     )
     parser.add_argument(
