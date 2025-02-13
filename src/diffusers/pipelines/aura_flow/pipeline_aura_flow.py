@@ -135,8 +135,6 @@ class AuraFlowPipeline(DiffusionPipeline):
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
-        "add_text_embeds",
-        "add_time_ids",
     ]
 
     def __init__(

@@ -178,8 +178,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
-        "add_text_embeds",
-        "add_time_ids",
     ]
 
 
