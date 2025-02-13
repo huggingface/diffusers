@@ -2164,7 +2164,7 @@ class PeftLoraLoaderMixinTests:
         A test that checks if layerwise casting works correctly with PEFT layers and forward pass does not fail. This
         is different from `test_layerwise_casting_inference_denoiser` as that disables the application of layerwise
         cast hooks on the PEFT layers (relevant logic in `models.modeling_utils.ModelMixin.enable_layerwise_casting`).
-        In this test, we enable the layerwise casting on the PEFT layers as well. If run with PEFT version < 0.14.0,
+        In this test, we enable the layerwise casting on the PEFT layers as well. If run with PEFT version <= 0.14.0,
         this test will fail with the following error:
 
         ```
