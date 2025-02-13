@@ -177,5 +177,3 @@ class FluxTransformer2DLoadersMixin:
 
         self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers)
         self.config.encoder_hid_dim_type = "ip_image_proj"
-
-        self.to(dtype=self.dtype, device=self.device)
