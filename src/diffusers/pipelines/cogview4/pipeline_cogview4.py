@@ -13,8 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from transformers import AutoTokenizer, GlmModel
 
@@ -22,7 +24,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, CogView4Transformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
-from ...schedulers import CogView4DDIMScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import CogView4PipelineOutput
@@ -51,6 +53,82 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("output.png")
         ```
 """
+
+
+def calculate_shift(
+    image_seq_len,
+    base_seq_len: int = 256,
+    base_shift: float = 0.25,
+    max_shift: float = 0.75,
+):
+    # m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    # b = base_shift - m * base_seq_len
+    # mu = image_seq_len * m + b
+    # return mu
+
+    m = (image_seq_len / base_seq_len) ** 0.5
+    mu = m * max_shift + base_shift
+    return mu
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    sigmas: Optional[List[float]] = None,
+    **kwargs,
+):
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`List[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`List[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
+
+    Returns:
+        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None and sigmas is not None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 class CogView4Pipeline(DiffusionPipeline):
@@ -86,7 +164,7 @@ class CogView4Pipeline(DiffusionPipeline):
         text_encoder: GlmModel,
         vae: AutoencoderKL,
         transformer: CogView4Transformer2DModel,
-        scheduler: CogView4DDIMScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
 
@@ -219,8 +297,10 @@ class CogView4Pipeline(DiffusionPipeline):
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        if latents is not None:
+            return latents.to(device)
+
         shape = (
             batch_size,
             num_channels_latents,
@@ -232,14 +312,7 @@ class CogView4Pipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
 
     def check_inputs(
@@ -322,6 +395,7 @@ class CogView4Pipeline(DiffusionPipeline):
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
+        sigmas: Optional[List[float]] = None,
         guidance_scale: float = 5.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -359,6 +433,10 @@ class CogView4Pipeline(DiffusionPipeline):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             guidance_scale (`float`, *optional*, defaults to `5.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -491,9 +569,22 @@ class CogView4Pipeline(DiffusionPipeline):
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
             self.transformer.config.patch_size**2
         )
-        self.scheduler.set_timesteps(num_inference_steps, image_seq_len, device)
-        timesteps = self.scheduler.timesteps
-        self._num_timesteps = len(timesteps)
+
+        timesteps = (
+            np.linspace(self.scheduler.config.num_train_timesteps, 1.0, num_inference_steps)
+            if timesteps is None
+            else np.array(timesteps)
+        )
+        timesteps = timesteps.astype(np.int64)
+        sigmas = timesteps / self.scheduler.config.num_train_timesteps if sigmas is None else sigmas
+        mu = calculate_shift(
+            image_seq_len,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("base_shift", 0.25),
+            self.scheduler.config.get("max_shift", 0.75),
+        )
+        _, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu)
+        timesteps = torch.from_numpy(timesteps).to(device)
 
         # Denoising loop
         transformer_dtype = self.transformer.dtype
@@ -504,8 +595,7 @@ class CogView4Pipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
-                latent_model_input = self.scheduler.scale_model_input(latents, t)
-                latent_model_input = latent_model_input.to(transformer_dtype)
+                latent_model_input = latents.to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
@@ -536,7 +626,7 @@ class CogView4Pipeline(DiffusionPipeline):
                 else:
                     noise_pred = noise_pred_cond
 
-                latents = self.scheduler.step(noise_pred, latents, t).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 # call the callback, if provided
                 if callback_on_step_end is not None:

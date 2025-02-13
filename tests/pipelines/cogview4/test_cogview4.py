@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, GlmConfig, GlmForCausalLM
 
-from diffusers import AutoencoderKL, CogView4DDIMScheduler, CogView4Pipeline, CogView4Transformer2DModel
+from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -76,7 +76,13 @@ class CogView4PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        scheduler = CogView4DDIMScheduler()
+        scheduler = FlowMatchEulerDiscreteScheduler(
+            base_shift=0.25,
+            max_shift=0.75,
+            base_image_seq_len=256,
+            use_dynamic_shifting=True,
+            time_shift_type="linear",
+        )
 
         torch.manual_seed(0)
         text_encoder_config = GlmConfig(

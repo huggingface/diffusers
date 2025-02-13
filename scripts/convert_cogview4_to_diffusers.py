@@ -32,7 +32,7 @@ import torch
 from accelerate import init_empty_weights
 from transformers import GlmForCausalLM, PreTrainedTokenizerFast
 
-from diffusers import AutoencoderKL, CogView4DDIMScheduler, CogView4Pipeline, CogView4Transformer2DModel
+from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 from diffusers.utils.import_utils import is_accelerate_available
 
@@ -222,19 +222,8 @@ def main(args):
     for param in text_encoder.parameters():
         param.data = param.data.contiguous()
 
-    scheduler = CogView4DDIMScheduler.from_config(
-        {
-            "shift_scale": 1.0,
-            "beta_end": 0.012,
-            "beta_schedule": "scaled_linear",
-            "beta_start": 0.00085,
-            "clip_sample": False,
-            "num_train_timesteps": 1000,
-            "prediction_type": "v_prediction",
-            "rescale_betas_zero_snr": True,
-            "set_alpha_to_one": True,
-            "timestep_spacing": "linspace",
-        }
+    scheduler = FlowMatchEulerDiscreteScheduler(
+        base_shift=0.25, max_shift=0.75, base_image_seq_len=256, use_dynamic_shifting=True, time_shift_type="linear"
     )
 
     pipe = CogView4Pipeline(
