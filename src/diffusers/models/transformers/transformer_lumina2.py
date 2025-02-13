@@ -264,22 +264,21 @@ class Lumina2RotaryPosEmbed(nn.Module):
         batch_size, channels, height, width = hidden_states.shape
         p = self.patch_size
         post_patch_height, post_patch_width = height // p, width // p
-        num_patches = post_patch_height * post_patch_width
+        image_seq_len = post_patch_height * post_patch_width
         device = hidden_states.device
 
-        # Get caption lengths and calculate max sequence length
+        encoder_seq_len = attention_mask.shape[1]
         l_effective_cap_len = attention_mask.sum(dim=1).tolist()
-        max_seq_len = max(l_effective_cap_len) + num_patches
+        seq_lengths = [cap_seq_len + image_seq_len for cap_seq_len in l_effective_cap_len]
+        max_seq_len = max(seq_lengths)
 
         # Create position IDs
         position_ids = torch.zeros(batch_size, max_seq_len, 3, dtype=torch.int32, device=device)
 
-        for i in range(batch_size):
-            cap_len = l_effective_cap_len[i]
-
+        for i, (cap_seq_len, seq_len) in enumerate(zip(l_effective_cap_len, seq_lengths)):
             # Set caption positions
-            position_ids[i, :cap_len, 0] = torch.arange(cap_len, dtype=torch.int32, device=device)
-            position_ids[i, cap_len : cap_len + num_patches, 0] = cap_len
+            position_ids[i, :cap_seq_len, 0] = torch.arange(cap_seq_len, dtype=torch.int32, device=device)
+            position_ids[i, cap_seq_len:seq_len, 0] = cap_seq_len
 
             # Set image patch positions
             row_ids = (
@@ -294,34 +293,33 @@ class Lumina2RotaryPosEmbed(nn.Module):
                 .repeat(post_patch_height, 1)
                 .flatten()
             )
-            position_ids[i, cap_len : cap_len + num_patches, 1] = row_ids
-            position_ids[i, cap_len : cap_len + num_patches, 2] = col_ids
+            position_ids[i, cap_seq_len:seq_len, 1] = row_ids
+            position_ids[i, cap_seq_len:seq_len, 2] = col_ids
 
         # Get frequencies
         freqs_cis = self._get_freqs_cis(position_ids)
 
         # Split frequencies for captions and images
         cap_freqs_cis = torch.zeros(
-            batch_size, attention_mask.shape[1], freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype
+            batch_size, encoder_seq_len, freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype
         )
-        img_freqs_cis = torch.zeros(batch_size, num_patches, freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype)
+        img_freqs_cis = torch.zeros(
+            batch_size, image_seq_len, freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype
+        )
 
-        for i in range(batch_size):
-            cap_len = l_effective_cap_len[i]
-            cap_freqs_cis[i, :cap_len] = freqs_cis[i, :cap_len]
-            img_freqs_cis[i, :num_patches] = freqs_cis[i, cap_len : cap_len + num_patches]
+        for i, (cap_seq_len, seq_len) in enumerate(zip(l_effective_cap_len, seq_lengths)):
+            cap_freqs_cis[i, :cap_seq_len] = freqs_cis[i, :cap_seq_len]
+            img_freqs_cis[i, :image_seq_len] = freqs_cis[i, cap_seq_len:seq_len]
 
         # patch embeddings
         hidden_states = (
-            hidden_states.view(
-                batch_size, channels, post_patch_height, self.patch_size, post_patch_width, self.patch_size
-            )
+            hidden_states.view(batch_size, channels, post_patch_height, p, post_patch_width, p)
             .permute(0, 2, 4, 3, 5, 1)
             .flatten(3)
             .flatten(1, 2)
         )
 
-        return hidden_states, freqs_cis, cap_freqs_cis, img_freqs_cis
+        return hidden_states, cap_freqs_cis, img_freqs_cis, freqs_cis, l_effective_cap_len, seq_lengths
 
 
 class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -468,22 +466,17 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         # 1. Condition, positional & patch embedding
         batch_size, _, height, width = hidden_states.shape
-        p = self.config.patch_size
-        post_patch_height, post_patch_width = height // p, width // p
-        num_patches = post_patch_height * post_patch_width
-
-        # effective_text_seq_lengths is based on actual caption length, so it's different for each prompt in a batch
-        effective_encoder_seq_lengths = encoder_attention_mask.sum(dim=1).tolist()
-        seq_lengths = [
-            encoder_seq_len + num_patches for encoder_seq_len in effective_encoder_seq_lengths
-        ]  # Add num_patches to each length
-        max_seq_len = max(seq_lengths)
 
         temb, encoder_hidden_states = self.time_caption_embed(hidden_states, timestep, encoder_hidden_states)
 
-        hidden_states, rotary_emb, context_rotary_emb, noise_rotary_emb = self.rope_embedder(
-            hidden_states, encoder_attention_mask
-        )
+        (
+            hidden_states,
+            context_rotary_emb,
+            noise_rotary_emb,
+            rotary_emb,
+            encoder_seq_lengths,
+            seq_lengths,
+        ) = self.rope_embedder(hidden_states, encoder_attention_mask)
 
         hidden_states = self.x_embedder(hidden_states)
 
@@ -497,12 +490,13 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             hidden_states = layer(hidden_states, None, noise_rotary_emb, temb)
 
         # 3. Joint Transformer blocks
+        max_seq_len = max(seq_lengths)
         attention_mask = hidden_states.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
         joint_hidden_states = hidden_states.new_zeros(batch_size, max_seq_len, self.config.hidden_size)
-        for i, (effective_encoder_seq_len, seq_len) in enumerate(zip(effective_encoder_seq_lengths, seq_lengths)):
+        for i, (encoder_seq_len, seq_len) in enumerate(zip(encoder_seq_lengths, seq_lengths)):
             attention_mask[i, :seq_len] = True
-            joint_hidden_states[i, :effective_encoder_seq_len] = encoder_hidden_states[i, :effective_encoder_seq_len]
-            joint_hidden_states[i, effective_encoder_seq_len:seq_len] = hidden_states[i]
+            joint_hidden_states[i, :encoder_seq_len] = encoder_hidden_states[i, :encoder_seq_len]
+            joint_hidden_states[i, encoder_seq_len:seq_len] = hidden_states[i]
 
         hidden_states = joint_hidden_states
 
@@ -520,11 +514,12 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         hidden_states = self.norm_out(hidden_states, temb)
 
         # 5. Unpatchify
+        p = self.config.patch_size
         output = []
-        for i, (effective_encoder_seq_len, seq_len) in enumerate(zip(effective_encoder_seq_lengths, seq_lengths)):
+        for i, (encoder_seq_len, seq_len) in enumerate(zip(encoder_seq_lengths, seq_lengths)):
             output.append(
-                hidden_states[i][effective_encoder_seq_len:seq_len]
-                .view(post_patch_height, post_patch_width, p, p, self.out_channels)
+                hidden_states[i][encoder_seq_len:seq_len]
+                .view(height // p, width // p, p, p, self.out_channels)
                 .permute(4, 0, 2, 1, 3)
                 .flatten(3, 4)
                 .flatten(1, 2)
