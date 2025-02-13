@@ -21,6 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
+from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import logging
 from ..attention import LuminaFeedForward
 from ..attention_processor import Attention
@@ -333,7 +334,7 @@ class Lumina2RotaryPosEmbed(nn.Module):
         )
 
 
-class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     Lumina2NextDiT: Diffusion model with a Transformer backbone.
 
