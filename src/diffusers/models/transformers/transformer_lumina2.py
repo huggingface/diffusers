@@ -260,7 +260,6 @@ class Lumina2RotaryPosEmbed(nn.Module):
         return torch.cat(result, dim=-1).to(device)
 
     def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor):
-        # Get batch info and dimensions
         batch_size, channels, height, width = hidden_states.shape
         p = self.patch_size
         post_patch_height, post_patch_width = height // p, width // p
@@ -276,11 +275,11 @@ class Lumina2RotaryPosEmbed(nn.Module):
         position_ids = torch.zeros(batch_size, max_seq_len, 3, dtype=torch.int32, device=device)
 
         for i, (cap_seq_len, seq_len) in enumerate(zip(l_effective_cap_len, seq_lengths)):
-            # Set caption positions
+            # add caption position ids
             position_ids[i, :cap_seq_len, 0] = torch.arange(cap_seq_len, dtype=torch.int32, device=device)
             position_ids[i, cap_seq_len:seq_len, 0] = cap_seq_len
 
-            # Set image patch positions
+            # add image position ids
             row_ids = (
                 torch.arange(post_patch_height, dtype=torch.int32, device=device)
                 .view(-1, 1)
@@ -296,10 +295,10 @@ class Lumina2RotaryPosEmbed(nn.Module):
             position_ids[i, cap_seq_len:seq_len, 1] = row_ids
             position_ids[i, cap_seq_len:seq_len, 2] = col_ids
 
-        # Get frequencies
+        # Get combined rotary embeddings
         freqs_cis = self._get_freqs_cis(position_ids)
 
-        # Split frequencies for captions and images
+        # create separate rotary embeddings for captions and images
         cap_freqs_cis = torch.zeros(
             batch_size, encoder_seq_len, freqs_cis.shape[-1], device=device, dtype=freqs_cis.dtype
         )
@@ -311,7 +310,7 @@ class Lumina2RotaryPosEmbed(nn.Module):
             cap_freqs_cis[i, :cap_seq_len] = freqs_cis[i, :cap_seq_len]
             img_freqs_cis[i, :image_seq_len] = freqs_cis[i, cap_seq_len:seq_len]
 
-        # patch embeddings
+        # image patch embeddings
         hidden_states = (
             hidden_states.view(batch_size, channels, post_patch_height, p, post_patch_width, p)
             .permute(0, 2, 4, 3, 5, 1)
