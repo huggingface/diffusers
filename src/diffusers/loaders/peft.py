@@ -326,14 +326,14 @@ class PeftAdapterMixin:
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
             if hotswap:
-                try:
+                if is_peft_version(">", "0.14.0"):
                     from peft.utils.hotswap import check_hotswap_configs_compatible, hotswap_adapter_from_state_dict
-                except ImportError as exc:
+                else:
                     msg = (
                         "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
                         "from source."
                     )
-                    raise ImportError(msg) from exc
+                    raise ImportError(msg)
 
             if hotswap:
 

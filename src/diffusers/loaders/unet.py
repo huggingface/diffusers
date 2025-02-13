@@ -378,14 +378,14 @@ class UNet2DConditionLoadersMixin:
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
             if hotswap:
-                try:
+                if is_peft_version(">", "0.14.0"):
                     from peft.utils.hotswap import check_hotswap_configs_compatible, hotswap_adapter_from_state_dict
-                except ImportError as exc:
+                else:
                     msg = (
                         "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
                         "from source."
                     )
-                    raise ImportError(msg) from exc
+                    raise ImportError(msg)
 
             if hotswap:
 
@@ -418,6 +418,8 @@ class UNet2DConditionLoadersMixin:
                     inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
                     incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
             except Exception as e:
+                # TODO: add test in line with:
+                # https://github.com/huggingface/diffusers/pull/10188/files#diff-b544edcc938e163009735ef4fa963abd0a41615c175552160c9e0f94ceb7f552
                 # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
                 if hasattr(self, "peft_config"):
                     for module in self.modules():
