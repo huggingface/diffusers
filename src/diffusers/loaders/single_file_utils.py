@@ -116,6 +116,7 @@ CHECKPOINT_KEY_NAMES = {
     "mochi-1-preview": ["model.diffusion_model.blocks.0.attn.qkv_x.weight", "blocks.0.attn.qkv_x.weight"],
     "hunyuan-video": "txt_in.individual_token_refiner.blocks.0.adaLN_modulation.1.bias",
     "instruct-pix2pix": "model.diffusion_model.input_blocks.0.0.weight",
+    "lumina2": ["model.diffusion_model.cap_embedder.0.weight", "cap_embedder.0.weight"],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -174,6 +175,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "mochi-1-preview": {"pretrained_model_name_or_path": "genmo/mochi-1-preview"},
     "hunyuan-video": {"pretrained_model_name_or_path": "hunyuanvideo-community/HunyuanVideo"},
     "instruct-pix2pix": {"pretrained_model_name_or_path": "timbrooks/instruct-pix2pix"},
+    "lumina2": {"pretrained_model_name_or_path": "Alpha-VLLM/Lumina-Image-2.0"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -656,6 +658,9 @@ def infer_diffusers_model_type(checkpoint):
         and checkpoint[CHECKPOINT_KEY_NAMES["instruct-pix2pix"]].shape[1] == 8
     ):
         model_type = "instruct-pix2pix"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["lumina2"]):
+        model_type = "lumina2"
 
     else:
         model_type = "v1"
@@ -2796,5 +2801,77 @@ def convert_auraflow_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict["pos_embed.pos_embed"] = checkpoint.pop("positional_encoding")
     converted_state_dict["pos_embed.proj.weight"] = checkpoint.pop("init_x_linear.weight")
     converted_state_dict["pos_embed.proj.bias"] = checkpoint.pop("init_x_linear.bias")
+
+    return converted_state_dict
+
+
+def convert_lumina2_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+
+    # Original Lumina-Image-2 has an extra norm paramter that is unused
+    # We just remove it here
+    checkpoint.pop("norm_final.weight", None)
+
+    # Comfy checkpoints add this prefix
+    keys = list(checkpoint.keys())
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    LUMINA_KEY_MAP = {
+        "cap_embedder": "time_caption_embed.caption_embedder",
+        "t_embedder.mlp.0": "time_caption_embed.timestep_embedder.linear_1",
+        "t_embedder.mlp.2": "time_caption_embed.timestep_embedder.linear_2",
+        "attention": "attn",
+        ".out.": ".to_out.0.",
+        "k_norm": "norm_k",
+        "q_norm": "norm_q",
+        "w1": "linear_1",
+        "w2": "linear_2",
+        "w3": "linear_3",
+        "adaLN_modulation.1": "norm1.linear",
+    }
+    ATTENTION_NORM_MAP = {
+        "attention_norm1": "norm1.norm",
+        "attention_norm2": "norm2",
+    }
+    CONTEXT_REFINER_MAP = {
+        "context_refiner.0.attention_norm1": "context_refiner.0.norm1",
+        "context_refiner.0.attention_norm2": "context_refiner.0.norm2",
+        "context_refiner.1.attention_norm1": "context_refiner.1.norm1",
+        "context_refiner.1.attention_norm2": "context_refiner.1.norm2",
+    }
+    FINAL_LAYER_MAP = {
+        "final_layer.adaLN_modulation.1": "norm_out.linear_1",
+        "final_layer.linear": "norm_out.linear_2",
+    }
+
+    def convert_lumina_attn_to_diffusers(tensor, diffusers_key):
+        q_dim = 2304
+        k_dim = v_dim = 768
+
+        to_q, to_k, to_v = torch.split(tensor, [q_dim, k_dim, v_dim], dim=0)
+
+        return {
+            diffusers_key.replace("qkv", "to_q"): to_q,
+            diffusers_key.replace("qkv", "to_k"): to_k,
+            diffusers_key.replace("qkv", "to_v"): to_v,
+        }
+
+    for key in keys:
+        diffusers_key = key
+        for k, v in CONTEXT_REFINER_MAP.items():
+            diffusers_key = diffusers_key.replace(k, v)
+        for k, v in FINAL_LAYER_MAP.items():
+            diffusers_key = diffusers_key.replace(k, v)
+        for k, v in ATTENTION_NORM_MAP.items():
+            diffusers_key = diffusers_key.replace(k, v)
+        for k, v in LUMINA_KEY_MAP.items():
+            diffusers_key = diffusers_key.replace(k, v)
+
+        if "qkv" in diffusers_key:
+            converted_state_dict.update(convert_lumina_attn_to_diffusers(checkpoint.pop(key), diffusers_key))
+        else:
+            converted_state_dict[diffusers_key] = checkpoint.pop(key)
 
     return converted_state_dict

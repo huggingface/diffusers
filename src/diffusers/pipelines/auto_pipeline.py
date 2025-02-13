@@ -65,6 +65,7 @@ from .kandinsky2_2 import (
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .lumina import LuminaText2ImgPipeline
+from .lumina2 import Lumina2Text2ImgPipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
@@ -135,6 +136,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-control", FluxControlPipeline),
         ("flux-controlnet", FluxControlNetPipeline),
         ("lumina", LuminaText2ImgPipeline),
+        ("lumina2", Lumina2Text2ImgPipeline),
         ("cogview3", CogView3PlusPipeline),
     ]
 )

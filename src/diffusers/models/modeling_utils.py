@@ -549,7 +549,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     os.remove(full_filename)
 
         for filename, tensors in state_dict_split.filename_to_tensors.items():
-            shard = {tensor: state_dict[tensor] for tensor in tensors}
+            shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}
             filepath = os.path.join(save_directory, filename)
             if safe_serialization:
                 # At some point we will need to deal better with save_function (used for TPU and other distributed
