@@ -1047,12 +1047,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 return obj_type
 
-        for key, class_obj in init_kwargs.items():
-            if "scheduler" in key:
+        for kw, arg in init_kwargs.items():
+            # Too complex to validate with type annotation alone
+            if "scheduler" in kw:
                 continue
-
-            if class_obj is not None and not is_valid_type(class_obj, expected_types[key]):
-                logger.warning(f"Expected types for {key}: {expected_types[key]}, got {get_detailed_type(class_obj)}.")
+            # Many tokenizer annotations don't include its "Fast" variant, so skip this
+            # e.g T5Tokenizer but not T5TokenizerFast
+            elif "tokenizer" in kw:
+                continue
+            elif (
+                arg is not None
+                and expected_types[kw] is not inspect.Signature.empty # no type annotations
+                and not is_valid_type(arg, expected_types[kw])
+            ):
+                logger.warning(f"Expected types for {kw}: {expected_types[kw]}, got {get_detailed_type(arg)}.")
 
         # 11. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)

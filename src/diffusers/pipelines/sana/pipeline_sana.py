@@ -20,7 +20,7 @@ import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
@@ -200,8 +200,8 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizerBase,
-        text_encoder: PreTrainedModel,
+        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        text_encoder: Gemma2PreTrainedModel,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
         scheduler: DPMSolverMultistepScheduler,
