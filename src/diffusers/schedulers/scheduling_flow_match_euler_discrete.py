@@ -54,11 +54,30 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     Args:
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
-        timestep_spacing (`str`, defaults to `"linspace"`):
-            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
-            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         shift (`float`, defaults to 1.0):
             The shift value for the timestep schedule.
+        use_dynamic_shifting (`bool`, defaults to False):
+            Whether to apply timestep shifting on-the-fly based on the image resolution.
+        base_shift (`float`, defaults to 0.5):
+            Value to stabilize image generation. Increasing `base_shift` reduces variation and image is more consistent
+            with desired output.
+        max_shift (`float`, defaults to 1.15):
+            Value change allowed to latent vectors. Increasing `max_shift` encourages more variation and image may be
+            more exaggerated or stylized.
+        base_image_seq_len (`int`, defaults to 256):
+            The base image sequence length.
+        max_image_seq_len (`int`, defaults to 4096):
+            The maximum image sequence length.
+        invert_sigmas (`bool`, defaults to False):
+            Whether to invert the sigmas.
+        shift_terminal (`float`, defaults to None):
+            The end value of the shifted timestep schedule.
+        use_karras_sigmas (`bool`, defaults to False):
+            Whether to use Karras sigmas for step sizes in the noise schedule during sampling.
+        use_exponential_sigmas (`bool`, defaults to False):
+            Whether to use exponential sigmas for step sizes in the noise schedule during sampling.
+        use_beta_sigmas (`bool`, defaults to False):
+            Whether to use beta sigmas for step sizes in the noise schedule during sampling.
     """
 
     _compatibles = []
@@ -330,13 +349,14 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             return_dict (`bool`):
-                Whether or not to return a [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] or
-                tuple.
+                Whether or not to return a
+                [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or tuple.
 
         Returns:
-            [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] is
-                returned, otherwise a tuple is returned where the first element is the sample tensor.
+            [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or `tuple`:
+                If return_dict is `True`,
+                [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] is returned,
+                otherwise a tuple is returned where the first element is the sample tensor.
         """
 
         if (
@@ -347,7 +367,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 (
                     "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                    " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                    " `FlowMatchEulerDiscreteScheduler.step()` is not supported. Make sure to pass"
                     " one of the `scheduler.timesteps` as a timestep."
                 ),
             )

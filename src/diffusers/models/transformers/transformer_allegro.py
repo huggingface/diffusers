@@ -13,17 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import AllegroAttnProcessor2_0, Attention
+from ..cache_utils import CacheMixin
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -172,7 +173,7 @@ class AllegroTransformerBlock(nn.Module):
         return hidden_states
 
 
-class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
+class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     _supports_gradient_checkpointing = True
 
     """
@@ -220,6 +221,9 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         interpolation_scale_t (`float`, defaults to `2.2`):
             Scaling factor to apply in 3D positional embeddings across time dimension.
     """
+
+    _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm", "adaln_single"]
 
     @register_to_config
     def __init__(
@@ -300,9 +304,6 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.gradient_checkpointing = False
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        self.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -372,23 +373,14 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         for i, block in enumerate(self.transformer_blocks):
             # TODO(aryan): Implement gradient checkpointing
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     timestep,
                     attention_mask,
                     encoder_attention_mask,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
             else:
                 hidden_states = block(

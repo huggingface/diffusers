@@ -15,9 +15,17 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION
+from ...utils import PIL_INTERPOLATION, is_torch_xla_available
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 
 def preprocess(image):
@@ -173,6 +181,9 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
             noise_pred = self.unet(latents_input, t).sample
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         # decode the image latents with the VQVAE
         image = self.vqvae.decode(latents).sample

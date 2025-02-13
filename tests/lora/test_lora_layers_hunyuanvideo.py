@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import sys
 import unittest
 
@@ -28,16 +29,18 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     floats_tensor,
-    is_torch_version,
+    nightly,
+    numpy_cosine_similarity_distance,
+    require_big_gpu_with_torch_cuda,
     require_peft_backend,
+    require_torch_gpu,
     skip_mps,
-    torch_device,
 )
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
@@ -144,46 +147,6 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    @pytest.mark.xfail(
-        condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
-        reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
-        strict=True,
-    )
-    def test_lora_fuse_nan(self):
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-
-            self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
-
-            # corrupt one LoRA weight with `inf` values
-            with torch.no_grad():
-                pipe.transformer.transformer_blocks[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
-
-            # with `safe_fusing=True` we should see an Error
-            with self.assertRaises(ValueError):
-                pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=True)
-
-            # without we should not see an error, but every image will be black
-            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-
-            out = pipe(
-                prompt=inputs["prompt"],
-                height=inputs["height"],
-                width=inputs["width"],
-                num_frames=inputs["num_frames"],
-                num_inference_steps=inputs["num_inference_steps"],
-                max_sequence_length=inputs["max_sequence_length"],
-                output_type="np",
-            )[0]
-
-            self.assertTrue(np.isnan(out).all())
-
     def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
         super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3)
 
@@ -226,3 +189,69 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Text encoder LoRA is not supported in HunyuanVideo.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
+
+
+@nightly
+@require_torch_gpu
+@require_peft_backend
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
+class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
+    """internal note: The integration slices were obtained on DGX.
+
+    torch: 2.5.1+cu124 with CUDA 12.5. Need the same setup for the
+    assertions to pass.
+    """
+
+    num_inference_steps = 10
+    seed = 0
+
+    def setUp(self):
+        super().setUp()
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        model_id = "hunyuanvideo-community/HunyuanVideo"
+        transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+            model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        )
+        self.pipeline = HunyuanVideoPipeline.from_pretrained(
+            model_id, transformer=transformer, torch_dtype=torch.float16
+        ).to("cuda")
+
+    def tearDown(self):
+        super().tearDown()
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_original_format_cseti(self):
+        self.pipeline.load_lora_weights(
+            "Cseti/HunyuanVideo-LoRA-Arcane_Jinx-v1", weight_name="csetiarcane-nfjinx-v1-6000.safetensors"
+        )
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
+        self.pipeline.vae.enable_tiling()
+
+        prompt = "CSETIARCANE. A cat walks on the grass, realistic"
+
+        out = self.pipeline(
+            prompt=prompt,
+            height=320,
+            width=512,
+            num_frames=9,
+            num_inference_steps=self.num_inference_steps,
+            output_type="np",
+            generator=torch.manual_seed(self.seed),
+        ).frames[0]
+        out = out.flatten()
+        out_slice = np.concatenate((out[:8], out[-8:]))
+
+        # fmt: off
+        expected_slice = np.array([0.1013, 0.1924, 0.0078, 0.1021, 0.1929, 0.0078, 0.1023, 0.1919, 0.7402, 0.104, 0.4482, 0.7354, 0.0925, 0.4382, 0.7275, 0.0815])
+        # fmt: on
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3

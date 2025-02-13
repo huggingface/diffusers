@@ -30,6 +30,8 @@ class MochiTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = MochiTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
+    # Overriding it because of the transformer size.
+    model_split_percents = [0.7, 0.6, 0.6]
 
     @property
     def dummy_input(self):

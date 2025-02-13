@@ -244,6 +244,8 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             Whether or not to use style condition and image meta size. True for version <=1.1, False for version >= 1.2
     """
 
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm", "pooler"]
+
     @register_to_config
     def __init__(
         self,

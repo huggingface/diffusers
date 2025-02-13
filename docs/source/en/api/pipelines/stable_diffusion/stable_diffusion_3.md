@@ -77,7 +77,7 @@ from diffusers import StableDiffusion3Pipeline
 from transformers import SiglipVisionModel, SiglipImageProcessor
 
 image_encoder_id = "google/siglip-so400m-patch14-384"
-ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
+ip_adapter_id = "guiyrt/InstantX-SD3.5-Large-IP-Adapter-diffusers"
 
 feature_extractor = SiglipImageProcessor.from_pretrained(
     image_encoder_id,
@@ -267,6 +267,46 @@ image.save("sd3_hello_world.png")
 ```
 
 Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f454900813da5d42ca97).
+
+## Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`StableDiffusion3Pipeline`] for inference with bitsandbytes.
+
+```py
+import torch
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, SD3Transformer2DModel, StableDiffusion3Pipeline
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
+
+quant_config = BitsAndBytesConfig(load_in_8bit=True)
+text_encoder_8bit = T5EncoderModel.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-large",
+    subfolder="text_encoder_3",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_8bit = SD3Transformer2DModel.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-large",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+pipeline = StableDiffusion3Pipeline.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-large",
+    text_encoder=text_encoder_8bit,
+    transformer=transformer_8bit,
+    torch_dtype=torch.float16,
+    device_map="balanced",
+)
+
+prompt = "a tiny astronaut hatching from an egg on the moon"
+image = pipeline(prompt, num_inference_steps=28, guidance_scale=7.0).images[0]
+image.save("sd3.png")
+```
 
 ## Using Long Prompts with the T5 Text Encoder
 
