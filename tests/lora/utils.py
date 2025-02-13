@@ -2184,6 +2184,23 @@ class PeftLoraLoaderMixinTests:
         storage_dtype = torch.float8_e4m3fn
         compute_dtype = torch.float32
 
+        def check_module(denoiser):
+            # This will also check if the peft layers are in torch.float8_e4m3fn dtype (unlike test_layerwise_casting_inference_denoiser)
+            for name, module in denoiser.named_modules():
+                if not isinstance(module, SUPPORTED_PYTORCH_LAYERS):
+                    continue
+                dtype_to_check = storage_dtype
+                if any(re.search(pattern, name) for pattern in patterns_to_check):
+                    dtype_to_check = compute_dtype
+                if getattr(module, "weight", None) is not None:
+                    self.assertEqual(module.weight.dtype, dtype_to_check)
+                if getattr(module, "bias", None) is not None:
+                    self.assertEqual(module.bias.dtype, dtype_to_check)
+                if isinstance(module, BaseTunerLayer):
+                    self.assertTrue(getattr(module, "_diffusers_hook", None) is not None)
+                    self.assertTrue(module._diffusers_hook.get_hook(_PEFT_AUTOCAST_DISABLE_HOOK) is not None)
+
+        # 1. Test forward with add_adapter
         components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device, dtype=compute_dtype)
@@ -2200,21 +2217,34 @@ class PeftLoraLoaderMixinTests:
         apply_layerwise_casting(
             denoiser, storage_dtype=storage_dtype, compute_dtype=compute_dtype, skip_modules_pattern=patterns_to_check
         )
-
-        # This will also check if the peft layers are in torch.float8_e4m3fn dtype (unlike test_layerwise_casting_inference_denoiser)
-        for name, module in denoiser.named_modules():
-            if not isinstance(module, SUPPORTED_PYTORCH_LAYERS):
-                continue
-            dtype_to_check = storage_dtype
-            if any(re.search(pattern, name) for pattern in patterns_to_check):
-                dtype_to_check = compute_dtype
-            if getattr(module, "weight", None) is not None:
-                self.assertEqual(module.weight.dtype, dtype_to_check)
-            if getattr(module, "bias", None) is not None:
-                self.assertEqual(module.bias.dtype, dtype_to_check)
-            if isinstance(module, BaseTunerLayer):
-                self.assertTrue(getattr(module, "_diffusers_hook", None) is not None)
-                self.assertTrue(module._diffusers_hook.get_hook(_PEFT_AUTOCAST_DISABLE_HOOK) is not None)
+        check_module(denoiser)
 
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
         pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        # 2. Test forward with load_lora_weights
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            self.pipeline_class.save_lora_weights(
+                save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
+            )
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            components, _, _ = self.get_dummy_components(self.scheduler_classes[0])
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device, dtype=compute_dtype)
+            pipe.set_progress_bar_config(disable=None)
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            apply_layerwise_casting(
+                denoiser,
+                storage_dtype=storage_dtype,
+                compute_dtype=compute_dtype,
+                skip_modules_pattern=patterns_to_check,
+            )
+            check_module(denoiser)
+
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+            pipe(**inputs, generator=torch.manual_seed(0))[0]
