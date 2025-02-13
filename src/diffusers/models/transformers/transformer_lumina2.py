@@ -460,7 +460,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        use_mask_in_transformer: bool = True,
+        use_mask: bool = True,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         # 1. Condition, positional & patch embedding
@@ -481,9 +481,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         # 2. Context & noise refinement
         for layer in self.context_refiner:
-            encoder_hidden_states = layer(
-                encoder_hidden_states, encoder_attention_mask if use_mask_in_transformer else None, context_rotary_emb
-            )
+            encoder_hidden_states = layer(encoder_hidden_states, encoder_attention_mask, context_rotary_emb)
 
         for layer in self.noise_refiner:
             hidden_states = layer(hidden_states, None, noise_rotary_emb, temb)
@@ -502,12 +500,10 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for layer in self.layers:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
-                    layer, hidden_states, attention_mask if use_mask_in_transformer else None, rotary_emb, temb
+                    layer, hidden_states, attention_mask if use_mask else None, rotary_emb, temb
                 )
             else:
-                hidden_states = layer(
-                    hidden_states, attention_mask if use_mask_in_transformer else None, rotary_emb, temb
-                )
+                hidden_states = layer(hidden_states, attention_mask if use_mask else None, rotary_emb, temb)
 
         # 4. Output norm & projection
         hidden_states = self.norm_out(hidden_states, temb)
