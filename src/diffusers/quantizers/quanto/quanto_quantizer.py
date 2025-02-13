@@ -65,8 +65,6 @@ class QuantoQuantizer(DiffusersQuantizer):
         # Quanto imports diffusers internally. This is here to prevent circular imports
         from optimum.quanto import QModuleMixin
 
-        if self.pre_quantized:
-            __import__("ipdb").set_trace()
         module, tensor_name = get_module_from_name(model, param_name)
         if isinstance(module, QModuleMixin) and "weight" in tensor_name:
             return not module.frozen

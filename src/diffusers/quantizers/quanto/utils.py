@@ -74,7 +74,7 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
             " https://github.com/huggingface/diffusers"
         )
 
-    if pre_quantized:
-        freeze(model)
+        # if pre_quantized:
+        # freeze(model)
 
     return model
