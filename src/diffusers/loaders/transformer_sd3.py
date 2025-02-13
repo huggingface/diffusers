@@ -166,4 +166,3 @@ class SD3Transformer2DLoadersMixin:
         self.set_attn_processor(attn_procs)
 
         self.image_proj = self._convert_ip_adapter_image_proj_to_diffusers(state_dict["image_proj"], low_cpu_mem_usage)
-        self.to(dtype=self.dtype, device=self.device)
