@@ -611,6 +611,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         attention_mask: Optional[torch.Tensor] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        from_multi: bool = False,
         guess_mode: bool = False,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple[Tuple[torch.Tensor, ...], torch.Tensor]]:
@@ -647,6 +648,8 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Additional conditions for the Stable Diffusion XL UNet.
             cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
+            from_multi (`bool`, defaults to `False`):
+                Use standard scaling when called from `MultiControlNetUnionModel`.
             guess_mode (`bool`, defaults to `False`):
                 In this mode, the ControlNet encoder tries its best to recognize the input content of the input even if
                 you remove all prompts. A `guidance_scale` between 3.0 and 5.0 is recommended.
@@ -749,8 +752,12 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             condition = self.controlnet_cond_embedding(cond)
             feat_seq = torch.mean(condition, dim=(2, 3))
             feat_seq = feat_seq + self.task_embedding[control_idx]
-            inputs.append(feat_seq.unsqueeze(1) * scale)
-            condition_list.append(condition * scale)
+            if from_multi:
+                inputs.append(feat_seq.unsqueeze(1))
+                condition_list.append(condition)
+            else:
+                inputs.append(feat_seq.unsqueeze(1) * scale)
+                condition_list.append(condition * scale)
 
         condition = sample
         feat_seq = torch.mean(condition, dim=(2, 3))
@@ -765,7 +772,10 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for (idx, condition), scale in zip(enumerate(condition_list[:-1]), conditioning_scale):
             alpha = self.spatial_ch_projs(x[:, idx])
             alpha = alpha.unsqueeze(-1).unsqueeze(-1)
-            controlnet_cond_fuser += condition + alpha * scale
+            if from_multi:
+                controlnet_cond_fuser += condition + alpha
+            else:
+                controlnet_cond_fuser += condition + alpha * scale
 
         sample = sample + controlnet_cond_fuser
 
@@ -809,8 +819,13 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # 6. scaling
         if guess_mode and not self.config.global_pool_conditions:
             scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1, device=sample.device)  # 0.1 to 1.0
+            if from_multi:
+                scales = scales * conditioning_scale[0]
             down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
             mid_block_res_sample = mid_block_res_sample * scales[-1]  # last one
+        elif from_multi:
+            down_block_res_samples = [sample * conditioning_scale[0] for sample in down_block_res_samples]
+            mid_block_res_sample = mid_block_res_sample * conditioning_scale[0]
 
         if self.config.global_pool_conditions:
             down_block_res_samples = [
