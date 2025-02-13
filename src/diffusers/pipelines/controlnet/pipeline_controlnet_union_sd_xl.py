@@ -1197,6 +1197,10 @@ class StableDiffusionXLControlNetUnionPipeline(
         if not isinstance(control_mode, list):
             control_mode = [control_mode]
 
+        if isinstance(controlnet, MultiControlNetUnionModel):
+            control_image = [[item] for item in control_image]
+            control_mode = [[item] for item in control_mode]
+
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
