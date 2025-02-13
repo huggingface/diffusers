@@ -612,7 +612,6 @@ class LuminaFeedForward(nn.Module):
         ffn_dim_multiplier: Optional[float] = None,
     ):
         super().__init__()
-        inner_dim = int(2 * inner_dim / 3)
         # custom hidden_size factor multiplier
         if ffn_dim_multiplier is not None:
             inner_dim = int(ffn_dim_multiplier * inner_dim)
