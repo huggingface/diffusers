@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
+from transformers import AutoTokenizer, Gemma2Config, Gemma2ForCausalLM
 
 from diffusers import (
     AutoencoderKL,
@@ -81,7 +81,7 @@ class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTester
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
 
         torch.manual_seed(0)
-        config = GemmaConfig(
+        config = Gemma2Config(
             head_dim=2,
             hidden_size=8,
             intermediate_size=37,
@@ -89,13 +89,13 @@ class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTester
             num_hidden_layers=2,
             num_key_value_heads=4,
         )
-        text_encoder = GemmaForCausalLM(config)
+        text_encoder = Gemma2ForCausalLM(config)
 
         components = {
-            "transformer": transformer.eval(),
+            "transformer": transformer,
             "vae": vae.eval(),
             "scheduler": scheduler,
-            "text_encoder": text_encoder.eval(),
+            "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
         return components
