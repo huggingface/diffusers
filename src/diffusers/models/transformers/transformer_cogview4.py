@@ -38,14 +38,9 @@ class CogView4PatchEmbed(nn.Module):
         hidden_size: int = 2560,
         patch_size: int = 2,
         text_hidden_size: int = 4096,
-        pos_embed_max_size: int = 128,
     ):
         super().__init__()
-        self.in_channels = in_channels
-        self.hidden_size = hidden_size
         self.patch_size = patch_size
-        self.text_hidden_size = text_hidden_size
-        self.pos_embed_max_size = pos_embed_max_size
 
         self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
         self.text_proj = nn.Linear(text_hidden_size, hidden_size)
@@ -150,16 +145,14 @@ class CogView4AttnProcessor:
 
         # 3. Rotational positional embeddings applied to latent stream
         if image_rotary_emb is not None:
+            from ..embeddings import apply_rotary_emb
 
-            def apply_rotary_emb(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-                cos, sin = freqs
-                x_real, x_imag = x.chunk(2, dim=-1)
-                x_rotated = torch.cat([-x_imag, x_real], dim=-1)
-                x_out = cos * x.float() + sin * x_rotated.float()
-                return x_out
-
-            query[:, :, text_seq_length:, :] = apply_rotary_emb(query[:, :, text_seq_length:, :], image_rotary_emb)
-            key[:, :, text_seq_length:, :] = apply_rotary_emb(key[:, :, text_seq_length:, :], image_rotary_emb)
+            query[:, :, text_seq_length:, :] = apply_rotary_emb(
+                query[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
+            )
+            key[:, :, text_seq_length:, :] = apply_rotary_emb(
+                key[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
+            )
 
         # 4. Attention
         hidden_states = F.scaled_dot_product_attention(
@@ -345,7 +338,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        # CogView3 uses 3 additional SDXL-like conditions - original_size, target_size, crop_coords
+        # CogView4 uses 3 additional SDXL-like conditions - original_size, target_size, crop_coords
         # Each of these are sincos embeddings of shape 2 * condition_dim
         pooled_projection_dim = 3 * 2 * condition_dim
         inner_dim = num_attention_heads * attention_head_dim
@@ -355,13 +348,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         self.rope = CogView4RotaryPosEmbed(attention_head_dim, patch_size, rope_axes_dim, theta=10000.0)
 
         # 2. Patch & Text-timestep embedding
-        self.patch_embed = CogView4PatchEmbed(
-            in_channels=in_channels,
-            hidden_size=inner_dim,
-            patch_size=patch_size,
-            text_hidden_size=text_embed_dim,
-            pos_embed_max_size=pos_embed_max_size,
-        )
+        self.patch_embed = CogView4PatchEmbed(in_channels, inner_dim, patch_size, text_embed_dim)
 
         self.time_condition_embed = CogView3CombinedTimestepSizeEmbeddings(
             embedding_dim=time_embed_dim,
@@ -420,10 +407,11 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
                     hidden_states, encoder_hidden_states, temb, image_rotary_emb
                 )
 
+        # 4. Output norm & projection
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
 
-        # 4. Unpatchify
+        # 5. Unpatchify
         hidden_states = hidden_states.reshape(batch_size, post_patch_height, post_patch_width, -1, p, p)
         output = hidden_states.permute(0, 3, 1, 4, 2, 5).flatten(4, 5).flatten(2, 3)
 

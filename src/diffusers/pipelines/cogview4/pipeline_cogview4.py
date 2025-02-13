@@ -570,13 +570,12 @@ class CogView4Pipeline(DiffusionPipeline):
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
             self.transformer.config.patch_size**2
         )
-
         timesteps = (
             np.linspace(self.scheduler.config.num_train_timesteps, 1.0, num_inference_steps)
             if timesteps is None
             else np.array(timesteps)
         )
-        timesteps = timesteps.astype(np.float32)
+        timesteps = timesteps.astype(np.int64).astype(np.float32)
         sigmas = timesteps / self.scheduler.config.num_train_timesteps if sigmas is None else sigmas
         mu = calculate_shift(
             image_seq_len,
