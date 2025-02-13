@@ -177,7 +177,6 @@ class CogView4Pipeline(DiffusionPipeline):
     def _get_glm_embeds(
         self,
         prompt: Union[str, List[str]] = None,
-        num_images_per_prompt: int = 1,
         max_sequence_length: int = 1024,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -186,7 +185,6 @@ class CogView4Pipeline(DiffusionPipeline):
         dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
 
         text_inputs = self.tokenizer(
             prompt,
@@ -219,9 +217,6 @@ class CogView4Pipeline(DiffusionPipeline):
         ).hidden_states[-2]
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         return prompt_embeds
 
     def encode_prompt(
@@ -273,7 +268,11 @@ class CogView4Pipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds = self._get_glm_embeds(prompt, num_images_per_prompt, max_sequence_length, device, dtype)
+            prompt_embeds = self._get_glm_embeds(prompt, max_sequence_length, device, dtype)
+
+        seq_len = prompt_embeds.size(1)
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
@@ -291,9 +290,11 @@ class CogView4Pipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds = self._get_glm_embeds(
-                negative_prompt, num_images_per_prompt, max_sequence_length, device, dtype
-            )
+            negative_prompt_embeds = self._get_glm_embeds(negative_prompt, max_sequence_length, device, dtype)
+
+            seq_len = negative_prompt_embeds.size(1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -575,7 +576,7 @@ class CogView4Pipeline(DiffusionPipeline):
             if timesteps is None
             else np.array(timesteps)
         )
-        timesteps = timesteps.astype(np.int64)
+        timesteps = timesteps.astype(np.float32)
         sigmas = timesteps / self.scheduler.config.num_train_timesteps if sigmas is None else sigmas
         mu = calculate_shift(
             image_seq_len,
@@ -585,6 +586,7 @@ class CogView4Pipeline(DiffusionPipeline):
         )
         _, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu)
         timesteps = torch.from_numpy(timesteps).to(device)
+        self._num_timesteps = len(timesteps)
 
         # Denoising loop
         transformer_dtype = self.transformer.dtype
