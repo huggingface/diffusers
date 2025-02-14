@@ -938,9 +938,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
                     latent_model_input,
                     t_expand,
                     encoder_hidden_states=prompt_embeds,
-                    text_embedding_mask=prompt_attention_mask,
                     encoder_hidden_states_t5=prompt_embeds_2,
-                    text_embedding_mask_t5=prompt_attention_mask_2,
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]

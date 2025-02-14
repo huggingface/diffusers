@@ -13,35 +13,72 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from einops import rearrange
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm, FP32LayerNorm
+from ..normalization import AdaLayerNorm, FP32LayerNorm, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class EasyAnimateLayerNormZero(nn.Module):
+    def __init__(
+        self,
+        conditioning_dim: int,
+        embedding_dim: int,
+        elementwise_affine: bool = True,
+        eps: float = 1e-5,
+        bias: bool = True,
+        norm_type: str = "fp32_layer_norm",
+    ) -> None:
+        super().__init__()
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(conditioning_dim, 6 * embedding_dim, bias=bias)
+
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=elementwise_affine, eps=eps)
+        elif norm_type == "fp32_layer_norm":
+            self.norm = FP32LayerNorm(embedding_dim, elementwise_affine=elementwise_affine, eps=eps)
+        else:
+            raise ValueError(
+                f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm', 'fp32_layer_norm'."
+            )
+
+    def forward(
+        self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(self.silu(temb)).chunk(6, dim=1)
+        hidden_states = self.norm(hidden_states) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+        encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale.unsqueeze(1)) + enc_shift.unsqueeze(
+            1
+        )
+        return hidden_states, encoder_hidden_states, gate, enc_gate
+
+
 class EasyAnimateAttnProcessor2_0:
     r"""
-    Attention processor used in EasyAnimate.
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
+    used in the EasyAnimateTransformer3DModel model.
     """
 
     def __init__(self, attn2=None):
         self.attn2 = attn2
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "EasyAnimateAttnProcessor2_0 requires PyTorch 2.0 or above. To use it, please install PyTorch 2.0."
+            )
 
     def __call__(
         self,
@@ -128,84 +165,8 @@ class EasyAnimateAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class EasyAnimateRMSNorm(nn.Module):
-    """
-    EasyAnimateRMSNorm implements the Root Mean Square (RMS) normalization layer, which is equivalent to T5LayerNorm.
-
-    RMS normalization is a method for normalizing the output of neural network layers, aimed at accelerating the
-    training process and improving model performance. This implementation is specifically designed for use in models
-    similar to T5.
-    """
-
-    def __init__(self, hidden_size, eps=1e-6):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
-        self.variance_epsilon = eps
-
-    def forward(self, hidden_states):
-        # Save the input data type for restoring it before returning
-        input_dtype = hidden_states.dtype
-        # Convert the input to float32 for accurate calculation
-        hidden_states = hidden_states.to(torch.float32)
-        # Calculate the variance of the input along the last dimension
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        # Normalize the input
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        # Scale by the weight parameters and restore the input data type
-        return self.weight * hidden_states.to(input_dtype)
-
-
-class EasyAnimateLayerNormZero(nn.Module):
-    # Modified from https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/normalization.py
-    # Add fp32 layer norm
-    """
-    Implements a custom layer normalization module with support for fp32 data type.
-
-    This module applies a learned affine transformation to the input, which is useful for stabilizing the training of
-    deep neural networks. It is designed to work with both standard and fp32 layer normalization, depending on the
-    `norm_type` parameter.
-    """
-
-    def __init__(
-        self,
-        conditioning_dim: int,
-        embedding_dim: int,
-        elementwise_affine: bool = True,
-        eps: float = 1e-5,
-        bias: bool = True,
-        norm_type: str = "fp32_layer_norm",
-    ) -> None:
-        super().__init__()
-
-        # Initialize SiLU activation function
-        self.silu = nn.SiLU()
-        # Initialize linear layer for conditioning input
-        self.linear = nn.Linear(conditioning_dim, 6 * embedding_dim, bias=bias)
-        # Initialize normalization layer based on norm_type
-        if norm_type == "layer_norm":
-            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=elementwise_affine, eps=eps)
-        elif norm_type == "fp32_layer_norm":
-            self.norm = FP32LayerNorm(embedding_dim, elementwise_affine=elementwise_affine, eps=eps)
-        else:
-            raise ValueError(
-                f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm', 'fp32_layer_norm'."
-            )
-
-    def forward(
-        self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Apply SiLU activation to temb and then linear transformation, splitting the result into 6 parts
-        shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(self.silu(temb)).chunk(6, dim=1)
-        # Apply normalization and learned affine transformation to hidden states
-        hidden_states = self.norm(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
-        # Apply normalization and learned affine transformation to encoder hidden states
-        encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale)[:, None, :] + enc_shift[:, None, :]
-        # Return the transformed hidden states, encoder hidden states, and gates
-        return hidden_states, encoder_hidden_states, gate[:, None, :], enc_gate[:, None, :]
-
-
 @maybe_allow_in_graph
-class EasyAnimateDiTBlock(nn.Module):
+class EasyAnimateTransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -243,6 +204,7 @@ class EasyAnimateDiTBlock(nn.Module):
             )
         else:
             self.attn2 = None
+
         self.attn1 = Attention(
             query_dim=dim,
             dim_head=attention_head_dim,
@@ -265,6 +227,8 @@ class EasyAnimateDiTBlock(nn.Module):
             inner_dim=ff_inner_dim,
             bias=ff_bias,
         )
+
+        self.txt_ff = None
         if is_mmdit_block:
             self.txt_ff = FeedForward(
                 dim,
@@ -274,13 +238,10 @@ class EasyAnimateDiTBlock(nn.Module):
                 inner_dim=ff_inner_dim,
                 bias=ff_bias,
             )
-        else:
-            self.txt_ff = None
 
+        self.norm3 = None
         if after_norm:
             self.norm3 = FP32LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
-        else:
-            self.norm3 = None
 
     def forward(
         self,
@@ -288,30 +249,23 @@ class EasyAnimateDiTBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        num_frames=None,
-        height=None,
-        width=None,
-    ) -> torch.Tensor:
-        # Norm
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # 1. Attention
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
         )
-
-        # Attn
         attn_hidden_states, attn_encoder_hidden_states = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
         )
-        hidden_states = hidden_states + gate_msa * attn_hidden_states
-        encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_encoder_hidden_states
+        hidden_states = hidden_states + gate_msa.unsqueeze(1) * attn_hidden_states
+        encoder_hidden_states = encoder_hidden_states + enc_gate_msa.unsqueeze(1) * attn_encoder_hidden_states
 
-        # Norm
+        # 2. Feed-forward
         norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(
             hidden_states, encoder_hidden_states, temb
         )
-
-        # FFN
         if self.norm3 is not None:
             norm_hidden_states = self.norm3(self.ff(norm_hidden_states))
             if self.txt_ff is not None:
@@ -324,8 +278,8 @@ class EasyAnimateDiTBlock(nn.Module):
                 norm_encoder_hidden_states = self.txt_ff(norm_encoder_hidden_states)
             else:
                 norm_encoder_hidden_states = self.ff(norm_encoder_hidden_states)
-        hidden_states = hidden_states + gate_ff * norm_hidden_states
-        encoder_hidden_states = encoder_hidden_states + enc_gate_ff * norm_encoder_hidden_states
+        hidden_states = hidden_states + gate_ff.unsqueeze(1) * norm_hidden_states
+        encoder_hidden_states = encoder_hidden_states + enc_gate_ff.unsqueeze(1) * norm_encoder_hidden_states
         return hidden_states, encoder_hidden_states
 
 
@@ -334,7 +288,7 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
     A Transformer model for video-like data in [EasyAnimate](https://github.com/aigc-apps/EasyAnimate).
 
     Parameters:
-        num_attention_heads (`int`, defaults to `30`):
+        num_attention_heads (`int`, defaults to `48`):
             The number of heads to use for multi-head attention.
         attention_head_dim (`int`, defaults to `64`):
             The number of channels in each head.
@@ -381,6 +335,8 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["EasyAnimateTransformerBlock"]
+    _skip_layerwise_casting_patterns = ["^proj$", "norm", "^proj_out$"]
 
     @register_to_config
     def __init__(
@@ -412,39 +368,38 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         add_noise_in_inpaint_model: bool = True,
     ):
         super().__init__()
-        self.num_heads = num_attention_heads
-        self.inner_dim = num_attention_heads * attention_head_dim
-        self.resize_inpaint_mask_directly = resize_inpaint_mask_directly
-        self.patch_size = patch_size
+        inner_dim = num_attention_heads * attention_head_dim
 
-        post_patch_height = sample_height // patch_size
-        post_patch_width = sample_width // patch_size
-        self.post_patch_height = post_patch_height
-        self.post_patch_width = post_patch_width
+        # 1. Timestep embedding
+        self.time_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
+        self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
 
-        self.time_proj = Timesteps(self.inner_dim, flip_sin_to_cos, freq_shift)
-        self.time_embedding = TimestepEmbedding(self.inner_dim, time_embed_dim, timestep_activation_fn)
-
+        # 2. Patch embedding
         self.proj = nn.Conv2d(
-            in_channels, self.inner_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=True
+            in_channels, inner_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=True
         )
+
+        # 3. Text refined embedding
+        self.text_proj = None
+        self.text_proj_t5 = None
         if not add_norm_text_encoder:
-            self.text_proj = nn.Linear(text_embed_dim, self.inner_dim)
+            self.text_proj = nn.Linear(text_embed_dim, inner_dim)
             if text_embed_dim_t5 is not None:
-                self.text_proj_t5 = nn.Linear(text_embed_dim_t5, self.inner_dim)
+                self.text_proj_t5 = nn.Linear(text_embed_dim_t5, inner_dim)
         else:
             self.text_proj = nn.Sequential(
-                EasyAnimateRMSNorm(text_embed_dim), nn.Linear(text_embed_dim, self.inner_dim)
+                RMSNorm(text_embed_dim, 1e-6, elementwise_affine=True), nn.Linear(text_embed_dim, inner_dim)
             )
             if text_embed_dim_t5 is not None:
                 self.text_proj_t5 = nn.Sequential(
-                    EasyAnimateRMSNorm(text_embed_dim), nn.Linear(text_embed_dim_t5, self.inner_dim)
+                    RMSNorm(text_embed_dim, 1e-6, elementwise_affine=True), nn.Linear(text_embed_dim_t5, inner_dim)
                 )
 
+        # 4. Transformer blocks
         self.transformer_blocks = nn.ModuleList(
             [
-                EasyAnimateDiTBlock(
-                    dim=self.inner_dim,
+                EasyAnimateTransformerBlock(
+                    dim=inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
                     time_embed_dim=time_embed_dim,
@@ -458,38 +413,36 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
                 for _ in range(num_layers)
             ]
         )
-        self.norm_final = nn.LayerNorm(self.inner_dim, norm_eps, norm_elementwise_affine)
+        self.norm_final = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
 
-        # 5. Output blocks
+        # 5. Output norm & projection
         self.norm_out = AdaLayerNorm(
             embedding_dim=time_embed_dim,
-            output_dim=2 * self.inner_dim,
+            output_dim=2 * inner_dim,
             norm_elementwise_affine=norm_elementwise_affine,
             norm_eps=norm_eps,
             chunk_dim=1,
         )
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * out_channels)
+        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        self.gradient_checkpointing = value
-
     def forward(
         self,
-        hidden_states,
-        timestep,
-        timestep_cond=None,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        timestep_cond: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
-        text_embedding_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states_t5: Optional[torch.Tensor] = None,
-        text_embedding_mask_t5: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
         inpaint_latents: Optional[torch.Tensor] = None,
         control_latents: Optional[torch.Tensor] = None,
-        return_dict=True,
-    ):
+        return_dict: bool = True,
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         batch_size, channels, video_length, height, width = hidden_states.size()
+        p = self.config.patch_size
+        post_patch_height = height // p
+        post_patch_width = width // p
 
         # 1. Time embedding
         temb = self.time_proj(timestep).to(dtype=hidden_states.dtype)
@@ -501,69 +454,39 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         if control_latents is not None:
             hidden_states = torch.concat([hidden_states, control_latents], 1)
 
-        hidden_states = rearrange(hidden_states, "b c f h w ->(b f) c h w")
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)  # [B, C, F, H, W] -> [BF, C, H, W]
         hidden_states = self.proj(hidden_states)
-        hidden_states = rearrange(
-            hidden_states,
-            "(b f) c h w -> b c f h w",
-            f=video_length,
-            h=height // self.patch_size,
-            w=width // self.patch_size,
-        )
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(
+            0, 2, 1, 3, 4
+        )  # [BF, C, H, W] -> [B, F, C, H, W]
+        hidden_states = hidden_states.flatten(2, 4).transpose(1, 2)  # [B, F, C, H, W] -> [B, FHW, C]
 
+        # 3. Text embedding
         encoder_hidden_states = self.text_proj(encoder_hidden_states)
         if encoder_hidden_states_t5 is not None:
             encoder_hidden_states_t5 = self.text_proj_t5(encoder_hidden_states_t5)
             encoder_hidden_states = torch.cat([encoder_hidden_states, encoder_hidden_states_t5], dim=1).contiguous()
 
         # 4. Transformer blocks
-        for i, block in enumerate(self.transformer_blocks):
+        for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    image_rotary_emb,
-                    video_length,
-                    height // self.patch_size,
-                    width // self.patch_size,
-                    **ckpt_kwargs,
+                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb
                 )
             else:
                 hidden_states, encoder_hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    temb=temb,
-                    image_rotary_emb=image_rotary_emb,
-                    num_frames=video_length,
-                    height=height // self.patch_size,
-                    width=width // self.patch_size,
+                    hidden_states, encoder_hidden_states, temb, image_rotary_emb
                 )
 
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
         hidden_states = self.norm_final(hidden_states)
-        hidden_states = hidden_states[:, encoder_hidden_states.size()[1] :]
 
-        # 5. Final block
+        # 5. Output norm & projection
         hidden_states = self.norm_out(hidden_states, temb=temb)
         hidden_states = self.proj_out(hidden_states)
 
         # 6. Unpatchify
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, video_length, height // p, width // p, channels, p, p)
+        output = hidden_states.reshape(batch_size, video_length, post_patch_height, post_patch_width, channels, p, p)
         output = output.permute(0, 4, 1, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
 
         if not return_dict:

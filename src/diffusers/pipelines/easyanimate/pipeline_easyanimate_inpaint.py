@@ -70,12 +70,14 @@ EXAMPLE_DOC_STRING = """
         >>> validation_image_start = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
         ... )
+
         >>> validation_image_end = None
         >>> sample_size = (448, 576)
         >>> num_frames = 49
         >>> input_video, input_video_mask, _ = get_image_to_video_latent(
         ...     [validation_image_start], validation_image_end, num_frames, sample_size
         ... )
+
         >>> video = pipe(
         ...     prompt,
         ...     num_frames=num_frames,
@@ -1210,7 +1212,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             if (mask_video == 255).all():
                 mask = torch.zeros_like(latents).to(device, dtype)
                 # Use zero latents if we want to t2v.
-                if self.transformer.resize_inpaint_mask_directly:
+                if self.transformer.config.resize_inpaint_mask_directly:
                     mask_latents = torch.zeros_like(latents)[:, :1].to(device, dtype)
                 else:
                     mask_latents = torch.zeros_like(latents).to(device, dtype)
@@ -1240,7 +1242,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     else:
                         masked_video = masked_video_latents
 
-                    if self.transformer.resize_inpaint_mask_directly:
+                    if self.transformer.config.resize_inpaint_mask_directly:
                         _, masked_video_latents = self.prepare_mask_latents(
                             None,
                             masked_video,
@@ -1253,7 +1255,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                             self.do_classifier_free_guidance,
                             noise_aug_strength=noise_aug_strength,
                         )
-                        mask_latents = resize_mask(1 - mask_condition, masked_video_latents, self.vae.cache_mag_vae)
+                        mask_latents = resize_mask(
+                            1 - mask_condition, masked_video_latents, self.vae.config.cache_mag_vae
+                        )
                         mask_latents = mask_latents.to(device, dtype) * self.vae.config.scaling_factor
                     else:
                         mask_latents, masked_video_latents = self.prepare_mask_latents(
@@ -1286,7 +1290,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         else:
             if num_channels_transformer != num_channels_latents:
                 mask = torch.zeros_like(latents).to(device, dtype)
-                if self.transformer.resize_inpaint_mask_directly:
+                if self.transformer.config.resize_inpaint_mask_directly:
                     mask_latents = torch.zeros_like(latents)[:, :1].to(device, dtype)
                 else:
                     mask_latents = torch.zeros_like(latents).to(device, dtype)
@@ -1386,9 +1390,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     latent_model_input,
                     t_expand,
                     encoder_hidden_states=prompt_embeds,
-                    text_embedding_mask=prompt_attention_mask,
                     encoder_hidden_states_t5=prompt_embeds_2,
-                    text_embedding_mask_t5=prompt_attention_mask_2,
                     image_rotary_emb=image_rotary_emb,
                     inpaint_latents=inpaint_latents,
                     return_dict=False,
