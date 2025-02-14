@@ -1638,10 +1638,8 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
         Note: We set rank == alpha here because save_lora_adapter does not save the alpha scalings, thus the test would
         fail if the values are different. Since rank != alpha does not matter for the purpose of this test, this is
         fine.
-
         """
-        from peft.utils.hotswap import prepare_model_for_compiled_hotswap
-
+        # create 2 adapters with different ranks and alphas
         dummy_input = self.get_dummy_input()
         alpha0, alpha1 = rank0, rank1
         max_rank = max([rank0, rank1])
@@ -1665,22 +1663,21 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
         assert not (output1_before == 0).all()
 
         with tempfile.TemporaryDirectory() as tmp_dirname:
+            # save the adapter checkpoints
             unet.save_lora_adapter(os.path.join(tmp_dirname, "0"), safe_serialization=True, adapter_name="adapter0")
             unet.save_lora_adapter(os.path.join(tmp_dirname, "1"), safe_serialization=True, adapter_name="adapter1")
             del unet
 
+            # load the first adapter
             unet = self.get_small_unet()
+            if do_compile or (rank0 != rank1):
+                # no need to prepare if the model is not compiled or if the ranks are identical
+                unet.enable_lora_hotswap(target_rank=max_rank)
+
             file_name0 = os.path.join(os.path.join(tmp_dirname, "0"), "pytorch_lora_weights.safetensors")
             file_name1 = os.path.join(os.path.join(tmp_dirname, "1"), "pytorch_lora_weights.safetensors")
             unet.load_lora_adapter(file_name0, safe_serialization=True, adapter_name="adapter0")
 
-            if do_compile or (rank0 != rank1):
-                # no need to prepare if the model is not compiled or if the ranks are identical
-                prepare_model_for_compiled_hotswap(
-                    unet,
-                    config={"adapter0": lora_config0, "adapter1": lora_config1},
-                    target_rank=max_rank,
-                )
             if do_compile:
                 unet = torch.compile(unet, mode="reduce-overhead")
 
@@ -1688,6 +1685,7 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
                 output0_after = unet(**dummy_input)["sample"]
             assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
 
+            # hotswap the 2nd adapter
             unet.load_lora_adapter(file_name1, adapter_name="adapter0", hotswap=True)
 
             # we need to call forward to potentially trigger recompilation
@@ -1727,3 +1725,12 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
         target_modules = ["to_q", "conv"]
         with torch._dynamo.config.patch(error_on_recompile=True):
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
+
+    def test_enable_lora_hotswap_called_too_late_raises(self):
+        # ensure that enable_lora_hotswap is called before loading the first adapter
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        unet = self.get_small_unet()
+        unet.add_adapter(lora_config)
+        msg = re.escape("Call `enable_lora_hotswap` before loading the first adapter.")
+        with self.assertRaisesRegex(RuntimeError, msg):
+            unet.enable_lora_hotswap(target_rank=32)

@@ -15,7 +15,7 @@ import os
 from collections import defaultdict
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Callable, Dict, Union
+from typing import Callable, Dict, Optional, Union
 
 import safetensors
 import torch
@@ -62,6 +62,8 @@ class UNet2DConditionLoadersMixin:
 
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
+    # kwargs for prepare_model_for_compiled_hotswap, if required
+    _prepare_lora_hotswap_kwargs: Optional[dict] = None
 
     @validate_hf_hub_args
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
@@ -377,9 +379,13 @@ class UNet2DConditionLoadersMixin:
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            if hotswap:
+            if hotswap or (self._prepare_lora_hotswap_kwargs is not None):
                 if is_peft_version(">", "0.14.0"):
-                    from peft.utils.hotswap import check_hotswap_configs_compatible, hotswap_adapter_from_state_dict
+                    from peft.utils.hotswap import (
+                        check_hotswap_configs_compatible,
+                        hotswap_adapter_from_state_dict,
+                        prepare_model_for_compiled_hotswap,
+                    )
                 else:
                     msg = (
                         "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
@@ -417,6 +423,19 @@ class UNet2DConditionLoadersMixin:
                 else:
                     inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
                     incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+
+                    if self._prepare_lora_hotswap_kwargs is not None:
+                        # For hotswapping of compiled models or adapters with different ranks.
+                        # If the user called enable_lora_hotswap, we need to ensure it is called:
+                        # - after the first adapter was loaded
+                        # - before the model is compiled and the 2nd adapter is being hotswapped in
+                        # Therefore, it needs to be called here
+                        prepare_model_for_compiled_hotswap(
+                            self, config=lora_config, **self._prepare_lora_hotswap_kwargs
+                        )
+                        # We only want to call prepare_model_for_compiled_hotswap once
+                        self._prepare_lora_hotswap_kwargs = None
+
             except Exception as e:
                 # TODO: add test in line with:
                 # https://github.com/huggingface/diffusers/pull/10188/files#diff-b544edcc938e163009735ef4fa963abd0a41615c175552160c9e0f94ceb7f552
@@ -1002,3 +1021,17 @@ class UNet2DConditionLoadersMixin:
                         }
                     )
         return lora_dicts
+
+    def enable_lora_hotswap(self, target_rank: int) -> None:
+        """Enables the possibility to hotswap LoRA adapters.
+
+        Calling this method is only required when hotswapping adapters and if the model is compiled or if the ranks of
+        the loaded adapters differ.
+
+        Args:
+            target_rank (`int`):
+                The highest rank among all the adapters that will be loaded.
+        """
+        if getattr(self, "peft_config", {}):
+            raise RuntimeError("Call `enable_lora_hotswap` before loading the first adapter.")
+        self._prepare_lora_hotswap_kwargs = {"target_rank": target_rank}

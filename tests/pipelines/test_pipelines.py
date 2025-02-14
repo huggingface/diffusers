@@ -17,6 +17,7 @@ import gc
 import json
 import os
 import random
+import re
 import shutil
 import sys
 import tempfile
@@ -2239,12 +2240,23 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         return pipeline_inputs
 
     def check_pipeline_hotswap(self, do_compile, rank0, rank1, target_modules):
-        # Similar to check_hotswap but more realistic: check a whole pipeline to be closer to how users would use it
-        from peft.utils.hotswap import prepare_model_for_compiled_hotswap
+        """
+        Check that hotswapping works on a pipeline.
 
+        Steps:
+        - create 2 LoRA adapters and save them
+        - load the first adapter
+        - hotswap the second adapter
+        - check that the outputs are correct
+        - optionally compile the model
+
+        Note: We set rank == alpha here because save_lora_adapter does not save the alpha scalings, thus the test would
+        fail if the values are different. Since rank != alpha does not matter for the purpose of this test, this is
+        fine.
+        """
+        # create 2 adapters with different ranks and alphas
         dummy_input = self.get_dummy_input()
         pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
-
         alpha0, alpha1 = rank0, rank1
         max_rank = max([rank0, rank1])
         lora_config0 = self.get_unet_lora_config(rank0, alpha0, target_modules)
@@ -2266,6 +2278,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         assert not (output1_before == 0).all()
 
         with tempfile.TemporaryDirectory() as tmp_dirname:
+            # save the adapter checkpoints
             lora0_state_dicts = self.get_lora_state_dicts({"unet": pipeline.unet}, adapter_name="adapter0")
             StableDiffusionPipeline.save_lora_weights(
                 save_directory=os.path.join(tmp_dirname, "adapter0"), safe_serialization=True, **lora0_state_dicts
@@ -2276,17 +2289,16 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
             )
             del pipeline
 
+            # load the first adapter
             pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+            if do_compile or (rank0 != rank1):
+                # no need to prepare if the model is not compiled or if the ranks are identical
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+
             file_name0 = os.path.join(tmp_dirname, "adapter0", "pytorch_lora_weights.safetensors")
             file_name1 = os.path.join(tmp_dirname, "adapter1", "pytorch_lora_weights.safetensors")
 
             pipeline.load_lora_weights(file_name0)
-            if do_compile or (rank0 != rank1):
-                prepare_model_for_compiled_hotswap(
-                    pipeline.unet,
-                    config={"adapter0": lora_config0, "adapter1": lora_config1},
-                    target_rank=max_rank,
-                )
             if do_compile:
                 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead")
 
@@ -2295,6 +2307,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
             # sanity check: still same result
             assert np.allclose(output0_before, output0_after, atol=tol, rtol=tol)
 
+            # hotswap the 2nd adapter
             pipeline.load_lora_weights(file_name1, hotswap=True, adapter_name="default_0")
             output1_after = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
 
@@ -2327,3 +2340,12 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         target_modules = ["to_q", "conv"]
         with torch._dynamo.config.patch(error_on_recompile=True):
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
+
+    def test_enable_lora_hotswap_called_too_late_raises(self):
+        # ensure that enable_lora_hotswap is called before loading the first adapter
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        pipeline.unet.add_adapter(lora_config)
+        msg = re.escape("Call `enable_lora_hotswap` before loading the first adapter.")
+        with self.assertRaisesRegex(RuntimeError, msg):
+            pipeline.enable_lora_hotswap(target_rank=32)
