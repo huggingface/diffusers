@@ -23,8 +23,8 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_easyanimate"] = ["EasyAnimatePipeline"]
-    _import_structure["pipeline_easyanimate_inpaint"] = ["EasyAnimateInpaintPipeline"]
     _import_structure["pipeline_easyanimate_control"] = ["EasyAnimateControlPipeline"]
+    _import_structure["pipeline_easyanimate_inpaint"] = ["EasyAnimateInpaintPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -35,8 +35,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_easyanimate import EasyAnimatePipeline
-        from .pipeline_easyanimate_inpaint import EasyAnimateInpaintPipeline
         from .pipeline_easyanimate_control import EasyAnimateControlPipeline
+        from .pipeline_easyanimate_inpaint import EasyAnimateInpaintPipeline
 
 else:
     import sys

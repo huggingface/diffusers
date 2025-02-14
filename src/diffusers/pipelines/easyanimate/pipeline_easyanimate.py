@@ -14,27 +14,28 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
-from einops import rearrange
-from tqdm import tqdm
-from transformers import (BertModel, BertTokenizer, CLIPImageProcessor,
-                          Qwen2Tokenizer, Qwen2VLForConditionalGeneration,
-                          T5EncoderModel, T5Tokenizer)
+from transformers import (
+    BertModel,
+    BertTokenizer,
+    Qwen2Tokenizer,
+    Qwen2VLForConditionalGeneration,
+    T5EncoderModel,
+    T5Tokenizer,
+)
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLMagvit, EasyAnimateTransformer3DModel
-from ...models.embeddings import get_3d_rotary_pos_embed
+from ...models.embeddings import get_2d_rotary_pos_embed, get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, FlowMatchEulerDiscreteScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
-from ...models.embeddings import get_2d_rotary_pos_embed
 from .pipeline_output import EasyAnimatePipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -54,7 +55,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video
 
         >>> # Models: "alibaba-pai/EasyAnimateV5.1-12b-zh"
-        >>> pipe = EasyAnimatePipeline.from_pretrained("alibaba-pai/EasyAnimateV5.1-7b-zh", torch_dtype=torch.float16).to("cuda")
+        >>> pipe = EasyAnimatePipeline.from_pretrained(
+        ...     "alibaba-pai/EasyAnimateV5.1-7b-zh", torch_dtype=torch.float16
+        ... ).to("cuda")
         >>> prompt = (
         ...     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
         ...     "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
@@ -64,7 +67,14 @@ EXAMPLE_DOC_STRING = """
         ...     "atmosphere of this unique musical performance."
         ... )
         >>> sample_size = (512, 512)
-        >>> video = pipe(prompt=prompt, guidance_scale=6, negative_prompt="bad detailed", height=sample_size[0], width=sample_size[1], num_inference_steps=50).frames[0]
+        >>> video = pipe(
+        ...     prompt=prompt,
+        ...     guidance_scale=6,
+        ...     negative_prompt="bad detailed",
+        ...     height=sample_size[0],
+        ...     width=sample_size[1],
+        ...     num_inference_steps=50,
+        ... ).frames[0]
         >>> export_to_video(video, "output.mp4", fps=8)
         ```
 """
@@ -175,7 +185,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
 
     Args:
         vae ([`AutoencoderKLMagvit`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode video to and from latent representations. 
+            Variational Auto-Encoder (VAE) Model to encode and decode video to and from latent representations.
         text_encoder (Optional[`~transformers.Qwen2VLForConditionalGeneration`, `~transformers.BertModel`]):
             EasyAnimate uses [qwen2 vl](https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct) in V5.1.
         tokenizer (Optional[`~transformers.Qwen2Tokenizer`, `~transformers.BertTokenizer`]):
@@ -209,7 +219,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
         self,
         vae: AutoencoderKLMagvit,
         text_encoder: Union[Qwen2VLForConditionalGeneration, BertModel],
-        tokenizer: Union[Qwen2Tokenizer, BertTokenizer], 
+        tokenizer: Union[Qwen2Tokenizer, BertTokenizer],
         text_encoder_2: Optional[Union[T5EncoderModel, Qwen2VLForConditionalGeneration]],
         tokenizer_2: Optional[Union[T5Tokenizer, Qwen2Tokenizer]],
         transformer: EasyAnimateTransformer3DModel,
@@ -243,7 +253,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         max_sequence_length: Optional[int] = None,
         text_encoder_index: int = 0,
-        actual_max_sequence_length: int = 256
+        actual_max_sequence_length: int = 256,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -311,7 +321,9 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 )
                 text_input_ids = text_inputs.input_ids
                 if text_input_ids.shape[-1] > actual_max_sequence_length:
-                    reprompt = tokenizer.batch_decode(text_input_ids[:, :actual_max_sequence_length], skip_special_tokens=True)
+                    reprompt = tokenizer.batch_decode(
+                        text_input_ids[:, :actual_max_sequence_length], skip_special_tokens=True
+                    )
                     text_inputs = tokenizer(
                         reprompt,
                         padding="max_length",
@@ -341,9 +353,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
                         attention_mask=prompt_attention_mask,
                     )
                 else:
-                    prompt_embeds = text_encoder(
-                        text_input_ids.to(device)
-                    )
+                    prompt_embeds = text_encoder(text_input_ids.to(device))
                 prompt_embeds = prompt_embeds[0]
                 prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
             else:
@@ -359,11 +369,10 @@ class EasyAnimatePipeline(DiffusionPipeline):
                         {
                             "role": "user",
                             "content": [{"type": "text", "text": _prompt}],
-                        } for _prompt in prompt
+                        }
+                        for _prompt in prompt
                     ]
-                text = tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
+                text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
                 text_inputs = tokenizer(
                     text=[text],
@@ -381,13 +390,12 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 if self.transformer.config.enable_text_attention_mask:
                     # Inference: Generation of the output
                     prompt_embeds = text_encoder(
-                        input_ids=text_input_ids,
-                        attention_mask=prompt_attention_mask,
-                        output_hidden_states=True).hidden_states[-2]
+                        input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+                    ).hidden_states[-2]
                 else:
                     raise ValueError("LLM needs attention_mask")
                 prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
-        
+
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
@@ -428,7 +436,9 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 )
                 uncond_input_ids = uncond_input.input_ids
                 if uncond_input_ids.shape[-1] > actual_max_sequence_length:
-                    reuncond_tokens = tokenizer.batch_decode(uncond_input_ids[:, :actual_max_sequence_length], skip_special_tokens=True)
+                    reuncond_tokens = tokenizer.batch_decode(
+                        uncond_input_ids[:, :actual_max_sequence_length], skip_special_tokens=True
+                    )
                     uncond_input = tokenizer(
                         reuncond_tokens,
                         padding="max_length",
@@ -446,9 +456,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
                         attention_mask=negative_prompt_attention_mask,
                     )
                 else:
-                    negative_prompt_embeds = text_encoder(
-                        uncond_input.input_ids.to(device)
-                    )
+                    negative_prompt_embeds = text_encoder(uncond_input.input_ids.to(device))
                 negative_prompt_embeds = negative_prompt_embeds[0]
                 negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
             else:
@@ -464,11 +472,10 @@ class EasyAnimatePipeline(DiffusionPipeline):
                         {
                             "role": "user",
                             "content": [{"type": "text", "text": _negative_prompt}],
-                        } for _negative_prompt in negative_prompt
+                        }
+                        for _negative_prompt in negative_prompt
                     ]
-                text = tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
+                text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
                 text_inputs = tokenizer(
                     text=[text],
@@ -488,7 +495,8 @@ class EasyAnimatePipeline(DiffusionPipeline):
                     negative_prompt_embeds = text_encoder(
                         input_ids=text_input_ids,
                         attention_mask=negative_prompt_attention_mask,
-                        output_hidden_states=True).hidden_states[-2]
+                        output_hidden_states=True,
+                    ).hidden_states[-2]
                 else:
                     raise ValueError("LLM needs attention_mask")
                 negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
@@ -502,7 +510,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
             negative_prompt_attention_mask = negative_prompt_attention_mask.to(device=device)
-            
+
         return prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -600,13 +608,18 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+    ):
         mini_batch_encoder = self.vae.mini_batch_encoder
         mini_batch_decoder = self.vae.mini_batch_decoder
         shape = (
-            batch_size, num_channels_latents, 
-            int((num_frames - 1) // mini_batch_encoder * mini_batch_decoder + 1
-        ) if num_frames != 1 else 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
+            batch_size,
+            num_channels_latents,
+            int((num_frames - 1) // mini_batch_encoder * mini_batch_decoder + 1) if num_frames != 1 else 1,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -618,7 +631,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
-        
+
         # scale the initial noise by the standard deviation required by the scheduler
         if hasattr(self.scheduler, "init_noise_sigma"):
             latents = latents * self.scheduler.init_noise_sigma
@@ -688,59 +701,60 @@ class EasyAnimatePipeline(DiffusionPipeline):
         Generates images or video using the EasyAnimate pipeline based on the provided prompts.
 
         Examples:
-            prompt (`str` or `List[str]`, *optional*): 
+            prompt (`str` or `List[str]`, *optional*):
                 Text prompts to guide the image or video generation. If not provided, use `prompt_embeds` instead.
-            num_frames (`int`, *optional*): 
+            num_frames (`int`, *optional*):
                 Length of the generated video (in frames).
-            height (`int`, *optional*): 
+            height (`int`, *optional*):
                 Height of the generated image in pixels.
-            width (`int`, *optional*): 
+            width (`int`, *optional*):
                 Width of the generated image in pixels.
-            num_inference_steps (`int`, *optional*, defaults to 50): 
-                Number of denoising steps during generation. More steps generally yield higher quality images but slow down inference.
-            guidance_scale (`float`, *optional*, defaults to 5.0): 
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                Number of denoising steps during generation. More steps generally yield higher quality images but slow
+                down inference.
+            guidance_scale (`float`, *optional*, defaults to 5.0):
                 Encourages the model to align outputs with prompts. A higher value may decrease image quality.
-            negative_prompt (`str` or `List[str]`, *optional*): 
+            negative_prompt (`str` or `List[str]`, *optional*):
                 Prompts indicating what to exclude in generation. If not specified, use `negative_prompt_embeds`.
-            num_images_per_prompt (`int`, *optional*, defaults to 1): 
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
                 Number of images to generate for each prompt.
-            eta (`float`, *optional*, defaults to 0.0): 
+            eta (`float`, *optional*, defaults to 0.0):
                 Applies to DDIM scheduling. Controlled by the eta parameter from the related literature.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*): 
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A generator to ensure reproducibility in image generation.
-            latents (`torch.Tensor`, *optional*): 
+            latents (`torch.Tensor`, *optional*):
                 Predefined latent tensors to condition generation.
-            prompt_embeds (`torch.Tensor`, *optional*): 
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Text embeddings for the prompts. Overrides prompt string inputs for more flexibility.
-            prompt_embeds_2 (`torch.Tensor`, *optional*): 
+            prompt_embeds_2 (`torch.Tensor`, *optional*):
                 Secondary text embeddings to supplement or replace the initial prompt embeddings.
-            negative_prompt_embeds (`torch.Tensor`, *optional*): 
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Embeddings for negative prompts. Overrides string inputs if defined.
-            negative_prompt_embeds_2 (`torch.Tensor`, *optional*): 
+            negative_prompt_embeds_2 (`torch.Tensor`, *optional*):
                 Secondary embeddings for negative prompts, similar to `negative_prompt_embeds`.
-            prompt_attention_mask (`torch.Tensor`, *optional*): 
+            prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for the primary prompt embeddings.
-            prompt_attention_mask_2 (`torch.Tensor`, *optional*): 
+            prompt_attention_mask_2 (`torch.Tensor`, *optional*):
                 Attention mask for the secondary prompt embeddings.
-            negative_prompt_attention_mask (`torch.Tensor`, *optional*): 
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for negative prompt embeddings.
-            negative_prompt_attention_mask_2 (`torch.Tensor`, *optional*): 
+            negative_prompt_attention_mask_2 (`torch.Tensor`, *optional*):
                 Attention mask for secondary negative prompt embeddings.
-            output_type (`str`, *optional*, defaults to "latent"): 
+            output_type (`str`, *optional*, defaults to "latent"):
                 Format of the generated output, either as a PIL image or as a NumPy array.
-            return_dict (`bool`, *optional*, defaults to `True`): 
+            return_dict (`bool`, *optional*, defaults to `True`):
                 If `True`, returns a structured output. Otherwise returns a simple tuple.
-            callback_on_step_end (`Callable`, *optional*): 
+            callback_on_step_end (`Callable`, *optional*):
                 Functions called at the end of each denoising step.
-            callback_on_step_end_tensor_inputs (`List[str]`, *optional*): 
+            callback_on_step_end_tensor_inputs (`List[str]`, *optional*):
                 Tensor names to be included in callback function calls.
-            guidance_rescale (`float`, *optional*, defaults to 0.0): 
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Adjusts noise levels based on guidance scale.
-            original_size (`Tuple[int, int]`, *optional*, defaults to `(1024, 1024)`): 
+            original_size (`Tuple[int, int]`, *optional*, defaults to `(1024, 1024)`):
                 Original dimensions of the output.
-            target_size (`Tuple[int, int]`, *optional*): 
+            target_size (`Tuple[int, int]`, *optional*):
                 Desired output dimensions for calculations.
-            crops_coords_top_left (`Tuple[int, int]`, *optional*, defaults to `(0, 0)`): 
+            crops_coords_top_left (`Tuple[int, int]`, *optional*, defaults to `(0, 0)`):
                 Coordinates for cropping.
 
         Returns:
@@ -840,7 +854,9 @@ class EasyAnimatePipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
         if isinstance(self.scheduler, FlowMatchEulerDiscreteScheduler):
-            timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps, mu=1)
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler, num_inference_steps, device, timesteps, mu=1
+            )
         else:
             timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
@@ -872,14 +888,15 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 (grid_height, grid_width), base_size_width, base_size_height
             )
             image_rotary_emb = get_3d_rotary_pos_embed(
-                self.transformer.config.attention_head_dim, grid_crops_coords, grid_size=(grid_height, grid_width),
-                temporal_size=latents.size(2), use_real=True,
+                self.transformer.config.attention_head_dim,
+                grid_crops_coords,
+                grid_size=(grid_height, grid_width),
+                temporal_size=latents.size(2),
+                use_real=True,
             )
         else:
             base_size = 512 // 8 // self.transformer.config.patch_size
-            grid_crops_coords = get_resize_crop_region_for_grid(
-                (grid_height, grid_width), base_size, base_size
-            )
+            grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size, base_size)
             image_rotary_emb = get_2d_rotary_pos_embed(
                 self.transformer.config.attention_head_dim, grid_crops_coords, (grid_height, grid_width)
             )
@@ -927,7 +944,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]
-                
+
                 if noise_pred.size()[1] != self.vae.config.latent_channels:
                     noise_pred, _ = noise_pred.chunk(2, dim=1)
 

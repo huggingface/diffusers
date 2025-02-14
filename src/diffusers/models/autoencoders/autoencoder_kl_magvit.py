@@ -16,7 +16,6 @@
 import math
 from typing import Any, Dict, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -28,10 +27,10 @@ from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..attention import Attention
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -47,7 +46,7 @@ def create_custom_forward(module, return_dict=None):
 
 
 def str_eval(item):
-    if type(item) == str:
+    if isinstance(item, str):
         return eval(item)
     else:
         return item
@@ -55,9 +54,10 @@ def str_eval(item):
 
 class EasyAnimateCausalConv3d(nn.Conv3d):
     """
-    A 3D causal convolutional layer that applies convolution across time (temporal dimension)
-    while preserving causality, meaning the output at time t only depends on inputs up to time t.
+    A 3D causal convolutional layer that applies convolution across time (temporal dimension) while preserving
+    causality, meaning the output at time t only depends on inputs up to time t.
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -68,9 +68,9 @@ class EasyAnimateCausalConv3d(nn.Conv3d):
         dilation=1,
         groups=1,
         bias=True,
-        padding_mode='zeros',
+        padding_mode="zeros",
         device=None,
-        dtype=None
+        dtype=None,
     ):
         # Ensure kernel_size, stride, and dilation are tuples of length 3
         kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size,) * 3
@@ -117,7 +117,7 @@ class EasyAnimateCausalConv3d(nn.Conv3d):
             bias=bias,
             padding_mode=padding_mode,
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
     def _clear_conv_cache(self):
@@ -144,45 +144,41 @@ class EasyAnimateCausalConv3d(nn.Conv3d):
             x = F.pad(
                 x,
                 pad=(0, 0, 0, 0, self.temporal_padding, 0),
-                mode="replicate",     # TODO: check if this is necessary
+                mode="replicate",  # TODO: check if this is necessary
             )
             x = x.to(dtype=dtype)
 
             # Clear cache before processing and store previous features for causality
             self._clear_conv_cache()
-            self.prev_features = x[:, :, -self.temporal_padding:].clone()
+            self.prev_features = x[:, :, -self.temporal_padding :].clone()
 
             # Process the input tensor in chunks along the temporal dimension
             b, c, f, h, w = x.size()
             outputs = []
             i = 0
             while i + self.temporal_padding + 1 <= f:
-                out = super().forward(x[:, :, i:i + self.temporal_padding + 1])
+                out = super().forward(x[:, :, i : i + self.temporal_padding + 1])
                 i += self.t_stride
                 outputs.append(out)
             return torch.concat(outputs, 2)
         else:
             # Concatenate previous features with the input tensor for continuous temporal processing
             if self.t_stride == 2:
-                x = torch.concat(
-                    [self.prev_features[:, :, -(self.temporal_padding - 1):], x], dim = 2
-                )
+                x = torch.concat([self.prev_features[:, :, -(self.temporal_padding - 1) :], x], dim=2)
             else:
-                x = torch.concat(
-                    [self.prev_features, x], dim = 2
-                )
+                x = torch.concat([self.prev_features, x], dim=2)
             x = x.to(dtype=dtype)
 
             # Clear cache and update previous features
             self._clear_conv_cache()
-            self.prev_features = x[:, :, -self.temporal_padding:].clone()
+            self.prev_features = x[:, :, -self.temporal_padding :].clone()
 
             # Process the concatenated tensor in chunks along the temporal dimension
             b, c, f, h, w = x.size()
             outputs = []
             i = 0
             while i + self.temporal_padding + 1 <= f:
-                out = super().forward(x[:, :, i:i + self.temporal_padding + 1])
+                out = super().forward(x[:, :, i : i + self.temporal_padding + 1])
                 i += self.t_stride
                 outputs.append(out)
             return torch.concat(outputs, 2)
@@ -190,9 +186,8 @@ class EasyAnimateCausalConv3d(nn.Conv3d):
 
 class EasyAnimateResidualBlock3D(nn.Module):
     """
-    A 3D residual block for deep learning models, incorporating group normalization, 
-    non-linear activation functions, and causal convolution. This block is a fundamental 
-    component for building deeper 3D convolutional neural networks.
+    A 3D residual block for deep learning models, incorporating group normalization, non-linear activation functions,
+    and causal convolution. This block is a fundamental component for building deeper 3D convolutional neural networks.
     """
 
     def __init__(
@@ -249,10 +244,10 @@ class EasyAnimateResidualBlock3D(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the residual block.
-        
+
         Parameters:
             x (torch.Tensor): Input tensor.
-            
+
         Returns:
             torch.Tensor: Output tensor after applying the residual block.
         """
@@ -310,7 +305,7 @@ class EasyAnimateDownsampler3D(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        
+
         self.conv = EasyAnimateCausalConv3d(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -326,8 +321,8 @@ class EasyAnimateDownsampler3D(nn.Module):
 
 class EasyAnimateUpsampler3D(nn.Module):
     def __init__(
-        self, 
-        in_channels: int, 
+        self,
+        in_channels: int,
         out_channels: int,
         kernel_size: int = 3,
         temporal_upsample: bool = False,
@@ -339,11 +334,9 @@ class EasyAnimateUpsampler3D(nn.Module):
 
         self.temporal_upsample = temporal_upsample
         self.spatial_group_norm = spatial_group_norm
-        
+
         self.conv = EasyAnimateCausalConv3d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size
+            in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size
         )
         self.prev_features = None
 
@@ -363,8 +356,7 @@ class EasyAnimateUpsampler3D(nn.Module):
                 self.prev_features = x
             else:
                 x = F.interpolate(
-                    x, 
-                    scale_factor=(2, 1, 1), mode="trilinear" if not self.spatial_group_norm else "nearest"
+                    x, scale_factor=(2, 1, 1), mode="trilinear" if not self.spatial_group_norm else "nearest"
                 )
         return x
 
@@ -404,15 +396,19 @@ class EasyAnimateDownBlock3D(nn.Module):
 
         if add_downsample and add_temporal_downsample:
             self.downsampler = EasyAnimateDownsampler3D(
-                out_channels, out_channels, 
-                kernel_size=3, stride=(2, 2, 2), 
+                out_channels,
+                out_channels,
+                kernel_size=3,
+                stride=(2, 2, 2),
             )
             self.spatial_downsample_factor = 2
             self.temporal_downsample_factor = 2
         elif add_downsample and not add_temporal_downsample:
             self.downsampler = EasyAnimateDownsampler3D(
-                out_channels, out_channels, 
-                kernel_size=3, stride=(1, 2, 2), 
+                out_channels,
+                out_channels,
+                kernel_size=3,
+                stride=(1, 2, 2),
             )
             self.spatial_downsample_factor = 2
             self.temporal_downsample_factor = 1
@@ -481,10 +477,10 @@ class EasyAnimateUpBlock3D(nn.Module):
 
         if add_upsample:
             self.upsampler = EasyAnimateUpsampler3D(
-                in_channels, 
-                in_channels, 
-                temporal_upsample=add_temporal_upsample, 
-                spatial_group_norm=spatial_group_norm
+                in_channels,
+                in_channels,
+                temporal_upsample=add_temporal_upsample,
+                spatial_group_norm=spatial_group_norm,
             )
         else:
             self.upsampler = None
@@ -513,7 +509,8 @@ class MidBlock3D(nn.Module):
         output_scale_factor (float): Output scale factor. Defaults to 1.0.
 
     Returns:
-        torch.FloatTensor: Output of the last residual block, with shape (batch_size, in_channels, temporal_length, height, width).
+        torch.FloatTensor: Output of the last residual block, with shape (batch_size, in_channels, temporal_length,
+        height, width).
     """
 
     def __init__(
@@ -531,18 +528,20 @@ class MidBlock3D(nn.Module):
 
         norm_num_groups = norm_num_groups if norm_num_groups is not None else min(in_channels // 4, 32)
 
-        self.convs = nn.ModuleList([
-            EasyAnimateResidualBlock3D(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                non_linearity=act_fn,
-                norm_num_groups=norm_num_groups,
-                norm_eps=norm_eps,
-                spatial_group_norm=spatial_group_norm,
-                dropout=dropout,
-                output_scale_factor=output_scale_factor,
-            )
-        ])
+        self.convs = nn.ModuleList(
+            [
+                EasyAnimateResidualBlock3D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    non_linearity=act_fn,
+                    norm_num_groups=norm_num_groups,
+                    norm_eps=norm_eps,
+                    spatial_group_norm=spatial_group_norm,
+                    dropout=dropout,
+                    output_scale_factor=output_scale_factor,
+                )
+            ]
+        )
 
         for _ in range(num_layers - 1):
             self.convs.append(
@@ -577,7 +576,7 @@ class EasyAnimateEncoder(nn.Module):
         out_channels (`int`, *optional*, defaults to 8):
             The number of output channels.
         down_block_types (`Tuple[str, ...]`, *optional*, defaults to `("SpatialDownBlock3D",)`):
-            The types of down blocks to use. 
+            The types of down blocks to use.
         block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
@@ -600,25 +599,30 @@ class EasyAnimateEncoder(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 8,
-        down_block_types = ("SpatialDownBlock3D",),
-        ch = 128,
-        ch_mult = [1,2,4,4,],
-        block_out_channels = [128, 256, 512, 512],
+        down_block_types=("SpatialDownBlock3D",),
+        ch=128,
+        ch_mult=[
+            1,
+            2,
+            4,
+            4,
+        ],
+        block_out_channels=[128, 256, 512, 512],
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
         double_z: bool = True,
         spatial_group_norm: bool = False,
         mini_batch_encoder: int = 9,
-        verbose = False,
+        verbose=False,
     ):
         super().__init__()
         # Initialize the input convolution layer
         if block_out_channels is None:
             block_out_channels = [ch * i for i in ch_mult]
-        assert len(down_block_types) == len(block_out_channels), (
-            "Number of down block types must match number of block output channels."
-        )
+        assert len(down_block_types) == len(
+            block_out_channels
+        ), "Number of down block types must match number of block output channels."
         self.conv_in = EasyAnimateCausalConv3d(
             in_channels,
             block_out_channels[0],
@@ -631,7 +635,7 @@ class EasyAnimateEncoder(nn.Module):
         for i, down_block_type in enumerate(down_block_types):
             input_channels = output_channels
             output_channels = block_out_channels[i]
-            is_final_block = (i == len(block_out_channels) - 1)
+            is_final_block = i == len(block_out_channels) - 1
             if down_block_type == "SpatialDownBlock3D":
                 down_block = EasyAnimateDownBlock3D(
                     in_channels=input_channels,
@@ -696,10 +700,10 @@ class EasyAnimateEncoder(nn.Module):
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
             x = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.conv_in),
-                    x,
-                    **ckpt_kwargs,
-                )
+                create_custom_forward(self.conv_in),
+                x,
+                **ckpt_kwargs,
+            )
         else:
             x = self.conv_in(x)
         for down_block in self.down_blocks:
@@ -741,10 +745,9 @@ class EasyAnimateDecoder(nn.Module):
         out_channels (`int`, *optional*, defaults to 3):
             The number of output channels.
         up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("SpatialUpBlock3D",)`):
-            The types of up blocks to use. 
+            The types of up blocks to use.
         block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
-            The number of output channels for each block.
-            The type of mid block to use. 
+            The number of output channels for each block. The type of mid block to use.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
         norm_num_groups (`int`, *optional*, defaults to 32):
@@ -763,25 +766,30 @@ class EasyAnimateDecoder(nn.Module):
         self,
         in_channels: int = 8,
         out_channels: int = 3,
-        up_block_types  = ("SpatialUpBlock3D",),
-        ch = 128,
-        ch_mult = [1,2,4,4,],
-        block_out_channels = [128, 256, 512, 512],
+        up_block_types=("SpatialUpBlock3D",),
+        ch=128,
+        ch_mult=[
+            1,
+            2,
+            4,
+            4,
+        ],
+        block_out_channels=[128, 256, 512, 512],
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
         spatial_group_norm: bool = False,
-        mini_batch_decoder: int = 3, 
-        verbose = False,
+        mini_batch_decoder: int = 3,
+        verbose=False,
     ):
         super().__init__()
         # Initialize the block output channels based on ch and ch_mult if not provided
         if block_out_channels is None:
             block_out_channels = [ch * i for i in ch_mult]
         # Ensure the number of up block types matches the number of block output channels
-        assert len(up_block_types) == len(block_out_channels), (
-            "Number of up block types must match number of block output channels."
-        )
+        assert len(up_block_types) == len(
+            block_out_channels
+        ), "Number of up block types must match number of block output channels."
 
         # Input convolution layer
         self.conv_in = EasyAnimateCausalConv3d(
@@ -833,7 +841,7 @@ class EasyAnimateDecoder(nn.Module):
                     norm_eps=1e-6,
                     spatial_group_norm=spatial_group_norm,
                     add_upsample=not is_final_block,
-                    add_temporal_upsample=True
+                    add_temporal_upsample=True,
                 )
             else:
                 raise ValueError(f"Unknown up block type: {up_block_type}")
@@ -849,7 +857,7 @@ class EasyAnimateDecoder(nn.Module):
 
         # Output convolution layer
         self.conv_out = EasyAnimateCausalConv3d(block_out_channels[0], out_channels, kernel_size=3)
-        
+
         # Initialize additional attributes
         self.mini_batch_decoder = mini_batch_decoder
         self.spatial_group_norm = spatial_group_norm
@@ -859,8 +867,8 @@ class EasyAnimateDecoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Defines the forward pass for a single input tensor.
-        This method applies checkpointing for gradient computation during training to save memory.
+        Defines the forward pass for a single input tensor. This method applies checkpointing for gradient computation
+        during training to save memory.
 
         Args:
             x (torch.Tensor): Input tensor with shape (B, C, T, H, W).
@@ -885,7 +893,7 @@ class EasyAnimateDecoder(nn.Module):
         else:
             x = self.conv_in(x)
             x = self.mid_block(x)
-                
+
         for up_block in self.up_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 x = torch.utils.checkpoint.checkpoint(
@@ -949,20 +957,20 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        ch =  128,
-        ch_mult = [1, 2, 4, 4],
-        block_out_channels = [128, 256, 512, 512],
+        ch=128,
+        ch_mult=[1, 2, 4, 4],
+        block_out_channels=[128, 256, 512, 512],
         down_block_types: tuple = [
-            "SpatialDownBlock3D", 
-            "EasyAnimateDownBlock3D", 
+            "SpatialDownBlock3D",
             "EasyAnimateDownBlock3D",
-            "EasyAnimateDownBlock3D"
+            "EasyAnimateDownBlock3D",
+            "EasyAnimateDownBlock3D",
         ],
         up_block_types: tuple = [
-            "SpatialUpBlock3D", 
-            "EasyAnimateUpBlock3D", 
+            "SpatialUpBlock3D",
             "EasyAnimateUpBlock3D",
-            "EasyAnimateUpBlock3D"
+            "EasyAnimateUpBlock3D",
+            "EasyAnimateUpBlock3D",
         ],
         layers_per_block: int = 2,
         act_fn: str = "silu",
@@ -1093,7 +1101,7 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         first_frames = self.encoder(x[:, :, 0:1, :, :])
         h = [first_frames]
         for i in range(1, x.shape[2], self.mini_batch_encoder):
-            next_frames = self.encoder(x[:, :, i: i + self.mini_batch_encoder, :, :])
+            next_frames = self.encoder(x[:, :, i : i + self.mini_batch_encoder, :, :])
             h.append(next_frames)
         h = torch.cat(h, dim=2)
         moments = self.quant_conv(h)
@@ -1141,7 +1149,7 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         dec = [first_frames]
         # Process the remaining frames, with the number of frames processed at a time determined by mini_batch_decoder
         for i in range(1, z.shape[2], self.mini_batch_decoder):
-            next_frames = self.decoder(z[:, :, i: i + self.mini_batch_decoder, :, :])
+            next_frames = self.decoder(z[:, :, i : i + self.mini_batch_decoder, :, :])
             dec.append(next_frames)
         # Concatenate all processed frames along the channel dimension
         dec = torch.cat(dec, dim=2)
@@ -1177,24 +1185,20 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return (decoded,)
         return DecoderOutput(sample=decoded)
 
-    def blend_v(
-        self, a: torch.Tensor, b: torch.Tensor, blend_extent: int
-    ) -> torch.Tensor:
+    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[3], b.shape[3], blend_extent)
         for y in range(blend_extent):
-            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (
-                1 - y / blend_extent
-            ) + b[:, :, :, y, :] * (y / blend_extent)
+            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (
+                y / blend_extent
+            )
         return b
 
-    def blend_h(
-        self, a: torch.Tensor, b: torch.Tensor, blend_extent: int
-    ) -> torch.Tensor:
+    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[4], b.shape[4], blend_extent)
         for x in range(blend_extent):
-            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (
-                1 - x / blend_extent
-            ) + b[:, :, :, :, x] * (x / blend_extent)
+            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (
+                x / blend_extent
+            )
         return b
 
     def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
@@ -1218,7 +1222,7 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 first_frames = self.encoder(tile[:, :, 0:1, :, :])
                 tile_h = [first_frames]
                 for frame_index in range(1, tile.shape[2], self.mini_batch_encoder):
-                    next_frames = self.encoder(tile[:, :, frame_index: frame_index + self.mini_batch_encoder, :, :])
+                    next_frames = self.encoder(tile[:, :, frame_index : frame_index + self.mini_batch_encoder, :, :])
                     tile_h.append(next_frames)
                 tile = torch.cat(tile_h, dim=2)
                 tile = self.quant_conv(tile)
@@ -1267,7 +1271,7 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 tile_dec = [first_frames]
                 # Process the remaining frames, with the number of frames processed at a time determined by mini_batch_decoder
                 for frame_index in range(1, tile.shape[2], self.mini_batch_decoder):
-                    next_frames = self.decoder(tile[:, :, frame_index: frame_index + self.mini_batch_decoder, :, :])
+                    next_frames = self.decoder(tile[:, :, frame_index : frame_index + self.mini_batch_decoder, :, :])
                     tile_dec.append(next_frames)
                 # Concatenate all processed frames along the channel dimension
                 decoded = torch.cat(tile_dec, dim=2)

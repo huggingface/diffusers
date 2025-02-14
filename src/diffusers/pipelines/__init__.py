@@ -548,9 +548,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionPipeline,
         )
         from .easyanimate import (
-            EasyAnimatePipeline,
-            EasyAnimateInpaintPipeline,
             EasyAnimateControlPipeline,
+            EasyAnimateInpaintPipeline,
+            EasyAnimatePipeline,
         )
         from .flux import (
             FluxControlImg2ImgPipeline,

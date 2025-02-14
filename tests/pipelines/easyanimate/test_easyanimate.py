@@ -18,21 +18,25 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import (AutoProcessor, Qwen2Tokenizer,
-                          Qwen2VLForConditionalGeneration)
+from transformers import Qwen2Tokenizer, Qwen2VLForConditionalGeneration
 
-from diffusers import (AutoencoderKLMagvit, EasyAnimatePipeline,
-                       EasyAnimateTransformer3DModel,
-                       FlowMatchEulerDiscreteScheduler)
-from diffusers.utils.testing_utils import (enable_full_determinism,
-                                           numpy_cosine_similarity_distance,
-                                           require_torch_gpu, slow,
-                                           torch_device)
+from diffusers import (
+    AutoencoderKLMagvit,
+    EasyAnimatePipeline,
+    EasyAnimateTransformer3DModel,
+    FlowMatchEulerDiscreteScheduler,
+)
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
-from ..pipeline_params import (TEXT_TO_IMAGE_BATCH_PARAMS,
-                               TEXT_TO_IMAGE_IMAGE_PARAMS,
-                               TEXT_TO_IMAGE_PARAMS)
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
+
 
 enable_full_determinism()
 
@@ -74,16 +78,16 @@ class EasyAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             in_channels=3,
             out_channels=3,
             down_block_types=(
-                "SpatialDownBlock3D", 
-                "SpatialTemporalDownBlock3D", 
+                "SpatialDownBlock3D",
                 "SpatialTemporalDownBlock3D",
-                "SpatialTemporalDownBlock3D"
+                "SpatialTemporalDownBlock3D",
+                "SpatialTemporalDownBlock3D",
             ),
             up_block_types=(
-                "SpatialUpBlock3D", 
-                "SpatialTemporalUpBlock3D", 
+                "SpatialUpBlock3D",
                 "SpatialTemporalUpBlock3D",
-                "SpatialTemporalUpBlock3D"
+                "SpatialTemporalUpBlock3D",
+                "SpatialTemporalUpBlock3D",
             ),
             block_out_channels=(8, 8, 8, 8),
             latent_channels=4,
@@ -94,7 +98,9 @@ class EasyAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler()
-        text_encoder = Qwen2VLForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
+        text_encoder = Qwen2VLForConditionalGeneration.from_pretrained(
+            "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
+        )
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         components = {
