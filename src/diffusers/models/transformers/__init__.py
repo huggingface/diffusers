@@ -4,7 +4,7 @@ from ...utils import is_torch_available
 if is_torch_available():
     from .auraflow_transformer_2d import AuraFlowTransformer2DModel
     from .cogvideox_transformer_3d import CogVideoXTransformer3DModel
-    from .easyanimate_transformer_3d import EasyAnimateTransformer3DModel
+    from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .consisid_transformer_3d import ConsisIDTransformer3DModel
     from .dit_transformer_2d import DiTTransformer2DModel
     from .dual_transformer_2d import DualTransformer2DModel
