@@ -317,6 +317,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = False
+    _supports_group_offloading = False
 
     @register_to_config
     def __init__(

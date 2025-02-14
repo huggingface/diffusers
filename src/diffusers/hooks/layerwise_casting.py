@@ -17,7 +17,7 @@ from typing import Optional, Tuple, Type, Union
 
 import torch
 
-from ..utils import get_logger
+from ..utils import get_logger, is_peft_available, is_peft_version
 from .hooks import HookRegistry, ModelHook
 
 
@@ -25,6 +25,8 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # fmt: off
+_LAYERWISE_CASTING_HOOK = "layerwise_casting"
+_PEFT_AUTOCAST_DISABLE_HOOK = "peft_autocast_disable"
 SUPPORTED_PYTORCH_LAYERS = (
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
     torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
@@ -33,6 +35,11 @@ SUPPORTED_PYTORCH_LAYERS = (
 
 DEFAULT_SKIP_MODULES_PATTERN = ("pos_embed", "patch_embed", "norm", "^proj_in$", "^proj_out$")
 # fmt: on
+
+_SHOULD_DISABLE_PEFT_INPUT_AUTOCAST = is_peft_available() and is_peft_version(">", "0.14.0")
+if _SHOULD_DISABLE_PEFT_INPUT_AUTOCAST:
+    from peft.helpers import disable_input_dtype_casting
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
 
 class LayerwiseCastingHook(ModelHook):
@@ -68,6 +75,32 @@ class LayerwiseCastingHook(ModelHook):
     def post_forward(self, module: torch.nn.Module, output):
         module.to(dtype=self.storage_dtype, non_blocking=self.non_blocking)
         return output
+
+
+class PeftInputAutocastDisableHook(ModelHook):
+    r"""
+    A hook that disables the casting of inputs to the module weight dtype during the forward pass. By default, PEFT
+    casts the inputs to the weight dtype of the module, which can lead to precision loss.
+
+    The reasons for needing this are:
+        - If we don't add PEFT layers' weight names to `skip_modules_pattern` when applying layerwise casting, the
+          inputs will be casted to the, possibly lower precision, storage dtype. Reference:
+          https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/tuners/lora/layer.py#L706
+        - We can, on our end, use something like accelerate's `send_to_device` but for dtypes. This way, we can ensure
+          that the inputs are casted to the computation dtype correctly always. However, there are two goals we are
+          hoping to achieve:
+            1. Making forward implementations independent of device/dtype casting operations as much as possible.
+            2. Peforming inference without losing information from casting to different precisions. With the current
+               PEFT implementation (as linked in the reference above), and assuming running layerwise casting inference
+               with storage_dtype=torch.float8_e4m3fn and compute_dtype=torch.bfloat16, inputs are cast to
+               torch.float8_e4m3fn in the lora layer. We will then upcast back to torch.bfloat16 when we continue the
+               forward pass in PEFT linear forward or Diffusers layer forward, with a `send_to_dtype` operation from
+               LayerwiseCastingHook. This will be a lossy operation and result in poorer generation quality.
+    """
+
+    def new_forward(self, module: torch.nn.Module, *args, **kwargs):
+        with disable_input_dtype_casting(module):
+            return self.fn_ref.original_forward(*args, **kwargs)
 
 
 def apply_layerwise_casting(
@@ -134,6 +167,7 @@ def apply_layerwise_casting(
         skip_modules_classes,
         non_blocking,
     )
+    _disable_peft_input_autocast(module)
 
 
 def _apply_layerwise_casting(
@@ -188,4 +222,24 @@ def apply_layerwise_casting_hook(
     """
     registry = HookRegistry.check_if_exists_or_initialize(module)
     hook = LayerwiseCastingHook(storage_dtype, compute_dtype, non_blocking)
-    registry.register_hook(hook, "layerwise_casting")
+    registry.register_hook(hook, _LAYERWISE_CASTING_HOOK)
+
+
+def _is_layerwise_casting_active(module: torch.nn.Module) -> bool:
+    for submodule in module.modules():
+        if (
+            hasattr(submodule, "_diffusers_hook")
+            and submodule._diffusers_hook.get_hook(_LAYERWISE_CASTING_HOOK) is not None
+        ):
+            return True
+    return False
+
+
+def _disable_peft_input_autocast(module: torch.nn.Module) -> None:
+    if not _SHOULD_DISABLE_PEFT_INPUT_AUTOCAST:
+        return
+    for submodule in module.modules():
+        if isinstance(submodule, BaseTunerLayer) and _is_layerwise_casting_active(submodule):
+            registry = HookRegistry.check_if_exists_or_initialize(submodule)
+            hook = PeftInputAutocastDisableHook()
+            registry.register_hook(hook, _PEFT_AUTOCAST_DISABLE_HOOK)
