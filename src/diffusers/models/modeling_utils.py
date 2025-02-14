@@ -1167,9 +1167,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         state_dict = None
         if not is_sharded:
             # Time to load the checkpoint
-            state_dict = load_state_dict(
-                resolved_model_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries
-            )
+            state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries)
             # We only fix it for non sharded checkpoints as we don't need it yet for sharded one.
             model._fix_state_dict_keys_on_load(state_dict)
 
