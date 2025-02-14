@@ -60,18 +60,12 @@ def calculate_shift(
     base_seq_len: int = 256,
     base_shift: float = 0.25,
     max_shift: float = 0.75,
-):
-    # m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-    # b = base_shift - m * base_seq_len
-    # mu = image_seq_len * m + b
-    # return mu
-
+) -> float:
     m = (image_seq_len / base_seq_len) ** 0.5
     mu = m * max_shift + base_shift
     return mu
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -103,10 +97,19 @@ def retrieve_timesteps(
         `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
+    accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+    accepts_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+
     if timesteps is not None and sigmas is not None:
-        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps and not accepts_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep or sigma schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, sigmas=sigmas, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif timesteps is not None and sigmas is None:
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -115,9 +118,8 @@ def retrieve_timesteps(
         scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
-    elif sigmas is not None:
-        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accept_sigmas:
+    elif timesteps is None and sigmas is not None:
+        if not accepts_sigmas:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
                 f" sigmas schedules. Please check whether you are using the correct scheduler."
@@ -583,8 +585,9 @@ class CogView4Pipeline(DiffusionPipeline):
             self.scheduler.config.get("base_shift", 0.25),
             self.scheduler.config.get("max_shift", 0.75),
         )
-        _, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu)
-        timesteps = torch.from_numpy(timesteps).to(device)
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps, sigmas, mu=mu
+        )
         self._num_timesteps = len(timesteps)
 
         # Denoising loop
