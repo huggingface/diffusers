@@ -309,6 +309,53 @@ image.save("output.png")
 
 When unloading the Control LoRA weights, call `pipe.unload_lora_weights(reset_to_overwritten_params=True)` to reset the `pipe.transformer` completely back to its original form. The resultant pipeline can then be used with methods like [`DiffusionPipeline.from_pipe`]. More details about this argument are available in [this PR](https://github.com/huggingface/diffusers/pull/10397).
 
+## IP-Adapter
+
+<Tip>
+
+Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
+
+</Tip>
+
+An IP-Adapter lets you prompt Flux with images, in addition to the text prompt. This is especially useful when describing complex concepts that are difficult to articulate through text alone and you have reference images.
+
+```python
+import torch
+from diffusers import FluxPipeline
+from diffusers.utils import load_image
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+).to("cuda")
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux_ip_adapter_input.jpg").resize((1024, 1024))
+
+pipe.load_ip_adapter(
+    "XLabs-AI/flux-ip-adapter",
+    weight_name="ip_adapter.safetensors",
+    image_encoder_pretrained_model_name_or_path="openai/clip-vit-large-patch14"
+)
+pipe.set_ip_adapter_scale(1.0)
+
+image = pipe(
+    width=1024,
+    height=1024,
+    prompt="wearing sunglasses",
+    negative_prompt="",
+    true_cfg=4.0,
+    generator=torch.Generator().manual_seed(4444),
+    ip_adapter_image=image,
+).images[0]
+
+image.save('flux_ip_adapter_output.jpg')
+```
+
+<div class="justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux_ip_adapter_output.jpg"/>
+    <figcaption class="mt-2 text-sm text-center text-gray-500">IP-Adapter examples with prompt "wearing sunglasses"</figcaption>
+</div>
+
+
 ## Running FP16 inference
 
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.

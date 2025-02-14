@@ -78,6 +78,8 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     test_attention_slicing = False
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
