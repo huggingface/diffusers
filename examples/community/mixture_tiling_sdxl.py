@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -149,6 +149,51 @@ def _tile2latent_exclusive_indices(
                 col_segment = col_segment - segment(clip_col_init, clip_col_end)
     # return row_init, row_end, col_init, col_end
     return row_segment[0], row_segment[1], col_segment[0], col_segment[1]
+
+
+def _get_crops_coords_list(num_rows, num_cols, output_width):
+    """
+    Generates a list of lists of `crops_coords_top_left` tuples for focusing on
+    different horizontal parts of an image, and repeats this list for the specified
+    number of rows in the output structure.
+
+    This function calculates `crops_coords_top_left` tuples to create horizontal
+    focus variations (like left, center, right focus) based on `output_width`
+    and `num_cols` (which represents the number of horizontal focus points/columns).
+    It then repeats the *list* of these horizontal focus tuples `num_rows` times to
+    create the final list of lists output structure.
+
+    Args:
+        num_rows (int): The desired number of rows in the output list of lists.
+                          This determines how many times the list of horizontal
+                          focus variations will be repeated.
+        num_cols (int): The number of horizontal focus points (columns) to generate.
+                          This determines how many horizontal focus variations are
+                          created based on dividing the `output_width`.
+        output_width (int): The desired width of the output image.
+
+    Returns:
+        list[list[tuple[int, int]]]: A list of lists of tuples. Each inner list
+                                     contains `num_cols` tuples of `(ctop, cleft)`,
+                                     representing horizontal focus points. The outer list
+                                     contains `num_rows` such inner lists.
+    """
+    crops_coords_list = []
+    if num_cols <= 0:
+        crops_coords_list = []
+    elif num_cols == 1:
+        crops_coords_list = [(0, 0)]
+    else:
+        section_width = output_width / num_cols
+        for i in range(num_cols):
+            cleft = int(round(i * section_width))
+            crops_coords_list.append((0, cleft))
+
+    result_list = []
+    for _ in range(num_rows):
+        result_list.append(list(crops_coords_list))
+
+    return result_list
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
@@ -757,10 +802,10 @@ class StableDiffusionXLTilingPipeline(
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         original_size: Optional[Tuple[int, int]] = None,
-        crops_coords_top_left: Tuple[int, int] = (0, 0),
+        crops_coords_top_left: Optional[List[List[Tuple[int, int]]]] = None,
         target_size: Optional[Tuple[int, int]] = None,
         negative_original_size: Optional[Tuple[int, int]] = None,
-        negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
+        negative_crops_coords_top_left: Optional[List[List[Tuple[int, int]]]] = None,
         negative_target_size: Optional[Tuple[int, int]] = None,
         clip_skip: Optional[int] = None,
         tile_height: Optional[int] = 1024,
@@ -826,7 +871,7 @@ class StableDiffusionXLTilingPipeline(
                 `original_size` defaults to `(height, width)` if not specified. Part of SDXL's micro-conditioning as
                 explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+            crops_coords_top_left (`List[List[Tuple[int, int]]]`, *optional*, defaults to (0, 0)):
                 `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
                 `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
                 `crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning as explained in section 2.2 of
@@ -840,7 +885,7 @@ class StableDiffusionXLTilingPipeline(
                 micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
                 information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
-            negative_crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+            negative_crops_coords_top_left (`List[List[Tuple[int, int]]]`, *optional*, defaults to (0, 0)):
                 To negatively condition the generation process based on a specific crop coordinates. Part of SDXL's
                 micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
@@ -883,6 +928,8 @@ class StableDiffusionXLTilingPipeline(
 
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
+        negative_original_size = negative_original_size or (height, width)
+        negative_target_size = negative_target_size or (height, width)
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
@@ -913,6 +960,11 @@ class StableDiffusionXLTilingPipeline(
         batch_size = 1
 
         device = self._execution_device
+
+        # update crops coords list
+        crops_coords_top_left = _get_crops_coords_list(grid_rows, grid_cols, tile_width)
+        if negative_original_size is not None and negative_target_size is not None:
+            negative_crops_coords_top_left = _get_crops_coords_list(grid_rows, grid_cols, tile_width)
 
         # update height and width tile size and tile overlap size
         height = tile_height + (grid_rows - 1) * (tile_height - tile_row_overlap)
@@ -1020,7 +1072,7 @@ class StableDiffusionXLTilingPipeline(
                     text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
                     add_time_ids = self._get_add_time_ids(
                         original_size,
-                        crops_coords_top_left,
+                        crops_coords_top_left[row][col],
                         target_size,
                         dtype=prompt_embeds.dtype,
                         text_encoder_projection_dim=text_encoder_projection_dim,
@@ -1028,7 +1080,7 @@ class StableDiffusionXLTilingPipeline(
                     if negative_original_size is not None and negative_target_size is not None:
                         negative_add_time_ids = self._get_add_time_ids(
                             negative_original_size,
-                            negative_crops_coords_top_left,
+                            negative_crops_coords_top_left[row][col],
                             negative_target_size,
                             dtype=prompt_embeds.dtype,
                             text_encoder_projection_dim=text_encoder_projection_dim,
