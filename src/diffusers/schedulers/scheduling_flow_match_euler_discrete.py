@@ -314,9 +314,8 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32, device=device)
 
         # 6. Append the terminal sigma value.
-        #    If a model requires inverted sigma schedule for denoising but
-        #    timesteps without inversion, the `invert_sigmas` flag can be set to `True`. This case is only
-        #    required in Mochi
+        #    If a model requires inverted sigma schedule for denoising but timesteps without inversion, the
+        #    `invert_sigmas` flag can be set to `True`. This case is only required in Mochi
         if self.config.invert_sigmas:
             sigmas = 1.0 - sigmas
             timesteps = sigmas * self.config.num_train_timesteps
