@@ -1143,8 +1143,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # set dtype to instantiate the model under:
         # 1. If torch_dtype is not None, we use that dtype
+        # 2. If torch_dtype is float8, we don't use _set_default_torch_dtype and we downcast after loading the model
         dtype_orig = None
-        if torch_dtype is not None:
+        if torch_dtype is not None and not torch_dtype == getattr(torch, "float8_e4m3fn", None):
             if not isinstance(torch_dtype, torch.dtype):
                 raise ValueError(
                     f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
@@ -1230,6 +1231,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if hf_quantizer is not None:
             hf_quantizer.postprocess_model(model)
             model.hf_quantizer = hf_quantizer
+
+        if (
+            torch_dtype is not None
+            and torch_dtype == getattr(torch, "float8_e4m3fn", None)
+            and hf_quantizer is None
+            and not use_keep_in_fp32_modules
+        ):
+            model = model.to(torch_dtype)
 
         if hf_quantizer is not None:
             # We also make sure to purge `_pre_quantization_dtype` when we serialize
