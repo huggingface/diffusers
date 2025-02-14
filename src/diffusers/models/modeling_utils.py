@@ -1256,7 +1256,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if hf_quantizer is not None:
             missing_keys = hf_quantizer.update_missing_keys(model, missing_keys, prefix="")
         unexpected_keys = list(set(loaded_keys) - set(expected_keys))
-        # # Some models may have keys that are not in the state by design, removing them before needlessly warning
+        # Some models may have keys that are not in the state by design, removing them before needlessly warning
         # the user.
         if cls._keys_to_ignore_on_load_unexpected is not None:
             for pat in cls._keys_to_ignore_on_load_unexpected:
