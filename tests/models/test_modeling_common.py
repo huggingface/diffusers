@@ -37,7 +37,7 @@ from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 
-from diffusers.models import UNet2DConditionModel
+from diffusers.models import SD3Transformer2DModel, UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor,
     AttnProcessor2_0,
@@ -333,6 +333,28 @@ class ModelUtilsTest(unittest.TestCase):
             )
 
         assert model.config.in_channels == 9
+
+    def test_keep_modules_in_fp32(self):
+        r"""
+        A simple tests to check if the modules under `_keep_in_fp32_modules` are kept in fp32 when we load the model in fp16/bf16
+        Also ensures if inference works.
+        """
+        fp32_modules = SD3Transformer2DModel._keep_in_fp32_modules
+
+        for torch_dtype in [torch.bfloat16, torch.float16]:
+            SD3Transformer2DModel._keep_in_fp32_modules = ["proj_out"]
+
+            model = SD3Transformer2DModel.from_pretrained(
+                "stabilityai/stable-diffusion-3-medium-diffusers", subfolder="transformer", torch_dtype=torch_dtype
+            )
+
+            for name, module in model.named_modules():
+                if isinstance(module, torch.nn.Linear):
+                    if name in model._keep_in_fp32_modules:
+                        self.assertTrue(module.weight.dtype == torch.float32)
+                    else:
+                        self.assertTrue(module.weight.dtype == torch_dtype)
+        SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
 
 class UNetTesterMixin:

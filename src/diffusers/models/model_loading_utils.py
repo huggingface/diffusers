@@ -239,12 +239,8 @@ def load_model_dict_into_meta(
         # in int/uint/bool and not cast them.
         # TODO: revisit cases when param.dtype == torch.float8_e4m3fn
         if dtype is not None and torch.is_floating_point(param):
-            if (
-                keep_in_fp32_modules is not None
-                and any(
-                    module_to_keep_in_fp32 in param_name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules
-                )
-                and dtype == torch.float16
+            if keep_in_fp32_modules is not None and any(
+                module_to_keep_in_fp32 in param_name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules
             ):
                 param = param.to(torch.float32)
                 set_module_kwargs["dtype"] = torch.float32
