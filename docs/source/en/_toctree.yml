@@ -280,6 +280,8 @@
         title: CogView3PlusTransformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
+      - local: api/models/easyanimate_transformer3d
+        title: EasyAnimateTransformer3DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/hunyuan_transformer2d
@@ -414,6 +416,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/easyanimate
+      title: EasyAnimate
     - local: api/pipelines/flux
       title: Flux
     - local: api/pipelines/control_flux_inpaint
