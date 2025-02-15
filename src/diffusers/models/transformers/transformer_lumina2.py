@@ -460,7 +460,6 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        use_mask: bool = True,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         # 1. Condition, positional & patch embedding
@@ -488,6 +487,8 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         # 3. Joint Transformer blocks
         max_seq_len = max(seq_lengths)
+        use_mask = len(set(seq_lengths)) > 1
+
         attention_mask = hidden_states.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
         joint_hidden_states = hidden_states.new_zeros(batch_size, max_seq_len, self.config.hidden_size)
         for i, (encoder_seq_len, seq_len) in enumerate(zip(encoder_seq_lengths, seq_lengths)):
