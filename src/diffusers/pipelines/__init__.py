@@ -215,6 +215,11 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["easyanimate"] = [
+        "EasyAnimatePipeline",
+        "EasyAnimateInpaintPipeline",
+        "EasyAnimateControlPipeline",
+    ]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["hunyuan_video"] = ["HunyuanVideoPipeline"]
     _import_structure["kandinsky"] = [
@@ -541,6 +546,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionPipeline,
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
+        )
+        from .easyanimate import (
+            EasyAnimateControlPipeline,
+            EasyAnimateInpaintPipeline,
+            EasyAnimatePipeline,
         )
         from .flux import (
             FluxControlImg2ImgPipeline,
