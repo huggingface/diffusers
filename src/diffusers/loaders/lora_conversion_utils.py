@@ -17,12 +17,6 @@ import re
 import torch
 
 from ..utils import is_peft_version, logging
-# from .single_file_utils import (
-#     DIFFUSERS_TO_LDM_MAPPING,
-#     LDM_CONTROLNET_KEY,
-#     update_unet_resnet_ldm_to_diffusers,
-#     update_unet_attention_ldm_to_diffusers
-# )
 
 
 logger = logging.get_logger(__name__)
