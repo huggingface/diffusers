@@ -21,7 +21,6 @@ from typing import Dict, List, Optional, Union
 import safetensors
 import torch
 
-from ..loaders.lora_conversion_utils import _convert_stabilityai_control_lora_to_diffusers
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,

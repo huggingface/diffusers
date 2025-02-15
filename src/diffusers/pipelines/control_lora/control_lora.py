@@ -9,7 +9,6 @@ if __name__ == "__main__":
     import torch
 
     pipe_id = "stabilityai/stable-diffusion-xl-base-1.0"
-    controlnet_id = "xinsir/controlnet-canny-sdxl-1.0"
     lora_id = "stabilityai/control-lora"
     lora_filename = "control-LoRAs-rank128/control-lora-canny-rank128.safetensors"
 
