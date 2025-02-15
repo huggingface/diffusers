@@ -1999,11 +1999,12 @@ class PipelineTesterMixin:
         pipe_with_just_text_encoder = self.pipeline_class(**components_with_text_encoders)
         pipe_with_just_text_encoder = pipe_with_just_text_encoder.to(torch_device)
 
+        # Get inputs and also the args of `encode_prompts`.
         inputs = self.get_dummy_inputs(torch_device)
         encode_prompt_signature = inspect.signature(pipe_with_just_text_encoder.encode_prompt)
         encode_prompt_parameters = list(encode_prompt_signature.parameters.values())
 
-        # Required parameters in encode_prompt with those with no default
+        # Required args in encode_prompt with those with no default.
         required_params = []
         for param in encode_prompt_parameters:
             if param.name == "self" or param.name == "kwargs":
@@ -2019,9 +2020,9 @@ class PipelineTesterMixin:
         pipe_call_signature = inspect.signature(pipe_with_just_text_encoder.__call__)
         pipe_call_parameters = pipe_call_signature.parameters
 
-        # For each required param in encode_prompt, check if it's missing
+        # For each required arg in encode_prompt, check if it's missing
         # in encode_prompt_inputs. If so, see if __call__ has a default
-        # for that param and use it if available.
+        # for that arg and use it if available.
         for required_param_name in required_params:
             if required_param_name not in encode_prompt_inputs:
                 pipe_call_param = pipe_call_parameters.get(required_param_name, None)
