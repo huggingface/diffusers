@@ -24,8 +24,6 @@ from ...models import AutoencoderKL
 from ...models.transformers.transformer_lumina2 import Lumina2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
-    is_bs4_available,
-    is_ftfy_available,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -43,12 +41,6 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-if is_bs4_available():
-    pass
-
-if is_ftfy_available():
-    pass
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -379,7 +371,9 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         max_sequence_length=None,
     ):
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}."
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -525,7 +519,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         system_prompt: Optional[str] = None,
         cfg_trunc_ratio: float = 1.0,
         cfg_normalization: bool = True,
-        use_mask_in_transformer: bool = True,
         max_sequence_length: int = 256,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -597,8 +590,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 The ratio of the timestep interval to apply normalization-based guidance scale.
             cfg_normalization (`bool`, *optional*, defaults to `True`):
                 Whether to apply normalization-based guidance scale.
-            use_mask_in_transformer (`bool`, *optional*, defaults to `True`):
-                Whether to use attention mask in `Lumina2Transformer2DModel`. Set `False` for performance gain.
             max_sequence_length (`int`, defaults to `256`):
                 Maximum sequence length to use with the `prompt`.
 
@@ -704,8 +695,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     hidden_states=latents,
                     timestep=current_timestep,
                     encoder_hidden_states=prompt_embeds,
-                    attention_mask=prompt_attention_mask,
-                    use_mask_in_transformer=use_mask_in_transformer,
+                    encoder_attention_mask=prompt_attention_mask,
                     return_dict=False,
                 )[0]
 
@@ -715,8 +705,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                         hidden_states=latents,
                         timestep=current_timestep,
                         encoder_hidden_states=negative_prompt_embeds,
-                        attention_mask=negative_prompt_attention_mask,
-                        use_mask_in_transformer=use_mask_in_transformer,
+                        encoder_attention_mask=negative_prompt_attention_mask,
                         return_dict=False,
                     )[0]
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)

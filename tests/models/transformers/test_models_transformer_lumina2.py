@@ -51,7 +51,7 @@ class Lumina2Transformer2DModelTransformerTests(ModelTesterMixin, unittest.TestC
             "hidden_states": hidden_states,
             "encoder_hidden_states": encoder_hidden_states,
             "timestep": timestep,
-            "attention_mask": attention_mask,
+            "encoder_attention_mask": attention_mask,
         }
 
     @property
