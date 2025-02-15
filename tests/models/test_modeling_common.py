@@ -1458,6 +1458,55 @@ class ModelTesterMixin:
             or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
         )
 
+    @require_torch_gpu
+    def test_group_offloading(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        torch.manual_seed(0)
+
+        @torch.no_grad()
+        def run_forward(model):
+            self.assertTrue(
+                all(
+                    module._diffusers_hook.get_hook("group_offloading") is not None
+                    for module in model.modules()
+                    if hasattr(module, "_diffusers_hook")
+                )
+            )
+            model.eval()
+            return model(**inputs_dict)[0]
+
+        model = self.model_class(**init_dict)
+        if not getattr(model, "_supports_group_offloading", True):
+            return
+
+        model.to(torch_device)
+        output_without_group_offloading = run_forward(model)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1)
+        output_with_group_offloading1 = run_forward(model)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, non_blocking=True)
+        output_with_group_offloading2 = run_forward(model)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.enable_group_offload(torch_device, offload_type="leaf_level")
+        output_with_group_offloading3 = run_forward(model)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.enable_group_offload(torch_device, offload_type="leaf_level", use_stream=True)
+        output_with_group_offloading4 = run_forward(model)
+
+        self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5))
+        self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-5))
+        self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading3, atol=1e-5))
+        self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5))
+
 
 @is_staging_test
 class ModelPushToHubTester(unittest.TestCase):
