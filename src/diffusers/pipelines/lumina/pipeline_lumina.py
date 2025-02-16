@@ -22,6 +22,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import torch
 from transformers import AutoModel, AutoTokenizer
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...models.embeddings import get_2d_rotary_pos_embed_lumina
