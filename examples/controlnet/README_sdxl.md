@@ -67,7 +67,7 @@ export OUTPUT_DIR="path to save model"
 accelerate launch train_controlnet_sdxl.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \ 
+ --dataset_name=fusing/fill50k \
  --trust_remote_code \
  --mixed_precision="fp16" \
  --resolution=1024 \
