@@ -149,6 +149,7 @@ if _onnx_available:
         "onnxruntime-openvino",
         "ort_nightly_directml",
         "onnxruntime-rocm",
+        "onnxruntime-migraphx",
         "onnxruntime-training",
     )
     _onnxruntime_version = None

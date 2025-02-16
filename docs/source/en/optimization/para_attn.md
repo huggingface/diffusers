@@ -29,7 +29,7 @@ However, it is hard to decide when to reuse the cache to ensure quality generate
 This achieves a 2x speedup on FLUX.1-dev and HunyuanVideo inference with very good quality.
 
 <figure>
-    <img src="https://huggingface.co/datasets/chengzeyi/documentation-images/resolve/main/diffusers/para-attn/ada-cache.png" alt="Cache in Diffusion Transformer" />
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/para-attn/ada-cache.png" alt="Cache in Diffusion Transformer" />
     <figcaption>How AdaCache works, First Block Cache is a variant of it</figcaption>
 </figure>
 
