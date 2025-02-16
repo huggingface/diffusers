@@ -180,7 +180,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         "prompt_embeds",
     ]
 
-
     def __init__(
         self,
         transformer: LuminaNextDiT2DModel,
