@@ -17,31 +17,22 @@ import unittest
 
 import numpy as np
 import torch
-from PIL import Image
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, GlmConfig, GlmForCausalLM
 
-from diffusers import AutoencoderKLCogVideoX, CogVideoXFunControlPipeline, CogVideoXTransformer3DModel, DDIMScheduler
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
+from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import (
-    PipelineTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
-    to_np,
-)
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = CogVideoXFunControlPipeline
+class CogView4PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = CogView4Pipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"control_video"})
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
@@ -54,58 +45,52 @@ class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             "callback_on_step_end_tensor_inputs",
         ]
     )
+
+    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
-    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = CogVideoXTransformer3DModel(
-            # Product of num_attention_heads * attention_head_dim must be divisible by 16 for 3D positional embeddings
-            # But, since we are using tiny-random-t5 here, we need the internal dim of CogVideoXTransformer3DModel
-            # to be 32. The internal dim is product of num_attention_heads and attention_head_dim
-            num_attention_heads=4,
-            attention_head_dim=8,
-            in_channels=8,
-            out_channels=4,
-            time_embed_dim=2,
-            text_embed_dim=32,  # Must match with tiny-random-t5
-            num_layers=1,
-            sample_width=2,  # latent width: 2 -> final width: 16
-            sample_height=2,  # latent height: 2 -> final height: 16
-            sample_frames=9,  # latent frames: (9 - 1) / 4 + 1 = 3 -> final frames: 9
+        transformer = CogView4Transformer2DModel(
             patch_size=2,
-            temporal_compression_ratio=4,
-            max_text_seq_length=16,
+            in_channels=4,
+            num_layers=2,
+            attention_head_dim=4,
+            num_attention_heads=4,
+            out_channels=4,
+            text_embed_dim=32,
+            time_embed_dim=8,
+            condition_dim=4,
         )
 
         torch.manual_seed(0)
-        vae = AutoencoderKLCogVideoX(
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
             in_channels=3,
             out_channels=3,
-            down_block_types=(
-                "CogVideoXDownBlock3D",
-                "CogVideoXDownBlock3D",
-                "CogVideoXDownBlock3D",
-                "CogVideoXDownBlock3D",
-            ),
-            up_block_types=(
-                "CogVideoXUpBlock3D",
-                "CogVideoXUpBlock3D",
-                "CogVideoXUpBlock3D",
-                "CogVideoXUpBlock3D",
-            ),
-            block_out_channels=(8, 8, 8, 8),
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
-            layers_per_block=1,
-            norm_num_groups=2,
-            temporal_compression_ratio=4,
+            sample_size=128,
         )
 
         torch.manual_seed(0)
-        scheduler = DDIMScheduler()
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        scheduler = FlowMatchEulerDiscreteScheduler(
+            base_shift=0.25,
+            max_shift=0.75,
+            base_image_seq_len=256,
+            use_dynamic_shifting=True,
+            time_shift_type="linear",
+        )
+
+        torch.manual_seed(0)
+        text_encoder_config = GlmConfig(
+            hidden_size=32, intermediate_size=8, num_hidden_layers=2, num_attention_heads=4, head_dim=8
+        )
+        text_encoder = GlmForCausalLM(text_encoder_config)
+        # TODO(aryan): change this to THUDM/CogView4 once released
+        tokenizer = AutoTokenizer.from_pretrained("THUDM/glm-4-9b-chat", trust_remote_code=True)
 
         components = {
             "transformer": transformer,
@@ -116,27 +101,19 @@ class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         }
         return components
 
-    def get_dummy_inputs(self, device, seed: int = 0, num_frames: int = 8):
+    def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-
-        # Cannot reduce because convolution kernel becomes bigger than sample
-        height = 16
-        width = 16
-
-        control_video = [Image.new("RGB", (width, height))] * num_frames
-
         inputs = {
             "prompt": "dance monkey",
             "negative_prompt": "",
-            "control_video": control_video,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "height": height,
-            "width": width,
+            "height": 16,
+            "width": 16,
             "max_sequence_length": 16,
             "output_type": "pt",
         }
@@ -151,12 +128,12 @@ class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
-        generated_video = video[0]
+        image = pipe(**inputs)[0]
+        generated_image = image[0]
 
-        self.assertEqual(generated_video.shape, (8, 3, 16, 16))
-        expected_video = torch.randn(8, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
+        self.assertEqual(generated_image.shape, (3, 16, 16))
+        expected_image = torch.randn(3, 16, 16)
+        max_diff = np.abs(generated_image - expected_image).max()
         self.assertLessEqual(max_diff, 1e10)
 
     def test_callback_inputs(self):
@@ -255,72 +232,3 @@ class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCas
                 expected_max_diff,
                 "Attention slicing should not affect the inference results",
             )
-
-    def test_vae_tiling(self, expected_diff_max: float = 0.5):
-        # NOTE(aryan): This requires a higher expected_max_diff than other CogVideoX pipelines
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to("cpu")
-        pipe.set_progress_bar_config(disable=None)
-
-        # Without tiling
-        inputs = self.get_dummy_inputs(generator_device)
-        inputs["height"] = inputs["width"] = 128
-        output_without_tiling = pipe(**inputs)[0]
-
-        # With tiling
-        pipe.vae.enable_tiling(
-            tile_sample_min_height=96,
-            tile_sample_min_width=96,
-            tile_overlap_factor_height=1 / 12,
-            tile_overlap_factor_width=1 / 12,
-        )
-        inputs = self.get_dummy_inputs(generator_device)
-        inputs["height"] = inputs["width"] = 128
-        output_with_tiling = pipe(**inputs)[0]
-
-        self.assertLess(
-            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
-            expected_diff_max,
-            "VAE tiling should not affect the inference results",
-        )
-
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        frames = pipe(**inputs).frames  # [B, F, C, H, W]
-        original_image_slice = frames[0, -2:, -1, -3:, -3:]
-
-        pipe.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(
-            pipe.transformer
-        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
-
-        inputs = self.get_dummy_inputs(device)
-        frames = pipe(**inputs).frames
-        image_slice_fused = frames[0, -2:, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        frames = pipe(**inputs).frames
-        image_slice_disabled = frames[0, -2:, -1, -3:, -3:]
-
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
