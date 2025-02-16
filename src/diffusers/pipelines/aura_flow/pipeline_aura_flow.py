@@ -17,6 +17,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AuraFlowTransformer2DModel, AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
