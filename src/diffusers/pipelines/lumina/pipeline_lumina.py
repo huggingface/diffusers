@@ -751,9 +751,12 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
-            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
+
+        self._guidance_scale = guidance_scale
+
         cross_attention_kwargs = {}
 
         # 2. Define call parameters
@@ -814,6 +817,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             generator,
             latents,
         )
+
+        self._num_timesteps = len(timesteps)
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
