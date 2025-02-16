@@ -399,6 +399,14 @@ class AuraFlowPipeline(DiffusionPipeline):
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
 
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -511,6 +519,8 @@ class AuraFlowPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
+        self._guidance_scale = guidance_scale
+
         # 2. Determine batch size.
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -567,6 +577,7 @@ class AuraFlowPipeline(DiffusionPipeline):
 
         # 6. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
