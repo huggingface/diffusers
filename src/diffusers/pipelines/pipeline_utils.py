@@ -550,9 +550,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
-            torch_dtype (`str` or `torch.dtype`, *optional*):
+            torch_dtype (`str` or `torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
-                dtype is automatically derived from the model's weights.
+                dtype is automatically derived from the model's weights. To load submodels with different dtype pass a
+                `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`). Set the default dtype for
+                unspecified components with `default` (for example `{'transformer': torch.bfloat16, 'default':
+                torch.float16}`). If a component is not specified and no default is set, `torch.float32` is used.
             custom_pipeline (`str`, *optional*):
 
                 <Tip warning={true}>
@@ -896,6 +899,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"Expected types for {key}: {_expected_class_types}, got {class_obj.__class__.__name__}."
                 )
 
+        # Check `torch_dtype` map for unused keys
+        if isinstance(torch_dtype, dict):
+            extra_keys_dtype = set(torch_dtype.keys()) - set(passed_class_obj.keys())
+            extra_keys_obj = set(passed_class_obj.keys()) - set(torch_dtype.keys())
+            if len(extra_keys_dtype) > 0:
+                logger.warning(
+                    f"Expected `{list(passed_class_obj.keys())}`, got extra `torch_dtype` keys `{extra_keys_dtype}`."
+                )
+            if len(extra_keys_obj) > 0:
+                logger.warning(
+                    f"Expected `{list(passed_class_obj.keys())}`, missing `torch_dtype` keys `{extra_keys_dtype}`."
+                    " using `default` or `torch.float32`."
+                )
+
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
             raise NotImplementedError(
@@ -962,6 +979,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 loaded_sub_model = passed_class_obj[name]
             else:
                 # load sub model
+                sub_model_dtype = (
+                    torch_dtype.get(name, torch_dtype.get("default", torch.float32))
+                    if isinstance(torch_dtype, dict)
+                    else torch_dtype
+                )
                 loaded_sub_model = load_sub_model(
                     library_name=library_name,
                     class_name=class_name,
@@ -969,7 +991,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     pipelines=pipelines,
                     is_pipeline_module=is_pipeline_module,
                     pipeline_class=pipeline_class,
-                    torch_dtype=torch_dtype,
+                    torch_dtype=sub_model_dtype,
                     provider=provider,
                     sess_options=sess_options,
                     device_map=current_device_map,
