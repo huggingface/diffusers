@@ -62,6 +62,7 @@ class HunyuanVideoPipelineFastTests(
     # there is no xformers processor for Flux
     test_xformers_attention = False
     test_layerwise_casting = True
+    test_group_offloading = True
 
     faster_cache_config = FasterCacheConfig(
         spatial_attention_block_skip_range=2,
