@@ -89,6 +89,8 @@
     title: Kandinsky
   - local: using-diffusers/ip_adapter
     title: IP-Adapter
+  - local: using-diffusers/omnigen
+    title: OmniGen
   - local: using-diffusers/pag
     title: PAG
   - local: using-diffusers/controlnet
@@ -276,6 +278,8 @@
         title: ConsisIDTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
         title: CogView3PlusTransformer2DModel
+      - local: api/models/cogview4_transformer2d
+        title: CogView4Transformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/flux_transformer
@@ -288,10 +292,14 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/lumina2_transformer2d
+        title: Lumina2Transformer2DModel
       - local: api/models/ltx_video_transformer3d
         title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
+      - local: api/models/omnigen_transformer
+        title: OmniGenTransformer2DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -376,6 +384,8 @@
       title: CogVideoX
     - local: api/pipelines/cogview3
       title: CogView3
+    - local: api/pipelines/cogview4
+      title: CogView4
     - local: api/pipelines/consisid
       title: ConsisID
     - local: api/pipelines/consistency_models
@@ -438,6 +448,8 @@
       title: LEDITS++
     - local: api/pipelines/ltx_video
       title: LTXVideo
+    - local: api/pipelines/lumina2
+      title: Lumina 2.0
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
@@ -448,6 +460,8 @@
       title: MultiDiffusion
     - local: api/pipelines/musicldm
       title: MusicLDM
+    - local: api/pipelines/omnigen
+      title: OmniGen
     - local: api/pipelines/pag
       title: PAG
     - local: api/pipelines/paint_by_example
