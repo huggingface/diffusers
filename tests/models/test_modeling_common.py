@@ -345,8 +345,8 @@ class ModelUtilsTest(unittest.TestCase):
             SD3Transformer2DModel._keep_in_fp32_modules = ["proj_out"]
 
             model = SD3Transformer2DModel.from_pretrained(
-                "stabilityai/stable-diffusion-3-medium-diffusers", subfolder="transformer", torch_dtype=torch_dtype
-            )
+                "hf-internal-testing/tiny-sd3-pipe", subfolder="transformer", torch_dtype=torch_dtype
+            ).to("cuda")
 
             for name, module in model.named_modules():
                 if isinstance(module, torch.nn.Linear):
@@ -354,6 +354,35 @@ class ModelUtilsTest(unittest.TestCase):
                         self.assertTrue(module.weight.dtype == torch.float32)
                     else:
                         self.assertTrue(module.weight.dtype == torch_dtype)
+
+        def get_dummy_inputs():
+            batch_size = 2
+            num_channels = 4
+            height = width = embedding_dim = 32
+            pooled_embedding_dim = embedding_dim * 2
+            sequence_length = 154
+
+            hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
+            encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
+            pooled_prompt_embeds = torch.randn((batch_size, pooled_embedding_dim)).to(torch_device)
+            timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
+
+            return {
+                "hidden_states": hidden_states,
+                "encoder_hidden_states": encoder_hidden_states,
+                "pooled_projections": pooled_prompt_embeds,
+                "timestep": timestep,
+            }
+
+        # test if inference works.
+        with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch_dtype):
+            input_dict_for_transformer = get_dummy_inputs()
+            model_inputs = {
+                k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
+            }
+            model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
+            _ = model(**model_inputs)
+
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
 

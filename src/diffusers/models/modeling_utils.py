@@ -203,7 +203,6 @@ def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefi
     checking if the model explicitly disables it, then by ensuring that the state dict keys are a subset of the model's
     parameters.
 
-    Note: We fully disable this if we are using `deepspeed`
     """
     if model_to_load.device.type == "meta":
         return False
