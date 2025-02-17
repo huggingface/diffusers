@@ -235,7 +235,6 @@ def no_init_weights():
     def _skip_init(*args, **kwargs):
         pass
 
-    # Save the original initialization functions
     for name, init_func in TORCH_INIT_FUNCTIONS.items():
         setattr(torch.nn.init, name, _skip_init)
     try:
