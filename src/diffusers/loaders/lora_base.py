@@ -909,6 +909,6 @@ class LoraBaseMixin:
             target_rank (`int`):
                 The highest rank among all the adapters that will be loaded.
         """
-        for component in self.components.values():
-            if hasattr(component, "enable_lora_hotswap"):
+        for key, component in self.components.items():
+            if hasattr(component, "enable_lora_hotswap") and (key in self._lora_loadable_modules):
                 component.enable_lora_hotswap(**kwargs)
