@@ -26,8 +26,10 @@ from .quantization_config import (
     GGUFQuantizationConfig,
     QuantizationConfigMixin,
     QuantizationMethod,
+    QuantoConfig,
     TorchAoConfig,
 )
+from .quanto import QuantoQuantizer
 from .torchao import TorchAoHfQuantizer
 
 
@@ -36,6 +38,7 @@ AUTO_QUANTIZER_MAPPING = {
     "bitsandbytes_8bit": BnB8BitDiffusersQuantizer,
     "gguf": GGUFQuantizer,
     "torchao": TorchAoHfQuantizer,
+    "quanto": QuantoQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -43,6 +46,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "bitsandbytes_8bit": BitsAndBytesConfig,
     "gguf": GGUFQuantizationConfig,
     "torchao": TorchAoConfig,
+    "quanto": QuantoConfig,
 }
 
 

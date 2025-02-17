@@ -220,7 +220,7 @@ def load_model_dict_into_meta(
                 and any(
                     module_to_keep_in_fp32 in param_name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules
                 )
-                and dtype == torch.float16
+                and dtype in [torch.float16, torch.bfloat16]
             ):
                 param = param.to(torch.float32)
                 if accepts_dtype:
@@ -248,7 +248,9 @@ def load_model_dict_into_meta(
         if is_quantized and (
             hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
         ):
-            hf_quantizer.create_quantized_param(model, param, param_name, device, state_dict, unexpected_keys)
+            hf_quantizer.create_quantized_param(
+                model, param, param_name, device, state_dict, unexpected_keys, dtype=dtype
+            )
         else:
             if accepts_dtype:
                 set_module_tensor_to_device(model, param_name, device, value=param, **set_module_kwargs)

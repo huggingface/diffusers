@@ -927,7 +927,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
-            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
+            (torch_dtype in [torch.float16, torch.bfloat16]) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
         )
         if use_keep_in_fp32_modules:
             keep_in_fp32_modules = cls._keep_in_fp32_modules
@@ -1097,7 +1097,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         )
 
                     named_buffers = model.named_buffers()
-
                     unexpected_keys = load_model_dict_into_meta(
                         model,
                         state_dict,
