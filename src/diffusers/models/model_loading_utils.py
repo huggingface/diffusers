@@ -147,6 +147,23 @@ def _check_archive_and_maybe_raise_error(checkpoint_file, format_list):
             )
 
 
+def _determine_param_device(param_name: str, device_map: Optional[Dict[str, Union[int, str, torch.device]]]):
+    """
+    Find the device of param_name from the device_map.
+    """
+    if device_map is None:
+        return "cpu"
+    else:
+        module_name = param_name
+        # find next higher level module that is defined in device_map:
+        # bert.lm_head.weight -> bert.lm_head -> bert -> ''
+        while len(module_name) > 0 and module_name not in device_map:
+            module_name = ".".join(module_name.split(".")[:-1])
+        if module_name == "" and "" not in device_map:
+            raise ValueError(f"{param_name} doesn't have any device set.")
+        return device_map[module_name]
+
+
 def load_state_dict(
     checkpoint_file: Union[str, os.PathLike],
     dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
@@ -213,7 +230,7 @@ def load_model_dict_into_meta(
     model_name_or_path: Optional[str] = None,
     hf_quantizer: Optional[DiffusersQuantizer] = None,
     keep_in_fp32_modules: Optional[List] = None,
-    device_map: Dict[str, Union[int, str, torch.device]] = None,
+    device_map: Optional[Dict[str, Union[int, str, torch.device]]] = None,
     unexpected_keys: Optional[List[str]] = None,
     offload_folder: Optional[Union[str, os.PathLike]] = None,
     offload_index: Optional[Dict] = None,
@@ -264,18 +281,7 @@ def load_model_dict_into_meta(
             if old_param.is_contiguous():
                 param = param.contiguous()
 
-        module_name = param_name
-
-        if device_map is None:
-            param_device = "cpu"
-        else:
-            # find next higher level module that is defined in device_map:
-            # bert.lm_head.weight -> bert.lm_head -> bert -> ''
-            while len(module_name) > 0 and module_name not in device_map:
-                module_name = ".".join(module_name.split(".")[:-1])
-            if module_name == "" and "" not in device_map:
-                raise ValueError(f"{param_name} doesn't have any device set.")
-            param_device = device_map[module_name]
+        param_device = _determine_param_device(param_name, device_map)
 
         # bnb params are flattened.
         # gguf quants have a different shape based on the type of quantization applied
