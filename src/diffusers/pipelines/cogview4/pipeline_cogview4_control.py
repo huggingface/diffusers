@@ -646,9 +646,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
-                latent_model_input = torch.cat([latents, control_image], dim=2).to(transformer_dtype)
-                # latent_model_input = latents.to(transformer_dtype)
+                latent_model_input = torch.cat([latents, control_image], dim=1).to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
