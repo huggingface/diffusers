@@ -151,7 +151,7 @@ def load_state_dict(
     checkpoint_file: Union[str, os.PathLike],
     dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
     disable_mmap: bool = False,
-    map_location: Optional[Union[str, torch.device]] = None,
+    map_location: Union[str, torch.device] = "cpu",
 ):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
@@ -174,8 +174,6 @@ def load_state_dict(
         elif file_extension == GGUF_FILE_EXTENSION:
             return load_gguf_checkpoint(checkpoint_file)
         else:
-            if map_location is None:
-                map_location = "cpu"
             extra_args = {}
             weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
             # mmap can only be used with files serialized with zipfile-based format.
@@ -187,7 +185,7 @@ def load_state_dict(
                 and not disable_mmap
             ):
                 extra_args = {"mmap": True}
-            return torch.load(checkpoint_file, map_location="cpu", **weights_only_kwarg, **extra_args)
+            return torch.load(checkpoint_file, map_location=map_location, **weights_only_kwarg, **extra_args)
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
