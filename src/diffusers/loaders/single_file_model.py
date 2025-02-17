@@ -404,9 +404,7 @@ class FromOriginalModelMixin:
         model.eval()
 
         if device_map is not None:
-            device_map_kwargs = {
-                "device_map": device_map,
-            }
+            device_map_kwargs = {"device_map": device_map}
             dispatch_model(model, **device_map_kwargs)
 
         return model
