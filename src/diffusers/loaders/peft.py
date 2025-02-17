@@ -53,6 +53,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
 }
+_NO_CONFIG_UPDATE_KEYS = ["to_k", "to_q", "to_v"]
 
 
 def _maybe_adjust_config(config):
@@ -67,6 +68,8 @@ def _maybe_adjust_config(config):
     original_r = config["r"]
 
     for key in list(rank_pattern.keys()):
+        if any(prefix in key for prefix in _NO_CONFIG_UPDATE_KEYS):
+            continue
         key_rank = rank_pattern[key]
 
         # try to detect ambiguity
