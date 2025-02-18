@@ -35,7 +35,7 @@ class CogView4PatchEmbed(nn.Module):
     def __init__(
         self,
         in_channels: int = 16,
-        hidden_size: int = 2560,
+        hidden_size: int = 4096,
         patch_size: int = 2,
         text_hidden_size: int = 4096,
     ):
