@@ -19,15 +19,31 @@ from typing import Callable, List, Optional, Union
 import torch
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 from k_diffusion.sampling import BrownianTreeNoiseSampler, get_sigmas_karras
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPTokenizerFast,
+)
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import (
+    StableDiffusionLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import LMSDiscreteScheduler
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...schedulers import KarrasDiffusionSchedulers, LMSDiscreteScheduler
+from ...utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from ..stable_diffusion import StableDiffusionPipelineOutput
+from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -95,13 +111,13 @@ class StableDiffusionKDiffusionPipeline(
 
     def __init__(
         self,
-        vae,
-        text_encoder,
-        tokenizer,
-        unet,
-        scheduler,
-        safety_checker,
-        feature_extractor,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: Union[CLIPTokenizer, CLIPTokenizerFast],
+        unet: UNet2DConditionModel,
+        scheduler: KarrasDiffusionSchedulers,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()

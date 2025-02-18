@@ -207,8 +207,8 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
-        text_encoder_2=T5EncoderModel,
-        tokenizer_2=MT5Tokenizer,
+        text_encoder_2: Optional[T5EncoderModel] = None,
+        tokenizer_2: Optional[MT5Tokenizer] = None,
     ):
         super().__init__()
 

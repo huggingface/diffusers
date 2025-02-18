@@ -17,10 +17,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import (
-    BaseImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    PreTrainedModel,
+    SiglipImageProcessor,
+    SiglipVisionModel,
     T5EncoderModel,
     T5TokenizerFast,
 )
@@ -176,9 +176,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         tokenizer_3 (`T5TokenizerFast`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        image_encoder (`PreTrainedModel`, *optional*):
+        image_encoder (`SiglipVisionModel`, *optional*):
             Pre-trained Vision Model for IP Adapter.
-        feature_extractor (`BaseImageProcessor`, *optional*):
+        feature_extractor (`SiglipImageProcessor`, *optional*):
             Image processor for IP Adapter.
     """
 
@@ -197,8 +197,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
-        image_encoder: PreTrainedModel = None,
-        feature_extractor: BaseImageProcessor = None,
+        image_encoder: SiglipVisionModel = None,
+        feature_extractor: SiglipImageProcessor = None,
     ):
         super().__init__()
 

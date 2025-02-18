@@ -246,7 +246,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
+        unet: Union[UNet2DConditionModel, UNetMotionModel],
         motion_adapter: MotionAdapter,
         controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
         scheduler: Union[

@@ -17,6 +17,8 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
+from ...models import UNet1DModel
+from ...schedulers import SchedulerMixin
 from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
@@ -49,7 +51,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "unet"
 
-    def __init__(self, unet, scheduler):
+    def __init__(self, unet: UNet1DModel, scheduler: SchedulerMixin):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
 

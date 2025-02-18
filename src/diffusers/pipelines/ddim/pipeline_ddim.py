@@ -16,6 +16,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
+from ...models import UNet2DModel
 from ...schedulers import DDIMScheduler
 from ...utils import is_torch_xla_available
 from ...utils.torch_utils import randn_tensor
@@ -47,7 +48,7 @@ class DDIMPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "unet"
 
-    def __init__(self, unet, scheduler):
+    def __init__(self, unet: UNet2DModel, scheduler: DDIMScheduler):
         super().__init__()
 
         # make sure scheduler can always be converted to DDIM

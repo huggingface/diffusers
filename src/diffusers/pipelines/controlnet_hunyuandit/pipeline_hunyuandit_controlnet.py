@@ -232,8 +232,8 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             Tuple[HunyuanDiT2DControlNetModel],
             HunyuanDiT2DMultiControlNetModel,
         ],
-        text_encoder_2=T5EncoderModel,
-        tokenizer_2=MT5Tokenizer,
+        text_encoder_2: Optional[T5EncoderModel] = None,
+        tokenizer_2: Optional[MT5Tokenizer] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()

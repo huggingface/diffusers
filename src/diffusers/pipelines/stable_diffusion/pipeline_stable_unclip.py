@@ -141,7 +141,7 @@ class StableUnCLIPPipeline(
         image_noising_scheduler: KarrasDiffusionSchedulers,
         # regular denoising components
         tokenizer: CLIPTokenizer,
-        text_encoder: CLIPTextModelWithProjection,
+        text_encoder: CLIPTextModel,
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         # vae

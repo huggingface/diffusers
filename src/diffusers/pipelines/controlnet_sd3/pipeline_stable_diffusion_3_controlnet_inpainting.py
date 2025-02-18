@@ -17,10 +17,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import (
-    BaseImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    PreTrainedModel,
+    SiglipImageProcessor,
+    SiglipModel,
     T5EncoderModel,
     T5TokenizerFast,
 )
@@ -223,8 +223,8 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         controlnet: Union[
             SD3ControlNetModel, List[SD3ControlNetModel], Tuple[SD3ControlNetModel], SD3MultiControlNetModel
         ],
-        image_encoder: PreTrainedModel = None,
-        feature_extractor: BaseImageProcessor = None,
+        image_encoder: SiglipModel = None,
+        feature_extractor: Optional[SiglipImageProcessor] = None,
     ):
         super().__init__()
 
