@@ -24,6 +24,7 @@ class FluxFillPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     batch_params = frozenset(["prompt"])
     test_xformers_attention = False
     test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)

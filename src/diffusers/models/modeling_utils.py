@@ -31,9 +31,10 @@ import torch.utils.checkpoint
 from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
+from typing_extensions import Self
 
 from .. import __version__
-from ..hooks import apply_layerwise_casting
+from ..hooks import apply_group_offloading, apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -86,7 +87,17 @@ if is_accelerate_available():
 
 
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
+    from ..hooks.group_offloading import _get_group_onload_device
+
     try:
+        # Try to get the onload device from the group offloading hook
+        return _get_group_onload_device(parameter)
+    except ValueError:
+        pass
+
+    try:
+        # If the onload device is not available due to no group offloading hooks, try to get the device
+        # from the first parameter or buffer
         parameters_and_buffers = itertools.chain(parameter.parameters(), parameter.buffers())
         return next(parameters_and_buffers).device
     except StopIteration:
@@ -165,6 +176,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _no_split_modules = None
     _keep_in_fp32_modules = None
     _skip_layerwise_casting_patterns = None
+    _supports_group_offloading = True
 
     def __init__(self):
         super().__init__()
@@ -436,6 +448,55 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
         )
 
+    def enable_group_offload(
+        self,
+        onload_device: torch.device,
+        offload_device: torch.device = torch.device("cpu"),
+        offload_type: str = "block_level",
+        num_blocks_per_group: Optional[int] = None,
+        non_blocking: bool = False,
+        use_stream: bool = False,
+    ) -> None:
+        r"""
+        Activates group offloading for the current model.
+
+        See [`~hooks.group_offloading.apply_group_offloading`] for more information.
+
+        Example:
+
+            ```python
+            >>> from diffusers import CogVideoXTransformer3DModel
+
+            >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
+            ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
+            ... )
+
+            >>> transformer.enable_group_offload(
+            ...     onload_device=torch.device("cuda"),
+            ...     offload_device=torch.device("cpu"),
+            ...     offload_type="leaf_level",
+            ...     use_stream=True,
+            ... )
+            ```
+        """
+        if getattr(self, "enable_tiling", None) is not None and getattr(self, "use_tiling", False) and use_stream:
+            msg = (
+                "Applying group offloading on autoencoders, with CUDA streams, may not work as expected if the first "
+                "forward pass is executed with tiling enabled. Please make sure to either:\n"
+                "1. Run a forward pass with small input shapes.\n"
+                "2. Or, run a forward pass with tiling disabled (can still use small dummy inputs)."
+            )
+            logger.warning(msg)
+        if not self._supports_group_offloading:
+            raise ValueError(
+                f"{self.__class__.__name__} does not support group offloading. Please make sure to set the boolean attribute "
+                f"`_supports_group_offloading` to `True` in the class definition. If you believe this is a mistake, please "
+                f"open an issue at https://github.com/huggingface/diffusers/issues."
+            )
+        apply_group_offloading(
+            self, onload_device, offload_device, offload_type, num_blocks_per_group, non_blocking, use_stream
+        )
+
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
@@ -548,7 +609,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     os.remove(full_filename)
 
         for filename, tensors in state_dict_split.filename_to_tensors.items():
-            shard = {tensor: state_dict[tensor] for tensor in tensors}
+            shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}
             filepath = os.path.join(save_directory, filename)
             if safe_serialization:
                 # At some point we will need to deal better with save_function (used for TPU and other distributed
@@ -605,7 +666,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs) -> Self:
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 
@@ -1169,6 +1230,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.cuda)
     def cuda(self, *args, **kwargs):
+        from ..hooks.group_offloading import _is_group_offload_enabled
+
         # Checks if the model has been loaded in 4-bit or 8-bit with BNB
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
             if getattr(self, "is_loaded_in_8bit", False):
@@ -1181,12 +1244,33 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
+
+        # Checks if group offloading is enabled
+        if _is_group_offload_enabled(self):
+            logger.warning(
+                f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.cuda()` is not supported."
+            )
+            return self
+
         return super().cuda(*args, **kwargs)
 
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.to)
     def to(self, *args, **kwargs):
+        from ..hooks.group_offloading import _is_group_offload_enabled
+
+        device_arg_or_kwarg_present = any(isinstance(arg, torch.device) for arg in args) or "device" in kwargs
         dtype_present_in_args = "dtype" in kwargs
+
+        # Try converting arguments to torch.device in case they are passed as strings
+        for arg in args:
+            if not isinstance(arg, str):
+                continue
+            try:
+                torch.device(arg)
+                device_arg_or_kwarg_present = True
+            except RuntimeError:
+                pass
 
         if not dtype_present_in_args:
             for arg in args:
@@ -1212,6 +1296,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
+
+        if _is_group_offload_enabled(self) and device_arg_or_kwarg_present:
+            logger.warning(
+                f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.to()` is not supported."
+            )
+            return self
+
         return super().to(*args, **kwargs)
 
     # Taken from `transformers`.
