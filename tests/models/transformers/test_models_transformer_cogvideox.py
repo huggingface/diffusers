@@ -33,6 +33,7 @@ class CogVideoXTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = CogVideoXTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
+    model_split_percents = [0.7, 0.7, 0.8]
 
     @property
     def dummy_input(self):

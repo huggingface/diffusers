@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "SD3Transformer2DModel": lambda model_cls, weights: weights,
     "FluxTransformer2DModel": lambda model_cls, weights: weights,
     "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
+    "ConsisIDTransformer3DModel": lambda model_cls, weights: weights,
     "MochiTransformer3DModel": lambda model_cls, weights: weights,
     "HunyuanVideoTransformer3DModel": lambda model_cls, weights: weights,
     "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,

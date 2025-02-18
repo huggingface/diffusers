@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,17 +21,20 @@ import json
 import os
 import re
 from collections import OrderedDict
-from functools import partial, wraps
+from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import safetensors
 import torch
+import torch.utils.checkpoint
 from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
+from typing_extensions import Self
 
 from .. import __version__
+from ..hooks import apply_group_offloading, apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -48,6 +51,7 @@ from ..utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
+    is_peft_available,
     is_torch_version,
     logging,
 )
@@ -83,7 +87,17 @@ if is_accelerate_available():
 
 
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
+    from ..hooks.group_offloading import _get_group_onload_device
+
     try:
+        # Try to get the onload device from the group offloading hook
+        return _get_group_onload_device(parameter)
+    except ValueError:
+        pass
+
+    try:
+        # If the onload device is not available due to no group offloading hooks, try to get the device
+        # from the first parameter or buffer
         parameters_and_buffers = itertools.chain(parameter.parameters(), parameter.buffers())
         return next(parameters_and_buffers).device
     except StopIteration:
@@ -102,6 +116,17 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     """
     Returns the first found floating dtype in parameters if there is one, otherwise returns the last dtype it found.
     """
+    # 1. Check if we have attached any dtype modifying hooks (eg. layerwise casting)
+    if isinstance(parameter, nn.Module):
+        for name, submodule in parameter.named_modules():
+            if not hasattr(submodule, "_diffusers_hook"):
+                continue
+            registry = submodule._diffusers_hook
+            hook = registry.get_hook("layerwise_casting")
+            if hook is not None:
+                return hook.compute_dtype
+
+    # 2. If no dtype modifying hooks are attached, return the dtype of the first floating point parameter/buffer
     last_dtype = None
     for param in parameter.parameters():
         last_dtype = param.dtype
@@ -150,9 +175,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _keys_to_ignore_on_load_unexpected = None
     _no_split_modules = None
     _keep_in_fp32_modules = None
+    _skip_layerwise_casting_patterns = None
+    _supports_group_offloading = True
 
     def __init__(self):
         super().__init__()
+
+        self._gradient_checkpointing_func = None
 
     def __getattr__(self, name: str) -> Any:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
@@ -179,14 +208,35 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         return any(hasattr(m, "gradient_checkpointing") and m.gradient_checkpointing for m in self.modules())
 
-    def enable_gradient_checkpointing(self) -> None:
+    def enable_gradient_checkpointing(self, gradient_checkpointing_func: Optional[Callable] = None) -> None:
         """
         Activates gradient checkpointing for the current model (may be referred to as *activation checkpointing* or
         *checkpoint activations* in other frameworks).
+
+        Args:
+            gradient_checkpointing_func (`Callable`, *optional*):
+                The function to use for gradient checkpointing. If `None`, the default PyTorch checkpointing function
+                is used (`torch.utils.checkpoint.checkpoint`).
         """
         if not self._supports_gradient_checkpointing:
-            raise ValueError(f"{self.__class__.__name__} does not support gradient checkpointing.")
-        self.apply(partial(self._set_gradient_checkpointing, value=True))
+            raise ValueError(
+                f"{self.__class__.__name__} does not support gradient checkpointing. Please make sure to set the boolean attribute "
+                f"`_supports_gradient_checkpointing` to `True` in the class definition."
+            )
+
+        if gradient_checkpointing_func is None:
+
+            def _gradient_checkpointing_func(module, *args):
+                ckpt_kwargs = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                return torch.utils.checkpoint.checkpoint(
+                    module.__call__,
+                    *args,
+                    **ckpt_kwargs,
+                )
+
+            gradient_checkpointing_func = _gradient_checkpointing_func
+
+        self._set_gradient_checkpointing(enable=True, gradient_checkpointing_func=gradient_checkpointing_func)
 
     def disable_gradient_checkpointing(self) -> None:
         """
@@ -194,7 +244,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         *checkpoint activations* in other frameworks).
         """
         if self._supports_gradient_checkpointing:
-            self.apply(partial(self._set_gradient_checkpointing, value=False))
+            self._set_gradient_checkpointing(enable=False)
 
     def set_use_npu_flash_attention(self, valid: bool) -> None:
         r"""
@@ -227,14 +277,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.set_use_npu_flash_attention(False)
 
     def set_use_xla_flash_attention(
-        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None, **kwargs
     ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
         # gets the message
         def fn_recursive_set_flash_attention(module: torch.nn.Module):
             if hasattr(module, "set_use_xla_flash_attention"):
-                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec)
+                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, **kwargs)
 
             for child in module.children():
                 fn_recursive_set_flash_attention(child)
@@ -243,11 +293,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_flash_attention(module)
 
-    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None):
+    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None, **kwargs):
         r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
-        self.set_use_xla_flash_attention(True, partition_spec)
+        self.set_use_xla_flash_attention(True, partition_spec, **kwargs)
 
     def disable_xla_flash_attention(self):
         r"""
@@ -313,6 +363,139 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
         """
         self.set_use_memory_efficient_attention_xformers(False)
+
+    def enable_layerwise_casting(
+        self,
+        storage_dtype: torch.dtype = torch.float8_e4m3fn,
+        compute_dtype: Optional[torch.dtype] = None,
+        skip_modules_pattern: Optional[Tuple[str, ...]] = None,
+        skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+        non_blocking: bool = False,
+    ) -> None:
+        r"""
+        Activates layerwise casting for the current model.
+
+        Layerwise casting is a technique that casts the model weights to a lower precision dtype for storage but
+        upcasts them on-the-fly to a higher precision dtype for computation. This process can significantly reduce the
+        memory footprint from model weights, but may lead to some quality degradation in the outputs. Most degradations
+        are negligible, mostly stemming from weight casting in normalization and modulation layers.
+
+        By default, most models in diffusers set the `_skip_layerwise_casting_patterns` attribute to ignore patch
+        embedding, positional embedding and normalization layers. This is because these layers are most likely
+        precision-critical for quality. If you wish to change this behavior, you can set the
+        `_skip_layerwise_casting_patterns` attribute to `None`, or call
+        [`~hooks.layerwise_casting.apply_layerwise_casting`] with custom arguments.
+
+        Example:
+            Using [`~models.ModelMixin.enable_layerwise_casting`]:
+
+            ```python
+            >>> from diffusers import CogVideoXTransformer3DModel
+
+            >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
+            ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
+            ... )
+
+            >>> # Enable layerwise casting via the model, which ignores certain modules by default
+            >>> transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+            ```
+
+        Args:
+            storage_dtype (`torch.dtype`):
+                The dtype to which the model should be cast for storage.
+            compute_dtype (`torch.dtype`):
+                The dtype to which the model weights should be cast during the forward pass.
+            skip_modules_pattern (`Tuple[str, ...]`, *optional*):
+                A list of patterns to match the names of the modules to skip during the layerwise casting process. If
+                set to `None`, default skip patterns are used to ignore certain internal layers of modules and PEFT
+                layers.
+            skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
+                A list of module classes to skip during the layerwise casting process.
+            non_blocking (`bool`, *optional*, defaults to `False`):
+                If `True`, the weight casting operations are non-blocking.
+        """
+
+        user_provided_patterns = True
+        if skip_modules_pattern is None:
+            from ..hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
+
+            skip_modules_pattern = DEFAULT_SKIP_MODULES_PATTERN
+            user_provided_patterns = False
+        if self._keep_in_fp32_modules is not None:
+            skip_modules_pattern += tuple(self._keep_in_fp32_modules)
+        if self._skip_layerwise_casting_patterns is not None:
+            skip_modules_pattern += tuple(self._skip_layerwise_casting_patterns)
+        skip_modules_pattern = tuple(set(skip_modules_pattern))
+
+        if is_peft_available() and not user_provided_patterns:
+            # By default, we want to skip all peft layers because they have a very low memory footprint.
+            # If users want to apply layerwise casting on peft layers as well, they can utilize the
+            # `~diffusers.hooks.layerwise_casting.apply_layerwise_casting` function which provides
+            # them with more flexibility and control.
+
+            from peft.tuners.loha.layer import LoHaLayer
+            from peft.tuners.lokr.layer import LoKrLayer
+            from peft.tuners.lora.layer import LoraLayer
+
+            for layer in (LoHaLayer, LoKrLayer, LoraLayer):
+                skip_modules_pattern += tuple(layer.adapter_layer_names)
+
+        if compute_dtype is None:
+            logger.info("`compute_dtype` not provided when enabling layerwise casting. Using dtype of the model.")
+            compute_dtype = self.dtype
+
+        apply_layerwise_casting(
+            self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
+        )
+
+    def enable_group_offload(
+        self,
+        onload_device: torch.device,
+        offload_device: torch.device = torch.device("cpu"),
+        offload_type: str = "block_level",
+        num_blocks_per_group: Optional[int] = None,
+        non_blocking: bool = False,
+        use_stream: bool = False,
+    ) -> None:
+        r"""
+        Activates group offloading for the current model.
+
+        See [`~hooks.group_offloading.apply_group_offloading`] for more information.
+
+        Example:
+
+            ```python
+            >>> from diffusers import CogVideoXTransformer3DModel
+
+            >>> transformer = CogVideoXTransformer3DModel.from_pretrained(
+            ...     "THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16
+            ... )
+
+            >>> transformer.enable_group_offload(
+            ...     onload_device=torch.device("cuda"),
+            ...     offload_device=torch.device("cpu"),
+            ...     offload_type="leaf_level",
+            ...     use_stream=True,
+            ... )
+            ```
+        """
+        if getattr(self, "enable_tiling", None) is not None and getattr(self, "use_tiling", False) and use_stream:
+            msg = (
+                "Applying group offloading on autoencoders, with CUDA streams, may not work as expected if the first "
+                "forward pass is executed with tiling enabled. Please make sure to either:\n"
+                "1. Run a forward pass with small input shapes.\n"
+                "2. Or, run a forward pass with tiling disabled (can still use small dummy inputs)."
+            )
+            logger.warning(msg)
+        if not self._supports_group_offloading:
+            raise ValueError(
+                f"{self.__class__.__name__} does not support group offloading. Please make sure to set the boolean attribute "
+                f"`_supports_group_offloading` to `True` in the class definition. If you believe this is a mistake, please "
+                f"open an issue at https://github.com/huggingface/diffusers/issues."
+            )
+        apply_group_offloading(
+            self, onload_device, offload_device, offload_type, num_blocks_per_group, non_blocking, use_stream
+        )
 
     def save_pretrained(
         self,
@@ -426,7 +609,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     os.remove(full_filename)
 
         for filename, tensors in state_dict_split.filename_to_tensors.items():
-            shard = {tensor: state_dict[tensor] for tensor in tensors}
+            shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}
             filepath = os.path.join(save_directory, filename)
             if safe_serialization:
                 # At some point we will need to deal better with save_function (used for TPU and other distributed
@@ -483,7 +666,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs) -> Self:
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 
@@ -913,6 +1096,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
+                    named_buffers = model.named_buffers()
+
                     unexpected_keys = load_model_dict_into_meta(
                         model,
                         state_dict,
@@ -921,6 +1106,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         model_name_or_path=pretrained_model_name_or_path,
                         hf_quantizer=hf_quantizer,
                         keep_in_fp32_modules=keep_in_fp32_modules,
+                        named_buffers=named_buffers,
                     )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
@@ -1044,6 +1230,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.cuda)
     def cuda(self, *args, **kwargs):
+        from ..hooks.group_offloading import _is_group_offload_enabled
+
         # Checks if the model has been loaded in 4-bit or 8-bit with BNB
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
             if getattr(self, "is_loaded_in_8bit", False):
@@ -1056,12 +1244,33 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
+
+        # Checks if group offloading is enabled
+        if _is_group_offload_enabled(self):
+            logger.warning(
+                f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.cuda()` is not supported."
+            )
+            return self
+
         return super().cuda(*args, **kwargs)
 
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.to)
     def to(self, *args, **kwargs):
+        from ..hooks.group_offloading import _is_group_offload_enabled
+
+        device_arg_or_kwarg_present = any(isinstance(arg, torch.device) for arg in args) or "device" in kwargs
         dtype_present_in_args = "dtype" in kwargs
+
+        # Try converting arguments to torch.device in case they are passed as strings
+        for arg in args:
+            if not isinstance(arg, str):
+                continue
+            try:
+                torch.device(arg)
+                device_arg_or_kwarg_present = True
+            except RuntimeError:
+                pass
 
         if not dtype_present_in_args:
             for arg in args:
@@ -1087,6 +1296,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
+
+        if _is_group_offload_enabled(self) and device_arg_or_kwarg_present:
+            logger.warning(
+                f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.to()` is not supported."
+            )
+            return self
+
         return super().to(*args, **kwargs)
 
     # Taken from `transformers`.
@@ -1350,6 +1566,24 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             mem_bufs = sum([buf.nelement() * buf.element_size() for buf in self.buffers()])
             mem = mem + mem_bufs
         return mem
+
+    def _set_gradient_checkpointing(
+        self, enable: bool = True, gradient_checkpointing_func: Callable = torch.utils.checkpoint.checkpoint
+    ) -> None:
+        is_gradient_checkpointing_set = False
+
+        for name, module in self.named_modules():
+            if hasattr(module, "gradient_checkpointing"):
+                logger.debug(f"Setting `gradient_checkpointing={enable}` for '{name}'")
+                module._gradient_checkpointing_func = gradient_checkpointing_func
+                module.gradient_checkpointing = enable
+                is_gradient_checkpointing_set = True
+
+        if not is_gradient_checkpointing_set:
+            raise ValueError(
+                f"The module {self.__class__.__name__} does not support gradient checkpointing. Please make sure to "
+                f"use a module that supports gradient checkpointing by creating a boolean attribute `gradient_checkpointing`."
+            )
 
     def _convert_deprecated_attention_blocks(self, state_dict: OrderedDict) -> None:
         deprecated_attention_block_paths = []

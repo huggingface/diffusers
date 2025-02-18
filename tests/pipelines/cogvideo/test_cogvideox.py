@@ -24,7 +24,7 @@ from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransf
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -32,6 +32,7 @@ from diffusers.utils.testing_utils import (
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
     check_qkv_fusion_processors_exist,
     to_np,
@@ -41,7 +42,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class CogVideoXPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, unittest.TestCase):
     pipeline_class = CogVideoXPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -58,8 +59,10 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
     test_xformers_attention = False
+    test_layerwise_casting = True
+    test_group_offloading = True
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1):
         torch.manual_seed(0)
         transformer = CogVideoXTransformer3DModel(
             # Product of num_attention_heads * attention_head_dim must be divisible by 16 for 3D positional embeddings
@@ -71,7 +74,7 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             out_channels=4,
             time_embed_dim=2,
             text_embed_dim=32,  # Must match with tiny-random-t5
-            num_layers=1,
+            num_layers=num_layers,
             sample_width=2,  # latent width: 2 -> final width: 16
             sample_height=2,  # latent height: 2 -> final height: 16
             sample_frames=9,  # latent frames: (9 - 1) / 4 + 1 = 3 -> final frames: 9
@@ -321,7 +324,7 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class CogVideoXPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
@@ -339,7 +342,7 @@ class CogVideoXPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         videos = pipe(

@@ -24,10 +24,13 @@ from diffusers import (
     DDIMScheduler,
     DiffusionPipeline,
     KolorsPipeline,
+    PyramidAttentionBroadcastConfig,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
+from diffusers.hooks import apply_group_offloading
+from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
@@ -45,6 +48,7 @@ from diffusers.utils.testing_utils import (
     require_accelerator,
     require_hf_hub_version_greater,
     require_torch,
+    require_torch_gpu,
     require_transformers_version_greater,
     skip_mps,
     torch_device,
@@ -987,7 +991,8 @@ class PipelineTesterMixin:
     test_attention_slicing = True
 
     test_xformers_attention = True
-
+    test_layerwise_casting = False
+    test_group_offloading = False
     supports_dduf = True
 
     def get_generator(self, seed):
@@ -2027,6 +2032,94 @@ class PipelineTesterMixin:
         elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
             assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
 
+    def test_layerwise_casting_inference(self):
+        if not self.test_layerwise_casting:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device, dtype=torch.bfloat16)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        _ = pipe(**inputs)[0]
+
+    @require_torch_gpu
+    def test_group_offloading_inference(self):
+        if not self.test_group_offloading:
+            return
+
+        def create_pipe():
+            torch.manual_seed(0)
+            components = self.get_dummy_components()
+            pipe = self.pipeline_class(**components)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def enable_group_offload_on_component(pipe, group_offloading_kwargs):
+            # We intentionally don't test VAE's here. This is because some tests enable tiling on the VAE. If
+            # tiling is enabled and a forward pass is run, when cuda streams are used, the execution order of
+            # the layers is not traced correctly. This causes errors. For apply group offloading to VAE, a
+            # warmup forward pass (even with dummy small inputs) is recommended.
+            for component_name in [
+                "text_encoder",
+                "text_encoder_2",
+                "text_encoder_3",
+                "transformer",
+                "unet",
+                "controlnet",
+            ]:
+                if not hasattr(pipe, component_name):
+                    continue
+                component = getattr(pipe, component_name)
+                if not getattr(component, "_supports_group_offloading", True):
+                    continue
+                if hasattr(component, "enable_group_offload"):
+                    # For diffusers ModelMixin implementations
+                    component.enable_group_offload(torch.device(torch_device), **group_offloading_kwargs)
+                else:
+                    # For other models not part of diffusers
+                    apply_group_offloading(
+                        component, onload_device=torch.device(torch_device), **group_offloading_kwargs
+                    )
+                self.assertTrue(
+                    all(
+                        module._diffusers_hook.get_hook("group_offloading") is not None
+                        for module in component.modules()
+                        if hasattr(module, "_diffusers_hook")
+                    )
+                )
+            for component_name in ["vae", "vqvae"]:
+                if hasattr(pipe, component_name):
+                    getattr(pipe, component_name).to(torch_device)
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(torch_device)
+            return pipe(**inputs)[0]
+
+        pipe = create_pipe().to(torch_device)
+        output_without_group_offloading = run_forward(pipe)
+
+        pipe = create_pipe()
+        enable_group_offload_on_component(pipe, {"offload_type": "block_level", "num_blocks_per_group": 1})
+        output_with_group_offloading1 = run_forward(pipe)
+
+        pipe = create_pipe()
+        enable_group_offload_on_component(pipe, {"offload_type": "leaf_level"})
+        output_with_group_offloading2 = run_forward(pipe)
+
+        if torch.is_tensor(output_without_group_offloading):
+            output_without_group_offloading = output_without_group_offloading.detach().cpu().numpy()
+            output_with_group_offloading1 = output_with_group_offloading1.detach().cpu().numpy()
+            output_with_group_offloading2 = output_with_group_offloading2.detach().cpu().numpy()
+
+        self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-4))
+        self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-4))
+
 
 @is_staging_test
 class PipelinePushToHubTester(unittest.TestCase):
@@ -2305,6 +2398,141 @@ class SDXLOptionalComponentsTesterMixin:
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
+
+
+class PyramidAttentionBroadcastTesterMixin:
+    pab_config = PyramidAttentionBroadcastConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(100, 800),
+        spatial_attention_block_identifiers=["transformer_blocks"],
+    )
+
+    def test_pyramid_attention_broadcast_layers(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        num_layers = 0
+        num_single_layers = 0
+        dummy_component_kwargs = {}
+        dummy_component_parameters = inspect.signature(self.get_dummy_components).parameters
+        if "num_layers" in dummy_component_parameters:
+            num_layers = 2
+            dummy_component_kwargs["num_layers"] = num_layers
+        if "num_single_layers" in dummy_component_parameters:
+            num_single_layers = 2
+            dummy_component_kwargs["num_single_layers"] = num_single_layers
+
+        components = self.get_dummy_components(**dummy_component_kwargs)
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        self.pab_config.current_timestep_callback = lambda: pipe.current_timestep
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_cache(self.pab_config)
+
+        expected_hooks = 0
+        if self.pab_config.spatial_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.pab_config.temporal_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.pab_config.cross_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        count = 0
+        for module in denoiser.modules():
+            if hasattr(module, "_diffusers_hook"):
+                hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                if hook is None:
+                    continue
+                count += 1
+                self.assertTrue(
+                    isinstance(hook, PyramidAttentionBroadcastHook),
+                    "Hook should be of type PyramidAttentionBroadcastHook.",
+                )
+                self.assertTrue(hook.state.cache is None, "Cache should be None at initialization.")
+        self.assertEqual(count, expected_hooks, "Number of hooks should match the expected number.")
+
+        # Perform dummy inference step to ensure state is updated
+        def pab_state_check_callback(pipe, i, t, kwargs):
+            for module in denoiser.modules():
+                if hasattr(module, "_diffusers_hook"):
+                    hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                    if hook is None:
+                        continue
+                    self.assertTrue(
+                        hook.state.cache is not None,
+                        "Cache should have updated during inference.",
+                    )
+                    self.assertTrue(
+                        hook.state.iteration == i + 1,
+                        "Hook iteration state should have updated during inference.",
+                    )
+            return {}
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 2
+        inputs["callback_on_step_end"] = pab_state_check_callback
+        pipe(**inputs)[0]
+
+        # After inference, reset_stateful_hooks is called within the pipeline, which should have reset the states
+        for module in denoiser.modules():
+            if hasattr(module, "_diffusers_hook"):
+                hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                if hook is None:
+                    continue
+                self.assertTrue(
+                    hook.state.cache is None,
+                    "Cache should be reset to None after inference.",
+                )
+                self.assertTrue(
+                    hook.state.iteration == 0,
+                    "Iteration should be reset to 0 after inference.",
+                )
+
+    def test_pyramid_attention_broadcast_inference(self, expected_atol: float = 0.2):
+        # We need to use higher tolerance because we are using a random model. With a converged/trained
+        # model, the tolerance can be lower.
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        num_layers = 2
+        components = self.get_dummy_components(num_layers=num_layers)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # Run inference without PAB
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        original_image_slice = output.flatten()
+        original_image_slice = np.concatenate((original_image_slice[:8], original_image_slice[-8:]))
+
+        # Run inference with PAB enabled
+        self.pab_config.current_timestep_callback = lambda: pipe.current_timestep
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_cache(self.pab_config)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        image_slice_pab_enabled = output.flatten()
+        image_slice_pab_enabled = np.concatenate((image_slice_pab_enabled[:8], image_slice_pab_enabled[-8:]))
+
+        # Run inference with PAB disabled
+        denoiser.disable_cache()
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        image_slice_pab_disabled = output.flatten()
+        image_slice_pab_disabled = np.concatenate((image_slice_pab_disabled[:8], image_slice_pab_disabled[-8:]))
+
+        assert np.allclose(
+            original_image_slice, image_slice_pab_enabled, atol=expected_atol
+        ), "PAB outputs should not differ much in specified timestep range."
+        assert np.allclose(
+            original_image_slice, image_slice_pab_disabled, atol=1e-4
+        ), "Outputs from normal inference and after disabling cache should not differ."
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
