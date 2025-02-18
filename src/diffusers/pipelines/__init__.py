@@ -346,6 +346,7 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
+    _import_structure["wanx"] = ["WanxPipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -693,6 +694,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
+        from .wanx import WanxPipeline
 
         try:
             if not is_onnx_available():

@@ -148,6 +148,7 @@ else:
             "UNetSpatioTemporalConditionModel",
             "UVit2DModel",
             "VQModel",
+            "WanxTransformer3DModel",
         ]
     )
     _import_structure["optimization"] = [
@@ -439,6 +440,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "WanxPipeline",
         ]
     )
 
@@ -667,6 +669,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
             VQModel,
+            WanxTransformer3DModel,
         )
         from .optimization import (
             get_constant_schedule,
@@ -936,6 +939,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            WanxPipeline,
         )
 
     try:
