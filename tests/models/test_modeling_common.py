@@ -37,7 +37,7 @@ from huggingface_hub.utils import is_jinja_available
 from parameterized import parameterized
 from requests.exceptions import HTTPError
 
-from diffusers.models import UNet2DConditionModel
+from diffusers.models import SD3Transformer2DModel, UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor,
     AttnProcessor2_0,
@@ -200,12 +200,12 @@ class ModelUtilsTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
 
-    def test_accelerate_loading_error_message(self):
-        with self.assertRaises(ValueError) as error_context:
+    def test_missing_key_loading_warning_message(self):
+        with self.assertLogs("diffusers.models.modeling_utils", level="WARNING") as logs:
             UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")
 
         # make sure that error message states what keys are missing
-        assert "conv_out.bias" in str(error_context.exception)
+        assert "conv_out.bias" in " ".join(logs.output)
 
     @parameterized.expand(
         [
@@ -333,6 +333,58 @@ class ModelUtilsTest(unittest.TestCase):
             )
 
         assert model.config.in_channels == 9
+
+    @require_torch_gpu
+    def test_keep_modules_in_fp32(self):
+        r"""
+        A simple tests to check if the modules under `_keep_in_fp32_modules` are kept in fp32 when we load the model in fp16/bf16
+        Also ensures if inference works.
+        """
+        fp32_modules = SD3Transformer2DModel._keep_in_fp32_modules
+
+        for torch_dtype in [torch.bfloat16, torch.float16]:
+            SD3Transformer2DModel._keep_in_fp32_modules = ["proj_out"]
+
+            model = SD3Transformer2DModel.from_pretrained(
+                "hf-internal-testing/tiny-sd3-pipe", subfolder="transformer", torch_dtype=torch_dtype
+            ).to(torch_device)
+
+            for name, module in model.named_modules():
+                if isinstance(module, torch.nn.Linear):
+                    if name in model._keep_in_fp32_modules:
+                        self.assertTrue(module.weight.dtype == torch.float32)
+                    else:
+                        self.assertTrue(module.weight.dtype == torch_dtype)
+
+        def get_dummy_inputs():
+            batch_size = 2
+            num_channels = 4
+            height = width = embedding_dim = 32
+            pooled_embedding_dim = embedding_dim * 2
+            sequence_length = 154
+
+            hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
+            encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
+            pooled_prompt_embeds = torch.randn((batch_size, pooled_embedding_dim)).to(torch_device)
+            timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
+
+            return {
+                "hidden_states": hidden_states,
+                "encoder_hidden_states": encoder_hidden_states,
+                "pooled_projections": pooled_prompt_embeds,
+                "timestep": timestep,
+            }
+
+        # test if inference works.
+        with torch.no_grad() and torch.amp.autocast(torch_device, dtype=torch_dtype):
+            input_dict_for_transformer = get_dummy_inputs()
+            model_inputs = {
+                k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
+            }
+            model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
+            _ = model(**model_inputs)
+
+        SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
 
 class UNetTesterMixin:
