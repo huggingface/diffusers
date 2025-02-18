@@ -17,13 +17,14 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from ...loaders import PeftAdapterMixin
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.attention import FeedForward
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import logging
+from ..cache_utils import CacheMixin
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
 
@@ -285,6 +286,7 @@ class CogView4RotaryPosEmbed(nn.Module):
 
 
 class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
+class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, CacheMixin):
     r"""
     Args:
         patch_size (`int`, defaults to `2`):
@@ -390,7 +392,6 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         p = self.config.patch_size
         post_patch_height = height // p
         post_patch_width = width // p
-
         hidden_states, encoder_hidden_states = self.patch_embed(hidden_states, encoder_hidden_states)
 
         temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)

@@ -127,7 +127,6 @@ def log_validation(cogview4_transformer, args, accelerator, weight_dtype, step, 
                     num_inference_steps=50,
                     guidance_scale=args.guidance_scale,
                     generator=generator,
-                    max_sequence_length=512,
                     height=args.resolution,
                     width=args.resolution,
                 ).images[0]
@@ -1075,7 +1074,7 @@ def main(args):
                 mu = torch.sqrt(image_seq_lens / 256)
                 mu = mu * 0.75 + 0.25
                 scale_factors = mu / (mu + (1 / sigmas - 1) ** 1.0).to(dtype=pixel_latents.dtype, device=pixel_latents.device)
-                scale_factors = scale_factors.view(4, 1, 1, 1)
+                scale_factors = scale_factors.view(len(batch["captions"]), 1, 1, 1)
                 noisy_model_input = (1.0 - scale_factors) * pixel_latents + scale_factors * noise
                 concatenated_noisy_model_input = torch.cat([noisy_model_input, control_latents], dim=1)
                 text_encoding_pipeline = text_encoding_pipeline.to("cuda")
@@ -1114,7 +1113,7 @@ def main(args):
                 # flow-matching loss
                 target = noise - pixel_latents
 
-                weighting = weighting.unsqueeze(1).unsqueeze(2).unsqueeze(3)  # [4, 1, 1, 1]
+                weighting = weighting.view(len(batch["captions"]), 1, 1, 1)
                 loss = torch.mean((weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1),1)
                 loss = loss.mean()
                 accelerator.backward(loss)
