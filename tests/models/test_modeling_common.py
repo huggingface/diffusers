@@ -334,6 +334,7 @@ class ModelUtilsTest(unittest.TestCase):
 
         assert model.config.in_channels == 9
 
+    @require_torch_gpu
     def test_keep_modules_in_fp32(self):
         r"""
         A simple tests to check if the modules under `_keep_in_fp32_modules` are kept in fp32 when we load the model in fp16/bf16
