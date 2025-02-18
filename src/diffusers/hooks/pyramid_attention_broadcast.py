@@ -20,17 +20,16 @@ import torch
 
 from ..models.attention_processor import Attention, MochiAttention
 from ..utils import logging
+from ._common import (
+    _ATTENTION_CLASSES,
+    _CROSS_ATTENTION_BLOCK_IDENTIFIERS,
+    _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS,
+    _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS,
+)
 from .hooks import HookRegistry, ModelHook
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-_ATTENTION_CLASSES = (Attention, MochiAttention)
-
-_SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks")
-_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
-_CROSS_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks")
 
 
 @dataclass
