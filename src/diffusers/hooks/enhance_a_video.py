@@ -76,7 +76,7 @@ class EnhanceAVideoCaptureSDPAInputsFunctionMode(torch.overrides.TorchFunctionMo
             query = kwargs.get("query", None) or args[0]
             key = kwargs.get("key", None) or args[1]
             self.query_key_save_callback(query, key)
-        return func(*args, **(kwargs or {}))
+        return func(*args, **kwargs)
 
 
 class EnhanceAVideoSDPAHook(ModelHook):
