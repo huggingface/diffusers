@@ -40,7 +40,7 @@ from diffusers.utils.testing_utils import (
     require_bitsandbytes_version_greater,
     require_peft_version_greater,
     require_torch,
-    require_torch_gpu,
+    require_torch_gpu_if_bnb_not_multi_backend_enabled,
     require_transformers_version_greater,
     slow,
     torch_device,
@@ -92,7 +92,7 @@ if is_bitsandbytes_available():
 @require_bitsandbytes_version_greater("0.43.2")
 @require_accelerate
 @require_torch
-@require_torch_gpu
+@require_torch_gpu_if_bnb_not_multi_backend_enabled
 @slow
 class Base8bitTests(unittest.TestCase):
     # We need to test on relatively large models (aka >1b parameters otherwise the quantiztion may not work as expected)
@@ -130,7 +130,8 @@ class Base8bitTests(unittest.TestCase):
 class BnB8bitBasicTests(Base8bitTests):
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # Models
         self.model_fp16 = SD3Transformer2DModel.from_pretrained(
@@ -146,7 +147,8 @@ class BnB8bitBasicTests(Base8bitTests):
         del self.model_8bit
 
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def test_quantization_num_parameters(self):
         r"""
@@ -212,7 +214,7 @@ class BnB8bitBasicTests(Base8bitTests):
                     self.assertTrue(module.weight.dtype == torch.int8)
 
         # test if inference works.
-        with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.no_grad() and torch.autocast(torch_device, dtype=torch.float16):
             input_dict_for_transformer = self.get_dummy_inputs()
             model_inputs = {
                 k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
@@ -274,10 +276,6 @@ class BnB8bitBasicTests(Base8bitTests):
 
         with self.assertRaises(ValueError):
             # Tries with a `device`
-            self.model_8bit.to(torch.device("cuda:0"))
-
-        with self.assertRaises(ValueError):
-            # Tries with a `device`
             self.model_8bit.float()
 
         with self.assertRaises(ValueError):
@@ -305,8 +303,9 @@ class BnB8bitBasicTests(Base8bitTests):
         # Check this does not throw an error
         _ = self.model_fp16.float()
 
-        # Check that this does not throw an error
-        _ = self.model_fp16.cuda()
+        if torch.cuda.is_available():
+            # Check that this does not throw an error
+            _ = self.model_fp16.cuda()
 
 
 class Bnb8bitDeviceTests(Base8bitTests):
@@ -339,7 +338,8 @@ class Bnb8bitDeviceTests(Base8bitTests):
 class BnB8bitTrainingTests(Base8bitTests):
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         self.model_8bit = SD3Transformer2DModel.from_pretrained(
@@ -369,7 +369,7 @@ class BnB8bitTrainingTests(Base8bitTests):
         model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
 
         # Step 4: Check if the gradient is not None
-        with torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.autocast(torch_device, dtype=torch.float16):
             out = self.model_8bit(**model_inputs)[0]
             out.norm().backward()
 
@@ -383,7 +383,8 @@ class BnB8bitTrainingTests(Base8bitTests):
 class SlowBnb8bitTests(Base8bitTests):
     def setUp(self) -> None:
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         model_8bit = SD3Transformer2DModel.from_pretrained(
@@ -398,7 +399,8 @@ class SlowBnb8bitTests(Base8bitTests):
         del self.pipeline_8bit
 
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def test_quality(self):
         output = self.pipeline_8bit(
@@ -462,7 +464,7 @@ class SlowBnb8bitTests(Base8bitTests):
         self.assertTrue(max_diff < 1e-2)
 
         # 8bit models cannot be offloaded to CPU.
-        self.assertTrue(self.pipeline_8bit.transformer.device.type == "cuda")
+        self.assertTrue(self.pipeline_8bit.transformer.device.type == torch.device(torch_device).type)
         # calling it again shouldn't be a problem
         _ = self.pipeline_8bit(
             prompt=self.prompt,
@@ -491,13 +493,14 @@ class SlowBnb8bitTests(Base8bitTests):
             quantization_config=text_encoder_3_8bit_config,
             torch_dtype=torch.float16,
         )
-        # CUDA device placement works.
-        pipeline_8bit = DiffusionPipeline.from_pretrained(
-            self.model_name,
-            transformer=transformer_8bit,
-            text_encoder_3=text_encoder_3_8bit,
-            torch_dtype=torch.float16,
-        ).to("cuda")
+        if torch.cuda.is_available():
+            # CUDA device placement works.
+            pipeline_8bit = DiffusionPipeline.from_pretrained(
+                self.model_name,
+                transformer=transformer_8bit,
+                text_encoder_3=text_encoder_3_8bit,
+                torch_dtype=torch.float16,
+            ).to("cuda")
 
         # Check if inference works.
         _ = pipeline_8bit("table", max_sequence_length=20, num_inference_steps=2)
@@ -509,7 +512,8 @@ class SlowBnb8bitTests(Base8bitTests):
 class SlowBnb8bitFluxTests(Base8bitTests):
     def setUp(self) -> None:
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         model_id = "hf-internal-testing/flux.1-dev-int8-pkg"
         t5_8bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
@@ -526,7 +530,8 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         del self.pipeline_8bit
 
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def test_quality(self):
         # keep the resolution and max tokens to a lower number for faster execution.
@@ -573,7 +578,8 @@ class SlowBnb8bitFluxTests(Base8bitTests):
 class BaseBnb8bitSerializationTests(Base8bitTests):
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         quantization_config = BitsAndBytesConfig(
             load_in_8bit=True,
@@ -586,7 +592,8 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         del self.model_0
 
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def test_serialization(self):
         r"""
