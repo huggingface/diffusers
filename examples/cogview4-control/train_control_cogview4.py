@@ -511,7 +511,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--guidance_scale",
         type=float,
-        default=30.0,
+        default=3.5,
         help="the guidance scale used for transformer.",
     )
 
