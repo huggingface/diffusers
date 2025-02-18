@@ -285,7 +285,6 @@ class CogView4RotaryPosEmbed(nn.Module):
         return (freqs.cos(), freqs.sin())
 
 
-class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
 class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, CacheMixin):
     r"""
     Args:
