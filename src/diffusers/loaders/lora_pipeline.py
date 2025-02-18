@@ -3826,7 +3826,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
 
         <Tip warning={true}>
 
-        We support loading original format HunyuanVideo LoRA checkpoints.
+        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
 
         This function is experimental and might change in the future.
 
@@ -3908,10 +3908,6 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
-
-        is_original_hunyuan_video = any("img_attn_qkv" in k for k in state_dict)
-        if is_original_hunyuan_video:
-            state_dict = _convert_hunyuan_video_lora_to_diffusers(state_dict)
 
         return state_dict
 
