@@ -1009,8 +1009,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 raise ValueError("`low_cpu_mem_usage` cannot be False or None when using quantization.")
 
         # Check if `_keep_in_fp32_modules` is not None
-        use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) or hasattr(
-            hf_quantizer, "use_keep_in_fp32_modules"
+        use_keep_in_fp32_modules = cls._keep_in_fp32_modules is not None and (
+            hf_quantizer is None or getattr(hf_quantizer, "use_keep_in_fp32_modules", False)
         )
 
         if use_keep_in_fp32_modules:
@@ -1178,7 +1178,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer.preprocess_model(
                 model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
             )
-
+        print(keep_in_fp32_modules)
         # Now that the model is loaded, we can determine the device_map
         device_map = _determine_device_map(
             model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
