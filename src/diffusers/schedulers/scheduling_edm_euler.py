@@ -103,11 +103,13 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
 
-        sigmas = torch.arange(num_train_timesteps + 1) / num_train_timesteps
+        sigmas_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
+        sigmas = torch.arange(num_train_timesteps + 1, dtype=sigmas_dtype) / num_train_timesteps
         if sigma_schedule == "karras":
             sigmas = self._compute_karras_sigmas(sigmas)
         elif sigma_schedule == "exponential":
             sigmas = self._compute_exponential_sigmas(sigmas)
+        sigmas = sigmas.to(torch.float32)
 
         self.timesteps = self.precondition_noise(sigmas)
 
@@ -230,18 +232,19 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
 
+        sigmas_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         if sigmas is None:
-            sigmas = torch.linspace(0, 1, self.num_inference_steps)
+            sigmas = torch.linspace(0, 1, self.num_inference_steps, dtype=sigmas_dtype)
         elif isinstance(sigmas, float):
-            sigmas = torch.tensor(sigmas, dtype=torch.float32)
+            sigmas = torch.tensor(sigmas, dtype=sigmas_dtype)
         else:
-            sigmas = sigmas
+            sigmas = sigmas.to(sigmas_dtype)
         if self.config.sigma_schedule == "karras":
             sigmas = self._compute_karras_sigmas(sigmas)
         elif self.config.sigma_schedule == "exponential":
             sigmas = self._compute_exponential_sigmas(sigmas)
-
         sigmas = sigmas.to(dtype=torch.float32, device=device)
+
         self.timesteps = self.precondition_noise(sigmas)
 
         if self.config.final_sigmas_type == "sigma_min":
