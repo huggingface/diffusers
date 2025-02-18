@@ -1,11 +1,10 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from ...utils import (
     get_module_from_name,
     is_accelerate_available,
     is_accelerate_version,
     is_optimum_quanto_available,
-    is_optimum_quanto_version,
     is_torch_available,
     logging,
 )
@@ -45,10 +44,6 @@ class QuantoQuantizer(DiffusersQuantizer):
             raise ImportError(
                 "Loading an optimum-quanto quantized model requires optimum-quanto library (`pip install optimum-quanto`)"
             )
-        if not is_optimum_quanto_version(">=", "0.2.6"):
-            raise RuntimeError(
-                "The minimum required version of `optimum-quanto` is 0.2.6. Please upgrade with `pip install -U optimum-quanto`."
-            )
         if not is_accelerate_available():
             raise ImportError(
                 "Loading an optimum-quanto quantized model requires accelerate library (`pip install accelerate`)"
@@ -63,10 +58,13 @@ class QuantoQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         # Quanto imports diffusers internally. This is here to prevent circular imports
-        from optimum.quanto import QModuleMixin
+        from optimum.quanto import QModuleMixin, QTensor
+        from optimum.quanto.tensor.packed import PackedTensor
 
         module, tensor_name = get_module_from_name(model, param_name)
-        if isinstance(module, QModuleMixin) and "weight" in tensor_name:
+        if self.pre_quantized and any(isinstance(module, t) for t in [QTensor, PackedTensor]):
+            return True
+        elif isinstance(module, QModuleMixin) and "weight" in tensor_name:
             return not module.frozen
 
         return False
@@ -83,15 +81,15 @@ class QuantoQuantizer(DiffusersQuantizer):
         """
         Create the quantized parameter by calling .freeze() after setting it to the module.
         """
-        dtype = kwargs.get("dtype", torch.float32)
 
-        if not self.pre_quantized:
+        dtype = kwargs.get("dtype", torch.float32)
+        module, tensor_name = get_module_from_name(model, param_name)
+        if self.pre_quantized:
+            setattr(module, tensor_name, param_value)
+        else:
             set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
-            module, _ = get_module_from_name(model, param_name)
             module.freeze()
             module.weight.requires_grad = False
-        else:
-            __import__("ipdb").set_trace()
 
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
@@ -161,8 +159,9 @@ class QuantoQuantizer(DiffusersQuantizer):
         return
 
     @property
-    def is_trainable(self, model: Optional["ModelMixin"] = None):
+    def is_trainable(self):
         return True
 
-    def is_serializable(self, safe_serialization=None):
-        return False
+    @property
+    def is_serializable(self):
+        return True

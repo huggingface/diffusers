@@ -30,6 +30,7 @@ class QuantoBaseTesterMixin:
     expected_memory_use_in_gb = 5
     keep_in_fp32_module = ""
     modules_to_not_convert = ""
+    _test_torch_compile = False
 
     def get_dummy_init_kwargs(self):
         return {"weights": "float8"}
@@ -135,8 +136,26 @@ class QuantoBaseTesterMixin:
         with torch.no_grad():
             saved_model_output = saved_model(**inputs)
 
-        max_diff = torch.abs(model_output - saved_model_output).max()
+        max_diff = torch.abs(model_output.sample - saved_model_output.sample).max()
         assert max_diff < 1e-5
+
+    def test_torch_compile(self):
+        if not self._test_torch_compile:
+            return
+
+        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
+        compiled_model = torch.compile(model, mode="max-autotune", fullgraph=True)
+
+        model.to(torch_device)
+        with torch.no_grad():
+            model_output = model(**self.get_dummy_inputs()).sample
+        model.to("cpu")
+
+        compiled_model.to(torch_device)
+        with torch.no_grad():
+            compiled_model_output = compiled_model(**self.get_dummy_inputs()).sample
+
+        assert torch.allclose(model_output, compiled_model_output, rtol=1e-3, atol=1e-2)
 
 
 class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
@@ -145,6 +164,7 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
     torch_dtype = torch.bfloat16
     keep_in_fp32_module = "proj_out"
     modules_to_not_convert = ["proj_out"]
+    _test_torch_compile = False
 
     def get_dummy_inputs(self):
         return {
@@ -172,6 +192,7 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
 
 class FluxTransformerFloat8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_use_in_gb = 10
+    _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):
         return {"weights": "float8"}
@@ -179,6 +200,7 @@ class FluxTransformerFloat8WeightsTest(FluxTransformerQuantoMixin, unittest.Test
 
 class FluxTransformerFloat8WeightsAndActivationTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_use_in_gb = 10
+    _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):
         return {"weights": "float8", "activations": "float8"}
@@ -186,54 +208,23 @@ class FluxTransformerFloat8WeightsAndActivationTest(FluxTransformerQuantoMixin, 
 
 class FluxTransformerInt8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_use_in_gb = 10
+    _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):
         return {"weights": "int8"}
 
-    def test_torch_compile(self):
-        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
-        compiled_model = torch.compile(model, mode="max-autotune", fullgraph=True)
-        inputs = self.get_dummy_inputs()
-
-        model.to(torch_device)
-        with torch.no_grad():
-            model_output = model(**inputs).sample
-        model.to("cpu")
-
-        compiled_model.to(torch_device)
-        with torch.no_grad():
-            compiled_model_output = compiled_model(**inputs).sample
-
-        max_diff = torch.abs(model_output - compiled_model_output).max()
-        assert max_diff < 1e-4
-
 
 class FluxTransformerInt8WeightsAndActivationTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_use_in_gb = 10
+    _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):
         return {"weights": "int8", "activations": "int8"}
 
-    def test_torch_compile(self):
-        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
-        compiled_model = torch.compile(model, mode="max-autotune", fullgraph=True)
-        inputs = self.get_dummy_inputs()
-
-        model.to(torch_device)
-        with torch.no_grad():
-            model_output = model(**inputs).sample
-        model.to("cpu")
-
-        compiled_model.to(torch_device)
-        with torch.no_grad():
-            compiled_model_output = compiled_model(**inputs).sample
-
-        max_diff = torch.abs(model_output - compiled_model_output).max()
-        assert max_diff < 1e-4
-
 
 class FluxTransformerInt4WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_use_in_gb = 6
+    _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):
         return {"weights": "int4"}

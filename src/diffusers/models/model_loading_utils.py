@@ -225,6 +225,10 @@ def load_model_dict_into_meta(
                 param = param.to(torch.float32)
                 if accepts_dtype:
                     set_module_kwargs["dtype"] = torch.float32
+
+            elif hf_quantizer is not None and param.dtype in [torch.float8_e4m3fn, torch.float8_e5m2]:
+                pass
+
             else:
                 param = param.to(dtype)
                 if accepts_dtype:
