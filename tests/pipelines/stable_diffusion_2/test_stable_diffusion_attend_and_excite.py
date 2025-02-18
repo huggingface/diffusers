@@ -204,6 +204,13 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     def test_from_pipe_consistent_forward_pass_cpu_offload(self):
         super().test_from_pipe_consistent_forward_pass_cpu_offload(expected_max_diff=5e-3)
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
 
 @require_torch_accelerator
 @nightly

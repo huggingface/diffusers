@@ -267,3 +267,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         lora_image_embed = output_lora.image_embeddings
 
         self.assertTrue(image_embed.shape == lora_image_embed.shape)
+
+    @unittest.skip("Test not supported as dtype cannot be inferred without the text encoder otherwise.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass

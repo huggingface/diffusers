@@ -32,10 +32,7 @@ from diffusers import (
     StableDiffusionControlNetPAGInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-)
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import (
@@ -243,3 +240,10 @@ class StableDiffusionControlNetPAGInpaintPipelineFastTests(
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
+
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)

@@ -508,7 +508,12 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
+    @unittest.skip("Test not supported.")
     def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @unittest.skip("Test not supported for now because of the use of `projection_model` in `encode_prompt()`.")
+    def test_encode_prompt_works_in_isolation(self):
         pass
 
 

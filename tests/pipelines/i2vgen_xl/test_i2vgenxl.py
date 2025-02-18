@@ -228,6 +228,10 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skip("Test not supported for now.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @slow
 @require_torch_accelerator

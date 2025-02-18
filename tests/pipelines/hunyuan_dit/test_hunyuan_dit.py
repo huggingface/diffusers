@@ -298,6 +298,12 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
 
+    @unittest.skip(
+        "Test not supported as `encode_prompt` is called two times separately which deivates from about 99% of the pipelines we have."
+    )
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @slow
 @require_torch_accelerator

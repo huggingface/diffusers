@@ -186,3 +186,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     @unittest.skip(reason="bf16 not supported and requires CUDA")
     def test_float16_inference(self):
         super().test_float16_inference()
+
+    @unittest.skip("Test not supoorted.")
+    def test_encode_prompt_works_in_isolation(self):
+        super().test_encode_prompt_works_in_isolation()

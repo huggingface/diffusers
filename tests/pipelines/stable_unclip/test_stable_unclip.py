@@ -184,6 +184,10 @@ class StableUnCLIPPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
+    @unittest.skip("Test not supported because of the use of `_encode_prior_prompt()`.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @nightly
 @require_torch_gpu

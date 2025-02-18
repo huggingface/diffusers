@@ -305,3 +305,7 @@ class AnimateDiffPipelineSDXLFastTests(
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+
+    @unittest.skip("Test currently not supported.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass

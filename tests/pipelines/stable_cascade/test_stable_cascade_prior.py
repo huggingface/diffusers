@@ -275,6 +275,10 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         assert np.abs(output_prompt.image_embeddings - output_prompt_embeds.image_embeddings).max() < 1e-5
 
+    @unittest.skip("Test not supported because dtype determination relies on text encoder.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @slow
 @require_torch_gpu

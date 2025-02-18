@@ -279,6 +279,10 @@ class StableDiffusionLatentUpscalePipelineFastTests(
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
 
+    @unittest.skip("Test not supported for a weird use of `text_input_ids`.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @require_torch_gpu
 @slow

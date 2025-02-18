@@ -207,3 +207,9 @@ class GligenTextImagePipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=3, expected_max_diff=3e-3)
+
+    @unittest.skip(
+        "Test not supported because of the use of `text_encoder` in `get_cross_attention_kwargs_with_grounded()`."
+    )
+    def test_encode_prompt_works_in_isolation(self):
+        pass

@@ -42,6 +42,7 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_accelerate_version_greater,
@@ -1983,6 +1984,118 @@ class PipelineTesterMixin:
                 _ = self.pipeline_class.from_pretrained(tmpdir, variant=variant)
 
             assert f"You are trying to load the model files of the `variant={variant}`" in str(error.exception)
+
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
+        if not hasattr(self.pipeline_class, "encode_prompt"):
+            return
+
+        components = self.get_dummy_components()
+
+        # We initialize the pipeline with only text encoders and tokenizers,
+        # mimicking a real-world scenario.
+        components_with_text_encoders = {}
+        for k in components:
+            if "text" in k or "tokenizer" in k:
+                components_with_text_encoders[k] = components[k]
+            else:
+                components_with_text_encoders[k] = None
+        pipe_with_just_text_encoder = self.pipeline_class(**components_with_text_encoders)
+        pipe_with_just_text_encoder = pipe_with_just_text_encoder.to(torch_device)
+
+        # Get inputs and also the args of `encode_prompts`.
+        inputs = self.get_dummy_inputs(torch_device)
+        encode_prompt_signature = inspect.signature(pipe_with_just_text_encoder.encode_prompt)
+        encode_prompt_parameters = list(encode_prompt_signature.parameters.values())
+
+        # Required args in encode_prompt with those with no default.
+        required_params = []
+        for param in encode_prompt_parameters:
+            if param.name == "self" or param.name == "kwargs":
+                continue
+            if param.default is inspect.Parameter.empty:
+                required_params.append(param.name)
+
+        # Craft inputs for the `encode_prompt()` method to run in isolation.
+        encode_prompt_param_names = [p.name for p in encode_prompt_parameters if p.name != "self"]
+        input_keys = list(inputs.keys())
+        encode_prompt_inputs = {k: inputs.pop(k) for k in input_keys if k in encode_prompt_param_names}
+
+        pipe_call_signature = inspect.signature(pipe_with_just_text_encoder.__call__)
+        pipe_call_parameters = pipe_call_signature.parameters
+
+        # For each required arg in encode_prompt, check if it's missing
+        # in encode_prompt_inputs. If so, see if __call__ has a default
+        # for that arg and use it if available.
+        for required_param_name in required_params:
+            if required_param_name not in encode_prompt_inputs:
+                pipe_call_param = pipe_call_parameters.get(required_param_name, None)
+                if pipe_call_param is not None and pipe_call_param.default is not inspect.Parameter.empty:
+                    # Use the default from pipe.__call__
+                    encode_prompt_inputs[required_param_name] = pipe_call_param.default
+                elif extra_required_param_value_dict is not None and isinstance(extra_required_param_value_dict, dict):
+                    encode_prompt_inputs[required_param_name] = extra_required_param_value_dict[required_param_name]
+                else:
+                    raise ValueError(
+                        f"Required parameter '{required_param_name}' in "
+                        f"encode_prompt has no default in either encode_prompt or __call__."
+                    )
+
+        # Compute `encode_prompt()`.
+        with torch.no_grad():
+            encoded_prompt_outputs = pipe_with_just_text_encoder.encode_prompt(**encode_prompt_inputs)
+
+        # Programatically determine the reutrn names of `encode_prompt.`
+        ast_vistor = ReturnNameVisitor()
+        encode_prompt_tree = ast_vistor.get_ast_tree(cls=self.pipeline_class)
+        ast_vistor.visit(encode_prompt_tree)
+        prompt_embed_kwargs = ast_vistor.return_names
+        prompt_embeds_kwargs = dict(zip(prompt_embed_kwargs, encoded_prompt_outputs))
+
+        # Pack the outputs of `encode_prompt`.
+        adapted_prompt_embeds_kwargs = {
+            k: prompt_embeds_kwargs.pop(k) for k in list(prompt_embeds_kwargs.keys()) if k in pipe_call_parameters
+        }
+
+        # now initialize a pipeline without text encoders and compute outputs with the
+        # `encode_prompt()` outputs and other relevant inputs.
+        components_with_text_encoders = {}
+        for k in components:
+            if "text" in k or "tokenizer" in k:
+                components_with_text_encoders[k] = None
+            else:
+                components_with_text_encoders[k] = components[k]
+        pipe_without_text_encoders = self.pipeline_class(**components_with_text_encoders).to(torch_device)
+
+        # Set `negative_prompt` to None as we have already calculated its embeds
+        # if it was present in `inputs`. This is because otherwise we will interfere wrongly
+        # for non-None `negative_prompt` values as defaults (PixArt for example).
+        pipe_without_tes_inputs = {**inputs, **adapted_prompt_embeds_kwargs}
+        if (
+            pipe_call_parameters.get("negative_prompt", None) is not None
+            and pipe_call_parameters.get("negative_prompt").default is not None
+        ):
+            pipe_without_tes_inputs.update({"negative_prompt": None})
+
+        # Pipelines like attend and excite have `prompt` as a required argument.
+        if (
+            pipe_call_parameters.get("prompt", None) is not None
+            and pipe_call_parameters.get("prompt").default is inspect.Parameter.empty
+            and pipe_call_parameters.get("prompt_embeds", None) is not None
+            and pipe_call_parameters.get("prompt_embeds").default is None
+        ):
+            pipe_without_tes_inputs.update({"prompt": None})
+
+        pipe_out = pipe_without_text_encoders(**pipe_without_tes_inputs)[0]
+
+        # Compare against regular pipeline outputs.
+        full_pipe = self.pipeline_class(**components).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        pipe_out_2 = full_pipe(**inputs)[0]
+
+        if isinstance(pipe_out, np.ndarray) and isinstance(pipe_out_2, np.ndarray):
+            self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
+        elif isinstance(pipe_out, torch.Tensor) and isinstance(pipe_out_2, torch.Tensor):
+            self.assertTrue(torch.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
 
     def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
