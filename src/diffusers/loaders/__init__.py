@@ -81,7 +81,7 @@ if is_torch_available():
             "SD3IPAdapterMixin",
         ]
 
-_import_structure["peft"] = ["PeftAdapterMixin"]
+_import_structure["peft"] = ["PeftAdapterMixin", "ControlLoRAMixin"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -91,6 +91,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformer_sd3 import SD3Transformer2DLoadersMixin
         from .unet import UNet2DConditionLoadersMixin
         from .utils import AttnProcsLayers
+        from .peft import ControlLoRAMixin
 
         if is_transformers_available():
             from .ip_adapter import (
@@ -114,7 +115,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin
 
-    from .peft import PeftAdapterMixin
+    from .peft import PeftAdapterMixin, ControlLoRAMixin
 else:
     import sys
 
