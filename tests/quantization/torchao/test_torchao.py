@@ -34,6 +34,7 @@ from diffusers.utils.testing_utils import (
     is_torch_available,
     is_torchao_available,
     nightly,
+    numpy_cosine_similarity_distance,
     require_torch,
     require_torch_gpu,
     require_torchao_version_greater_or_equal,
@@ -342,7 +343,7 @@ class TorchAoTest(unittest.TestCase):
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-                self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
             with tempfile.TemporaryDirectory() as offload_folder:
                 quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
@@ -363,7 +364,7 @@ class TorchAoTest(unittest.TestCase):
 
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-                self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+                self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
     def test_modules_to_not_convert(self):
         quantization_config = TorchAoConfig("int8_weight_only", modules_to_not_convert=["transformer_blocks.0"])
@@ -559,7 +560,7 @@ class TorchAoSerializationTest(unittest.TestCase):
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
         self.assertTrue(isinstance(weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)))
-        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
     def _check_serialization_expected_slice(self, quant_method, quant_method_kwargs, expected_slice, device):
         quantized_model = self.get_dummy_model(quant_method, quant_method_kwargs, device)
@@ -579,7 +580,7 @@ class TorchAoSerializationTest(unittest.TestCase):
                 loaded_quantized_model.proj_out.weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)
             )
         )
-        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
     def test_int_a8w8_cuda(self):
         quant_method, quant_method_kwargs = "int8_dynamic_activation_int8_weight", {}

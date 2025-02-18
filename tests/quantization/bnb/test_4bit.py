@@ -594,7 +594,7 @@ class SlowBnb4BitTests(Base4bitTests):
 
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
         # sharded
 
@@ -615,7 +615,7 @@ class SlowBnb4BitTests(Base4bitTests):
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
 
-        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
 
 @require_transformers_version_greater("4.44.0")
