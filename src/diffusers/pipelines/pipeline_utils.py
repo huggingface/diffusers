@@ -394,6 +394,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         device = device or device_arg
+        device_type = torch.device(device).type if device is not None else None
         pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
@@ -424,7 +425,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` to remove the existing device map from the pipeline."
             )
 
-        if device and torch.device(device).type == "cuda":
+        if device_type == "cuda":
             if pipeline_is_sequentially_offloaded and not pipeline_has_bnb:
                 raise ValueError(
                     "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
@@ -437,7 +438,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
-        if pipeline_is_offloaded and device and torch.device(device).type == "cuda":
+        if pipeline_is_offloaded and device_type == "cuda":
             logger.warning(
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
@@ -449,6 +450,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
             _, is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb = _check_bnb_status(module)
+            is_group_offloaded = self._maybe_raise_error_if_group_offload_active(module=module)
 
             if (is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb) and dtype is not None:
                 logger.warning(
@@ -460,11 +462,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` 8bit and moving it to {device} via `.to()` is not supported. Module is still on {module.device}."
                 )
 
+            # Note: we also handle this at the ModelMixin level. The reason for doing it here too is that modeling
+            # components can be from outside diffusers too, but still have group offloading enabled.
+            if (
+                self._maybe_raise_error_if_group_offload_active(raise_error=False, module=module)
+                and device is not None
+            ):
+                logger.warning(
+                    f"The module '{module.__class__.__name__}' is group offloaded and moving it to {device} via `.to()` is not supported."
+                )
+
             # This can happen for `transformer` models. CPU placement was added in
             # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
             if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
                 module.to(device=device)
-            elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
+            elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb and not is_group_offloaded:
                 module.to(device, dtype)
 
             if (
@@ -1023,6 +1035,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
         Accelerate's module hooks.
         """
+        from ..hooks.group_offloading import _get_group_onload_device
+
+        # When apply group offloading at the leaf_level, we're in the same situation as accelerate's sequential
+        # offloading. We need to return the onload device of the group offloading hooks so that the intermediates
+        # required for computation (latents, prompt embeddings, etc.) can be created on the correct device.
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+            try:
+                return _get_group_onload_device(model)
+            except ValueError:
+                pass
+
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:
                 continue
@@ -1061,6 +1086,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
+        self._maybe_raise_error_if_group_offload_active(raise_error=True)
+
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
@@ -1172,6 +1199,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
+        self._maybe_raise_error_if_group_offload_active(raise_error=True)
+
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
@@ -1895,6 +1924,24 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             new_pipeline.to(dtype=torch_dtype)
 
         return new_pipeline
+
+    def _maybe_raise_error_if_group_offload_active(
+        self, raise_error: bool = False, module: Optional[torch.nn.Module] = None
+    ) -> bool:
+        from ..hooks.group_offloading import _is_group_offload_enabled
+
+        components = self.components.values() if module is None else [module]
+        components = [component for component in components if isinstance(component, torch.nn.Module)]
+        for component in components:
+            if _is_group_offload_enabled(component):
+                if raise_error:
+                    raise ValueError(
+                        "You are trying to apply model/sequential CPU offloading to a pipeline that contains components "
+                        "with group offloading enabled. This is not supported. Please disable group offloading for "
+                        "components of the pipeline to use other offloading methods."
+                    )
+                return True
+        return False
 
 
 class StableDiffusionMixin:
