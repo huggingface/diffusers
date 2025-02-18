@@ -300,6 +300,7 @@ class TorchAoTest(unittest.TestCase):
         device_maps = ["auto", custom_device_map_dict]
 
         inputs = self.get_dummy_tensor_inputs(torch_device)
+        # requires with different expected slices since models are different due to offload (we don't quantize modules offloaded to cpu/disk)
         expected_slice_auto = np.array(
             [
                 0.34179688,
