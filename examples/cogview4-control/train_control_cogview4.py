@@ -41,7 +41,6 @@ from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, CogView4Co
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     compute_density_for_timestep_sampling,
-    compute_loss_weighting_for_sd3,
     free_memory,
 )
 from diffusers.utils import check_min_version, is_wandb_available, load_image, make_image_grid
@@ -804,7 +803,7 @@ def main(args):
         cogview4_transformer.patch_embed.proj = new_linear
 
     assert torch.all(cogview4_transformer.patch_embed.proj.weight[:, initial_input_channels:].data == 0)
-    cogview4_transformer.register_to_config(in_channels=cogview4_transformer.config.in_channels * 2, out_channels=initial_input_channels)
+    cogview4_transformer.register_to_config(in_channels=cogview4_transformer.config.in_channels * 2, out_channels=cogview4_transformer.config.in_channels)
 
     if args.only_target_transformer_blocks:
         cogview4_transformer.patch_embed.proj.requires_grad_(True)
@@ -1097,7 +1096,7 @@ def main(args):
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
-                weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
+                weighting = (sigmas**-2.0).float()
                 # flow-matching loss
                 target = noise - pixel_latents
 
