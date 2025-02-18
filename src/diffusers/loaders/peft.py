@@ -54,6 +54,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
 }
 _NO_CONFIG_UPDATE_KEYS = ["to_k", "to_q", "to_v"]
+_FULL_NAME_PREFIX_FOR_PEFT = "FULL-NAME"
 
 
 def _maybe_adjust_config(config):
@@ -188,6 +189,7 @@ class PeftAdapterMixin:
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
+        from peft.utils.constants import FULLY_QUALIFIED_PATTERN_KEY_PREFIX
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -253,14 +255,14 @@ class PeftAdapterMixin:
                 # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
                 # Bias layers in LoRA only have a single dimension
                 if "lora_B" in key and val.ndim > 1:
-                    rank[key] = val.shape[1]
+                    rank[f"{FULLY_QUALIFIED_PATTERN_KEY_PREFIX}{key}"] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
                 alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
-            lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
+            # lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
 
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
