@@ -579,7 +579,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
         )
 
         # Prepare latents
-        latent_channels = self.transformer.config.in_channels
+        latent_channels = self.transformer.config.in_channels // 2
 
         control_image = self.prepare_image(
             image=control_image,

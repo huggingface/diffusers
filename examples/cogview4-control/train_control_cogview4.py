@@ -804,6 +804,7 @@ def main(args):
         cogview4_transformer.patch_embed.proj = new_linear
 
     assert torch.all(cogview4_transformer.patch_embed.proj.weight[:, initial_input_channels:].data == 0)
+    cogview4_transformer.register_to_config(in_channels=cogview4_transformer.config.in_channels * 2, out_channels=initial_input_channels)
 
     if args.only_target_transformer_blocks:
         cogview4_transformer.patch_embed.proj.requires_grad_(True)
