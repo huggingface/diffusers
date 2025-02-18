@@ -87,12 +87,11 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         input_ids = torch.randint(1, sequence_length, size=(batch_size, sequence_length), generator=generator)
 
         pipeline_inputs = {
-            "prompt": "dance monkey",
+            "prompt": "A painting of a squirrel eating a burger",
             "num_inference_steps": 2,
-            "guidance_scale": 6.0,
+            "guidance_scale": 5.0,
             "height": 32,
             "width": 32,
-            "max_sequence_length": sequence_length,
             "output_type": "np",
         }
         if with_generator:
@@ -100,34 +99,34 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    @unittest.skip("Not supported in LTXVideo.")
+    @unittest.skip("Not supported in Lumina2.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in LTXVideo.")
+    @unittest.skip("Not supported in Lumina2.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in LTXVideo.")
+    @unittest.skip("Not supported in Lumina2.")
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in LTXVideo.")
+    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in LTXVideo.")
+    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in LTXVideo.")
+    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in LTXVideo.")
+    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in LTXVideo.")
+    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
