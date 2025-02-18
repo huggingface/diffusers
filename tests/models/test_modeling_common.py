@@ -346,7 +346,7 @@ class ModelUtilsTest(unittest.TestCase):
 
             model = SD3Transformer2DModel.from_pretrained(
                 "hf-internal-testing/tiny-sd3-pipe", subfolder="transformer", torch_dtype=torch_dtype
-            ).to("cuda")
+            ).to(torch_device)
 
             for name, module in model.named_modules():
                 if isinstance(module, torch.nn.Linear):
@@ -375,7 +375,7 @@ class ModelUtilsTest(unittest.TestCase):
             }
 
         # test if inference works.
-        with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch_dtype):
+        with torch.no_grad() and torch.amp.autocast(torch_device, dtype=torch_dtype):
             input_dict_for_transformer = get_dummy_inputs()
             model_inputs = {
                 k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
