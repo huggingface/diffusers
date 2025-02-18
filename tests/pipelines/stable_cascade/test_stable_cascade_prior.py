@@ -24,11 +24,12 @@ from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
 from diffusers.models import StableCascadeUNet
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     load_numpy,
     numpy_cosine_similarity_distance,
     require_peft_backend,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -277,25 +278,25 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_cascade_prior(self):
         pipe = StableCascadePriorPipeline.from_pretrained(
             "stabilityai/stable-cascade-prior", variant="bf16", torch_dtype=torch.bfloat16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."

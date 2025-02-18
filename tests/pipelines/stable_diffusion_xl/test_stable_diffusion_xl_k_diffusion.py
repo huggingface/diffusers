@@ -20,14 +20,20 @@ import numpy as np
 import torch
 
 from diffusers import StableDiffusionXLKDiffusionPipeline
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 
 
 enable_full_determinism()
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
     dtype = torch.float16
 
@@ -35,13 +41,13 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_diffusion_xl(self):
         sd_pipe = StableDiffusionXLKDiffusionPipeline.from_pretrained(
