@@ -41,6 +41,7 @@ from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, CogView4Co
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     compute_density_for_timestep_sampling,
+    compute_loss_weighting_for_sd3,
     free_memory,
 )
 from diffusers.utils import check_min_version, is_wandb_available, load_image, make_image_grid
@@ -1096,7 +1097,7 @@ def main(args):
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
-                weighting = (sigmas**-2.0).float()
+                weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
                 # flow-matching loss
                 target = noise - pixel_latents
 
