@@ -213,6 +213,7 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+    # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_llama_prompt_embeds
     def _get_llama_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -279,6 +280,7 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
 
         return prompt_embeds, prompt_attention_mask
 
+    # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -318,6 +320,7 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -354,6 +357,7 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
 
         return prompt_embeds, pooled_prompt_embeds, prompt_attention_mask
 
+    # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
