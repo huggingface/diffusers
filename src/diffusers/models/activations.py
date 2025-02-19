@@ -49,6 +49,7 @@ def get_activation(act_fn: str) -> nn.Module:
     else:
         raise ValueError(f"activation function {act_fn} not found in ACT2FN mapping {list(ACT2CLS.keys())}")
 
+
 class FP32SiLU(nn.Module):
     r"""
     SiLU activation function with input upcasted to torch.float32.
