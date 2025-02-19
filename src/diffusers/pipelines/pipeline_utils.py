@@ -324,7 +324,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 create_pr=create_pr,
             )
 
-    def to(self, *args, **kwargs):
+    def to(self, *args, **kwargs) -> Self:
         r"""
         Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
         arguments of `self.to(*args, **kwargs).`
@@ -693,7 +693,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
-        offload_state_dict = kwargs.pop("offload_state_dict", False)
+        offload_state_dict = kwargs.pop("offload_state_dict", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         dduf_file = kwargs.pop("dduf_file", None)
