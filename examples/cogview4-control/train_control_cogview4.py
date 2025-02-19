@@ -1056,9 +1056,7 @@ def main(args):
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=pixel_latents.device)
                 sigmas = noise_scheduler_copy.sigmas[indices].to(device=pixel_latents.device)
                 captions = batch["captions"]
-                token_lengths = [len(caption.split()) for caption in captions]
-                token_per_sample = max(token_lengths)
-                image_seq_lens = torch.tensor(token_per_sample // patch_size ** 2, dtype=pixel_latents.dtype, device=pixel_latents.device)
+                image_seq_lens = torch.tensor(pixel_latents.shape[2] * pixel_latents.shape[3] // patch_size ** 2, dtype=pixel_latents.dtype, device=pixel_latents.device) # H * W  / VAE patch_size
                 mu = torch.sqrt(image_seq_lens / 256)
                 mu = mu * 0.75 + 0.25
                 scale_factors = mu / (mu + (1 / sigmas - 1) ** 1.0).to(dtype=pixel_latents.dtype, device=pixel_latents.device)
