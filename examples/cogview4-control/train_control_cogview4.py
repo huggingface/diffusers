@@ -1066,7 +1066,7 @@ def main(args):
 
                 with torch.no_grad():
                     prompt_embeds, pooled_prompt_embeds, = text_encoding_pipeline.encode_prompt(
-                        captions, None
+                        captions, ""
                     )
                 original_size = (args.resolution, args.resolution)
                 original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
