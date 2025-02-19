@@ -68,10 +68,19 @@ class LTXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         vae = AutoencoderKLLTXVideo(
+            in_channels=3,
+            out_channels=3,
             latent_channels=8,
             block_out_channels=(8, 8, 8, 8),
-            spatio_temporal_scaling=(True, True, False, False),
+            decoder_block_out_channels=(8, 8, 8, 8),
             layers_per_block=(1, 1, 1, 1, 1),
+            decoder_layers_per_block=(1, 1, 1, 1, 1),
+            spatio_temporal_scaling=(True, True, False, False),
+            decoder_spatio_temporal_scaling=(True, True, False, False),
+            decoder_inject_noise=(False, False, False, False, False),
+            upsample_residual=(False, False, False, False),
+            upsample_factor=(1, 1, 1, 1),
+            timestep_conditioning=False,
             patch_size=1,
             patch_size_t=1,
             encoder_causal=True,

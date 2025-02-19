@@ -24,13 +24,21 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from ...schedulers import EulerDiscreteScheduler
-from ...utils import BaseOutput, logging, replace_example_docstring
+from ...utils import BaseOutput, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -177,7 +185,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             scheduler=scheduler,
             feature_extractor=feature_extractor,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(do_resize=True, vae_scale_factor=self.vae_scale_factor)
 
     def _encode_image(
@@ -599,6 +607,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             # cast back to fp16 if needed

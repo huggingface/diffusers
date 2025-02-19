@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,6 +63,7 @@ from diffusers.utils import (
     is_wandb_available,
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
@@ -70,9 +71,12 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
+
+if is_torch_npu_available():
+    torch.npu.config.allow_internal_format = False
 
 
 def save_model_card(
@@ -158,6 +162,9 @@ def log_validation(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
+    if args.enable_vae_tiling:
+        pipeline.vae.enable_tiling(tile_sample_min_height=1024, tile_sample_stride_width=1024)
+
     pipeline.text_encoder = pipeline.text_encoder.to(torch.bfloat16)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -597,6 +604,8 @@ def parse_args(input_args=None):
         help="Whether to offload the VAE and the text encoder to CPU when they are not used.",
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument("--enable_vae_tiling", action="store_true", help="Enabla vae tiling in log validation")
+    parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -920,8 +929,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -943,7 +951,7 @@ def main(args):
 
     # Load scheduler and models
     noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler"
+        args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
     text_encoder = Gemma2Model.from_pretrained(
@@ -964,15 +972,6 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
-    # Initialize a text encoding pipeline and keep it to CPU for now.
-    text_encoding_pipeline = SanaPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=None,
-        transformer=None,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-    )
-
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -992,6 +991,23 @@ def main(args):
     transformer.to(accelerator.device, dtype=weight_dtype)
     # because Gemma2 is particularly suited for bfloat16.
     text_encoder.to(dtype=torch.bfloat16)
+
+    if args.enable_npu_flash_attention:
+        if is_torch_npu_available():
+            logger.info("npu flash attention enabled.")
+            for block in transformer.transformer_blocks:
+                block.attn2.set_use_npu_flash_attention(True)
+        else:
+            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
+
+    # Initialize a text encoding pipeline and keep it to CPU for now.
+    text_encoding_pipeline = SanaPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=None,
+        transformer=None,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+    )
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
@@ -1182,6 +1198,7 @@ def main(args):
             )
         if args.offload:
             text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+        prompt_embeds = prompt_embeds.to(transformer.dtype)
         return prompt_embeds, prompt_attention_mask
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
@@ -1216,7 +1233,7 @@ def main(args):
     vae_config_scaling_factor = vae.config.scaling_factor
     if args.cache_latents:
         latents_cache = []
-        vae = vae.to("cuda")
+        vae = vae.to(accelerator.device)
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
                 batch["pixel_values"] = batch["pixel_values"].to(

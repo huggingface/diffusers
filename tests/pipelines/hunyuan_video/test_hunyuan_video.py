@@ -30,13 +30,13 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class HunyuanVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class HunyuanVideoPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, unittest.TestCase):
     pipeline_class = HunyuanVideoPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
@@ -53,16 +53,18 @@ class HunyuanVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # there is no xformers processor for Flux
     test_xformers_attention = False
+    test_layerwise_casting = True
+    test_group_offloading = True
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = HunyuanVideoTransformer3DModel(
             in_channels=4,
             out_channels=4,
             num_attention_heads=2,
             attention_head_dim=10,
-            num_layers=1,
-            num_single_layers=1,
+            num_layers=num_layers,
+            num_single_layers=num_single_layers,
             num_refiner_layers=1,
             patch_size=1,
             patch_size_t=1,
@@ -131,7 +133,7 @@ class HunyuanVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         text_encoder = LlamaModel(llama_text_encoder_config)
-        tokenizer = LlamaTokenizer.from_pretrained("hf-internal-testing/tiny-random-LlamaForCausalLM")
+        tokenizer = LlamaTokenizer.from_pretrained("finetrainers/dummy-hunyaunvideo", subfolder="tokenizer")
 
         torch.manual_seed(0)
         text_encoder_2 = CLIPTextModel(clip_text_encoder_config)
@@ -154,10 +156,8 @@ class HunyuanVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        # Cannot test with dummy prompt because tokenizers are not configured correctly.
-        # TODO(aryan): create dummy tokenizers and using from hub
         inputs = {
-            "prompt": "",
+            "prompt": "dance monkey",
             "prompt_template": {
                 "template": "{}",
                 "crop_start": 0,
