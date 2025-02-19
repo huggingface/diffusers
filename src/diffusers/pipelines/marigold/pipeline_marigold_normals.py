@@ -356,11 +356,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 same width and height.
             num_inference_steps (`int`, *optional*, defaults to `None`):
                 Number of denoising diffusion steps during inference. The default value `None` results in automatic
-                selection. The number of steps should be at least 10 with the full Marigold models, and between 1 and 4
-                for Marigold-LCM models.
+                selection.
             ensemble_size (`int`, defaults to `1`):
-                Number of ensemble predictions. Recommended values are 5 and higher for better precision, or 1 for
-                faster inference.
+                Number of ensemble predictions. Higher values result in measurable improvements and visual degradation.
             processing_resolution (`int`, *optional*, defaults to `None`):
                 Effective processing resolution. When set to `0`, matches the larger input image dimension. This
                 produces crisper predictions, but may also lead to the overall loss of global context. The default
@@ -396,7 +394,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 within the ensemble. These codes can be saved, modified, and used for subsequent calls with the
                 `latents` argument.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.marigold.MarigoldDepthOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.marigold.MarigoldNormalsOutput`] instead of a plain tuple.
 
         Examples:
 
@@ -464,9 +462,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         # `pred_latent` variable. The variable `image_latent` is of the same shape: it contains each input image encoded
         # into latent space and replicated `E` times. The latents can be either generated (see `generator` to ensure
         # reproducibility), or passed explicitly via the `latents` argument. The latter can be set outside the pipeline
-        # code. For example, in the Marigold-LCM video processing demo, the latents initialization of a frame is taken
-        # as a convex combination of the latents output of the pipeline for the previous frame and a newly-sampled
-        # noise. This behavior can be achieved by setting the `output_latent` argument to `True`. The latent space
+        # code. This behavior can be achieved by setting the `output_latent` argument to `True`. The latent space
         # dimensions are `(h, w)`. Encoding into latent space happens in batches of size `batch_size`.
         # Model invocation: self.vae.encoder.
         image_latent, pred_latent = self.prepare_latents(

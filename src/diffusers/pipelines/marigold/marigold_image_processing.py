@@ -16,7 +16,7 @@
 # More information and citation instructions are available on the
 # Marigold project website: https://marigoldcomputervision.github.io
 # --------------------------------------------------------------------------
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
@@ -397,7 +397,7 @@ class MarigoldImageProcessor(ConfigMixin):
         val_min: float = 0.0,
         val_max: float = 1.0,
         color_map: str = "Spectral",
-    ) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
+    ) -> List[PIL.Image.Image]:
         """
         Visualizes depth maps, such as predictions of the `MarigoldDepthPipeline`.
 
@@ -409,7 +409,7 @@ class MarigoldImageProcessor(ConfigMixin):
             color_map (`str`, *optional*, defaults to `"Spectral"`): Color map used to convert a single-channel
                       depth prediction into colored representation.
 
-        Returns: `PIL.Image.Image` or `List[PIL.Image.Image]` with depth maps visualization.
+        Returns: `List[PIL.Image.Image]` with depth maps visualization.
         """
         if val_max <= val_min:
             raise ValueError(f"Invalid values range: [{val_min}, {val_max}].")
@@ -454,7 +454,7 @@ class MarigoldImageProcessor(ConfigMixin):
         depth: Union[np.ndarray, torch.Tensor, List[np.ndarray], List[torch.Tensor]],
         val_min: float = 0.0,
         val_max: float = 1.0,
-    ) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
+    ) -> List[PIL.Image.Image]:
         def export_depth_to_16bit_png_one(img, idx=None):
             prefix = "Depth" + (f"[{idx}]" if idx else "")
             if not isinstance(img, np.ndarray) and not torch.is_tensor(img):
@@ -496,7 +496,7 @@ class MarigoldImageProcessor(ConfigMixin):
         flip_x: bool = False,
         flip_y: bool = False,
         flip_z: bool = False,
-    ) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
+    ) -> List[PIL.Image.Image]:
         """
         Visualizes surface normals, such as predictions of the `MarigoldNormalsPipeline`.
 
@@ -510,7 +510,7 @@ class MarigoldImageProcessor(ConfigMixin):
             flip_z (`bool`, *optional*, defaults to `False`): Flips the Z axis of the normals frame of reference.
                       Default direction is facing the observer.
 
-        Returns: `PIL.Image.Image` or `List[PIL.Image.Image]` with surface normals visualization.
+        Returns: `List[PIL.Image.Image]` with surface normals visualization.
         """
         flip_vec = None
         if any((flip_x, flip_y, flip_z)):
@@ -547,6 +547,88 @@ class MarigoldImageProcessor(ConfigMixin):
             raise ValueError(f"Unexpected input type: {type(normals)}")
 
     @staticmethod
+    def visualize_intrinsics(
+        prediction: Union[
+            np.ndarray,
+            torch.Tensor,
+            List[np.ndarray],
+            List[torch.Tensor],
+        ],
+        target_properties: Dict[str, Any],
+        color_map: str = "Spectral",
+    ) -> List[Dict[str, PIL.Image.Image]]:
+        """
+        Visualizes intrinsic image decomposition, such as predictions of the `MarigoldIntrinsicsPipeline`.
+
+        Args:
+            prediction (`Union[np.ndarray, torch.Tensor, List[np.ndarray], List[torch.Tensor]]`):
+                Intrinsic image decomposition.
+            target_properties (`Dict[str, Any]`): Decomposition properties. Expected entries:
+                - `target_names: List[str]`: list of target names, each represented by one of the RGB predictions,
+                - `is_linear_space: List[str]`: list of target names predicted in linear space (as opposed to sRGB),
+                - `target_name_x:
+                    [target_name_x_ch_0: str, target_name_x_ch_1: str | None, target_name_x_ch_2: str | None]`: each of
+                    the target names can be a key in this dictionary, in which case the first 1, 2, or all 3 of the RGB
+                    channels are extracted as separate prediction given the names as specified in the list. If the last
+                    channel or channels are not assigned, specify None.
+            color_map (`str`, *optional*, defaults to `"Spectral"`): Color map used to convert a single-channel
+                    predictions into colored representations.
+
+        Returns: `List[Dict[str, PIL.Image.Image]]` with intrinsic image decomposition visualization.
+        """
+        if "target_names" not in target_properties:
+            raise ValueError("Missing `target_names` in target_properties")
+        if "is_linear_space" not in target_properties:
+            raise ValueError("Missing `is_linear_space` in target_properties")
+        n_targets = len(target_properties["target_names"])
+
+        def visualize_targets_one(images, idx=None):
+            # img: [T, 3, H, W]
+            out = {}
+            for target_name, img in zip(target_properties["target_names"], images):
+                img = img.permute(1, 2, 0)  # [H, W, 3]
+                if "is_unnormalized" in target_properties and target_name in target_properties["is_unnormalized"]:
+                    img = img / max(img.max().item(), 1e-6)
+                if "is_linear_space" in target_properties and target_name in target_properties["is_linear_space"]:
+                    img = img ** (1 / 2.2)
+                if target_name in target_properties:
+                    sub_target_names = target_properties[target_name]
+                    if len(sub_target_names) != 3 or any(not isinstance(s, str) for s in sub_target_names):
+                        raise ValueError(f"Unexpected target sub-names {sub_target_names} in {target_name}")
+                    for i in range(3):
+                        if sub_target_names[i] is None:
+                            continue
+                        sub_target_name = sub_target_names[i]
+                        sub_img = img[:, :, i]
+                        sub_img_cmap = MarigoldImageProcessor.colormap(sub_img, cmap=color_map, bytes=True)
+                        sub_img_cmap = PIL.Image.fromarray(sub_img_cmap.cpu().numpy())
+                        sub_img = (sub_img * 255).to(dtype=torch.uint8, device="cpu").numpy()
+                        sub_img = PIL.Image.fromarray(sub_img)
+                        out[sub_target_name] = sub_img
+                        out[sub_target_name + "_cmap"] = sub_img_cmap
+                img = (img * 255).to(dtype=torch.uint8, device="cpu").numpy()
+                img = PIL.Image.fromarray(img)
+                out[target_name] = img
+            return out
+
+        if prediction is None or isinstance(prediction, list) and any(o is None for o in prediction):
+            raise ValueError("Input prediction is `None`")
+        if isinstance(prediction, (np.ndarray, torch.Tensor)):
+            prediction = MarigoldImageProcessor.expand_tensor_or_array(prediction)
+            if isinstance(prediction, np.ndarray):
+                prediction = MarigoldImageProcessor.numpy_to_pt(prediction)  # [N*T,3,H,W]
+            if not (prediction.ndim == 4 and prediction.shape[1] == 3 and prediction.shape[0] % n_targets == 0):
+                raise ValueError(f"Unexpected input shape={prediction.shape}, expecting [N*T,3,H,W].")
+            N_T, _, H, W = prediction.shape
+            N = N_T // n_targets
+            prediction = prediction.reshape(N, n_targets, 3, H, W)
+            return [visualize_targets_one(img, idx) for idx, img in enumerate(prediction)]
+        elif isinstance(prediction, list):
+            return [visualize_targets_one(img, idx) for idx, img in enumerate(prediction)]
+        else:
+            raise ValueError(f"Unexpected input type: {type(prediction)}")
+
+    @staticmethod
     def visualize_uncertainty(
         uncertainty: Union[
             np.ndarray,
@@ -555,7 +637,7 @@ class MarigoldImageProcessor(ConfigMixin):
             List[torch.Tensor],
         ],
         saturation_percentile=95,
-    ) -> Union[PIL.Image.Image, List[PIL.Image.Image]]:
+    ) -> List[PIL.Image.Image]:
         """
         Visualizes dense uncertainties, such as produced by `MarigoldDepthPipeline` or `MarigoldNormalsPipeline`.
 
@@ -565,7 +647,7 @@ class MarigoldImageProcessor(ConfigMixin):
             saturation_percentile (`int`, *optional*, defaults to `95`):
                 Specifies the percentile uncertainty value visualized with maximum intensity.
 
-        Returns: `PIL.Image.Image` or `List[PIL.Image.Image]` with uncertainty visualization.
+        Returns: `List[PIL.Image.Image]` with uncertainty visualization.
         """
 
         def visualize_uncertainty_one(img, idx=None):
