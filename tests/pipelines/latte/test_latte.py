@@ -54,6 +54,7 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
 
     required_optional_params = PipelineTesterMixin.required_optional_params
     test_layerwise_casting = True
+    test_group_offloading = True
 
     pab_config = PyramidAttentionBroadcastConfig(
         spatial_attention_block_skip_range=2,
