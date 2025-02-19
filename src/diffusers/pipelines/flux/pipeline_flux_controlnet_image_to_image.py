@@ -87,7 +87,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -865,7 +865,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             self.scheduler.config.get("base_image_seq_len", 256),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.5),
-            self.scheduler.config.get("max_shift", 1.16),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
