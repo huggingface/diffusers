@@ -28,7 +28,6 @@ logger = get_logger(__name__)
 
 
 _ENHANCE_A_VIDEO = "enhance_a_video"
-_ENHANCE_A_VIDEO_SDPA = "enhance_a_video_sdpa"
 
 
 class _AttentionType(Enum):
@@ -188,4 +187,13 @@ def apply_enhance_a_video(module: torch.nn.Module, config: EnhanceAVideoConfig) 
             num_frames_callback=config.num_frames_callback,
             _attention_type=config._attention_type,
         )
-        hook_registry.register_hook(hook, _ENHANCE_A_VIDEO_SDPA)
+        hook_registry.register_hook(hook, _ENHANCE_A_VIDEO)
+
+
+def remove_enhance_a_video(module: torch.nn.Module) -> None:
+    for name, submodule in module.named_modules():
+        if not hasattr(submodule, "_diffusers_hook"):
+            continue
+        hook_registry = submodule._diffusers_hook
+        hook_registry.remove_hook(_ENHANCE_A_VIDEO, recurse=False)
+        logger.debug(f"Removed Enhance-A-Video from layer '{name}'")
