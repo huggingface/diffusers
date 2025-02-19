@@ -2,10 +2,12 @@ import tempfile
 import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
+from diffusers.utils.testing_utils import torch_device
 
 
 class AttnAddedKVProcessorTests(unittest.TestCase):
@@ -79,6 +81,15 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
 
 
 class DeprecatedAttentionBlockTests(unittest.TestCase):
+    @pytest.fixture(scope="session")
+    def is_dist_enabled(pytestconfig):
+        return pytestconfig.getoption("dist") == "loadfile"
+
+    @pytest.mark.xfail(
+        condition=torch.device(torch_device).type == "cuda" and is_dist_enabled,
+        reason="Test currently fails on our GPU  CI because of `loadfile`. Note that it only fails when the tests are distributed from `pytest ... tests/models`. If the tests are run individually, even with `loadfile` it won't fail.",
+        strict=True,
+    )
     def test_conversion_when_using_device_map(self):
         pipe = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None

@@ -186,6 +186,8 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     callback_cfg_params = ["prompt_embeds", "text_encoder_hidden_states", "text_mask"]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummies = Dummies()
         return dummies.get_dummy_components()
