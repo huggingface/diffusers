@@ -7,7 +7,7 @@ from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    Lumina2Text2ImgPipeline,
+    Lumina2Pipeline,
     Lumina2Transformer2DModel,
 )
 from diffusers.utils.testing_utils import torch_device
@@ -15,8 +15,8 @@ from diffusers.utils.testing_utils import torch_device
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
-    pipeline_class = Lumina2Text2ImgPipeline
+class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+    pipeline_class = Lumina2Pipeline
     params = frozenset(
         [
             "prompt",

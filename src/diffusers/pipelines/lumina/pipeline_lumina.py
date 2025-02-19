@@ -30,6 +30,7 @@ from ...models.transformers.lumina_nextdit2d import LuminaNextDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
+    deprecate,
     is_bs4_available,
     is_ftfy_available,
     is_torch_xla_available,
@@ -60,9 +61,9 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LuminaText2ImgPipeline
+        >>> from diffusers import LuminaPipeline
 
-        >>> pipe = LuminaText2ImgPipeline.from_pretrained(
+        >>> pipe = LuminaPipeline.from_pretrained(
         ...     "Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
         ... )
         >>> # Enable memory optimizations.
@@ -134,7 +135,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class LuminaText2ImgPipeline(DiffusionPipeline):
+class LuminaPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Lumina-T2I.
 
@@ -935,3 +936,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
+
+
+class LuminaText2ImgPipeline(LuminaPipeline):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`LuminaText2ImgPipeline` has been renamed to `LuminaPipeline` and will be removed in a future version. Please use `LuminaPipeline` instead."
+        deprecate("diffusers.pipelines.lumina.pipeline_lumina.LuminaText2ImgPipeline", "0.34", deprecation_message)
+        super().__init__(*args, **kwargs)
