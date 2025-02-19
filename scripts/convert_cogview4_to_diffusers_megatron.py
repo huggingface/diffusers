@@ -215,7 +215,7 @@ def convert_megatron_transformer_checkpoint_to_diffusers(
         # Attention Output
         new_state_dict[block_prefix + "attn1.to_out.0.weight"] = mega[
             f"decoder.layers.{i}.self_attention.linear_proj.weight"
-        ].T
+        ]
         new_state_dict[block_prefix + "attn1.to_out.0.bias"] = mega[
             f"decoder.layers.{i}.self_attention.linear_proj.bias"
         ]
