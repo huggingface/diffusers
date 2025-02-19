@@ -189,14 +189,8 @@ def convert_megatron_transformer_checkpoint_to_diffusers(
         block_prefix = f"transformer_blocks.{i}."
 
         # AdaLayerNorm
-        new_state_dict[block_prefix + "norm1.linear.weight"] = swap_scale_shift(
-            mega[f"decoder.layers.{i}.adaln.weight"], dim=0
-        )
-        new_state_dict[block_prefix + "norm1.linear.bias"] = swap_scale_shift(
-            mega[f"decoder.layers.{i}.adaln.bias"], dim=0
-        )
-
-        # QKV
+        new_state_dict[block_prefix + "norm1.linear.weight"] = mega[f"decoder.layers.{i}.adaln.weight"]
+        new_state_dict[block_prefix + "norm1.linear.bias"] = mega[f"decoder.layers.{i}.adaln.bias"]
         qkv_weight = mega[f"decoder.layers.{i}.self_attention.linear_qkv.weight"]
         qkv_bias = mega[f"decoder.layers.{i}.self_attention.linear_qkv.bias"]
 
