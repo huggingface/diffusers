@@ -63,9 +63,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LuminaPipeline
 
-        >>> pipe = LuminaPipeline.from_pretrained(
-        ...     "Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = LuminaPipeline.from_pretrained("Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16)
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
