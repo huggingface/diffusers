@@ -39,7 +39,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_numpy,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -393,7 +393,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
@@ -411,7 +411,7 @@ class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)

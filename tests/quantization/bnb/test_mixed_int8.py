@@ -20,7 +20,14 @@ import numpy as np
 import pytest
 from huggingface_hub import hf_hub_download
 
-from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel, logging
+from diffusers import (
+    BitsAndBytesConfig,
+    DiffusionPipeline,
+    FluxTransformer2DModel,
+    SanaTransformer2DModel,
+    SD3Transformer2DModel,
+    logging,
+)
 from diffusers.utils import is_accelerate_version
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -300,6 +307,33 @@ class BnB8bitBasicTests(Base8bitTests):
 
         # Check that this does not throw an error
         _ = self.model_fp16.cuda()
+
+
+class Bnb8bitDeviceTests(Base8bitTests):
+    def setUp(self) -> None:
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
+        self.model_8bit = SanaTransformer2DModel.from_pretrained(
+            "Efficient-Large-Model/Sana_1600M_4Kpx_BF16_diffusers",
+            subfolder="transformer",
+            quantization_config=mixed_int8_config,
+        )
+
+    def tearDown(self):
+        del self.model_8bit
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_buffers_device_assignment(self):
+        for buffer_name, buffer in self.model_8bit.named_buffers():
+            self.assertEqual(
+                buffer.device.type,
+                torch.device(torch_device).type,
+                f"Expected device {torch_device} for {buffer_name} got {buffer.device}.",
+            )
 
 
 class BnB8bitTrainingTests(Base8bitTests):

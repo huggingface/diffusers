@@ -55,6 +55,8 @@ class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         ]
     )
     test_xformers_attention = False
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)

@@ -8,7 +8,6 @@ from diffusers.models import PixArtTransformer2DModel
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.utils.torch_utils import is_torch_version
 
 
 class PixArtControlNetAdapterBlock(nn.Module):
@@ -151,10 +150,6 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
         self.transformer = transformer
         self.controlnet = controlnet
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -220,18 +215,8 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
                 print("Gradient checkpointing is not supported for the controlnet transformer model, yet.")
                 exit(1)
 
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     attention_mask,
                     encoder_hidden_states,
@@ -239,7 +224,6 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
                     timestep,
                     cross_attention_kwargs,
                     None,
-                    **ckpt_kwargs,
                 )
             else:
                 # the control nets are only used for the blocks 1 to self.blocks_num
