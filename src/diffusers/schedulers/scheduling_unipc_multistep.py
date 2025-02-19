@@ -379,8 +379,17 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.use_flow_sigmas:
             alphas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)
             sigmas = 1.0 - alphas
-            sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1]
+            sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1].copy()
             timesteps = (sigmas * self.config.num_train_timesteps).copy()
+            if self.config.final_sigmas_type == "sigma_min":
+                sigma_last = sigmas[-1]
+            elif self.config.final_sigmas_type == "zero":
+                sigma_last = 0
+            else:
+                raise ValueError(
+                    f"`final_sigmas_type` must be one of 'zero', or 'sigma_min', but got {self.config.final_sigmas_type}"
+                )
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
             if self.config.final_sigmas_type == "sigma_min":

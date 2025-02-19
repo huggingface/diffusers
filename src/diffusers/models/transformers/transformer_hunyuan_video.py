@@ -18,10 +18,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from diffusers.loaders import FromOriginalModelMixin
+
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version
+from ...loaders import PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import FeedForward
 from ..attention_processor import Attention, AttentionProcessor
+from ..cache_utils import CacheMixin
 from ..embeddings import (
     CombinedTimestepGuidanceTextProjEmbeddings,
     CombinedTimestepTextProjEmbeddings,
@@ -30,6 +34,9 @@ from ..embeddings import (
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class HunyuanVideoAttnProcessor2_0:
@@ -496,7 +503,54 @@ class HunyuanVideoTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
+class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+    r"""
+    A Transformer model for video-like data used in [HunyuanVideo](https://huggingface.co/tencent/HunyuanVideo).
+
+    Args:
+        in_channels (`int`, defaults to `16`):
+            The number of channels in the input.
+        out_channels (`int`, defaults to `16`):
+            The number of channels in the output.
+        num_attention_heads (`int`, defaults to `24`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of channels in each head.
+        num_layers (`int`, defaults to `20`):
+            The number of layers of dual-stream blocks to use.
+        num_single_layers (`int`, defaults to `40`):
+            The number of layers of single-stream blocks to use.
+        num_refiner_layers (`int`, defaults to `2`):
+            The number of layers of refiner blocks to use.
+        mlp_ratio (`float`, defaults to `4.0`):
+            The ratio of the hidden layer size to the input size in the feedforward network.
+        patch_size (`int`, defaults to `2`):
+            The size of the spatial patches to use in the patch embedding layer.
+        patch_size_t (`int`, defaults to `1`):
+            The size of the tmeporal patches to use in the patch embedding layer.
+        qk_norm (`str`, defaults to `rms_norm`):
+            The normalization to use for the query and key projections in the attention layers.
+        guidance_embeds (`bool`, defaults to `True`):
+            Whether to use guidance embeddings in the model.
+        text_embed_dim (`int`, defaults to `4096`):
+            Input dimension of text embeddings from the text encoder.
+        pooled_projection_dim (`int`, defaults to `768`):
+            The dimension of the pooled projection of the text embeddings.
+        rope_theta (`float`, defaults to `256.0`):
+            The value of theta to use in the RoPE layer.
+        rope_axes_dim (`Tuple[int]`, defaults to `(16, 56, 56)`):
+            The dimensions of the axes to use in the RoPE layer.
+    """
+
+    _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["x_embedder", "context_embedder", "norm"]
+    _no_split_modules = [
+        "HunyuanVideoTransformerBlock",
+        "HunyuanVideoSingleTransformerBlock",
+        "HunyuanVideoPatchEmbed",
+        "HunyuanVideoTokenRefiner",
+    ]
+
     @register_to_config
     def __init__(
         self,
@@ -618,10 +672,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -630,8 +680,24 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_attention_mask: torch.Tensor,
         pooled_projections: torch.Tensor,
         guidance: torch.Tensor = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p, p_t = self.config.patch_size, self.config.patch_size_t
         post_patch_num_frames = num_frames // p_t
@@ -651,49 +717,37 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         condition_sequence_length = encoder_hidden_states.shape[1]
         sequence_length = latent_sequence_length + condition_sequence_length
         attention_mask = torch.zeros(
-            batch_size, sequence_length, sequence_length, device=hidden_states.device, dtype=torch.bool
-        )  # [B, N, N]
+            batch_size, sequence_length, device=hidden_states.device, dtype=torch.bool
+        )  # [B, N]
 
         effective_condition_sequence_length = encoder_attention_mask.sum(dim=1, dtype=torch.int)  # [B,]
         effective_sequence_length = latent_sequence_length + effective_condition_sequence_length
 
         for i in range(batch_size):
-            attention_mask[i, : effective_sequence_length[i], : effective_sequence_length[i]] = True
+            attention_mask[i, : effective_sequence_length[i]] = True
+        # [B, 1, 1, N], for broadcasting across attention heads
+        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module, return_dict=None):
-                def custom_forward(*inputs):
-                    if return_dict is not None:
-                        return module(*inputs, return_dict=return_dict)
-                    else:
-                        return module(*inputs)
-
-                return custom_forward
-
-            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-
             for block in self.transformer_blocks:
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     temb,
                     attention_mask,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
 
             for block in self.single_transformer_blocks:
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     temb,
                     attention_mask,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
 
         else:
@@ -716,6 +770,10 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         )
         hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
         hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (hidden_states,)

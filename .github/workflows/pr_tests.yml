@@ -266,6 +266,7 @@ jobs:
         # TODO (sayakpaul, DN6): revisit `--no-deps`
         python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        python -m uv pip install -U tokenizers
         pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment

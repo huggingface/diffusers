@@ -66,6 +66,8 @@ class GligenTextImagePipelineFastTests(
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(

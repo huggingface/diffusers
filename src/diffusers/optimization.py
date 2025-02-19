@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -258,7 +258,7 @@ def get_polynomial_decay_schedule_with_warmup(
 
     lr_init = optimizer.defaults["lr"]
     if not (lr_init > lr_end):
-        raise ValueError(f"lr_end ({lr_end}) must be be smaller than initial lr ({lr_init})")
+        raise ValueError(f"lr_end ({lr_end}) must be smaller than initial lr ({lr_init})")
 
     def lr_lambda(current_step: int):
         if current_step < num_warmup_steps:

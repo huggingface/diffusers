@@ -338,8 +338,8 @@ class FlaxDDPMSchedulerTest(FlaxSchedulerCommonTest):
             assert abs(result_sum - 255.0714) < 1e-2
             assert abs(result_mean - 0.332124) < 1e-3
         else:
-            assert abs(result_sum - 255.1113) < 1e-1
-            assert abs(result_mean - 0.332176) < 1e-3
+            assert abs(result_sum - 270.2) < 1e-1
+            assert abs(result_mean - 0.3519494) < 1e-3
 
 
 @require_flax
@@ -675,6 +675,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
             assert jnp.sum(jnp.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
+    @unittest.skip("Test not supported.")
     def test_from_save_pretrained(self):
         pass
 

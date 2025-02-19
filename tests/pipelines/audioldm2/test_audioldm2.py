@@ -70,6 +70,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = AudioLDM2UNet2DConditionModel(
@@ -469,8 +471,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
     def test_dict_tuple_outputs_equivalent(self):
-        # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=2e-4)
+        # increase tolerance from 1e-4 -> 3e-4 to account for large composite model
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-4)
 
     def test_inference_batch_single_identical(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model

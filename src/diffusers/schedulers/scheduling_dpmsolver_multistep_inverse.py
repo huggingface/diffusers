@@ -291,14 +291,17 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.use_exponential_sigmas:
             sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         elif self.config.use_beta_sigmas:
             sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         elif self.config.use_flow_sigmas:
             alphas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)
             sigmas = 1.0 - alphas
-            sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1]
+            sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1].copy()
             timesteps = (sigmas * self.config.num_train_timesteps).copy()
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
             sigma_max = (

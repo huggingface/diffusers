@@ -22,13 +22,21 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...loaders import StableDiffusionLoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import BaseOutput, deprecate, logging, replace_example_docstring
+from ...utils import BaseOutput, deprecate, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_wuerstchen_prior import WuerstchenPrior
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 DEFAULT_STAGE_C_TIMESTEPS = list(np.linspace(1.0, 2 / 3, 20)) + list(np.linspace(2 / 3, 0.0, 11))[1:]
 
@@ -501,6 +509,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin)
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)
                 callback(step_idx, t, latents)
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         # 10. Denormalize the latents
         latents = latents * self.config.latent_mean - self.config.latent_std

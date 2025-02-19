@@ -34,7 +34,7 @@ jobs:
         id: file_changes
         uses: jitterbit/get-changed-files@v1
         with:
-          format: 'space-delimited'
+          format: "space-delimited"
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Changed Docker Images
@@ -67,6 +67,7 @@ jobs:
           - diffusers-pytorch-cuda
           - diffusers-pytorch-compile-cuda
           - diffusers-pytorch-xformers-cuda
+          - diffusers-pytorch-minimum-cuda
           - diffusers-flax-cpu
           - diffusers-flax-tpu
           - diffusers-onnxruntime-cpu
