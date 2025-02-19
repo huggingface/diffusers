@@ -299,6 +299,12 @@ def parse_args(input_args=None):
         help="A prompt that is used during validation to verify that the model is learning.",
     )
     parser.add_argument(
+        "--final_validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is used during a final validation to verify that the model is learning. Ignored if `--validation_prompt` is provided.",
+    )
+    parser.add_argument(
         "--num_validation_images",
         type=int,
         default=4,
@@ -1367,6 +1373,8 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * noise + sigmas * model_input
 
                 # Predict the noise residual
+                # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
+                timesteps = 1 - timesteps / noise_scheduler.config.num_train_timesteps
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
@@ -1379,8 +1387,8 @@ def main(args):
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
-                # flow matching loss
-                target = noise - model_input
+                # flow matching loss (reversed)
+                target = model_input - noise
 
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
@@ -1505,8 +1513,10 @@ def main(args):
 
         # run inference
         images = []
-        if args.validation_prompt and args.num_validation_images > 0:
-            pipeline_args = {"prompt": args.validation_prompt, "system_prompt": args.system_prompt}
+        if (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt):
+            prompt_to_use = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
+            args.num_validation_images = args.num_validation_images if args.num_validation_images else 1
+            pipeline_args = {"prompt": prompt_to_use, "system_prompt": args.system_prompt}
             images = log_validation(
                 pipeline=pipeline,
                 args=args,
