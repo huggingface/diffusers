@@ -387,7 +387,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     def prepare_latents(
         self,
         batch_size: int,
-        num_channels_latents: 32,
+        num_channels_latents: int = 32,
         height: int = 720,
         width: int = 1280,
         num_frames: int = 129,
