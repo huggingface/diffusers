@@ -761,7 +761,20 @@ class Lumina2Pipeline(DiffusionPipeline):
 
 
 class Lumina2Text2ImgPipeline(Lumina2Pipeline):
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        transformer: Lumina2Transformer2DModel,
+        scheduler: FlowMatchEulerDiscreteScheduler,
+        vae: AutoencoderKL,
+        text_encoder: AutoModel,
+        tokenizer: AutoTokenizer,
+    ):
         deprecation_message = "`Lumina2Text2ImgPipeline` has been renamed to `Lumina2Pipeline` and will be removed in a future version. Please use `Lumina2Pipeline` instead."
         deprecate("diffusers.pipelines.lumina2.pipeline_lumina2.Lumina2Text2ImgPipeline", "0.34", deprecation_message)
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            transformer=transformer,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+        )

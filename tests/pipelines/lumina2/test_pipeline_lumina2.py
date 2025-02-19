@@ -8,6 +8,7 @@ from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
     Lumina2Pipeline,
+    Lumina2Text2ImgPipeline,
     Lumina2Transformer2DModel,
 )
 from diffusers.utils.testing_utils import torch_device
@@ -145,3 +146,9 @@ class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
         max_diff = np.abs(output_with_prompt - output_with_embeds).max()
         assert max_diff < 1e-4
+
+    def test_deprecation_raises_warning(self):
+        with self.assertWarns(FutureWarning) as warning:
+            _ = Lumina2Text2ImgPipeline(**self.get_dummy_components()).to(torch_device)
+        warning_message = str(warning.warnings[0].message)
+        assert "renamed to `Lumina2Pipeline`" in warning_message
