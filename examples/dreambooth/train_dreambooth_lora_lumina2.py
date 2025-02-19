@@ -1535,13 +1535,14 @@ def main(args):
             )
 
         if args.push_to_hub:
+            validation_prpmpt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
             save_model_card(
                 repo_id,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 instance_prompt=args.instance_prompt,
                 system_prompt=args.system_prompt,
-                validation_prompt=args.validation_prompt or args.final_validation_prompt,
+                validation_prompt=validation_prpmpt,
                 repo_folder=args.output_dir,
             )
             upload_folder(
