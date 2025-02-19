@@ -32,6 +32,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .pipeline_hunyuan_skyreels_image2video import HunyuanSkyreelsImageToVideoPipeline
         from .pipeline_hunyuan_video import HunyuanVideoPipeline
 
 else:
