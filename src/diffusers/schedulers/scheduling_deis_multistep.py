@@ -289,6 +289,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = 1.0 - alphas
             sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1].copy()
             timesteps = (sigmas * self.config.num_train_timesteps).copy()
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
             sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5

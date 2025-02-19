@@ -67,6 +67,17 @@ write_basic_config()
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
+Lastly, we recommend logging into your HF account so that your trained LoRA is automatically uploaded to the hub:
+```bash
+huggingface-cli login
+```
+This command will prompt you for a token. Copy-paste yours from your [settings/tokens](https://huggingface.co/settings/tokens),and press Enter.
+
+> [!NOTE]
+> In the examples below we use `wandb` to document the training runs. To do the same, make sure to install `wandb`:
+> `pip install wandb`
+> Alternatively, you can use other tools / train without reporting by modifying the flag  `--report_to="wandb"`.
+
 ### Pivotal Tuning
 **Training with text encoder(s)**
 

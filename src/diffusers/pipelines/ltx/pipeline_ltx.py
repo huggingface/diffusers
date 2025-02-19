@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Lightricks and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...loaders import FromSingleFileMixin
+from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTXVideo
 from ...models.transformers import LTXVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -72,7 +72,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -140,7 +140,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
+class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation.
 
@@ -186,19 +186,24 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
             scheduler=scheduler,
         )
 
-        self.vae_spatial_compression_ratio = self.vae.spatial_compression_ratio if hasattr(self, "vae") else 32
-        self.vae_temporal_compression_ratio = self.vae.temporal_compression_ratio if hasattr(self, "vae") else 8
-        self.transformer_spatial_patch_size = self.transformer.config.patch_size if hasattr(self, "transformer") else 1
+        self.vae_spatial_compression_ratio = (
+            self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 32
+        )
+        self.vae_temporal_compression_ratio = (
+            self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
+        )
+        self.transformer_spatial_patch_size = (
+            self.transformer.config.patch_size if getattr(self, "transformer", None) is not None else 1
+        )
         self.transformer_temporal_patch_size = (
-            self.transformer.config.patch_size_t if hasattr(self, "transformer") else 1
+            self.transformer.config.patch_size_t if getattr(self, "transformer") is not None else 1
         )
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
         self.tokenizer_max_length = (
-            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 128
+            self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 128
         )
 
-    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline._get_t5_prompt_embeds with 256->128
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -485,6 +490,10 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
         return self._num_timesteps
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -508,8 +517,11 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        decode_timestep: Union[float, List[float]] = 0.0,
+        decode_noise_scale: Optional[Union[float, List[float]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 128,
@@ -559,11 +571,19 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
             negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
+            decode_timestep (`float`, defaults to `0.0`):
+                The timestep at which generated video is decoded.
+            decode_noise_scale (`float`, defaults to `None`):
+                The interpolation factor between random noise and denoised latents at the decode timestep.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ltx.LTXPipelineOutput`] instead of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -600,6 +620,7 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
         )
 
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -656,10 +677,10 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         mu = calculate_shift(
             video_sequence_length,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -701,6 +722,7 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
                     height=latent_height,
                     width=latent_width,
                     rope_interpolation_scale=rope_interpolation_scale,
+                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
                 noise_pred = noise_pred.float()
@@ -743,7 +765,25 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
             latents = latents.to(prompt_embeds.dtype)
-            video = self.vae.decode(latents, return_dict=False)[0]
+
+            if not self.vae.config.timestep_conditioning:
+                timestep = None
+            else:
+                noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
+                if not isinstance(decode_timestep, list):
+                    decode_timestep = [decode_timestep] * batch_size
+                if decode_noise_scale is None:
+                    decode_noise_scale = decode_timestep
+                elif not isinstance(decode_noise_scale, list):
+                    decode_noise_scale = [decode_noise_scale] * batch_size
+
+                timestep = torch.tensor(decode_timestep, device=device, dtype=latents.dtype)
+                decode_noise_scale = torch.tensor(decode_noise_scale, device=device, dtype=latents.dtype)[
+                    :, None, None, None, None
+                ]
+                latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+            video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         # Offload all models

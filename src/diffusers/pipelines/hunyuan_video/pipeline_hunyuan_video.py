@@ -20,16 +20,25 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer, LlamaModel, LlamaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...loaders import HunyuanVideoLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HunyuanVideoPipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -38,7 +47,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
         >>> from diffusers.utils import export_to_video
 
-        >>> model_id = "tencent/HunyuanVideo"
+        >>> model_id = "hunyuanvideo-community/HunyuanVideo"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
         ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
         ... )
@@ -132,7 +141,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class HunyuanVideoPipeline(DiffusionPipeline):
+class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using HunyuanVideo.
 
@@ -142,7 +151,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
     Args:
         text_encoder ([`LlamaModel`]):
             [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
-        tokenizer_2 (`LlamaTokenizer`):
+        tokenizer (`LlamaTokenizer`):
             Tokenizer from [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
         transformer ([`HunyuanVideoTransformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
@@ -183,12 +192,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             tokenizer_2=tokenizer_2,
         )
 
-        self.vae_scale_factor_temporal = (
-            self.vae.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
-        )
-        self.vae_scale_factor_spatial = (
-            self.vae.spatial_compression_ratio if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     def _get_llama_prompt_embeds(
@@ -343,7 +348,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         prompt_template=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -448,6 +453,14 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         return self._num_timesteps
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -471,6 +484,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -525,6 +539,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`HunyuanVideoPipelineOutput`] instead of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
@@ -562,6 +580,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         device = self._execution_device
@@ -629,6 +649,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 latent_model_input = latents.to(transformer_dtype)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
@@ -640,6 +661,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     encoder_attention_mask=prompt_attention_mask,
                     pooled_projections=pooled_prompt_embeds,
                     guidance=guidance,
+                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -658,6 +680,11 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
+        self._current_timestep = None
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor

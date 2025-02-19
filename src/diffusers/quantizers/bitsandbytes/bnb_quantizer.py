@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -204,7 +204,10 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
 
         module._parameters[tensor_name] = new_value
 
-    def check_quantized_param_shape(self, param_name, current_param_shape, loaded_param_shape):
+    def check_quantized_param_shape(self, param_name, current_param, loaded_param):
+        current_param_shape = current_param.shape
+        loaded_param_shape = loaded_param.shape
+
         n = current_param_shape.numel()
         inferred_shape = (n,) if "bias" in param_name else ((n + 1) // 2, 1)
         if loaded_param_shape != inferred_shape:

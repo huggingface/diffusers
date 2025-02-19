@@ -16,21 +16,27 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, List, Optional, Tuple, Union
+import warnings
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
+from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
+    USE_PEFT_BACKEND,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -42,6 +48,13 @@ from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
 from .pipeline_output import SanaPipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 if is_bs4_available():
@@ -51,6 +64,49 @@ if is_ftfy_available():
     import ftfy
 
 
+ASPECT_RATIO_4096_BIN = {
+    "0.25": [2048.0, 8192.0],
+    "0.26": [2048.0, 7936.0],
+    "0.27": [2048.0, 7680.0],
+    "0.28": [2048.0, 7424.0],
+    "0.32": [2304.0, 7168.0],
+    "0.33": [2304.0, 6912.0],
+    "0.35": [2304.0, 6656.0],
+    "0.4": [2560.0, 6400.0],
+    "0.42": [2560.0, 6144.0],
+    "0.48": [2816.0, 5888.0],
+    "0.5": [2816.0, 5632.0],
+    "0.52": [2816.0, 5376.0],
+    "0.57": [3072.0, 5376.0],
+    "0.6": [3072.0, 5120.0],
+    "0.68": [3328.0, 4864.0],
+    "0.72": [3328.0, 4608.0],
+    "0.78": [3584.0, 4608.0],
+    "0.82": [3584.0, 4352.0],
+    "0.88": [3840.0, 4352.0],
+    "0.94": [3840.0, 4096.0],
+    "1.0": [4096.0, 4096.0],
+    "1.07": [4096.0, 3840.0],
+    "1.13": [4352.0, 3840.0],
+    "1.21": [4352.0, 3584.0],
+    "1.29": [4608.0, 3584.0],
+    "1.38": [4608.0, 3328.0],
+    "1.46": [4864.0, 3328.0],
+    "1.67": [5120.0, 3072.0],
+    "1.75": [5376.0, 3072.0],
+    "2.0": [5632.0, 2816.0],
+    "2.09": [5888.0, 2816.0],
+    "2.4": [6144.0, 2560.0],
+    "2.5": [6400.0, 2560.0],
+    "2.89": [6656.0, 2304.0],
+    "3.0": [6912.0, 2304.0],
+    "3.11": [7168.0, 2304.0],
+    "3.62": [7424.0, 2048.0],
+    "3.75": [7680.0, 2048.0],
+    "3.88": [7936.0, 2048.0],
+    "4.0": [8192.0, 2048.0],
+}
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -58,11 +114,11 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import SanaPipeline
 
         >>> pipe = SanaPipeline.from_pretrained(
-        ...     "Efficient-Large-Model/Sana_1600M_1024px_diffusers", torch_dtype=torch.float32
+        ...     "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers", torch_dtype=torch.float32
         ... )
         >>> pipe.to("cuda")
         >>> pipe.text_encoder.to(torch.bfloat16)
-        >>> pipe.transformer = pipe.transformer.to(torch.float16)
+        >>> pipe.transformer = pipe.transformer.to(torch.bfloat16)
 
         >>> image = pipe(prompt='a cyberpunk cat with a neon sign that says "Sana"')[0]
         >>> image[0].save("output.png")
@@ -130,7 +186,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class SanaPipeline(DiffusionPipeline):
+class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using [Sana](https://huggingface.co/papers/2410.10629).
     """
@@ -163,6 +219,35 @@ class SanaPipeline(DiffusionPipeline):
         )
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
+
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -177,6 +262,7 @@ class SanaPipeline(DiffusionPipeline):
         clean_caption: bool = False,
         max_sequence_length: int = 300,
         complex_human_instruction: Optional[List[str]] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -209,6 +295,15 @@ class SanaPipeline(DiffusionPipeline):
 
         if device is None:
             device = self._execution_device
+
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, SanaLoraLoaderMixin):
+            self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            if self.text_encoder is not None and USE_PEFT_BACKEND:
+                scale_lora_layers(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -304,6 +399,11 @@ class SanaPipeline(DiffusionPipeline):
         else:
             negative_prompt_embeds = None
             negative_prompt_attention_mask = None
+
+        if self.text_encoder is not None:
+            if isinstance(self, SanaLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
@@ -555,6 +655,10 @@ class SanaPipeline(DiffusionPipeline):
         return self._guidance_scale
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1.0
 
@@ -588,8 +692,9 @@ class SanaPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        clean_caption: bool = True,
+        clean_caption: bool = False,
         use_resolution_binning: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 300,
@@ -662,6 +767,10 @@ class SanaPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
+            attention_kwargs:
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             clean_caption (`bool`, *optional*, defaults to `True`):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
@@ -698,7 +807,9 @@ class SanaPipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         if use_resolution_binning:
-            if self.transformer.config.sample_size == 64:
+            if self.transformer.config.sample_size == 128:
+                aspect_ratio_bin = ASPECT_RATIO_4096_BIN
+            elif self.transformer.config.sample_size == 64:
                 aspect_ratio_bin = ASPECT_RATIO_2048_BIN
             elif self.transformer.config.sample_size == 32:
                 aspect_ratio_bin = ASPECT_RATIO_1024_BIN
@@ -722,6 +833,7 @@ class SanaPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 2. Default height and width to transformer
@@ -733,6 +845,7 @@ class SanaPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
 
         # 3. Encode input prompt
         (
@@ -753,6 +866,7 @@ class SanaPipeline(DiffusionPipeline):
             clean_caption=clean_caption,
             max_sequence_length=max_sequence_length,
             complex_human_instruction=complex_human_instruction,
+            lora_scale=lora_scale,
         )
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -801,6 +915,7 @@ class SanaPipeline(DiffusionPipeline):
                     encoder_attention_mask=prompt_attention_mask,
                     timestep=timestep,
                     return_dict=False,
+                    attention_kwargs=self.attention_kwargs,
                 )[0]
                 noise_pred = noise_pred.float()
 
@@ -832,11 +947,21 @@ class SanaPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
         if output_type == "latent":
             image = latents
         else:
             latents = latents.to(self.vae.dtype)
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            try:
+                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            except torch.cuda.OutOfMemoryError as e:
+                warnings.warn(
+                    f"{e}. \n"
+                    f"Try to use VAE tiling for large images. For example: \n"
+                    f"pipe.vae.enable_tiling(tile_sample_min_width=512, tile_sample_min_height=512)"
+                )
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
 

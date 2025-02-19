@@ -43,6 +43,7 @@ logger = logging.get_logger(__name__)
 
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
+    GGUF = "gguf"
     TORCHAO = "torchao"
 
 
@@ -395,6 +396,29 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
 
 
 @dataclass
+class GGUFQuantizationConfig(QuantizationConfigMixin):
+    """This is a config class for GGUF Quantization techniques.
+
+    Args:
+        compute_dtype: (`torch.dtype`, defaults to `torch.float32`):
+            This sets the computational type which might be different than the input type. For example, inputs might be
+            fp32, but computation can be set to bf16 for speedups.
+
+    """
+
+    def __init__(self, compute_dtype: Optional["torch.dtype"] = None):
+        self.quant_method = QuantizationMethod.GGUF
+        self.compute_dtype = compute_dtype
+        self.pre_quantized = True
+
+        # TODO: (Dhruv) Add this as an init argument when we can support loading unquantized checkpoints.
+        self.modules_to_not_convert = None
+
+        if self.compute_dtype is None:
+            self.compute_dtype = torch.float32
+
+
+@dataclass
 class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
 
@@ -457,8 +481,15 @@ class TorchAoConfig(QuantizationConfigMixin):
 
         TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
         if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
+            is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
+            if is_floating_quant_type and not self._is_cuda_capability_atleast_8_9():
+                raise ValueError(
+                    f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
+                    f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
+                )
+
             raise ValueError(
-                f"Requested quantization type: {self.quant_type} is not supported yet or is incorrect. If you think the "
+                f"Requested quantization type: {self.quant_type} is not supported or is an incorrect `quant_type` name. If you think the "
                 f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
             )
 
@@ -628,13 +659,13 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     def __repr__(self):
         r"""
-        Example of how this looks for `TorchAoConfig("uint_a16w4", group_size=32)`:
+        Example of how this looks for `TorchAoConfig("uint4wo", group_size=32)`:
 
         ```
         TorchAoConfig {
             "modules_to_not_convert": null,
             "quant_method": "torchao",
-            "quant_type": "uint_a16w4",
+            "quant_type": "uint4wo",
             "quant_type_kwargs": {
                 "group_size": 32
             }

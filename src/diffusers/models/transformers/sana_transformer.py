@@ -18,7 +18,8 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...loaders import PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
@@ -78,6 +79,20 @@ class GLUMBConv(nn.Module):
         if self.residual_connection:
             hidden_states = hidden_states + residual
 
+        return hidden_states
+
+
+class SanaModulatedNorm(nn.Module):
+    def __init__(self, dim: int, elementwise_affine: bool = False, eps: float = 1e-6):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim, elementwise_affine=elementwise_affine, eps=eps)
+
+    def forward(
+        self, hidden_states: torch.Tensor, temb: torch.Tensor, scale_shift_table: torch.Tensor
+    ) -> torch.Tensor:
+        hidden_states = self.norm(hidden_states)
+        shift, scale = (scale_shift_table[None] + temb[:, None].to(scale_shift_table.device)).chunk(2, dim=1)
+        hidden_states = hidden_states * (1 + scale) + shift
         return hidden_states
 
 
@@ -180,7 +195,7 @@ class SanaTransformerBlock(nn.Module):
         return hidden_states
 
 
-class SanaTransformer2DModel(ModelMixin, ConfigMixin):
+class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     r"""
     A 2D Transformer model introduced in [Sana](https://huggingface.co/papers/2410.10629) family of models.
 
@@ -220,7 +235,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["SanaTransformerBlock", "PatchEmbed"]
+    _no_split_modules = ["SanaTransformerBlock", "PatchEmbed", "SanaModulatedNorm"]
+    _skip_layerwise_casting_patterns = ["patch_embed", "norm"]
 
     @register_to_config
     def __init__(
@@ -241,6 +257,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         patch_size: int = 1,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
+        interpolation_scale: Optional[int] = None,
     ) -> None:
         super().__init__()
 
@@ -254,8 +271,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=inner_dim,
-            interpolation_scale=None,
-            pos_embed_type=None,
+            interpolation_scale=interpolation_scale,
+            pos_embed_type="sincos" if interpolation_scale is not None else None,
         )
 
         # 2. Additional condition embeddings
@@ -286,15 +303,10 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
 
         # 4. Output blocks
         self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
-
-        self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
+        self.norm_out = SanaModulatedNorm(inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -363,8 +375,24 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         timestep: torch.LongTensor,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
@@ -406,21 +434,9 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module, return_dict=None):
-                def custom_forward(*inputs):
-                    if return_dict is not None:
-                        return module(*inputs, return_dict=return_dict)
-                    else:
-                        return module(*inputs)
-
-                return custom_forward
-
-            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-
             for block in self.transformer_blocks:
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     attention_mask,
                     encoder_hidden_states,
@@ -428,7 +444,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     timestep,
                     post_patch_height,
                     post_patch_width,
-                    **ckpt_kwargs,
                 )
 
         else:
@@ -444,13 +459,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                 )
 
         # 3. Normalization
-        shift, scale = (
-            self.scale_shift_table[None] + embedded_timestep[:, None].to(self.scale_shift_table.device)
-        ).chunk(2, dim=1)
-        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.norm_out(hidden_states, embedded_timestep, self.scale_shift_table)
 
-        # 4. Modulation
-        hidden_states = hidden_states * (1 + scale) + shift
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
@@ -460,6 +470,11 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.permute(0, 5, 1, 3, 2, 4)
         output = hidden_states.reshape(batch_size, -1, post_patch_height * p, post_patch_width * p)
 
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
+
         if not return_dict:
             return (output,)
+
         return Transformer2DModelOutput(sample=output)

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,13 +19,13 @@ import os
 import re
 import sys
 import tempfile
-import traceback
 import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
+    DDUFEntry,
     ModelCard,
     ModelCardData,
     create_repo,
@@ -34,7 +34,7 @@ from huggingface_hub import (
     snapshot_download,
     upload_folder,
 )
-from huggingface_hub.constants import HF_HUB_CACHE, HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
+from huggingface_hub.constants import HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
@@ -196,78 +196,6 @@ def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str]
     return commit_hash if REGEX_COMMIT_HASH.match(commit_hash) else None
 
 
-# Old default cache path, potentially to be migrated.
-# This logic was more or less taken from `transformers`, with the following differences:
-# - Diffusers doesn't use custom environment variables to specify the cache path.
-# - There is no need to migrate the cache format, just move the files to the new location.
-hf_cache_home = os.path.expanduser(
-    os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
-)
-old_diffusers_cache = os.path.join(hf_cache_home, "diffusers")
-
-
-def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str] = None) -> None:
-    if new_cache_dir is None:
-        new_cache_dir = HF_HUB_CACHE
-    if old_cache_dir is None:
-        old_cache_dir = old_diffusers_cache
-
-    old_cache_dir = Path(old_cache_dir).expanduser()
-    new_cache_dir = Path(new_cache_dir).expanduser()
-    for old_blob_path in old_cache_dir.glob("**/blobs/*"):
-        if old_blob_path.is_file() and not old_blob_path.is_symlink():
-            new_blob_path = new_cache_dir / old_blob_path.relative_to(old_cache_dir)
-            new_blob_path.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(old_blob_path, new_blob_path)
-            try:
-                os.symlink(new_blob_path, old_blob_path)
-            except OSError:
-                logger.warning(
-                    "Could not create symlink between old cache and new cache. If you use an older version of diffusers again, files will be re-downloaded."
-                )
-    # At this point, old_cache_dir contains symlinks to the new cache (it can still be used).
-
-
-cache_version_file = os.path.join(HF_HUB_CACHE, "version_diffusers_cache.txt")
-if not os.path.isfile(cache_version_file):
-    cache_version = 0
-else:
-    with open(cache_version_file) as f:
-        try:
-            cache_version = int(f.read())
-        except ValueError:
-            cache_version = 0
-
-if cache_version < 1:
-    old_cache_is_not_empty = os.path.isdir(old_diffusers_cache) and len(os.listdir(old_diffusers_cache)) > 0
-    if old_cache_is_not_empty:
-        logger.warning(
-            "The cache for model files in Diffusers v0.14.0 has moved to a new location. Moving your "
-            "existing cached models. This is a one-time operation, you can interrupt it or run it "
-            "later by calling `diffusers.utils.hub_utils.move_cache()`."
-        )
-        try:
-            move_cache()
-        except Exception as e:
-            trace = "\n".join(traceback.format_tb(e.__traceback__))
-            logger.error(
-                f"There was a problem when trying to move your cache:\n\n{trace}\n{e.__class__.__name__}: {e}\n\nPlease "
-                "file an issue at https://github.com/huggingface/diffusers/issues/new/choose, copy paste this whole "
-                "message and we will do our best to help."
-            )
-
-if cache_version < 1:
-    try:
-        os.makedirs(HF_HUB_CACHE, exist_ok=True)
-        with open(cache_version_file, "w") as f:
-            f.write("1")
-    except Exception:
-        logger.warning(
-            f"There was a problem when trying to write in your cache folder ({HF_HUB_CACHE}). Please, ensure "
-            "the directory exists and can be written to."
-        )
-
-
 def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
@@ -291,9 +219,26 @@ def _get_model_file(
     user_agent: Optional[Union[Dict, str]] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-    if os.path.isfile(pretrained_model_name_or_path):
+
+    if dduf_entries:
+        if subfolder is not None:
+            raise ValueError(
+                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
+                "Please check the DDUF structure"
+            )
+        model_file = (
+            weights_name
+            if pretrained_model_name_or_path == ""
+            else "/".join([pretrained_model_name_or_path, weights_name])
+        )
+        if model_file in dduf_entries:
+            return model_file
+        else:
+            raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
+    elif os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
@@ -419,6 +364,7 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     """
     For a given model:
@@ -430,11 +376,18 @@ def _get_checkpoint_shard_files(
     For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
     index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
     """
-    if not os.path.isfile(index_filename):
-        raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+    if dduf_entries:
+        if index_filename not in dduf_entries:
+            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+    else:
+        if not os.path.isfile(index_filename):
+            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 
-    with open(index_filename, "r") as f:
-        index = json.loads(f.read())
+    if dduf_entries:
+        index = json.loads(dduf_entries[index_filename].read_text())
+    else:
+        with open(index_filename, "r") as f:
+            index = json.loads(f.read())
 
     original_shard_filenames = sorted(set(index["weight_map"].values()))
     sharded_metadata = index["metadata"]
@@ -448,6 +401,8 @@ def _get_checkpoint_shard_files(
             pretrained_model_name_or_path, subfolder=subfolder, original_shard_filenames=original_shard_filenames
         )
         return shards_path, sharded_metadata
+    elif dduf_entries:
+        return shards_path, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     allow_patterns = original_shard_filenames
@@ -455,48 +410,39 @@ def _get_checkpoint_shard_files(
         allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
 
     ignore_patterns = ["*.json", "*.md"]
-    if not local_files_only:
-        # `model_info` call must guarded with the above condition.
-        model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
-        for shard_file in original_shard_filenames:
-            shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
-            if not shard_file_present:
-                raise EnvironmentError(
-                    f"{shards_path} does not appear to have a file named {shard_file} which is "
-                    "required according to the checkpoint index."
-                )
-
-        try:
-            # Load from URL
-            cached_folder = snapshot_download(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                allow_patterns=allow_patterns,
-                ignore_patterns=ignore_patterns,
-                user_agent=user_agent,
-            )
-            if subfolder is not None:
-                cached_folder = os.path.join(cached_folder, subfolder)
-
-        # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
-        # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-        except HTTPError as e:
+    # `model_info` call must guarded with the above condition.
+    model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
+    for shard_file in original_shard_filenames:
+        shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
+        if not shard_file_present:
             raise EnvironmentError(
-                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
-                " again after checking your internet connection."
-            ) from e
+                f"{shards_path} does not appear to have a file named {shard_file} which is "
+                "required according to the checkpoint index."
+            )
 
-    # If `local_files_only=True`, `cached_folder` may not contain all the shard files.
-    elif local_files_only:
-        _check_if_shards_exist_locally(
-            local_dir=cache_dir, subfolder=subfolder, original_shard_filenames=original_shard_filenames
+    try:
+        # Load from URL
+        cached_folder = snapshot_download(
+            pretrained_model_name_or_path,
+            cache_dir=cache_dir,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            allow_patterns=allow_patterns,
+            ignore_patterns=ignore_patterns,
+            user_agent=user_agent,
         )
         if subfolder is not None:
-            cached_folder = os.path.join(cache_dir, subfolder)
+            cached_folder = os.path.join(cached_folder, subfolder)
+
+    # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
+    # we don't have to catch them here. We have also dealt with EntryNotFoundError.
+    except HTTPError as e:
+        raise EnvironmentError(
+            f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+            " again after checking your internet connection."
+        ) from e
 
     return cached_folder, sharded_metadata
 
