@@ -519,7 +519,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         remaining_keys = list(sds_sd.keys())
         te_state_dict = {}
         if remaining_keys:
-            if not all(k.startswith("lora_te1") for k in remaining_keys):
+            if not all(k.startswith("lora_te") for k in remaining_keys):
                 raise ValueError(f"Incompatible keys detected: \n\n {', '.join(remaining_keys)}")
             for key in remaining_keys:
                 if not key.endswith("lora_down.weight"):
@@ -557,6 +557,134 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
 
         new_state_dict = {**ait_sd, **te_state_dict}
         return new_state_dict
+
+    def _convert_mixture_state_dict_to_diffusers(state_dict):
+        new_state_dict = {}
+
+        def _convert(original_key, diffusers_key, state_dict, new_state_dict):
+            down_key = f"{original_key}.lora_down.weight"
+            down_weight = state_dict.pop(down_key)
+            lora_rank = down_weight.shape[0]
+
+            up_weight_key = f"{original_key}.lora_up.weight"
+            up_weight = state_dict.pop(up_weight_key)
+
+            alpha_key = f"{original_key}.alpha"
+            alpha = state_dict.pop(alpha_key)
+
+            # scale weight by alpha and dim
+            scale = alpha / lora_rank
+            # calculate scale_down and scale_up
+            scale_down = scale
+            scale_up = 1.0
+            while scale_down * 2 < scale_up:
+                scale_down *= 2
+                scale_up /= 2
+            down_weight = down_weight * scale_down
+            up_weight = up_weight * scale_up
+
+            diffusers_down_key = f"{diffusers_key}.lora_A.weight"
+            new_state_dict[diffusers_down_key] = down_weight
+            new_state_dict[diffusers_down_key.replace(".lora_A.", ".lora_B.")] = up_weight
+
+        all_unique_keys = {
+            k.replace(".lora_down.weight", "").replace(".lora_up.weight", "").replace(".alpha", "")
+            for k in state_dict
+            if not k.startswith(("lora_unet_"))
+        }
+        assert all(k.startswith(("lora_transformer_", "lora_te1_")) for k in all_unique_keys), f"{all_unique_keys=}"
+
+        has_te_keys = False
+        for k in all_unique_keys:
+            if k.startswith("lora_transformer_single_transformer_blocks_"):
+                i = int(k.split("lora_transformer_single_transformer_blocks_")[-1].split("_")[0])
+                diffusers_key = f"single_transformer_blocks.{i}"
+            elif k.startswith("lora_transformer_transformer_blocks_"):
+                i = int(k.split("lora_transformer_transformer_blocks_")[-1].split("_")[0])
+                diffusers_key = f"transformer_blocks.{i}"
+            elif k.startswith("lora_te1_"):
+                has_te_keys = True
+                continue
+            else:
+                raise NotImplementedError
+
+            if "attn_" in k:
+                if "_to_out_0" in k:
+                    diffusers_key += ".attn.to_out.0"
+                elif "_to_add_out" in k:
+                    diffusers_key += ".attn.to_add_out"
+                elif any(qkv in k for qkv in ["to_q", "to_k", "to_v"]):
+                    remaining = k.split("attn_")[-1]
+                    diffusers_key += f".attn.{remaining}"
+                elif any(add_qkv in k for add_qkv in ["add_q_proj", "add_k_proj", "add_v_proj"]):
+                    remaining = k.split("attn_")[-1]
+                    diffusers_key += f".attn.{remaining}"
+
+            _convert(k, diffusers_key, state_dict, new_state_dict)
+
+        if has_te_keys:
+            layer_pattern = re.compile(r"lora_te1_text_model_encoder_layers_(\d+)")
+            attn_mapping = {
+                "q_proj": ".self_attn.q_proj",
+                "k_proj": ".self_attn.k_proj",
+                "v_proj": ".self_attn.v_proj",
+                "out_proj": ".self_attn.out_proj",
+            }
+            mlp_mapping = {"fc1": ".mlp.fc1", "fc2": ".mlp.fc2"}
+            for k in all_unique_keys:
+                if not k.startswith("lora_te1_"):
+                    continue
+
+                match = layer_pattern.search(k)
+                if not match:
+                    continue
+                i = int(match.group(1))
+                diffusers_key = f"text_model.encoder.layers.{i}"
+
+                if "attn" in k:
+                    for key_fragment, suffix in attn_mapping.items():
+                        if key_fragment in k:
+                            diffusers_key += suffix
+                            break
+                elif "mlp" in k:
+                    for key_fragment, suffix in mlp_mapping.items():
+                        if key_fragment in k:
+                            diffusers_key += suffix
+                            break
+
+                _convert(k, diffusers_key, state_dict, new_state_dict)
+
+        if state_dict:
+            remaining_all_unet = all(k.startswith("lora_unet_") for k in state_dict)
+        if remaining_all_unet:
+            keys = list(state_dict.keys())
+            for k in keys:
+                state_dict.pop(k)
+
+        if len(state_dict) > 0:
+            raise ValueError(
+                f"Expected an empty state dict at this point but its has these keys which couldn't be parsed: {list(state_dict.keys())}."
+            )
+
+        transformer_state_dict = {
+            f"transformer.{k}": v for k, v in new_state_dict.items() if not k.startswith("text_model.")
+        }
+        te_state_dict = {f"text_encoder.{k}": v for k, v in new_state_dict.items() if k.startswith("text_model.")}
+        return {**transformer_state_dict, **te_state_dict}
+
+    # This is  weird.
+    # https://huggingface.co/sayakpaul/different-lora-from-civitai/tree/main?show_file_info=sharp_detailed_foot.safetensors
+    # has both `peft` and non-peft state dict.
+    has_peft_state_dict = any(k.startswith("transformer.") for k in state_dict)
+    if has_peft_state_dict:
+        state_dict = {k: v for k, v in state_dict.items() if k.startswith("transformer.")}
+        return state_dict
+    # Another weird one.
+    has_mixture = any(
+        k.startswith("lora_transformer_") and ("lora_down" in k or "lora_up" in k or "alpha" in k) for k in state_dict
+    )
+    if has_mixture:
+        return _convert_mixture_state_dict_to_diffusers(state_dict)
 
     return _convert_sd_scripts_to_ai_toolkit(state_dict)
 

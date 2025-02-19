@@ -36,11 +36,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def prepare_causal_attention_mask(
     num_frames: int, height_width: int, dtype: torch.dtype, device: torch.device, batch_size: int = None
 ) -> torch.Tensor:
-    seq_len = num_frames * height_width
-    mask = torch.full((seq_len, seq_len), float("-inf"), dtype=dtype, device=device)
-    for i in range(seq_len):
-        i_frame = i // height_width
-        mask[i, : (i_frame + 1) * height_width] = 0
+    indices = torch.arange(1, num_frames + 1, dtype=torch.int32, device=device)
+    indices_blocks = indices.repeat_interleave(height_width)
+    x, y = torch.meshgrid(indices_blocks, indices_blocks, indexing="xy")
+    mask = torch.where(x <= y, 0, -float("inf")).to(dtype=dtype)
+
     if batch_size is not None:
         mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
     return mask

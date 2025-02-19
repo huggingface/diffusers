@@ -1338,6 +1338,36 @@ class ModelTesterMixin:
                 # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
                 assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
 
+    def test_layerwise_casting_training(self):
+        def test_fn(storage_dtype, compute_dtype):
+            if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
+                return
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+            model = self.model_class(**init_dict)
+            model = model.to(torch_device, dtype=compute_dtype)
+            model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+            model.train()
+
+            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            with torch.amp.autocast(device_type=torch.device(torch_device).type):
+                output = model(**inputs_dict)
+
+                if isinstance(output, dict):
+                    output = output.to_tuple()[0]
+
+                input_tensor = inputs_dict[self.main_input_name]
+                noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
+                noise = cast_maybe_tensor_dtype(noise, torch.float32, compute_dtype)
+                loss = torch.nn.functional.mse_loss(output, noise)
+
+            loss.backward()
+
+        test_fn(torch.float16, torch.float32)
+        test_fn(torch.float8_e4m3fn, torch.float32)
+        test_fn(torch.float8_e5m2, torch.float32)
+        test_fn(torch.float8_e4m3fn, torch.bfloat16)
+
     def test_layerwise_casting_inference(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
@@ -1427,6 +1457,55 @@ class ModelTesterMixin:
             fp8_e4m3_fp32_max_memory < fp32_max_memory
             or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
         )
+
+    @require_torch_gpu
+    def test_group_offloading(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        torch.manual_seed(0)
+
+        @torch.no_grad()
+        def run_forward(model):
+            self.assertTrue(
+                all(
+                    module._diffusers_hook.get_hook("group_offloading") is not None
+                    for module in model.modules()
+                    if hasattr(module, "_diffusers_hook")
+                )
+            )
+            model.eval()
+            return model(**inputs_dict)[0]
+
+        model = self.model_class(**init_dict)
+        if not getattr(model, "_supports_group_offloading", True):
+            return
+
+        model.to(torch_device)
+        output_without_group_offloading = run_forward(model)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1)
+        output_with_group_offloading1 = run_forward(model)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, non_blocking=True)
+        output_with_group_offloading2 = run_forward(model)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.enable_group_offload(torch_device, offload_type="leaf_level")
+        output_with_group_offloading3 = run_forward(model)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.enable_group_offload(torch_device, offload_type="leaf_level", use_stream=True)
+        output_with_group_offloading4 = run_forward(model)
+
+        self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5))
+        self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-5))
+        self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading3, atol=1e-5))
+        self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5))
 
 
 @is_staging_test
