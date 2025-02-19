@@ -748,10 +748,10 @@ class CogVideoXPatchEmbed(nn.Module):
                 pos_embedding = self._get_positional_embeddings(
                     height, width, pre_time_compression_frames, device=embeds.device
                 )
-                pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             else:
                 pos_embedding = self.pos_embedding
 
+            pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             embeds = embeds + pos_embedding
 
         return embeds
@@ -1199,7 +1199,7 @@ def apply_rotary_emb(
             x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
             x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
         elif use_real_unbind_dim == -2:
-            # Used for Stable Audio
+            # Used for Stable Audio, OmniGen and CogView4
             x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
             x_rotated = torch.cat([-x_imag, x_real], dim=-1)
         else:
@@ -1248,7 +1248,8 @@ class FluxPosEmbed(nn.Module):
         sin_out = []
         pos = ids.float()
         is_mps = ids.device.type == "mps"
-        freqs_dtype = torch.float32 if is_mps else torch.float64
+        is_npu = ids.device.type == "npu"
+        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
                 self.axes_dim[i],
@@ -1535,7 +1536,7 @@ class ImageProjection(nn.Module):
         batch_size = image_embeds.shape[0]
 
         # image
-        image_embeds = self.image_embeds(image_embeds)
+        image_embeds = self.image_embeds(image_embeds.to(self.image_embeds.weight.dtype))
         image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
         image_embeds = self.norm(image_embeds)
         return image_embeds
@@ -1786,7 +1787,7 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
     def forward(self, timestep, caption_feat, caption_mask):
         # timestep embedding:
         time_freq = self.time_proj(timestep)
-        time_embed = self.timestep_embedder(time_freq.to(dtype=self.timestep_embedder.linear_1.weight.dtype))
+        time_embed = self.timestep_embedder(time_freq.to(dtype=caption_feat.dtype))
 
         # caption condition embedding:
         caption_mask_float = caption_mask.float().unsqueeze(-1)

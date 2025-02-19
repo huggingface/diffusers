@@ -742,3 +742,29 @@ accelerate launch train_dreambooth.py \
 ## Stable Diffusion XL
 
 We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md).
+
+## Dataset
+
+We support 🤗 [Datasets](https://huggingface.co/docs/datasets/index), you can find a dataset on the [Hugging Face Hub](https://huggingface.co/datasets) or use your own.
+
+The quickest way to get started with your custom dataset is 🤗 Datasets' [`ImageFolder`](https://huggingface.co/docs/datasets/image_dataset#imagefolder).
+
+We need to create a file `metadata.jsonl` in the directory with our images:
+
+```
+{"file_name": "01.jpg", "prompt": "prompt 01"}
+{"file_name": "02.jpg", "prompt": "prompt 02"}
+```
+
+If we have a directory with image-text pairs e.g. `01.jpg` and `01.txt` then `convert_to_imagefolder.py` can create `metadata.jsonl`.
+
+```sh
+python convert_to_imagefolder.py --path my_dataset/
+```
+
+We use `--dataset_name` and `--caption_column` with training scripts.
+
+```
+--dataset_name=my_dataset/
+--caption_column=prompt
+```

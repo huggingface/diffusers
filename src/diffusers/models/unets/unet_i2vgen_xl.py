@@ -35,11 +35,7 @@ from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..transformers.transformer_temporal import TransformerTemporalModel
 from .unet_3d_blocks import (
-    CrossAttnDownBlock3D,
-    CrossAttnUpBlock3D,
-    DownBlock3D,
     UNetMidBlock3DCrossAttn,
-    UpBlock3D,
     get_down_block,
     get_up_block,
 )
@@ -436,11 +432,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         self.set_attn_processor(processor)
 
-    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel._set_gradient_checkpointing
-    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
-            module.gradient_checkpointing = value
-
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1, s2, b1, b2):
         r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
@@ -575,10 +566,11 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             # TODO: this requires sync between CPU and GPU. So try to pass `timesteps` as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
             is_mps = sample.device.type == "mps"
+            is_npu = sample.device.type == "npu"
             if isinstance(timesteps, float):
-                dtype = torch.float32 if is_mps else torch.float64
+                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
             else:
-                dtype = torch.int32 if is_mps else torch.int64
+                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)

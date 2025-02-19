@@ -85,7 +85,7 @@ class StableDiffusionXLImg2ImgRefinerPipelineSingleFileSlowTests(unittest.TestCa
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = pipe(
@@ -95,7 +95,7 @@ class StableDiffusionXLImg2ImgRefinerPipelineSingleFileSlowTests(unittest.TestCa
         pipe_single_file = self.pipeline_class.from_single_file(self.ckpt_path, torch_dtype=torch.float16)
         pipe_single_file.scheduler = DDIMScheduler.from_config(pipe_single_file.scheduler.config)
         pipe_single_file.unet.set_default_attn_processor()
-        pipe_single_file.enable_model_cpu_offload()
+        pipe_single_file.enable_model_cpu_offload(device=torch_device)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         image_single_file = pipe_single_file(

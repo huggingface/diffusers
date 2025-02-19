@@ -19,14 +19,22 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import deprecate, logging, replace_example_docstring
+from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -412,6 +420,9 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)
                 callback(step_idx, t, latents)
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         if output_type not in ["pt", "np", "pil", "latent"]:
             raise ValueError(

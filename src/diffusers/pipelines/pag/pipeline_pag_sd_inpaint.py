@@ -28,6 +28,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
     deprecate,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -40,7 +41,15 @@ from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .pag_utils import PAGMixin
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -234,7 +243,7 @@ class StableDiffusionPAGInpaintPipeline(
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+        if scheduler is not None and getattr(scheduler.config, "steps_offset", 1) != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
@@ -248,7 +257,7 @@ class StableDiffusionPAGInpaintPipeline(
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+        if scheduler is not None and getattr(scheduler.config, "clip_sample", False) is True:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
@@ -277,10 +286,14 @@ class StableDiffusionPAGInpaintPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        is_unet_version_less_0_9_0 = (
+            unet is not None
+            and hasattr(unet.config, "_diffusers_version")
+            and version.parse(version.parse(unet.config._diffusers_version).base_version) < version.parse("0.9.0.dev0")
+        )
+        is_unet_sample_size_less_64 = (
+            unet is not None and hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -308,7 +321,7 @@ class StableDiffusionPAGInpaintPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
@@ -1317,6 +1330,9 @@ class StableDiffusionPAGInpaintPipeline(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             condition_kwargs = {}

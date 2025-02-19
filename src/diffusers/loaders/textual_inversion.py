@@ -40,7 +40,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
     force_download = kwargs.pop("force_download", False)
     proxies = kwargs.pop("proxies", None)
     local_files_only = kwargs.pop("local_files_only", None)
-    token = kwargs.pop("token", None)
+    hf_token = kwargs.pop("hf_token", None)
     revision = kwargs.pop("revision", None)
     subfolder = kwargs.pop("subfolder", None)
     weight_name = kwargs.pop("weight_name", None)
@@ -73,7 +73,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                         force_download=force_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
-                        token=token,
+                        token=hf_token,
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
@@ -93,7 +93,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                     force_download=force_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    token=token,
+                    token=hf_token,
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,
@@ -312,7 +312,7 @@ class TextualInversionLoaderMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
+            hf_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -333,7 +333,7 @@ class TextualInversionLoaderMixin:
         from diffusers import StableDiffusionPipeline
         import torch
 
-        model_id = "runwayml/stable-diffusion-v1-5"
+        model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
         pipe.load_textual_inversion("sd-concepts-library/cat-toy")
@@ -352,7 +352,7 @@ class TextualInversionLoaderMixin:
         from diffusers import StableDiffusionPipeline
         import torch
 
-        model_id = "runwayml/stable-diffusion-v1-5"
+        model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
         pipe.load_textual_inversion("./charturnerv2.pt", token="charturnerv2")
@@ -469,7 +469,7 @@ class TextualInversionLoaderMixin:
         from diffusers import AutoPipelineForText2Image
         import torch
 
-        pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
+        pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 
         # Example 1
         pipeline.load_textual_inversion("sd-concepts-library/gta5-artwork")

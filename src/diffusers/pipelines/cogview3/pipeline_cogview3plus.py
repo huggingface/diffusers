@@ -24,10 +24,17 @@ from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, CogView3PlusTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import CogView3PipelineOutput
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -153,9 +160,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
@@ -655,6 +660,9 @@ class CogView3PlusPipeline(DiffusionPipeline):
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[

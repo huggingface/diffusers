@@ -48,7 +48,7 @@
   - local: using-diffusers/inpaint
     title: Inpainting
   - local: using-diffusers/text-img2vid
-    title: Text or image-to-video
+    title: Video generation
   - local: using-diffusers/depth2img
     title: Depth-to-image
   title: Generative tasks
@@ -79,6 +79,8 @@
 - sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
+  - local: using-diffusers/consisid
+    title: ConsisID
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
@@ -87,6 +89,8 @@
     title: Kandinsky
   - local: using-diffusers/ip_adapter
     title: IP-Adapter
+  - local: using-diffusers/omnigen
+    title: OmniGen
   - local: using-diffusers/pag
     title: PAG
   - local: using-diffusers/controlnet
@@ -179,6 +183,8 @@
     title: TGATE
   - local: optimization/xdit
     title: xDiT
+  - local: optimization/para_attn
+    title: ParaAttention
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
@@ -268,8 +274,12 @@
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
+      - local: api/models/consisid_transformer3d
+        title: ConsisIDTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
         title: CogView3PlusTransformer2DModel
+      - local: api/models/cogview4_transformer2d
+        title: CogView4Transformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/flux_transformer
@@ -282,10 +292,14 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/lumina2_transformer2d
+        title: Lumina2Transformer2DModel
       - local: api/models/ltx_video_transformer3d
         title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
+      - local: api/models/omnigen_transformer
+        title: OmniGenTransformer2DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -370,6 +384,10 @@
       title: CogVideoX
     - local: api/pipelines/cogview3
       title: CogView3
+    - local: api/pipelines/cogview4
+      title: CogView4
+    - local: api/pipelines/consisid
+      title: ConsisID
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
@@ -429,7 +447,9 @@
     - local: api/pipelines/ledits_pp
       title: LEDITS++
     - local: api/pipelines/ltx_video
-      title: LTX
+      title: LTXVideo
+    - local: api/pipelines/lumina2
+      title: Lumina 2.0
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
@@ -440,6 +460,8 @@
       title: MultiDiffusion
     - local: api/pipelines/musicldm
       title: MusicLDM
+    - local: api/pipelines/omnigen
+      title: OmniGen
     - local: api/pipelines/pag
       title: PAG
     - local: api/pipelines/paint_by_example
@@ -590,6 +612,8 @@
       title: Attention Processor
     - local: api/activations
       title: Custom activation functions
+    - local: api/cache
+      title: Caching methods
     - local: api/normalization
       title: Custom normalization layers
     - local: api/utilities

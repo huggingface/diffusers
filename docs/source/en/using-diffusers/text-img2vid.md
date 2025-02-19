@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+ <!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -10,31 +10,20 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Text or image-to-video
+# Video generation
 
-Driven by the success of text-to-image diffusion models, generative video models are able to generate short clips of video from a text prompt or an initial image. These models extend a pretrained diffusion model to generate videos by adding some type of temporal and/or spatial convolution layer to the architecture. A mixed dataset of images and videos are used to train the model which learns to output a series of video frames based on the text or image conditioning.
+Video generation models include a temporal dimension to bring images, or frames, together to create a video. These models are trained on large-scale datasets of high-quality text-video pairs to learn how to combine the modalities to ensure the generated video is coherent and realistic.
 
-This guide will show you how to generate videos, how to configure video model parameters, and how to control video generation.
+[Explore](https://huggingface.co/models?other=video-generation) some of the more popular open-source video generation models available from Diffusers below.
 
-## Popular models
+<hfoptions id="popular-models">
+<hfoption id="CogVideoX">
 
-> [!TIP]
-> Discover other cool and trending video generation models on the Hub [here](https://huggingface.co/models?pipeline_tag=text-to-video&sort=trending)!
+[CogVideoX](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce) uses a 3D causal Variational Autoencoder (VAE) to compress videos along the spatial and temporal dimensions, and it includes a stack of expert transformer blocks with a 3D full attention mechanism to better capture visual, semantic, and motion information in the data.
 
-[Stable Video Diffusions (SVD)](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid), [I2VGen-XL](https://huggingface.co/ali-vilab/i2vgen-xl/), [AnimateDiff](https://huggingface.co/guoyww/animatediff), and [ModelScopeT2V](https://huggingface.co/ali-vilab/text-to-video-ms-1.7b) are popular models used for video diffusion. Each model is distinct. For example, AnimateDiff inserts a motion modeling module into a frozen text-to-image model to generate personalized animated images, whereas SVD is entirely pretrained from scratch with a three-stage training process to generate short high-quality videos.
+The CogVideoX family also includes models capable of generating videos from images and videos in addition to text. The image-to-video models are indicated by **I2V** in the checkpoint name, and they should be used with the [`CogVideoXImageToVideoPipeline`]. The regular checkpoints support video-to-video through the [`CogVideoXVideoToVideoPipeline`].
 
-[CogVideoX](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce) is another popular video generation model. The model is a multidimensional transformer that integrates text, time, and space. It employs full attention in the attention module and includes an expert block at the layer level to spatially align text and video.
-
-### CogVideoX
- 
-[CogVideoX](../api/pipelines/cogvideox) uses a 3D Variational Autoencoder (VAE) to compress videos along the spatial and temporal dimensions.
-
-Begin by loading the [`CogVideoXPipeline`] and passing an initial text or image to generate a video.
-<Tip>
-
-CogVideoX is available for image-to-video and text-to-video. [THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V) uses the [`CogVideoXImageToVideoPipeline`] for image-to-video. [THUDM/CogVideoX-5b](https://huggingface.co/THUDM/CogVideoX-5b) and [THUDM/CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b) are available for text-to-video with the [`CogVideoXPipeline`].
- 
-</Tip>
+The example below demonstrates how to generate a video from an image and text prompt with [THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V).
 
 ```py
 import torch
@@ -42,12 +31,13 @@ from diffusers import CogVideoXImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 
 prompt = "A vast, shimmering ocean flows gracefully under a twilight sky, its waves undulating in a mesmerizing dance of blues and greens. The surface glints with the last rays of the setting sun, casting golden highlights that ripple across the water. Seagulls soar above, their cries blending with the gentle roar of the waves. The horizon stretches infinitely, where the ocean meets the sky in a seamless blend of hues. Close-ups reveal the intricate patterns of the waves, capturing the fluidity and dynamic beauty of the sea in motion."
-image = load_image(image="cogvideox_rocket.png")
+image = load_image(image="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cogvideox/cogvideox_rocket.png")
 pipe = CogVideoXImageToVideoPipeline.from_pretrained(
     "THUDM/CogVideoX-5b-I2V",
     torch_dtype=torch.bfloat16
 )
- 
+
+# reduce memory requirements 
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
 
@@ -60,7 +50,6 @@ video = pipe(
     guidance_scale=6,
     generator=torch.Generator(device="cuda").manual_seed(42),
 ).frames[0]
-
 export_to_video(video, "output.mp4", fps=8)
 ```
 
@@ -75,12 +64,103 @@ export_to_video(video, "output.mp4", fps=8)
   </div>
 </div>
 
- 
-### Stable Video Diffusion
+</hfoption>
+<hfoption id="HunyuanVideo">
 
-[SVD](../api/pipelines/svd) is based on the Stable Diffusion 2.1 model and it is trained on images, then low-resolution videos, and finally a smaller dataset of high-resolution videos. This model generates a short 2-4 second video from an initial image. You can learn more details about model, like micro-conditioning, in the [Stable Video Diffusion](../using-diffusers/svd) guide.
+> [!TIP]
+> HunyuanVideo is a 13B parameter model and requires a lot of memory. Refer to the HunyuanVideo [Quantization](../api/pipelines/hunyuan_video#quantization) guide to learn how to quantize the model. CogVideoX and LTX-Video are more lightweight options that can still generate high-quality videos.
 
-Begin by loading the [`StableVideoDiffusionPipeline`] and passing an initial image to generate a video from.
+[HunyuanVideo](https://huggingface.co/tencent/HunyuanVideo) features a dual-stream to single-stream diffusion transformer (DiT) for learning video and text tokens separately, and then subsequently concatenating the video and text tokens to combine their information. A single multimodal large language model (MLLM) serves as the text encoder, and videos are also spatio-temporally compressed with a 3D causal VAE.
+
+```py
+import torch
+from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+from diffusers.utils import export_to_video
+
+transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+    "hunyuanvideo-community/HunyuanVideo", subfolder="transformer", torch_dtype=torch.bfloat16
+)
+pipe = HunyuanVideoPipeline.from_pretrained(
+  "hunyuanvideo-community/HunyuanVideo", transformer=transformer, torch_dtype=torch.float16
+)
+
+# reduce memory requirements
+pipe.vae.enable_tiling()
+pipe.to("cuda")
+
+video = pipe(
+    prompt="A cat walks on the grass, realistic",
+    height=320,
+    width=512,
+    num_frames=61,
+    num_inference_steps=30,
+).frames[0]
+export_to_video(video, "output.mp4", fps=15)
+```
+
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hunyuan-video-output.gif"/>
+</div>
+
+</hfoption>
+<hfoption id="LTX-Video">
+
+[LTX-Video (LTXV)](https://huggingface.co/Lightricks/LTX-Video) is a diffusion transformer (DiT) with a focus on speed. It generates 768x512 resolution videos at 24 frames per second (fps), enabling near real-time generation of high-quality videos. LTXV is relatively lightweight compared to other modern video generation models, making it possible to run on consumer GPUs.
+
+```py
+import torch
+from diffusers import LTXPipeline
+from diffusers.utils import export_to_video
+
+pipe = LTXPipeline.from_pretrained("Lightricks/LTX-Video", torch_dtype=torch.bfloat16).to("cuda")
+
+prompt = "A man walks towards a window, looks out, and then turns around. He has short, dark hair, dark skin, and is wearing a brown coat over a red and gray scarf. He walks from left to right towards a window, his gaze fixed on something outside. The camera follows him from behind at a medium distance. The room is brightly lit, with white walls and a large window covered by a white curtain. As he approaches the window, he turns his head slightly to the left, then back to the right. He then turns his entire body to the right, facing the window. The camera remains stationary as he stands in front of the window. The scene is captured in real-life footage."
+video = pipe(
+    prompt=prompt,
+    width=704,
+    height=480,
+    num_frames=161,
+    num_inference_steps=50,
+).frames[0]
+export_to_video(video, "output.mp4", fps=24)
+```
+
+<div class="flex justify-center">
+  <img src="https://huggingface.co/Lightricks/LTX-Video/resolve/main/media/ltx-video_example_00014.gif"/>
+</div>
+
+</hfoption>
+<hfoption id="Mochi-1">
+
+> [!TIP]
+> Mochi-1 is a 10B parameter model and requires a lot of memory. Refer to the Mochi [Quantization](../api/pipelines/mochi#quantization) guide to learn how to quantize the model. CogVideoX and LTX-Video are more lightweight options that can still generate high-quality videos.
+
+[Mochi-1](https://huggingface.co/genmo/mochi-1-preview) introduces the Asymmetric Diffusion Transformer (AsymmDiT) and Asymmetric Variational Autoencoder (AsymmVAE) to reduces memory requirements. AsymmVAE causally compresses videos 128x to improve memory efficiency, and AsymmDiT jointly attends to the compressed video tokens and user text tokens. This model is noted for generating videos with high-quality motion dynamics and strong prompt adherence.
+
+```py
+import torch
+from diffusers import MochiPipeline
+from diffusers.utils import export_to_video
+
+pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", torch_dtype=torch.bfloat16)
+
+# reduce memory requirements
+pipe.enable_model_cpu_offload()
+pipe.enable_vae_tiling()
+
+prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
+video = pipe(prompt, num_frames=84).frames[0]
+export_to_video(video, "output.mp4", fps=30)
+```
+
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/mochi-video-output.gif"/>
+</div>
+
+</hfoption>
+<hfoption id="StableVideoDiffusion">
+
+[StableVideoDiffusion (SVD)](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt) is based on the Stable Diffusion 2.1 model and it is trained on images, then low-resolution videos, and finally a smaller dataset of high-resolution videos. This model generates a short 2-4 second video from an initial image.
 
 ```py
 import torch
@@ -90,6 +170,8 @@ from diffusers.utils import load_image, export_to_video
 pipeline = StableVideoDiffusionPipeline.from_pretrained(
     "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
 )
+
+# reduce memory requirements
 pipeline.enable_model_cpu_offload()
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
@@ -111,54 +193,12 @@ export_to_video(frames, "generated.mp4", fps=7)
   </div>
 </div>
 
-### I2VGen-XL
+</hfoption>
+<hfoption id="AnimateDiff">
 
-[I2VGen-XL](../api/pipelines/i2vgenxl) is a diffusion model that can generate higher resolution videos than SVD and it is also capable of accepting text prompts in addition to images. The model is trained with two hierarchical encoders (detail and global encoder) to better capture low and high-level details in images. These learned details are used to train a video diffusion model which refines the video resolution and details in the generated video.
+[AnimateDiff](https://huggingface.co/guoyww/animatediff) is an adapter model that inserts a motion module into a pretrained diffusion model to animate an image. The adapter is trained on video clips to learn motion which is used to condition the generation process to create a video. It is faster and easier to only train the adapter and it can be loaded into most diffusion models, effectively turning them into “video models”.
 
-You can use I2VGen-XL by loading the [`I2VGenXLPipeline`], and passing a text and image prompt to generate a video.
-
-```py
-import torch
-from diffusers import I2VGenXLPipeline
-from diffusers.utils import export_to_gif, load_image
-
-pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
-pipeline.enable_model_cpu_offload()
-
-image_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
-image = load_image(image_url).convert("RGB")
-
-prompt = "Papers were floating in the air on a table in the library"
-negative_prompt = "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms"
-generator = torch.manual_seed(8888)
-
-frames = pipeline(
-    prompt=prompt,
-    image=image,
-    num_inference_steps=50,
-    negative_prompt=negative_prompt,
-    guidance_scale=9.0,
-    generator=generator
-).frames[0]
-export_to_gif(frames, "i2v.gif")
-```
-
-<div class="flex gap-4">
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">initial image</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/i2vgen-xl-example.gif"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">generated video</figcaption>
-  </div>
-</div>
-
-### AnimateDiff
-
-[AnimateDiff](../api/pipelines/animatediff) is an adapter model that inserts a motion module into a pretrained diffusion model to animate an image. The adapter is trained on video clips to learn motion which is used to condition the generation process to create a video. It is faster and easier to only train the adapter and it can be loaded into most diffusion models, effectively turning them into "video models".
-
-Start by loading a [`MotionAdapter`].
+Load a `MotionAdapter` and pass it to the [`AnimateDiffPipeline`].
 
 ```py
 import torch
@@ -166,11 +206,6 @@ from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
 
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
-```
-
-Then load a finetuned Stable Diffusion model with the [`AnimateDiffPipeline`].
-
-```py
 pipeline = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter, torch_dtype=torch.float16)
 scheduler = DDIMScheduler.from_pretrained(
     "emilianJR/epiCRealism",
@@ -181,13 +216,11 @@ scheduler = DDIMScheduler.from_pretrained(
     steps_offset=1,
 )
 pipeline.scheduler = scheduler
+
+# reduce memory requirements
 pipeline.enable_vae_slicing()
 pipeline.enable_model_cpu_offload()
-```
 
-Create a prompt and generate the video.
-
-```py
 output = pipeline(
     prompt="A space rocket with trails of smoke behind it launching into space from the desert, 4k, high resolution",
     negative_prompt="bad quality, worse quality, low resolution",
@@ -201,38 +234,11 @@ export_to_gif(frames, "animation.gif")
 ```
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff.gif"/>
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff.gif"/>
 </div>
 
-### ModelscopeT2V
-
-[ModelscopeT2V](../api/pipelines/text_to_video) adds spatial and temporal convolutions and attention to a UNet, and it is trained on image-text and video-text datasets to enhance what it learns during training. The model takes a prompt, encodes it and creates text embeddings which are denoised by the UNet, and then decoded by a VQGAN into a video.
-
-<Tip>
-
-ModelScopeT2V generates watermarked videos due to the datasets it was trained on. To use a watermark-free model, try the [cerspense/zeroscope_v2_76w](https://huggingface.co/cerspense/zeroscope_v2_576w) model with the [`TextToVideoSDPipeline`] first, and then upscale it's output with the [cerspense/zeroscope_v2_XL](https://huggingface.co/cerspense/zeroscope_v2_XL) checkpoint using the [`VideoToVideoSDPipeline`].
-
-</Tip>
-
-Load a ModelScopeT2V checkpoint into the [`DiffusionPipeline`] along with a prompt to generate a video.
-
-```py
-import torch
-from diffusers import DiffusionPipeline
-from diffusers.utils import export_to_video
-
-pipeline = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
-pipeline.enable_model_cpu_offload()
-pipeline.enable_vae_slicing()
-
-prompt = "Confident teddy bear surfer rides the wave in the tropics"
-video_frames = pipeline(prompt).frames[0]
-export_to_video(video_frames, "modelscopet2v.mp4", fps=10)
-```
-
-<div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/modelscopet2v.gif" />
-</div>
+</hfoption>
+</hfoptions>
 
 ## Configure model parameters
 
@@ -548,3 +554,9 @@ If memory is not an issue and you want to optimize for speed, try wrapping the U
 + pipeline.to("cuda")
 + pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
+
+## Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) to learn more about supported quantization backends (bitsandbytes, torchao, gguf) and selecting a quantization backend that supports your use case.

@@ -28,6 +28,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
     deprecate,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -38,7 +39,15 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, StableDiffu
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -154,7 +163,7 @@ class StableUnCLIPPipeline(
             vae=vae,
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._encode_prompt with _encode_prompt->_encode_prior_prompt, tokenizer->prior_tokenizer, text_encoder->prior_text_encoder
@@ -923,6 +932,9 @@ class StableUnCLIPPipeline(
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)
                 callback(step_idx, t, latents)
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]

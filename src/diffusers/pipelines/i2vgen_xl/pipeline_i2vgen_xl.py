@@ -27,6 +27,7 @@ from ...models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from ...schedulers import DDIMScheduler
 from ...utils import (
     BaseOutput,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -35,7 +36,15 @@ from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -133,7 +142,7 @@ class I2VGenXLPipeline(
             unet=unet,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # `do_resize=False` as we do custom resizing.
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor, do_resize=False)
 
@@ -710,6 +719,9 @@ class I2VGenXLPipeline(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         # 8. Post processing
         if output_type == "latent":
