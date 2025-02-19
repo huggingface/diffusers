@@ -85,6 +85,7 @@ def save_model_card(
     images=None,
     base_model: str = None,
     instance_prompt=None,
+    system_prompt=None,
     validation_prompt=None,
     repo_folder=None,
 ):
@@ -111,6 +112,8 @@ The weights were trained using [DreamBooth](https://dreambooth.github.io/) with 
 ## Trigger words
 
 You should use `{instance_prompt}` to trigger the image generation.
+
+The following `system_prompt` was also used used during training (ignore if `None`): {system_prompt}.
 
 ## Download model
 
@@ -1373,8 +1376,8 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * noise + sigmas * model_input
 
                 # Predict the noise residual
-                # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
-                timesteps = 1 - timesteps / noise_scheduler.config.num_train_timesteps
+                # scale the timesteps (reversal not needed as we used a reverse lerp above already)
+                timesteps = timesteps / noise_scheduler.config.num_train_timesteps
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
@@ -1532,6 +1535,7 @@ def main(args):
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 instance_prompt=args.instance_prompt,
+                system_prompt=args.system_prompt,
                 validation_prompt=args.validation_prompt,
                 repo_folder=args.output_dir,
             )
