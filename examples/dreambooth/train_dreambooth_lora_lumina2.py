@@ -1220,6 +1220,7 @@ def main(args):
             prompt_attention_mask = torch.cat([prompt_attention_mask, class_prompt_attention_mask], dim=0)
 
     vae_config_scaling_factor = vae.config.scaling_factor
+    vae_config_shift_factor = vae.config.shift_factor
     if args.cache_latents:
         latents_cache = []
         vae = vae.to(accelerator.device)
@@ -1334,9 +1335,9 @@ def main(args):
 
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]
-            with accelerator.accumulate(models_to_accumulate):
-                prompts = batch["prompts"]
+            prompts = batch["prompts"]
 
+            with accelerator.accumulate(models_to_accumulate):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     prompt_embeds, prompt_attention_mask = compute_text_embeddings(prompts, text_encoding_pipeline)
@@ -1350,7 +1351,7 @@ def main(args):
                     model_input = vae.encode(pixel_values).latent_dist.sample()
                     if args.offload:
                         vae = vae.to("cpu")
-                model_input = model_input * vae_config_scaling_factor
+                model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents
@@ -1380,8 +1381,12 @@ def main(args):
                 timesteps = timesteps / noise_scheduler.config.num_train_timesteps
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
+                    encoder_hidden_states=prompt_embeds.repeat(len(prompts), 1, 1)
+                    if not train_dataset.custom_instance_prompts
+                    else prompt_embeds,
+                    encoder_attention_mask=prompt_attention_mask.repeat(len(prompts), 1)
+                    if not train_dataset.custom_instance_prompts
+                    else prompt_attention_mask,
                     timestep=timesteps,
                     return_dict=False,
                 )[0]
@@ -1536,7 +1541,7 @@ def main(args):
                 base_model=args.pretrained_model_name_or_path,
                 instance_prompt=args.instance_prompt,
                 system_prompt=args.system_prompt,
-                validation_prompt=args.validation_prompt,
+                validation_prompt=args.validation_prompt or args.final_validation_prompt,
                 repo_folder=args.output_dir,
             )
             upload_folder(
