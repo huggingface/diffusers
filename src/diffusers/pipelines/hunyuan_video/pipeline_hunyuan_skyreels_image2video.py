@@ -345,7 +345,7 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
             )
 
         if pooled_prompt_embeds is None:
-            if prompt_2 is None and pooled_prompt_embeds is None:
+            if prompt_2 is None:
                 prompt_2 = prompt
             pooled_prompt_embeds = self._get_clip_prompt_embeds(
                 prompt,
@@ -424,12 +424,15 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        image = image.unsqueeze(2)  # [B, C, 1, H, W]
         if isinstance(generator, list):
             image_latents = [
                 retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
             ]
         else:
             image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
+
+        image_latents = torch.cat(image_latents, dim=0).to(dtype)
 
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height, latent_width = height // self.vae_scale_factor_spatial, width // self.vae_scale_factor_spatial
@@ -502,18 +505,24 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
         image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         prompt_2: Union[str, List[str]] = None,
+        negative_prompt: Union[str, List[str]] = None,
+        negative_prompt_2: Union[str, List[str]] = None,
         height: int = 544,
         width: int = 960,
         num_frames: int = 97,
         num_inference_steps: int = 50,
         sigmas: List[float] = None,
-        guidance_scale: float = 6.0,
+        true_cfg_scale: float = 6.0,
+        guidance_scale: float = 1.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         pooled_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -534,6 +543,13 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 will be used instead.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
+                not greater than `1`).
+            negative_prompt_2 (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
+                `text_encoder_2`. If not defined, `negative_prompt` is used in all the text-encoders.
             height (`int`, defaults to `720`):
                 The height in pixels of the generated image.
             width (`int`, defaults to `1280`):
@@ -547,6 +563,8 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
+            true_cfg_scale (`float`, *optional*, defaults to 1.0):
+                When > 1.0 and a provided `negative_prompt`, enables true classifier-free guidance.
             guidance_scale (`float`, defaults to `6.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -567,6 +585,17 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
+            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+                If not provided, pooled text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
+            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -611,6 +640,11 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
             prompt_template,
         )
 
+        has_neg_prompt = negative_prompt is not None or (
+            negative_prompt_embeds is not None and negative_pooled_prompt_embeds is not None
+        )
+        do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
@@ -627,6 +661,7 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
             batch_size = prompt_embeds.shape[0]
 
         # 3. Encode input prompt
+        transformer_dtype = self.transformer.dtype
         prompt_embeds, pooled_prompt_embeds, prompt_attention_mask = self.encode_prompt(
             prompt=prompt,
             prompt_2=prompt_2,
@@ -638,21 +673,29 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
             device=device,
             max_sequence_length=max_sequence_length,
         )
-
-        transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         prompt_attention_mask = prompt_attention_mask.to(transformer_dtype)
-        if pooled_prompt_embeds is not None:
-            pooled_prompt_embeds = pooled_prompt_embeds.to(transformer_dtype)
+        pooled_prompt_embeds = pooled_prompt_embeds.to(transformer_dtype)
+
+        if do_true_cfg:
+            negative_prompt_embeds, negative_pooled_prompt_embeds, negative_prompt_attention_mask = self.encode_prompt(
+                prompt=negative_prompt,
+                prompt_2=negative_prompt_2,
+                prompt_template=prompt_template,
+                num_videos_per_prompt=num_videos_per_prompt,
+                prompt_embeds=negative_prompt_embeds,
+                pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                prompt_attention_mask=negative_prompt_attention_mask,
+                device=device,
+                max_sequence_length=max_sequence_length,
+            )
+            negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.to(transformer_dtype)
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler,
-            num_inference_steps,
-            device,
-            sigmas=sigmas,
-        )
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
 
         # 5. Prepare latent variables
         vae_dtype = self.vae.dtype
@@ -701,6 +744,19 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
+
+                if do_true_cfg:
+                    neg_noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_attention_mask=negative_prompt_attention_mask,
+                        pooled_projections=negative_pooled_prompt_embeds,
+                        guidance=guidance,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )[0]
+                    noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
