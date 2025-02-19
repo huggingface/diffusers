@@ -74,8 +74,9 @@ To create the package for PyPI.
    twine upload dist/* -r pypi
 
 10. Prepare the release notes and publish them on GitHub once everything is looking hunky-dory. You can use the following
-    Space to fetch all the commits applicable for the release: https://huggingface.co/spaces/lysandre/github-release. Repo should
-    be `huggingface/diffusers`. `tag` should be the previous release tag (v0.26.1, for example), and `branch` should be
+    Space to fetch all the commits applicable for the release: https://huggingface.co/spaces/sayakpaul/auto-release-notes-diffusers.
+    It automatically fetches the correct tag and branch but also provides the option to configure them.
+    `tag` should be the previous release tag (v0.26.1, for example), and `branch` should be
     the latest release branch (v0.27.0-release, for example). It denotes all commits that have happened on branch
     v0.27.0-release after the tag v0.26.1 was created.
 
@@ -101,7 +102,7 @@ _deps = [
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.23.2",
+    "huggingface-hub>=0.27.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -130,11 +131,13 @@ _deps = [
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
+    "tiktoken>=0.7.0",
     "torch>=1.4",
     "torchvision",
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
     "black",
+    "phonemizer",
 ]
 
 # this is a lookup table with items like:
@@ -225,8 +228,10 @@ extras["test"] = deps_list(
     "safetensors",
     "sentencepiece",
     "scipy",
+    "tiktoken",
     "torchvision",
     "transformers",
+    "phonemizer",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
@@ -254,7 +259,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.32.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.33.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

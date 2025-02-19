@@ -46,7 +46,7 @@ jobs:
       shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip uv
-        ${CONDA_RUN} python -m uv pip install -e [quality,test]
+        ${CONDA_RUN} python -m uv pip install -e ".[quality,test]"
         ${CONDA_RUN} python -m uv pip install torch torchvision torchaudio
         ${CONDA_RUN} python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
         ${CONDA_RUN} python -m uv pip install transformers --upgrade

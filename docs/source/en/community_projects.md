@@ -79,4 +79,8 @@ Happy exploring, and thank you for being part of the Diffusers community!
     <td><a href="https://github.com/Netwrck/stable-diffusion-server"> Stable Diffusion Server </a></td>
     <td>A server configured for Inpainting/Generation/img2img with one stable diffusion model</td>
   </tr>
+  <tr style="border-top: 2px solid black">
+    <td><a href="https://github.com/suzukimain/auto_diffusers"> Model Search </a></td>
+    <td>Search models on Civitai and Hugging Face</td>
+  </tr>
 </table>

@@ -146,7 +146,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         )
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"Decoder", "Encoder"}
+        expected_set = {"Decoder", "Encoder", "UNetMidBlock2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     def test_from_pretrained_hub(self):

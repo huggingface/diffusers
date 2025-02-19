@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers import SD3Transformer2DModel
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     torch_device,
@@ -80,6 +81,20 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_enable_works(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        model.enable_xformers_memory_efficient_attention()
+
+        assert (
+            model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor"
+        ), "xformers is not enabled"
+
     @unittest.skip("SD3Transformer2DModel uses a dedicated attention processor. This test doesn't apply")
     def test_set_attn_processor_for_determinism(self):
         pass
@@ -139,6 +154,20 @@ class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_enable_works(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        model.enable_xformers_memory_efficient_attention()
+
+        assert (
+            model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor"
+        ), "xformers is not enabled"
 
     @unittest.skip("SD3Transformer2DModel uses a dedicated attention processor. This test doesn't apply")
     def test_set_attn_processor_for_determinism(self):

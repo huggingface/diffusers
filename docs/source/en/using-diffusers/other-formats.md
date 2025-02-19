@@ -240,6 +240,46 @@ Benefits of using a single-file layout include:
 1. Easy compatibility with diffusion interfaces such as [ComfyUI](https://github.com/comfyanonymous/ComfyUI) or [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) which commonly use a single-file layout.
 2. Easier to manage (download and share) a single file.
 
+### DDUF
+
+> [!WARNING]
+> DDUF is an experimental file format and APIs related to it can change in the future.
+
+DDUF (**D**DUF **D**iffusion **U**nified **F**ormat) is a file format designed to make storing, distributing, and using diffusion models much easier. Built on the ZIP file format, DDUF offers a standardized, efficient, and flexible way to package all parts of a diffusion model into a single, easy-to-manage file. It provides a balance between Diffusers multi-folder format and the widely popular single-file format.
+
+Learn more details about DDUF on the Hugging Face Hub [documentation](https://huggingface.co/docs/hub/dduf).
+
+Pass a checkpoint to the `dduf_file` parameter to load it in [`DiffusionPipeline`].
+
+```py
+from diffusers import DiffusionPipeline
+import torch
+
+pipe = DiffusionPipeline.from_pretrained(
+    "DDUF/FLUX.1-dev-DDUF", dduf_file="FLUX.1-dev.dduf", torch_dtype=torch.bfloat16
+).to("cuda")
+image = pipe(
+    "photo a cat holding a sign that says Diffusers", num_inference_steps=50, guidance_scale=3.5
+).images[0]
+image.save("cat.png")
+```
+
+To save a pipeline as a `.dduf` checkpoint, use the [`~huggingface_hub.export_folder_as_dduf`] utility, which takes care of all the necessary file-level validations.
+
+```py
+from huggingface_hub import export_folder_as_dduf
+from diffusers import DiffusionPipeline
+import torch 
+
+pipe = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+
+save_folder = "flux-dev"
+pipe.save_pretrained("flux-dev")
+export_folder_as_dduf("flux-dev.dduf", folder_path=save_folder)
+
+> [!TIP]
+> Packaging and loading quantized checkpoints in the DDUF format is supported as long as they respect the multi-folder structure.
+
 ## Convert layout and files
 
 Diffusers provides many scripts and methods to convert storage layouts and file formats to enable broader support across the diffusion ecosystem.

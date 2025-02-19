@@ -60,6 +60,8 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
             Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
     """
 
+    _skip_layerwise_casting_patterns = ["decoder"]
+
     @register_to_config
     def __init__(
         self,

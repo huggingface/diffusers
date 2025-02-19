@@ -1,4 +1,5 @@
 import tempfile
+import unittest
 
 import torch
 
@@ -50,6 +51,7 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
+    @unittest.skip("Test not supported.")
     def test_from_save_pretrained(self):
         pass
 

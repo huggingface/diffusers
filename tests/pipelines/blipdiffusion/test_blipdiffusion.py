@@ -60,6 +60,8 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "prompt_reps",
     ]
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
