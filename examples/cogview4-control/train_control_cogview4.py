@@ -758,7 +758,6 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
     cogview4_transformer = CogView4Transformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="transformer",
@@ -1081,9 +1080,8 @@ def main(args):
                 #TODO: Should a parameter be set here for passing? This is not present in Flux.
                 crops_coords_top_left = torch.tensor([(0, 0)], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
                 crops_coords_top_left = crops_coords_top_left.repeat(len(batch["captions"]), 1)
-
                 # Predict.
-                model_pred = cogview4_transformer(
+                noise_pred_cond = cogview4_transformer(
                     hidden_states=concatenated_noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timesteps,
@@ -1093,6 +1091,16 @@ def main(args):
                     return_dict=False,
                 )[0]
 
+                noise_pred_uncond = cogview4_transformer(
+                    hidden_states=concatenated_noisy_model_input,
+                    encoder_hidden_states=pooled_prompt_embeds,
+                    timestep=timesteps,
+                    original_size=original_size,
+                    target_size=target_size,
+                    crop_coords=crops_coords_top_left,
+                    return_dict=False,
+                )[0]
+                model_pred = noise_pred_uncond + args.guidance_scale * (noise_pred_cond - noise_pred_uncond)
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
