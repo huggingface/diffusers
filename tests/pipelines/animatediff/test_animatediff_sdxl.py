@@ -280,3 +280,7 @@ class AnimateDiffPipelineSDXLFastTests(
     @unittest.skip("Test currently not supported.")
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+    @unittest.skip("Functionality is tested elsewhere.")
+    def test_save_load_optional_components(self):
+        pass

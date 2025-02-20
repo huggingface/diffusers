@@ -107,6 +107,10 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
     def test_save_load_dduf(self):
         super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
 
+    @unittest.skip("Functionality is tested elsewhere.")
+    def test_save_load_optional_components(self):
+        pass
+
 
 @slow
 @require_torch_accelerator
