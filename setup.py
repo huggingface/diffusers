@@ -207,8 +207,11 @@ class DepsTableUpdateCommand(Command):
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(content))
 
-
-os.system("echo hello!!!")
+class PostInstallCommand(install):
+    """Post-installation for installation mode."""
+    def run(self):
+        install.run(self)
+        os.system("echo HELLO!!!")
 
 extras = {}
 extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
@@ -289,5 +292,5 @@ setup(
         "Programming Language :: Python :: 3",
     ]
     + [f"Programming Language :: Python :: 3.{i}" for i in range(8, version_range_max)],
-    cmdclass={"deps_table_update": DepsTableUpdateCommand},
+    cmdclass={"deps_table_update": DepsTableUpdateCommand, "install": PostInstallCommand},
 )
