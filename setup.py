@@ -88,7 +88,8 @@ import os
 import re
 import sys
 
-from setuptools import Command, find_packages, setup, install
+from setuptools.command.install import install
+from setuptools import Command, find_packages, setup
 
 
 # IMPORTANT:
