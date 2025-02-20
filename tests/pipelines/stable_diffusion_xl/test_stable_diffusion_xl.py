@@ -54,7 +54,6 @@ from ..test_pipelines_common import (
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     SDFunctionTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -66,7 +65,6 @@ class StableDiffusionXLPipelineFastTests(
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLPipeline

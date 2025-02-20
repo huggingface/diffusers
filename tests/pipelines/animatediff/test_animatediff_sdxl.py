@@ -21,7 +21,6 @@ from ..test_pipelines_common import (
     IPAdapterTesterMixin,
     PipelineTesterMixin,
     SDFunctionTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -36,7 +35,6 @@ class AnimateDiffPipelineSDXLFastTests(
     IPAdapterTesterMixin,
     SDFunctionTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = AnimateDiffSDXLPipeline
