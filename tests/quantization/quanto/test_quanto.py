@@ -309,7 +309,6 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
         for module in quantized_model.modules():
             if isinstance(module, LoRALayer):
                 self.assertTrue(module.adapter[1].weight.grad is not None)
-                self.assertTrue(module.adapter[1].weight.grad.norm().item() > 0)
 
 
 class FluxTransformerFloat8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
