@@ -165,10 +165,13 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
         variant_file_re = re.compile(
             rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
         )
-        legacy_variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
         # `text_encoder/pytorch_model.bin.index.fp16.json`
         variant_index_re = re.compile(
             rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
+        )
+        legacy_variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
+        legacy_variant_index_re = re.compile(
+            rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.{variant}\.index\.json$"
         )
 
     # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetensors`
@@ -209,11 +212,16 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
         component_non_variants = set()
         if variant is not None:
             component_variants = filter_with_regex(component_filenames, variant_file_re)
-            component_legacy_variants = filter_with_regex(component_filenames, legacy_variant_file_re)
             component_variant_index_files = filter_with_regex(component_filenames, variant_index_re)
 
+            component_legacy_variants = filter_with_regex(component_filenames, legacy_variant_file_re)
+            component_legacy_variant_index_files = filter_with_regex(component_filenames, legacy_variant_index_re)
+
+        if component_variants:
             variant_filenames.update(
-                component_variants if component_variants else component_legacy_variants | component_variant_index_files
+                component_variants | component_variant_index_files
+                if component_variants
+                else component_legacy_variants | component_legacy_variant_index_files
             )
 
         else:
@@ -225,7 +233,7 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
     usable_filenames.update(variant_filenames)
 
     if len(variant_filenames) == 0 and variant is not None:
-        error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+        error_message = f"You are trying to load model files of the `variant={variant}`, but no such modeling files are available. "
         raise ValueError(error_message)
 
     if len(variant_filenames) > 0 and usable_filenames != variant_filenames:
