@@ -210,6 +210,10 @@ class StableDiffusionXLControlNetPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
     @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
@@ -641,9 +645,6 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    def test_save_load_optional_components(self):
-        return self._test_save_load_optional_components()
-
 
 class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
     PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
@@ -817,6 +818,10 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

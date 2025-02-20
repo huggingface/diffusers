@@ -370,9 +370,6 @@ class StableDiffusionXLAdapterPipelineFastTests(IPAdapterTesterMixin, PipelineTe
             expected_out_image_size,
         )
 
-    def test_save_load_optional_components(self):
-        return self._test_save_load_optional_components()
-
     def test_adapter_sdxl_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -511,6 +508,10 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
             assert output.shape[0] == batch_size
 
         logger.setLevel(level=diffusers.logging.WARNING)
+
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
 
     def test_num_images_per_prompt(self):
         components = self.get_dummy_components()
