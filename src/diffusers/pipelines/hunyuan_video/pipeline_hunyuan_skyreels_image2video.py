@@ -219,6 +219,7 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
 
         self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
+        self.vae_scaling_factor = self.vae.config.scaling_factor if getattr(self, "vae", None) else 0.476986
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_llama_prompt_embeds
@@ -440,7 +441,7 @@ class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoa
         else:
             image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
 
-        image_latents = torch.cat(image_latents, dim=0).to(dtype)
+        image_latents = torch.cat(image_latents, dim=0).to(dtype) * self.vae_scaling_factor
 
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height, latent_width = height // self.vae_scale_factor_spatial, width // self.vae_scale_factor_spatial
