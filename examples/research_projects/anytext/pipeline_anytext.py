@@ -67,6 +67,8 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
+from diffusers.configuration_utils import register_to_config, ConfigMixin
+from diffusers.models.modeling_utils import ModelMixin
 
 
 checker = BasicTokenizer()
@@ -88,7 +90,7 @@ EXAMPLE_DOC_STRING = """
         >>> # load control net and stable diffusion v1-5
         >>> text_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
         ...                                                        variant="fp16",)
-        >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", controlnet=text_controlnet,
+        >>> pipe = AnyTextPipeline.from_pretrained("tolgacangoz/anytext", controlnet=text_controlnet,
         ...                                          torch_dtype=torch.float16, variant="fp16",
         ...                                          ).to("cuda")
 
@@ -150,7 +152,7 @@ class EmbeddingManager(nn.Module):
         self.token_dim = token_dim
 
         self.proj = nn.Linear(40 * 64, token_dim)
-        self.proj.load_state_dict(load_file("proj.safetensors", device=str(embedder.device)))
+        # self.proj.load_state_dict(load_file("proj.safetensors", device=str(embedder.device)))
         if use_fp16:
             self.proj = self.proj.to(dtype=torch.float16)
 
@@ -449,20 +451,19 @@ class TextRecognizer(object):
 
 
 class TextEmbeddingModule(nn.Module):
+    # @register_to_config
     def __init__(self, font_path, use_fp16=False, device="cpu"):
         super().__init__()
-        self.use_fp16 = use_fp16
-        self.device = device
         # TODO: Learn if the recommended font file is free to use
         self.font = ImageFont.truetype(font_path, 60)
-        self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3(device=self.device, use_fp16=self.use_fp16)
-        self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, use_fp16=self.use_fp16)
-        rec_model_dir = "OCR/ppv3_rec.pth"
-        self.text_predictor = create_predictor(rec_model_dir, device=self.device, use_fp16=self.use_fp16).eval()
+        self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3(device=device, use_fp16=use_fp16)
+        self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, use_fp16=use_fp16)
+        rec_model_dir = "./text_embedding_module/OCR/ppv3_rec.pth"
+        self.text_predictor = create_predictor(rec_model_dir, device=device, use_fp16=use_fp16).eval()
         args = {}
         args["rec_image_shape"] = "3, 48, 320"
         args["rec_batch_num"] = 6
-        args["rec_char_dict_path"] = "OCR/ppocr_keys_v1.txt"
+        args["rec_char_dict_path"] = "./text_embedding_module/OCR/ppocr_keys_v1.txt"
         args["use_fp16"] = self.use_fp16
         self.embedding_manager.recog = TextRecognizer(args, self.text_predictor)
 
@@ -843,9 +844,6 @@ class AuxiliaryLatentModule(nn.Module):
 
     def to(self, device):
         self.device = device
-        self.glyph_block = self.glyph_block.to(device)
-        self.position_block = self.position_block.to(device)
-        self.fuse_block = self.fuse_block.to(device)
         self.vae = self.vae.to(device)
         return self
 
@@ -1011,8 +1009,8 @@ class AnyTextPipeline(
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
-            # text_embedding_module=text_embedding_module,
-            # auxiliary_latent_module=auxiliary_latent_module,
+            # text_embedding_module=self.text_embedding_module,
+            # auxiliary_latent_module=self.auxiliary_latent_module,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
