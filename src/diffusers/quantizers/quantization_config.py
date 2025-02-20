@@ -695,14 +695,14 @@ class QuantoConfig(QuantizationConfigMixin):
 
     def __init__(
         self,
-        weights="int8",
-        activations=None,
+        weights_dtype="int8",
+        activations_dtype=None,
         modules_to_not_convert: Optional[List] = None,
         **kwargs,
     ):
         self.quant_method = QuantizationMethod.QUANTO
-        self.weights = weights
-        self.activations = activations
+        self.weights_dtype = weights_dtype
+        self.activations_dtype = activations_dtype
         self.modules_to_not_convert = modules_to_not_convert
 
         self.post_init()
@@ -713,8 +713,8 @@ class QuantoConfig(QuantizationConfigMixin):
         """
         accepted_weights = ["float8", "int8", "int4", "int2"]
         accepted_activations = [None, "int8", "float8"]
-        if self.weights not in accepted_weights:
-            raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights}")
+        if self.weights_dtype not in accepted_weights:
+            raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
 
-        if self.activations not in accepted_activations:
-            raise ValueError(f"Only support weights in {accepted_activations} but found {self.activations}")
+        if self.activations_dtype not in accepted_activations:
+            raise ValueError(f"Only support weights in {accepted_activations} but found {self.activations_dtype}")

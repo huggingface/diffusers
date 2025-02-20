@@ -236,6 +236,11 @@ extras["test"] = deps_list(
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
+extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
+extras["gguf"] = deps_list("gguf", "accelerate")
+extras["quanto"] = deps_list("quanto", "accelerate")
+extras["torchao"] = deps_list("torchao", "accelerate")
+
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
 else:

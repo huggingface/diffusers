@@ -39,8 +39,8 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
                         out_features=module.out_features,
                         bias=module.bias is not None,
                         dtype=module.weight.dtype,
-                        weights=_get_weight_type(quantization_config.weights),
-                        activations=_get_activation_type(quantization_config.activations),
+                        weights=_get_weight_type(quantization_config.weights_dtype),
+                        activations=_get_activation_type(quantization_config.activations_dtype),
                     )
                     model._modules[name] = qlinear
                     model._modules[name].source_cls = type(module)

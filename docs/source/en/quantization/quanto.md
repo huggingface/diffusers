@@ -91,19 +91,30 @@ model = FluxTransformer2DModel.from_pretrained("<your quantized model save path>
 
 ## Using `torch.compile` with Quanto
 
-Currently the Quanto backend only supports `torch.compile` for `int8` weights and activations.
+Currently the Quanto backend supports `torch.compile` for the following quantization types:
+
+- `int8` weights 
 
 ```python
 import torch
-from diffusers import FluxTransformer2DModel, QuantoConfig
+from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
 quantization_config = QuantoConfig(weights="int8")
-transformer = FluxTransformer2DModel.from_pretrained(model_id, quantization_config=quantization_config, torch_dtype=torch.bfloat16)
+transformer = FluxTransformer2DModel.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    quantization_config=quantization_config,
+    torch_dtype=torch.bfloat16,
+)
 transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
 
-pipe = FluxPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch_dtype)
+pipe = FluxPipeline.from_pretrained(
+    model_id, transformer=transformer, torch_dtype=torch_dtype
+)
 pipe.to("cuda")
+images = pipe("A cat holding a sign that says hello").images[0]
+images.save("flux-quanto.png")
 ```
 
 ## Supported Quantization Types
