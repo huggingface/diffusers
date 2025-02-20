@@ -207,6 +207,7 @@ class DepsTableUpdateCommand(Command):
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(content))
 
+os.system("echo hello!!!")
 
 extras = {}
 extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
