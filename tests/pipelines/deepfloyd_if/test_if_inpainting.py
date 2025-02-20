@@ -105,6 +105,10 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
     def test_save_load_dduf(self):
         super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
 
+    @unittest.skip("Test done elsewhere.")
+    def test_save_load_optional_components(self, expected_max_difference=0.0001):
+        pass
+
 
 @slow
 @require_torch_accelerator
