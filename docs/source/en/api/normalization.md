@@ -66,3 +66,6 @@ Customized normalization layers for supporting various models in 🤗 Diffusers.
 
 ## MochiRMSNormZero
 [[autodoc]] models.normalization.MochiRMSNormZero
+
+## MochiRMSNorm
+[[autodoc]] models.normalization.MochiRMSNorm
