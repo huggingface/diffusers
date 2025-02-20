@@ -70,7 +70,8 @@ Examples:
 
 >>> vis = pipe.image_processor.visualize_intrinsics(intrinsics.prediction, pipe.target_properties)
 >>> vis[0]["albedo"].save("einstein_albedo.png")
->>> vis[0]["material"].save("einstein_material.png")
+>>> vis[0]["roughness"].save("einstein_roughness.png")
+>>> vis[0]["metallicity"].save("einstein_metallicity.png")
 ```
 ```py
 >>> import diffusers
@@ -104,8 +105,8 @@ class MarigoldIntrinsicsOutput(BaseOutput):
             the intrinsic image decomposition.
         uncertainty (`None`, `np.ndarray`, `torch.Tensor`):
             Uncertainty maps computed from the ensemble, with values in the range [0, 1]. The shape is $(numimages *
-            numtargets) \times 1 \times height \times width$ for `torch.Tensor` or $(numimages * numtargets) \times
-            height \times width \times 1$ for `np.ndarray`.
+            numtargets) \times 3 \times height \times width$ for `torch.Tensor` or $(numimages * numtargets) \times
+            height \times width \times 3$ for `np.ndarray`.
         latent (`None`, `torch.Tensor`):
             Latent features corresponding to the predictions, compatible with the `latents` argument of the pipeline.
             The shape is $(numimages * numensemble) \times (numtargets * 4) \times latentheight \times latentwidth$.
@@ -272,8 +273,8 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         if ensembling_kwargs is not None:
             if not isinstance(ensembling_kwargs, dict):
                 raise ValueError("`ensembling_kwargs` must be a dictionary.")
-            if "reduction" in ensembling_kwargs and ensembling_kwargs["reduction"] not in ("closest", "mean"):
-                raise ValueError("`ensembling_kwargs['reduction']` can be either `'closest'` or `'mean'`.")
+            if "reduction" in ensembling_kwargs and ensembling_kwargs["reduction"] not in ("median", "mean"):
+                raise ValueError("`ensembling_kwargs['reduction']` can be either `'median'` or `'mean'`.")
 
         # image checks
         num_images = 0
@@ -406,8 +407,8 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
                 Batch size; only matters when setting `ensemble_size` or passing a tensor of images.
             ensembling_kwargs (`dict`, *optional*, defaults to `None`)
                 Extra dictionary with arguments for precise ensembling control. The following options are available:
-                - reduction (`str`, *optional*, defaults to `"closest"`): Defines the ensembling function applied in
-                  every pixel location, can be either `"closest"` or `"mean"`.
+                - reduction (`str`, *optional*, defaults to `"median"`): Defines the ensembling function applied in
+                  every pixel location, can be either `"median"` or `"mean"`.
             latents (`torch.Tensor`, *optional*, defaults to `None`):
                 Latent noise tensors to replace the random initialization. These can be taken from the previous
                 function call's output.
@@ -583,11 +584,11 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
             prediction = [
                 self.ensemble_intrinsics(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
                 for i in range(num_images)
-            ]  # [ [[T,3,PH,PW], [T,1,PH,PW]], ... ]
-            prediction, uncertainty = zip(*prediction)  # [[T,3,PH,PW], ... ], [[T,1,PH,PW], ... ]
+            ]  # [ [[T,3,PH,PW], [T,3,PH,PW]], ... ]
+            prediction, uncertainty = zip(*prediction)  # [[T,3,PH,PW], ... ], [[T,3,PH,PW], ... ]
             prediction = torch.cat(prediction, dim=0)  # [N*T,3,PH,PW]
             if output_uncertainty:
-                uncertainty = torch.cat(uncertainty, dim=0)  # [N*T,1,PH,PW]
+                uncertainty = torch.cat(uncertainty, dim=0)  # [N*T,3,PH,PW]
             else:
                 uncertainty = None
 
@@ -608,7 +609,7 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         if output_type == "np":
             prediction = self.image_processor.pt_to_numpy(prediction)  # [N*T,H,W,3]
             if uncertainty is not None and output_uncertainty:
-                uncertainty = self.image_processor.pt_to_numpy(uncertainty)  # [N*T,H,W,1]
+                uncertainty = self.image_processor.pt_to_numpy(uncertainty)  # [N*T,H,W,3]
 
         # 11. Offload all models
         self.maybe_free_model_hooks()
@@ -695,7 +696,7 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
 
         Returns:
             A tensor of aligned and ensembled intrinsic decomposition maps with shape `(T, 3, H, W)` and optionally a
-            tensor of uncertainties of shape `(T, 1, H, W)`.
+            tensor of uncertainties of shape `(T, 3, H, W)`.
         """
         if targets.dim() != 5 or targets.shape[2] != 3:
             raise ValueError(f"Expecting 4D tensor of shape [B,T,3,H,W]; got {targets.shape}.")
@@ -707,15 +708,12 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         if reduction == "mean":
             prediction = torch.mean(targets, dim=0)  # [T,3,H,W]
             if output_uncertainty:
-                uncertainty = targets.mean(dim=2, keepdim=True)  # [B,T,1,H,W]
-                uncertainty = torch.std(uncertainty, dim=0)  # [T,1,H,W]
+                uncertainty = torch.std(targets, dim=0)  # [T,3,H,W]
         elif reduction == "median":
             prediction = torch.median(targets, dim=0, keepdim=True).values  # [1,T,3,H,W]
             if output_uncertainty:
-                abs_dev = torch.abs(targets - prediction)  # [B,T,3,H,W]
-                uncertainty = abs_dev.mean(dim=2)  # [B,T,H,W]
-                uncertainty = torch.median(uncertainty, dim=0).values  # [T,H,W]
-                uncertainty = uncertainty.unsqueeze(1)  # [T,1,H,W]
+                uncertainty = torch.abs(targets - prediction)  # [B,T,3,H,W]
+                uncertainty = torch.median(uncertainty, dim=0).values  # [T,3,H,W]
             prediction = prediction.squeeze(0)  # [T,3,H,W]
         else:
             raise ValueError(f"Unrecognized reduction method: {reduction}.")
