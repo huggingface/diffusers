@@ -141,7 +141,7 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     return True
 
 
-def variant_compatible_siblings(filenames, variant=None, use_safetensors=True) -> Union[List[os.PathLike], str]:
+def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[List[os.PathLike], str]:
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
@@ -177,17 +177,9 @@ def variant_compatible_siblings(filenames, variant=None, use_safetensors=True) -
     # `text_encoder/pytorch_model.bin.index.json`
     non_variant_index_re = re.compile(rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.json")
 
-    def filter_for_compatible_extensions(filenames, variant=None, use_safetensors=True):
-        def is_safetensors(filename):
-            return ".safetensors" in filename
-
-        def is_not_safetensors(filename):
-            return ".safetensors" not in filename
-
-        if use_safetensors and is_safetensors_compatible(filenames):
-            extension_filter = is_safetensors
-        else:
-            extension_filter = is_not_safetensors
+    def filter_for_compatible_extensions(filenames, variant=None, ignore_patterns=None):
+        def extension_filter(f):
+            return not any(f.endswith(pattern) for pattern in ignore_patterns)
 
         tensor_files = {f for f in filenames if extension_filter(f)}
         non_variant_indexes = {
@@ -222,7 +214,7 @@ def variant_compatible_siblings(filenames, variant=None, use_safetensors=True) -
     variant_filenames = set()
     for component, component_filenames in components.items():
         component_filenames = filter_for_compatible_extensions(
-            component_filenames, variant=variant, use_safetensors=use_safetensors
+            component_filenames, variant=variant, ignore_patterns=ignore_patterns
         )
 
         component_variants = set()
@@ -238,6 +230,18 @@ def variant_compatible_siblings(filenames, variant=None, use_safetensors=True) -
                 component_filenames, non_variant_file_re, non_variant_index_re
             )
             usable_filenames.update(component_non_variants)
+
+    if len(variant_filenames) == 0 and variant is not None:
+        error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+        raise ValueError(error_message)
+
+    if len(variant_filenames) > 0 and usable_filenames != variant_filenames:
+        logger.warning(
+            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
+            f"[{', '.join(variant_filenames)}]\nLoaded non-{variant} filenames:\n"
+            f"[{', '.join(usable_filenames - variant_filenames)}\nIf this behavior is not "
+            f"expected, please check your folder structure."
+        )
 
     return usable_filenames, variant_filenames
 
@@ -933,10 +937,6 @@ def _get_custom_components_and_folders(
                 f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
             )
 
-    if len(variant_filenames) == 0 and variant is not None:
-        error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-        raise ValueError(error_message)
-
     return custom_components, folder_names
 
 
@@ -944,7 +944,6 @@ def _get_ignore_patterns(
     passed_components,
     model_folder_names: List[str],
     model_filenames: List[str],
-    variant_filenames: List[str],
     use_safetensors: bool,
     from_flax: bool,
     allow_pickle: bool,
@@ -975,32 +974,12 @@ def _get_ignore_patterns(
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
 
-        safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
-        safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
-        if len(safetensors_variant_filenames) > 0 and safetensors_model_filenames != safetensors_variant_filenames:
-            logger.warning(
-                f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
-                f"[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
-                f"[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not "
-                f"expected, please check your folder structure."
-            )
-
     else:
         ignore_patterns = ["*.safetensors", "*.msgpack"]
 
         use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
-
-        bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
-        bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
-        if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
-            logger.warning(
-                f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
-                f"[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
-                f"[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check "
-                f"your folder structure."
-            )
 
     return ignore_patterns
 

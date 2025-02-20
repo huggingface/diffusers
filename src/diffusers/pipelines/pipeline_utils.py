@@ -1343,10 +1343,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 revision=revision,
             )
 
-        allow_pickle = False
-        if use_safetensors is None:
-            use_safetensors = True
-            allow_pickle = True
+        allow_pickle = True if (use_safetensors is None or use_safetensors is False) else False
+        use_safetensors = use_safetensors if use_safetensors is not None else True
 
         allow_patterns = None
         ignore_patterns = None
@@ -1361,6 +1359,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
         if not local_files_only:
+            config_file = hf_hub_download(
+                pretrained_model_name,
+                cls.config_name,
+                cache_dir=cache_dir,
+                revision=revision,
+                proxies=proxies,
+                force_download=force_download,
+                token=token,
+            )
+            config_dict = cls._dict_from_json_file(config_file)
+            ignore_filenames = config_dict.pop("_ignore_files", [])
+
             filenames = {sibling.rfilename for sibling in info.siblings}
             if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
                 warn_msg = (
@@ -1375,60 +1385,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 )
                 logger.warning(warn_msg)
 
-            model_filenames, variant_filenames = variant_compatible_siblings(
-                filenames, variant=variant, use_safetensors=use_safetensors
-            )
-
-            config_file = hf_hub_download(
-                pretrained_model_name,
-                cls.config_name,
-                cache_dir=cache_dir,
-                revision=revision,
-                proxies=proxies,
-                force_download=force_download,
-                token=token,
-            )
-
-            config_dict = cls._dict_from_json_file(config_file)
-            ignore_filenames = config_dict.pop("_ignore_files", [])
-
-            # remove ignored filenames
-            model_filenames = set(model_filenames) - set(ignore_filenames)
-            variant_filenames = set(variant_filenames) - set(ignore_filenames)
-
+            filenames = set(filenames) - set(ignore_filenames)
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
             ) >= version.parse("0.22.0"):
-                warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, model_filenames)
+                warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, filenames)
 
             custom_components, folder_names = _get_custom_components_and_folders(
-                pretrained_model_name, config_dict, filenames, variant_filenames, variant
+                pretrained_model_name, config_dict, filenames, variant
             )
-            model_folder_names = {os.path.split(f)[0] for f in model_filenames if os.path.split(f)[0] in folder_names}
-
             custom_class_name = None
             if custom_pipeline is None and isinstance(config_dict["_class_name"], (list, tuple)):
                 custom_pipeline = config_dict["_class_name"][0]
                 custom_class_name = config_dict["_class_name"][1]
-
-            # all filenames compatible with variant will be added
-            allow_patterns = list(model_filenames)
-
-            # allow all patterns from non-model folders
-            # this enables downloading schedulers, tokenizers, ...
-            allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
-            # add custom component files
-            allow_patterns += [f"{k}/{f}.py" for k, f in custom_components.items()]
-            # add custom pipeline file
-            allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
-            # also allow downloading config.json files with the model
-            allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
-            allow_patterns += [
-                SCHEDULER_CONFIG_NAME,
-                CONFIG_NAME,
-                cls.config_name,
-                CUSTOM_PIPELINE_FILE_NAME,
-            ]
 
             load_pipe_from_hub = custom_pipeline is not None and f"{custom_pipeline}.py" in filenames
             load_components_from_hub = len(custom_components) > 0
@@ -1446,6 +1415,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k,v in custom_components.items()])}.\n"
                     f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
                 )
+            model_folder_names = {os.path.split(f)[0] for f in filenames if os.path.split(f)[0] in folder_names}
 
             # retrieve passed components that should not be downloaded
             pipeline_class = _get_pipeline_class(
@@ -1466,8 +1436,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             ignore_patterns = _get_ignore_patterns(
                 passed_components,
                 model_folder_names,
-                model_filenames,
-                variant_filenames,
+                filenames,
                 use_safetensors,
                 from_flax,
                 allow_pickle,
@@ -1475,6 +1444,49 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 pipeline_class._is_onnx,
                 variant,
             )
+
+            model_filenames, variant_filenames = variant_compatible_siblings(
+                filenames, variant=variant, ignore_patterns=ignore_patterns
+            )
+
+            safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
+            safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
+            if len(safetensors_variant_filenames) > 0 and safetensors_model_filenames != safetensors_variant_filenames:
+                logger.warning(
+                    f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
+                    f"[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
+                    f"[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not "
+                    f"expected, please check your folder structure."
+                )
+
+            bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
+            bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
+            if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
+                logger.warning(
+                    f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
+                    f"[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
+                    f"[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check "
+                    f"your folder structure."
+                )
+
+            # all filenames compatible with variant will be added
+            allow_patterns = list(model_filenames)
+
+            # allow all patterns from non-model folders
+            # this enables downloading schedulers, tokenizers, ...
+            allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
+            # add custom component files
+            allow_patterns += [f"{k}/{f}.py" for k, f in custom_components.items()]
+            # add custom pipeline file
+            allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
+            # also allow downloading config.json files with the model
+            allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
+            allow_patterns += [
+                SCHEDULER_CONFIG_NAME,
+                CONFIG_NAME,
+                cls.config_name,
+                CUSTOM_PIPELINE_FILE_NAME,
+            ]
 
             # Don't download any objects that are passed
             allow_patterns = [
