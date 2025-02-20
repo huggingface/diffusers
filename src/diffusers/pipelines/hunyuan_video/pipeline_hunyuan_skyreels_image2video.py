@@ -46,11 +46,12 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> from diffusers import HunyuanSkyreelsImageToVideoPipeline, HunyuanVideoTransformer3DModel
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers.utils import load_image, export_to_video
 
         >>> model_id = "hunyuanvideo-community/HunyuanVideo"
+        >>> transformer_model_id = "Skywork/SkyReels-V1-Hunyuan-I2V"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        ...     transformer_model_id, torch_dtype=torch.bfloat16
         ... )
         >>> pipe = HunyuanSkyreelsImageToVideoPipeline.from_pretrained(
         ...     model_id, transformer=transformer, torch_dtype=torch.float16
@@ -58,14 +59,21 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 
+        >>> prompt = "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
+        >>> negative_prompt = "Aerial view, aerial view, overexposed, low quality, deformation, a poor composition, bad hands, bad teeth, bad eyes, bad limbs, distortion"
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+        ... )
+
         >>> output = pipe(
-        ...     prompt="A cat walks on the grass, realistic",
-        ...     height=320,
-        ...     width=512,
-        ...     num_frames=61,
+        ...     image=image,
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
         ...     num_inference_steps=30,
+        ...     true_cfg_scale=6.0,
+        ...     guidance_scale=1.0,
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=15)
+        >>> export_to_video(output, "output_i2v.mp4", fps=15)
         ```
 """
 
