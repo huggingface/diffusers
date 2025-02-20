@@ -1449,26 +1449,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 filenames, variant=variant, ignore_patterns=ignore_patterns
             )
 
-            safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
-            safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
-            if len(safetensors_variant_filenames) > 0 and safetensors_model_filenames != safetensors_variant_filenames:
-                logger.warning(
-                    f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
-                    f"[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
-                    f"[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not "
-                    f"expected, please check your folder structure."
-                )
-
-            bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
-            bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
-            if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
-                logger.warning(
-                    f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
-                    f"[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
-                    f"[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check "
-                    f"your folder structure."
-                )
-
             # all filenames compatible with variant will be added
             allow_patterns = list(model_filenames)
 
