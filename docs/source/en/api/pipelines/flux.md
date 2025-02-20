@@ -355,8 +355,65 @@ image.save('flux_ip_adapter_output.jpg')
     <figcaption class="mt-2 text-sm text-center text-gray-500">IP-Adapter examples with prompt "wearing sunglasses"</figcaption>
 </div>
 
+## Optimize
 
-## Running FP16 inference
+Flux is a very large model and requires ~50GB of RAM. Enable some of the optimizations below to lower the memory requirements.
+
+### Group offloading
+
+[Group offloading](../../optimization/memory#group-offloading) saves memory by offloading groups of internal layers rather than the whole model or weights. Use [`~hooks.apply_group_offloading`] on a model and you can optionally specify the `offload_type`. Setting it to `leaf_level` offloads the lowest leaf-level parameters to the CPU instead of offloading at the module-level.
+
+```py
+import torch
+from diffusers import FluxPipeline
+from diffusers.hooks import apply_group_offloading
+
+model_id = "black-forest-labs/FLUX.1-dev"
+dtype = torch.bfloat16
+pipe = FluxPipeline.from_pretrained(
+	model_id,
+	torch_dtype=dtype,
+)
+
+apply_group_offloading(
+    pipe.transformer,
+    offload_type="leaf_level",
+    offload_device=torch.device("cpu"),
+    onload_device=torch.device("cuda"),
+)
+apply_group_offloading(
+    pipe.text_encoder, 
+    offload_device=torch.device("cpu"),
+    onload_device=torch.device("cuda"),
+    offload_type="leaf_level"
+)
+apply_group_offloading(
+    pipe.text_encoder_2, 
+    offload_device=torch.device("cpu"),
+    onload_device=torch.device("cuda"),
+    offload_type="leaf_level"
+)
+apply_group_offloading(
+    pipe.vae, 
+    offload_device=torch.device("cpu"),
+    onload_device=torch.device("cuda"),
+    offload_type="leaf_level"
+)
+
+prompt="A cat wearing sunglasses and working as a lifeguard at pool."
+
+generator = torch.Generator().manual_seed(181201)
+image = pipe(
+    prompt,
+	width=576,
+	height=1024,
+	num_inference_steps=30,
+    generator=generator
+).images[0]
+image
+```
+
+### Running FP16 inference
 
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
 
@@ -385,7 +442,7 @@ out = pipe(
 out.save("image.png")
 ```
 
-## Quantization
+### Quantization
 
 Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
 
