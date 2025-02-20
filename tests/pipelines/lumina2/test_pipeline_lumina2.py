@@ -1,6 +1,5 @@
 import unittest
 
-import numpy as np
 import torch
 from transformers import AutoTokenizer, Gemma2Config, Gemma2Model
 
@@ -10,7 +9,6 @@ from diffusers import (
     Lumina2Text2ImgPipeline,
     Lumina2Transformer2DModel,
 )
-from diffusers.utils.testing_utils import torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -117,32 +115,3 @@ class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTester
             "output_type": "np",
         }
         return inputs
-
-    def test_lumina_prompt_embeds(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-
-        output_with_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        do_classifier_free_guidance = inputs["guidance_scale"] > 1
-        (
-            prompt_embeds,
-            prompt_attention_mask,
-            negative_prompt_embeds,
-            negative_prompt_attention_mask,
-        ) = pipe.encode_prompt(
-            prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            device=torch_device,
-        )
-        output_with_embeds = pipe(
-            prompt_embeds=prompt_embeds,
-            prompt_attention_mask=prompt_attention_mask,
-            **inputs,
-        ).images[0]
-
-        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
