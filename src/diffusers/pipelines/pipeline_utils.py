@@ -1462,6 +1462,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
+            # also allow downloading generation_config.json of the transformers model
+            allow_patterns += [os.path.join(k, "generation_config.json") for k in model_folder_names]
             allow_patterns += [
                 SCHEDULER_CONFIG_NAME,
                 CONFIG_NAME,

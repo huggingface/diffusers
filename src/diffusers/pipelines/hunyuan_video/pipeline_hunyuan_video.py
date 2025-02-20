@@ -387,7 +387,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     def prepare_latents(
         self,
         batch_size: int,
-        num_channels_latents: 32,
+        num_channels_latents: int = 32,
         height: int = 720,
         width: int = 1280,
         num_frames: int = 129,
@@ -402,7 +402,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
         shape = (
             batch_size,
             num_channels_latents,
-            num_frames,
+            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
             int(height) // self.vae_scale_factor_spatial,
             int(width) // self.vae_scale_factor_spatial,
         )
@@ -664,13 +664,12 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
-        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
             width,
-            num_latent_frames,
+            num_frames,
             torch.float32,
             device,
             generator,

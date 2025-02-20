@@ -77,7 +77,7 @@ from diffusers import StableDiffusion3Pipeline
 from transformers import SiglipVisionModel, SiglipImageProcessor
 
 image_encoder_id = "google/siglip-so400m-patch14-384"
-ip_adapter_id = "guiyrt/InstantX-SD3.5-Large-IP-Adapter-diffusers"
+ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
 
 feature_extractor = SiglipImageProcessor.from_pretrained(
     image_encoder_id,
