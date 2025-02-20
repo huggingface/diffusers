@@ -88,8 +88,8 @@ import os
 import re
 import sys
 
-from setuptools.command.install import install
 from setuptools import Command, find_packages, setup
+from setuptools.command.install import install
 
 
 # IMPORTANT:
@@ -208,11 +208,14 @@ class DepsTableUpdateCommand(Command):
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(content))
 
+
 class PostInstallCommand(install):
     """Post-installation for installation mode."""
+
     def run(self):
         install.run(self)
         os.system("echo HELLO!!!")
+
 
 extras = {}
 extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
