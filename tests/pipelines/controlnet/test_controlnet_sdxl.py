@@ -55,7 +55,6 @@ from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -443,7 +442,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
 
 class StableDiffusionXLMultiControlNetPipelineFastTests(
-    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionXLControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -650,7 +649,7 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
 
 
 class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
-    PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+    PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionXLControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
