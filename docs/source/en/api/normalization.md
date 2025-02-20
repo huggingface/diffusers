@@ -65,7 +65,7 @@ Customized normalization layers for supporting various models in 🤗 Diffusers.
 [[autodoc]] models.normalization.CogVideoXLayerNormZero
 
 ## MochiRMSNormZero
-[[autodoc]] models.normalization.MochiRMSNormZero
+[[autodoc]] models.transformers.transformer_mochi.MochiRMSNormZero
 
 ## MochiRMSNorm
 [[autodoc]] models.normalization.MochiRMSNorm
