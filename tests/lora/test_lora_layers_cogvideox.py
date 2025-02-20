@@ -155,3 +155,7 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
+
+    @unittest.skip("Not supported in CogVideoX.")
+    def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
+        pass

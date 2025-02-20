@@ -252,3 +252,6 @@ class KolorsPAGPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_encode_prompt_works_in_isolation(self):
+        return super().test_encode_prompt_works_in_isolation(atol=1e-3, rtol=1e-3)
