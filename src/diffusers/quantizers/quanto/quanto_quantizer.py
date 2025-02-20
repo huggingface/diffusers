@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
+from diffusers.utils.import_utils import is_optimum_quanto_version
+
 from ...utils import (
     get_module_from_name,
     is_accelerate_available,
@@ -44,6 +46,12 @@ class QuantoQuantizer(DiffusersQuantizer):
             raise ImportError(
                 "Loading an optimum-quanto quantized model requires optimum-quanto library (`pip install optimum-quanto`)"
             )
+        if not is_optimum_quanto_version(">=", "0.2.6"):
+            raise ImportError(
+                "Loading an optimum-quanto quantized model requires `optimum-quanto>=0.2.6`. "
+                "Please upgrade your installation with `pip install --upgrade optimum-quanto"
+            )
+
         if not is_accelerate_available():
             raise ImportError(
                 "Loading an optimum-quanto quantized model requires accelerate library (`pip install accelerate`)"

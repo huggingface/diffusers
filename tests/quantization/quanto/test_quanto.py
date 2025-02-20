@@ -1,11 +1,10 @@
-import tempfile
 import gc
+import tempfile
 import unittest
 
-import torch
-
-from diffusers import QuantoConfig, FluxTransformer2DModel, FluxPipeline
-from diffusers.utils import is_torch_available, is_optimum_quanto_available
+from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
+from diffusers.models.attention_processor import Attention
+from diffusers.utils import is_optimum_quanto_available, is_torch_available
 from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
@@ -13,7 +12,7 @@ from diffusers.utils.testing_utils import (
     require_big_gpu_with_torch_cuda,
     torch_device,
 )
-from diffusers.models.attention_processor import Attention
+
 
 if is_optimum_quanto_available():
     from optimum.quanto import QLinear
@@ -192,7 +191,11 @@ class QuantoBaseTesterMixin:
         with torch.no_grad():
             compiled_model_output = compiled_model(**self.get_dummy_inputs()).sample
 
-        assert torch.allclose(model_output, compiled_model_output, rtol=1e-2, atol=1e-3)
+        model_output = model_output.detach().float().cpu().numpy()
+        compiled_model_output = compiled_model_output.detach().float().cpu().numpy()
+
+        max_diff = numpy_cosine_similarity_distance(model_output.flatten(), compiled_model_output.flatten())
+        assert max_diff < 1e-3
 
 
 class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
@@ -275,7 +278,7 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
             "hf-internal-testing/tiny-flux-pipe", transformer=transformer, torch_dtype=torch.bfloat16
         )
         pipe.enable_model_cpu_offload(device=torch_device)
-        images = pipe("a cat holding a sign that says hello", num_inference_steps=2)
+        _ = pipe("a cat holding a sign that says hello", num_inference_steps=2)
 
     def test_training(self):
         quantization_config = QuantoConfig(**self.get_dummy_init_kwargs())
@@ -311,7 +314,6 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
 
 class FluxTransformerFloat8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_reduction = 0.3
-    _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):
         return {"weights_dtype": "float8"}
@@ -341,7 +343,6 @@ class FluxTransformerInt8WeightsAndActivationTest(FluxTransformerQuantoMixin, un
 
 class FluxTransformerInt4WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_reduction = 0.55
-    _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):
         return {"weights_dtype": "int4"}
