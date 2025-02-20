@@ -1100,7 +1100,7 @@ def main(args):
                     crop_coords=crops_coords_top_left,
                     return_dict=False,
                 )[0]
-                model_pred = noise_pred_uncond + args.guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                model_pred = noise_pred_uncond + (noise_pred_cond - noise_pred_uncond)
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
