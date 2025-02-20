@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
         ...     true_cfg_scale=6.0,
         ...     guidance_scale=1.0,
         ... ).frames[0]
-        >>> export_to_video(output, "output_i2v.mp4", fps=15)
+        >>> export_to_video(output, "output.mp4", fps=15)
         ```
 """
 
