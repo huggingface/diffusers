@@ -73,9 +73,6 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
 
         return inputs
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",

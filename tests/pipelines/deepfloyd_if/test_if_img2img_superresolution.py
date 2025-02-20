@@ -83,9 +83,6 @@ class IFImg2ImgSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipelineT
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_save_load_float16(self):

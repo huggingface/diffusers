@@ -244,9 +244,6 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
         assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     def test_pag_inference(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components(requires_aesthetics_score=True)

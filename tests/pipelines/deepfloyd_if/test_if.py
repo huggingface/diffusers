@@ -67,9 +67,6 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
 
         return inputs
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_save_load_float16(self):
