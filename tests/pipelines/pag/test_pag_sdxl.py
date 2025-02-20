@@ -283,6 +283,10 @@ class StableDiffusionXLPAGPipelineFastTests(
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
 
 @slow
 @require_torch_gpu

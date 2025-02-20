@@ -660,6 +660,10 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
 
 @slow
 class StableDiffusionXLImg2ImgPipelineIntegrationTests(unittest.TestCase):

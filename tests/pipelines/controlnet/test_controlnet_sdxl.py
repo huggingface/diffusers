@@ -645,6 +645,10 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
 
 class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
     PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase

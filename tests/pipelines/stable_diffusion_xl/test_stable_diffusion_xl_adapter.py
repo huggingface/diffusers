@@ -297,6 +297,10 @@ class StableDiffusionXLAdapterPipelineFastTests(IPAdapterTesterMixin, PipelineTe
 
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
     def test_stable_diffusion_adapter_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
