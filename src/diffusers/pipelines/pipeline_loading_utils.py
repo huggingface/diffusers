@@ -165,6 +165,7 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
         variant_file_re = re.compile(
             rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
         )
+        legacy_variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
         # `text_encoder/pytorch_model.bin.index.fp16.json`
         variant_index_re = re.compile(
             rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
@@ -177,28 +178,16 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
     # `text_encoder/pytorch_model.bin.index.json`
     non_variant_index_re = re.compile(rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.json")
 
-    def filter_for_compatible_extensions(filenames, variant=None, ignore_patterns=None):
-        def extension_filter(f):
-            return not any(f.endswith(pattern) for pattern in ignore_patterns)
+    def filter_for_compatible_extensions(filenames, ignore_patterns=None):
+        if not ignore_patterns:
+            return filenames
 
-        tensor_files = {f for f in filenames if extension_filter(f)}
-        non_variant_indexes = {
-            f for f in filenames if non_variant_index_re.match(f.split("/")[-1]) is not None and extension_filter(f)
-        }
-        variant_indexes = {
-            f
-            for f in filenames
-            if variant is not None and variant_index_re.match(f.split("/")[-1]) is not None and extension_filter(f)
-        }
+        # ignore patterns uses glob style patterns e.g *.safetensors but we're only
+        # interested in the extension name
+        return {f for f in filenames if not any(f.endswith(pat.lstrip("*.")) for pat in ignore_patterns)}
 
-        return tensor_files | non_variant_indexes | variant_indexes
-
-    def filter_for_weights_and_indexes(filenames, file_re, index_re):
-        weights = {f for f in filenames if file_re.match(f.split("/")[-1]) is not None}
-        indexes = {f for f in filenames if index_re.match(f.split("/")[-1]) is not None}
-        filtered_filenames = weights | indexes
-
-        return filtered_filenames
+    def filter_with_regex(filenames, pattern_re):
+        return {f for f in filenames if pattern_re.match(f.split("/")[-1]) is not None}
 
     # Group files by component
     components = {}
@@ -213,23 +202,27 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
     usable_filenames = set()
     variant_filenames = set()
     for component, component_filenames in components.items():
-        component_filenames = filter_for_compatible_extensions(
-            component_filenames, variant=variant, ignore_patterns=ignore_patterns
-        )
+        component_filenames = filter_for_compatible_extensions(component_filenames, ignore_patterns=ignore_patterns)
 
         component_variants = set()
+        component_legacy_variants = set()
+        component_non_variants = set()
         if variant is not None:
-            component_variants = filter_for_weights_and_indexes(component_filenames, variant_file_re, variant_index_re)
+            component_variants = filter_with_regex(component_filenames, variant_file_re)
+            component_legacy_variants = filter_with_regex(component_filenames, legacy_variant_file_re)
+            component_variant_index_files = filter_with_regex(component_filenames, variant_index_re)
 
-        if component_variants:
-            variant_filenames.update(component_variants)
-            usable_filenames.update(component_variants)
+            variant_filenames.update(
+                component_variants if component_variants else component_legacy_variants | component_variant_index_files
+            )
 
         else:
-            component_non_variants = filter_for_weights_and_indexes(
-                component_filenames, non_variant_file_re, non_variant_index_re
-            )
-            usable_filenames.update(component_non_variants)
+            component_non_variants = filter_with_regex(component_filenames, non_variant_file_re)
+            component_variant_index_files = filter_with_regex(component_filenames, non_variant_index_re)
+
+            usable_filenames.update(component_non_variants | component_variant_index_files)
+
+    usable_filenames.update(variant_filenames)
 
     if len(variant_filenames) == 0 and variant is not None:
         error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
