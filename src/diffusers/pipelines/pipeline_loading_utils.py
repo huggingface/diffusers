@@ -141,6 +141,22 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     return True
 
 
+def filter_model_files(filenames):
+    """Filter model repo files for just files/folders that contain model weights"""
+    weight_names = [
+        WEIGHTS_NAME,
+        SAFETENSORS_WEIGHTS_NAME,
+        FLAX_WEIGHTS_NAME,
+        ONNX_WEIGHTS_NAME,
+        ONNX_EXTERNAL_WEIGHTS_NAME,
+    ]
+
+    if is_transformers_available():
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+
+    return [f for f in filenames if any(f.endswith(wn) for wn in weight_names)]
+
+
 def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[List[os.PathLike], str]:
     weight_names = [
         WEIGHTS_NAME,

@@ -87,6 +87,7 @@ from .pipeline_loading_utils import (
     _resolve_custom_pipeline_and_cls,
     _unwrap_model,
     _update_init_kwargs_with_connected_pipeline,
+    filter_model_files,
     load_sub_model,
     maybe_raise_or_warn,
     variant_compatible_siblings,
@@ -1415,7 +1416,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k,v in custom_components.items()])}.\n"
                     f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
                 )
-            model_folder_names = {os.path.split(f)[0] for f in filenames if os.path.split(f)[0] in folder_names}
 
             # retrieve passed components that should not be downloaded
             pipeline_class = _get_pipeline_class(
@@ -1432,6 +1432,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
 
+            model_folder_names = {
+                os.path.split(f)[0] for f in filter_model_files(filenames) if os.path.split(f)[0] in folder_names
+            }
             # retrieve all patterns that should not be downloaded and error out when needed
             ignore_patterns = _get_ignore_patterns(
                 passed_components,
