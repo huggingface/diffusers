@@ -72,6 +72,7 @@ class VQModel(ModelMixin, ConfigMixin):
     """
 
     _skip_layerwise_casting_patterns = ["quantize"]
+    _supports_group_offloading = False
 
     @register_to_config
     def __init__(

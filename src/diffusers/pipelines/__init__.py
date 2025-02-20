@@ -154,6 +154,7 @@ else:
         "CogVideoXFunControlPipeline",
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
+    _import_structure["cogview4"] = ["CogView4Pipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["controlnet"].extend(
         [
@@ -499,6 +500,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXVideoToVideoPipeline,
         )
         from .cogview3 import CogView3PlusPipeline
+        from .cogview4 import CogView4Pipeline
         from .consisid import ConsisIDPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,

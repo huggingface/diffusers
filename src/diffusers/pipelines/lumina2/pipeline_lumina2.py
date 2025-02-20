@@ -13,19 +13,18 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from transformers import AutoModel, AutoTokenizer
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import Lumina2LoraLoaderMixin
 from ...models import AutoencoderKL
 from ...models.transformers.transformer_lumina2 import Lumina2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
-    is_bs4_available,
-    is_ftfy_available,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -43,12 +42,6 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-if is_bs4_available():
-    pass
-
-if is_ftfy_available():
-    pass
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -72,7 +65,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -140,7 +133,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class Lumina2Text2ImgPipeline(DiffusionPipeline):
+class Lumina2Text2ImgPipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Lumina-T2I.
 
@@ -379,7 +372,9 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         max_sequence_length=None,
     ):
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}."
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -489,6 +484,10 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
     def guidance_scale(self):
         return self._guidance_scale
 
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
     # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
@@ -520,12 +519,12 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         system_prompt: Optional[str] = None,
         cfg_trunc_ratio: float = 1.0,
         cfg_normalization: bool = True,
-        use_mask_in_transformer: bool = True,
         max_sequence_length: int = 256,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -582,6 +581,10 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
+            attention_kwargs:
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -597,8 +600,6 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 The ratio of the timestep interval to apply normalization-based guidance scale.
             cfg_normalization (`bool`, *optional*, defaults to `True`):
                 Whether to apply normalization-based guidance scale.
-            use_mask_in_transformer (`bool`, *optional*, defaults to `True`):
-                Whether to use attention mask in `Lumina2Transformer2DModel`. Set `False` for performance gain.
             max_sequence_length (`int`, defaults to `256`):
                 Maximum sequence length to use with the `prompt`.
 
@@ -612,6 +613,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -704,9 +706,9 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     hidden_states=latents,
                     timestep=current_timestep,
                     encoder_hidden_states=prompt_embeds,
-                    attention_mask=prompt_attention_mask,
-                    use_mask_in_transformer=use_mask_in_transformer,
+                    encoder_attention_mask=prompt_attention_mask,
                     return_dict=False,
+                    attention_kwargs=self.attention_kwargs,
                 )[0]
 
                 # perform normalization-based guidance scale on a truncated timestep interval
@@ -715,9 +717,9 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                         hidden_states=latents,
                         timestep=current_timestep,
                         encoder_hidden_states=negative_prompt_embeds,
-                        attention_mask=negative_prompt_attention_mask,
-                        use_mask_in_transformer=use_mask_in_transformer,
+                        encoder_attention_mask=negative_prompt_attention_mask,
                         return_dict=False,
+                        attention_kwargs=self.attention_kwargs,
                     )[0]
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
                     # apply normalization after classifier-free guidance

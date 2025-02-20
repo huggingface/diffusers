@@ -263,11 +263,19 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         )
 
     @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_block_scale(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
     @unittest.skip("Not supported in Flux.")
     def test_modify_padding_mode(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
 
@@ -784,11 +792,19 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         self.assertTrue(pipe.transformer.config.in_channels == in_features * 2)
 
     @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_block_scale(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
     @unittest.skip("Not supported in Flux.")
     def test_modify_padding_mode(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
 
