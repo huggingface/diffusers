@@ -1432,6 +1432,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
 
+            # retrieve the names of the folders containing model weights
             model_folder_names = {
                 os.path.split(f)[0] for f in filter_model_files(filenames) if os.path.split(f)[0] in folder_names
             }

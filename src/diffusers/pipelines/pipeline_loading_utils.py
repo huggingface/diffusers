@@ -154,7 +154,9 @@ def filter_model_files(filenames):
     if is_transformers_available():
         weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
-    return [f for f in filenames if any(f.endswith(wn) for wn in weight_names)]
+    allowed_extensions = [wn.split(".")[-1] for wn in weight_names]
+
+    return [f for f in filenames if any(f.endswith(extension) for extension in allowed_extensions)]
 
 
 def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[List[os.PathLike], str]:
