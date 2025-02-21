@@ -152,3 +152,7 @@ class KolorsPipelineImg2ImgFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=7e-2)
+
+    @unittest.skip("Test not supported because kolors img2img doesn't take pooled embeds as inputs unline kolors t2i.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass

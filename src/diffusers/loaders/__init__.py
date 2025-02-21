@@ -73,6 +73,7 @@ if is_torch_available():
             "Mochi1LoraLoaderMixin",
             "HunyuanVideoLoraLoaderMixin",
             "SanaLoraLoaderMixin",
+            "Lumina2LoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -105,6 +106,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 HunyuanVideoLoraLoaderMixin,
                 LoraLoaderMixin,
                 LTXVideoLoraLoaderMixin,
+                Lumina2LoraLoaderMixin,
                 Mochi1LoraLoaderMixin,
                 SanaLoraLoaderMixin,
                 SD3LoraLoaderMixin,

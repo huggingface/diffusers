@@ -279,6 +279,10 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
     def test_xformers_attention_forwardGenerator_pass(self):
         super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
+    @unittest.skip("Test not supported because `encode_prompt()` has multiple returns.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @slow
 @require_torch_gpu
