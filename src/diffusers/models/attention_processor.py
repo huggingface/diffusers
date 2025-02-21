@@ -405,11 +405,12 @@ class Attention(nn.Module):
             else:
                 try:
                     # Make sure we can run the memory efficient attention
-                    _ = xformers.ops.memory_efficient_attention(
-                        torch.randn((1, 2, 40), device="cuda"),
-                        torch.randn((1, 2, 40), device="cuda"),
-                        torch.randn((1, 2, 40), device="cuda"),
-                    )
+                    dtype = None
+                    if attention_op is not None:
+                        op_fw, op_bw = attention_op
+                        dtype, *_ = op_fw.SUPPORTED_DTYPES
+                    q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
+                    _ = xformers.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
                     raise e
 
@@ -2824,9 +2825,7 @@ class CogVideoXAttnProcessor2_0:
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        batch_size, sequence_length, _ = hidden_states.shape
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)

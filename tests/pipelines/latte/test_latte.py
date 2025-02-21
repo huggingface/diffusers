@@ -54,6 +54,7 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
 
     required_optional_params = PipelineTesterMixin.required_optional_params
     test_layerwise_casting = True
+    test_group_offloading = True
 
     pab_config = PyramidAttentionBroadcastConfig(
         spatial_attention_block_skip_range=2,
@@ -277,6 +278,10 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
     )
     def test_xformers_attention_forwardGenerator_pass(self):
         super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
+
+    @unittest.skip("Test not supported because `encode_prompt()` has multiple returns.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
 
 
 @slow
