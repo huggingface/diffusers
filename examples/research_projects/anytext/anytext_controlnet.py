@@ -95,8 +95,8 @@ class AnyTextControlNetConditioningEmbedding(nn.Module):
         #     self.fuse_block = self.fuse_block.to(dtype=torch.float16)
 
     def forward(self, glyphs, positions, text_info):
-        glyph_embedding = self.glyph_block(glyphs)
-        position_embedding = self.position_block(positions)
+        glyph_embedding = self.glyph_block(glyphs.to(self.glyph_block[0].weight.device))
+        position_embedding = self.position_block(positions.to(self.position_block[0].weight.device))
         guided_hint = self.fuse_block(torch.cat([glyph_embedding, position_embedding, text_info["masked_x"]], dim=1))
 
         return guided_hint
@@ -390,7 +390,7 @@ class AnyTextControlNetModel(ControlNetModel):
         # 2. pre-process
         sample = self.conv_in(sample)
 
-        controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
+        controlnet_cond = self.controlnet_cond_embedding(*controlnet_cond)
         sample = sample + controlnet_cond
 
         # 3. down
