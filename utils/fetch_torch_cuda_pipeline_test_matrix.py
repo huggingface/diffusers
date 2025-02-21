@@ -14,10 +14,12 @@ ALWAYS_TEST_PIPELINE_MODULES = [
     "controlnet",
     "stable_diffusion",
     "stable_diffusion_2",
+    "stable_diffusion_3",
     "stable_diffusion_xl",
-    "stable_diffusion_adapter",
     "ip_adapters",
-    "kandinsky2_2",
+    "flux",
+    "hunyuan_dit",
+    "hunyuan_video",
 ]
 PIPELINE_USAGE_CUTOFF = int(os.getenv("PIPELINE_USAGE_CUTOFF", 50000))
 
