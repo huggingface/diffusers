@@ -21,7 +21,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union, get_args, get_origin
+from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
 
 import numpy as np
 import PIL.Image
@@ -78,10 +78,12 @@ from .pipeline_loading_utils import (
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
+    _get_detailed_type,
     _get_final_device_map,
     _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
+    _is_valid_type,
     _maybe_raise_error_for_incorrect_transformers,
     _maybe_raise_warning_for_inpainting,
     _resolve_custom_pipeline_and_cls,
@@ -995,70 +997,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # 10. Type checking init arguments
-        def is_valid_type(obj: Any, class_or_tuple: Union[Type, Tuple[Type, ...]]) -> bool:
-            if not isinstance(class_or_tuple, tuple):
-                class_or_tuple = (class_or_tuple,)
-
-            # Unpack unions
-            unpacked_class_or_tuple = []
-            for t in class_or_tuple:
-                if get_origin(t) is Union:
-                    unpacked_class_or_tuple.extend(get_args(t))
-                else:
-                    unpacked_class_or_tuple.append(t)
-            class_or_tuple = tuple(unpacked_class_or_tuple)
-
-            if Any in class_or_tuple:
-                return True
-
-            obj_type = type(obj)
-            # Classes with obj's type
-            class_or_tuple = {t for t in class_or_tuple if isinstance(obj, get_origin(t) or t)}
-
-            # Singular types (e.g. int, ControlNet, ...)
-            # Untyped collections (e.g. List, but not List[int])
-            elem_class_or_tuple = {get_args(t) for t in class_or_tuple}
-            if () in elem_class_or_tuple:
-                return True
-            # Typed lists or sets
-            elif obj_type in (list, set):
-                return any(all(is_valid_type(x, t) for x in obj) for t in elem_class_or_tuple)
-            # Typed tuples
-            elif obj_type is tuple:
-                return any(
-                    # Tuples with any length and single type (e.g. Tuple[int, ...])
-                    (len(t) == 2 and t[-1] is Ellipsis and all(is_valid_type(x, t[0]) for x in obj))
-                    or
-                    # Tuples with fixed length and any types (e.g. Tuple[int, str])
-                    (len(obj) == len(t) and all(is_valid_type(x, tt) for x, tt in zip(obj, t)))
-                    for t in elem_class_or_tuple
-                )
-            # Typed dicts
-            elif obj_type is dict:
-                return any(
-                    all(is_valid_type(k, kt) and is_valid_type(v, vt) for k, v in obj.items())
-                    for kt, vt in elem_class_or_tuple
-                )
-
-            else:
-                return False
-
-        def get_detailed_type(obj: Any) -> Type:
-            obj_type = type(obj)
-
-            if obj_type in (list, set):
-                obj_origin_type = List if obj_type is list else Set
-                elems_type = Union[tuple({get_detailed_type(x) for x in obj})]
-                return obj_origin_type[elems_type]
-            elif obj_type is tuple:
-                return Tuple[tuple(get_detailed_type(x) for x in obj)]
-            elif obj_type is dict:
-                keys_type = Union[tuple({get_detailed_type(k) for k in obj.keys()})]
-                values_type = Union[tuple({get_detailed_type(k) for k in obj.values()})]
-                return Dict[keys_type, values_type]
-            else:
-                return obj_type
-
         for kw, arg in init_kwargs.items():
             # Too complex to validate with type annotation alone
             if "scheduler" in kw:
@@ -1068,11 +1006,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             elif "tokenizer" in kw:
                 continue
             elif (
-                arg is not None
-                and not expected_types[kw] == (inspect.Signature.empty,)  # no type annotations
-                and not is_valid_type(arg, expected_types[kw])
+                arg is not None # Skip if None
+                and not expected_types[kw] == (inspect.Signature.empty,)  # Skip if no type annotations
+                and not _is_valid_type(arg, expected_types[kw]) # Check type
             ):
-                logger.warning(f"Expected types for {kw}: {expected_types[kw]}, got {get_detailed_type(arg)}.")
+                logger.warning(f"Expected types for {kw}: {expected_types[kw]}, got {_get_detailed_type(arg)}.")
 
         # 11. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
