@@ -92,8 +92,12 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         token = kwargs.pop("token", None)
         variant = kwargs.pop("variant", None)
         revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         device_map = kwargs.pop("device_map", None)
+
+        if not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            print(f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`.")
 
         alpha = kwargs.pop("alpha", 0.5)
         interp = kwargs.pop("interp", None)
