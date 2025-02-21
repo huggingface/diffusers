@@ -848,7 +848,7 @@ class PeftAdapterMixin:
             target_rank (`int`, *optional*, defaults to `128`):
                 The highest rank among all the adapters that will be loaded.
 
-            check_correct (`str`, *optional*, defaults to `"error"`):
+            check_compiled (`str`, *optional*, defaults to `"error"`):
                 How to handle the case when the model is already compiled, which should generally be avoided. The
                 options are:
                   - "error" (default): raise an error
