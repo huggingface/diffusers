@@ -146,7 +146,7 @@ class HookRegistry:
         def create_new_forward(hook: ModelHook, function_reference: HookFunctionReference):
             def new_forward(module, *args, **kwargs):
                 if not hook._is_enabled:
-                    return function_reference.forward(*args, **kwargs)
+                    return function_reference.original_forward(*args, **kwargs)
                 args, kwargs = function_reference.pre_forward(module, *args, **kwargs)
                 output = function_reference.forward(*args, **kwargs)
                 return function_reference.post_forward(module, output)
@@ -158,6 +158,7 @@ class HookRegistry:
         fn_ref = HookFunctionReference()
         fn_ref.pre_forward = hook.pre_forward
         fn_ref.post_forward = hook.post_forward
+        fn_ref.original_forward = forward
         fn_ref.forward = forward
 
         if hasattr(hook, "new_forward"):

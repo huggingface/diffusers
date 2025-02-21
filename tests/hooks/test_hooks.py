@@ -450,6 +450,31 @@ class ModelMixinHookTests(unittest.TestCase):
         self.assertNotEqual(output1, output2)
         self.assertEqual(output1, output3)
 
+    def test_enable_disable_hook_containing_new_forward(self):
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(AddHook(1), "add_hook")
+        for block in self.model.blocks:
+            block_registry = HookRegistry.check_if_exists_or_initialize(block)
+            block_registry.register_hook(SkipLayerHook(skip_layer=True), "skip_layer_hook")
+        registry.register_hook(MultiplyHook(2), "multiply_hook")
+
+        input = torch.randn(1, 4, device=torch_device, generator=self.get_generator())
+        output1 = self.model(input).mean().detach().cpu().item()
+
+        self.model._disable_hook("skip_layer_hook")
+        output2 = self.model(input).mean().detach().cpu().item()
+
+        self.model._disable_hook("add_hook")
+        output3 = self.model(input).mean().detach().cpu().item()
+
+        self.model._enable_hook("skip_layer_hook")
+        self.model._enable_hook("add_hook")
+        output4 = self.model(input).mean().detach().cpu().item()
+
+        self.assertNotEqual(output1, output2)
+        self.assertNotEqual(output2, output3)
+        self.assertEqual(output1, output4)
+
     def test_remove_all_hooks(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model)
         registry.register_hook(AddHook(1), "add_hook")
