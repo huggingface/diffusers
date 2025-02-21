@@ -357,11 +357,16 @@ image.save('flux_ip_adapter_output.jpg')
 
 ## Optimize
 
-Flux is a very large model and requires ~50GB of RAM. Enable some of the optimizations below to lower the memory requirements.
+Flux is a very large model and requires ~50GB of RAM/VRAM to load all the modeling components. Enable some of the optimizations below to lower the memory requirements.
 
 ### Group offloading
 
-[Group offloading](../../optimization/memory#group-offloading) saves memory by offloading groups of internal layers rather than the whole model or weights. Use [`~hooks.apply_group_offloading`] on a model and you can optionally specify the `offload_type`. Setting it to `leaf_level` offloads the lowest leaf-level parameters to the CPU instead of offloading at the module-level.
+[Group offloading](../../optimization/memory#group-offloading) lowers VRAM usage by offloading groups of internal layers rather than the whole model or weights. You need to use [`~hooks.apply_group_offloading`] on all the model components of a pipeline. The `offload_type` parameter allows you to toggle between block and leaf-level offloading. Setting it to `leaf_level` offloads the lowest leaf-level parameters to the CPU instead of offloading at the module-level.
+
+On CUDA devices that support asynchronous data streaming, set `use_stream=True` to overlap data transfer and computation to accelerate inference.
+
+> [!TIP]
+> It is possible to mix block and leaf-level offloading for different components in a pipeline.
 
 ```py
 import torch
@@ -380,24 +385,28 @@ apply_group_offloading(
     offload_type="leaf_level",
     offload_device=torch.device("cpu"),
     onload_device=torch.device("cuda"),
+    use_stream=True,
 )
 apply_group_offloading(
     pipe.text_encoder, 
     offload_device=torch.device("cpu"),
     onload_device=torch.device("cuda"),
-    offload_type="leaf_level"
+    offload_type="leaf_level",
+    use_stream=True,
 )
 apply_group_offloading(
     pipe.text_encoder_2, 
     offload_device=torch.device("cpu"),
     onload_device=torch.device("cuda"),
-    offload_type="leaf_level"
+    offload_type="leaf_level",
+    use_stream=True,
 )
 apply_group_offloading(
     pipe.vae, 
     offload_device=torch.device("cpu"),
     onload_device=torch.device("cuda"),
-    offload_type="leaf_level"
+    offload_type="leaf_level",
+    use_stream=True,
 )
 
 prompt="A cat wearing sunglasses and working as a lifeguard at pool."
@@ -405,9 +414,9 @@ prompt="A cat wearing sunglasses and working as a lifeguard at pool."
 generator = torch.Generator().manual_seed(181201)
 image = pipe(
     prompt,
-	width=576,
-	height=1024,
-	num_inference_steps=30,
+    width=576,
+    height=1024,
+    num_inference_steps=30,
     generator=generator
 ).images[0]
 image
