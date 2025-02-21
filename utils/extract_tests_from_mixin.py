@@ -1,9 +1,9 @@
-import inspect
 import argparse
-import os
+import inspect
 import sys
-from typing import Type, List
 from pathlib import Path
+from typing import List, Type
+
 
 root_dir = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(root_dir))
@@ -59,4 +59,3 @@ if __name__ == "__main__":
 
     pattern = generate_pattern_for_mixin(mixin_cls)
     print(pattern)
-
