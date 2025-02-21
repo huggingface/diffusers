@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import CogView4Pipeline
 
-        >>> pipe = CogView4Pipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16)
+        >>> pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B-Control", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A photo of an astronaut riding a horse on mars"
@@ -60,16 +60,10 @@ def calculate_shift(
     base_seq_len: int = 256,
     base_shift: float = 0.25,
     max_shift: float = 0.75,
-):
-    # m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-    # b = base_shift - m * base_seq_len
-    # mu = image_seq_len * m + b
-    # return mu
-
+) -> float:
     m = (image_seq_len / base_seq_len) ** 0.5
     mu = m * max_shift + base_shift
     return mu
-
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -224,6 +218,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.cogview4.pipeline_cogview4.CogView4Pipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -627,7 +622,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
             if timesteps is None
             else np.array(timesteps)
         )
-        timesteps = timesteps.astype(np.int64)
+        timesteps = timesteps.astype(np.int64).astype(np.float32)
         sigmas = timesteps / self.scheduler.config.num_train_timesteps if sigmas is None else sigmas
         mu = calculate_shift(
             image_seq_len,
@@ -635,8 +630,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
             self.scheduler.config.get("base_shift", 0.25),
             self.scheduler.config.get("max_shift", 0.75),
         )
-        _, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu)
-        timesteps = torch.from_numpy(timesteps).to(device)
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps, sigmas=sigmas, mu=mu)
 
         # Denoising loop
         transformer_dtype = self.transformer.dtype
