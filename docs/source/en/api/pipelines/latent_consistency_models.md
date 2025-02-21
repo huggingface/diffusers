@@ -12,6 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # Latent Consistency Models
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 Latent Consistency Models (LCMs) were proposed in [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://huggingface.co/papers/2310.04378) by Simian Luo, Yiqin Tan, Longbo Huang, Jian Li, and Hang Zhao.
 
 The abstract of the paper is as follows:

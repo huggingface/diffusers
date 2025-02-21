@@ -12,6 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # Text2Video-Zero
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 [Text2Video-Zero: Text-to-Image Diffusion Models are Zero-Shot Video Generators](https://huggingface.co/papers/2303.13439) is by Levon Khachatryan, Andranik Movsisyan, Vahram Tadevosyan, Roberto Henschel, [Zhangyang Wang](https://www.ece.utexas.edu/people/faculty/atlas-wang), Shant Navasardyan, [Humphrey Shi](https://www.humphreyshi.com).
 
 Text2Video-Zero enables zero-shot video generation using either:
