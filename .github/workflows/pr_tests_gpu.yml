@@ -80,6 +80,10 @@ jobs:
       - name: Environment
         run: |
           python utils/print_env.py
+      - name: Extract tests
+        run: |
+          pattern=$(python utils/extract_tests_from_mixin.py --type pipeline)
+          echo "TEST_PATTERN=$pattern" >> $GITHUB_ENV
       - name: PyTorch CUDA checkpoint tests on Ubuntu
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -116,7 +120,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        module: [models, schedulers, lora, others, single_file]
+        module: [models, schedulers, lora, others]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
@@ -134,6 +138,11 @@ jobs:
       run: |
         python utils/print_env.py
 
+    - name: Extract tests
+      run: |
+        pattern=$(python utils/extract_tests_from_mixin.py --type ${{ matrix.module }})
+        echo "TEST_PATTERN=$pattern" >> $GITHUB_ENV
+
     - name: Run PyTorch CUDA tests
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -141,7 +150,7 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -s -v -k "not Flax and not Onnx and $TEST_PATTERN" \
           --make-reports=tests_torch_cuda_${{ matrix.module }} \
           tests/${{ matrix.module }}
 
