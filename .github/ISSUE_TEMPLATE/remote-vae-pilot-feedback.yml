@@ -33,6 +33,6 @@ body:
   - type: textarea
     id: additional-info
     attributes:
-      label:
+      label: Notify the members of the team
       description: |
         Tag the following folks when submitting this feedback: @hlky @sayakpaul
