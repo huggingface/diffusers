@@ -22,16 +22,21 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import (Any, Callable, Dict, List, Optional, Union, get_args,
-                    get_origin)
+from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
 
 import numpy as np
 import PIL.Image
 import requests
 import torch
-from huggingface_hub import (DDUFEntry, ModelCard, create_repo,
-                             hf_hub_download, model_info, read_dduf_file,
-                             snapshot_download)
+from huggingface_hub import (
+    DDUFEntry,
+    ModelCard,
+    create_repo,
+    hf_hub_download,
+    model_info,
+    read_dduf_file,
+    snapshot_download,
+)
 from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
 from requests.exceptions import HTTPError
@@ -45,28 +50,51 @@ from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from ..utils import (CONFIG_NAME, DEPRECATED_REVISION_ARGS, BaseOutput,
-                     PushToHubMixin, is_accelerate_available,
-                     is_accelerate_version, is_torch_npu_available,
-                     is_torch_version, is_transformers_version, logging,
-                     numpy_to_pil)
-from ..utils.hub_utils import (_check_legacy_sharding_variant_format,
-                               load_or_create_model_card, populate_model_card)
+from ..utils import (
+    CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
+    BaseOutput,
+    PushToHubMixin,
+    is_accelerate_available,
+    is_accelerate_version,
+    is_torch_npu_available,
+    is_torch_version,
+    is_transformers_version,
+    logging,
+    numpy_to_pil,
+)
+from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
+
 
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
 
 from .pipeline_loading_utils import (
-    ALL_IMPORTABLE_CLASSES, CONNECTED_PIPES_KEYS, CUSTOM_PIPELINE_FILE_NAME,
-    LOADABLE_CLASSES, _download_dduf_file, _fetch_class_library_tuple,
-    _get_custom_components_and_folders, _get_custom_pipeline_class,
-    _get_final_device_map, _get_ignore_patterns, _get_pipeline_class,
-    _identify_model_variants, _maybe_raise_error_for_incorrect_transformers,
-    _maybe_raise_warning_for_inpainting, _resolve_custom_pipeline_and_cls,
-    _unwrap_model, _update_init_kwargs_with_connected_pipeline,
-    filter_model_files, load_sub_model, maybe_raise_or_warn,
-    variant_compatible_siblings, warn_deprecated_model_variant)
+    ALL_IMPORTABLE_CLASSES,
+    CONNECTED_PIPES_KEYS,
+    CUSTOM_PIPELINE_FILE_NAME,
+    LOADABLE_CLASSES,
+    _download_dduf_file,
+    _fetch_class_library_tuple,
+    _get_custom_components_and_folders,
+    _get_custom_pipeline_class,
+    _get_final_device_map,
+    _get_ignore_patterns,
+    _get_pipeline_class,
+    _identify_model_variants,
+    _maybe_raise_error_for_incorrect_transformers,
+    _maybe_raise_warning_for_inpainting,
+    _resolve_custom_pipeline_and_cls,
+    _unwrap_model,
+    _update_init_kwargs_with_connected_pipeline,
+    filter_model_files,
+    load_sub_model,
+    maybe_raise_or_warn,
+    variant_compatible_siblings,
+    warn_deprecated_model_variant,
+)
+
 
 if is_accelerate_available():
     import accelerate

@@ -540,6 +540,28 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
         )
         assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
 
+    def test_download_onnx_models(self):
+        ignore_patterns = ["*.safetensors"]
+        filenames = [
+            "vae/model.onnx",
+            "unet/model.onnx",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
+        assert model_filenames == set(filenames)
+
+    def test_download_flax_models(self):
+        ignore_patterns = ["*.safetensors", "*.bin"]
+        filenames = [
+            "vae/diffusion_flax_model.msgpack",
+            "unet/diffusion_flax_model.msgpack",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
+        assert model_filenames == set(filenames)
+
 
 class ProgressBarTests(unittest.TestCase):
     def get_dummy_components_image_generation(self):
