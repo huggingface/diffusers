@@ -29,15 +29,14 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
-import huggingface_hub
 import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
 from bert_tokenizer import BasicTokenizer
 from easydict import EasyDict as edict
-from diffusers.utils.constants import HF_MODULES_CACHE
 from frozen_clip_embedder_t3 import FrozenCLIPEmbedderT3
+from huggingface_hub import hf_hub_download
 from ocr_recog.RecModel import RecModel
 from PIL import Image, ImageDraw, ImageFont
 from safetensors.torch import load_file
@@ -68,10 +67,8 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
+from diffusers.utils.constants import HF_MODULES_CACHE
 from diffusers.utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
-from diffusers.configuration_utils import register_to_config, ConfigMixin
-from diffusers.models.modeling_utils import ModelMixin
-from huggingface_hub import hf_hub_download
 
 
 checker = BasicTokenizer()
@@ -158,7 +155,7 @@ class EmbeddingManager(nn.Module):
         proj_dir = hf_hub_download(
             repo_id="tolgacangoz/anytext",
             filename="text_embedding_module/proj.safetensors",
-            cache_dir=HF_MODULES_CACHE
+            cache_dir=HF_MODULES_CACHE,
         )
         self.proj.load_state_dict(load_file(proj_dir, device=str(embedder.device)))
         if use_fp16:
@@ -281,7 +278,7 @@ def create_predictor(model_dir=None, model_lang="ch", device="cpu", use_fp16=Fal
         model_dir = hf_hub_download(
             repo_id="tolgacangoz/anytext",
             filename="text_embedding_module/OCR/ppv3_rec.pth",
-            cache_dir=HF_MODULES_CACHE
+            cache_dir=HF_MODULES_CACHE,
         )
     if not os.path.exists(model_dir):
         raise ValueError("not find model file path {}".format(model_dir))
@@ -482,7 +479,7 @@ class TextEmbeddingModule(nn.Module):
         args["rec_char_dict_path"] = hf_hub_download(
             repo_id="tolgacangoz/anytext",
             filename="text_embedding_module/OCR/ppocr_keys_v1.txt",
-            cache_dir=HF_MODULES_CACHE
+            cache_dir=HF_MODULES_CACHE,
         )
         args["use_fp16"] = use_fp16
         self.embedding_manager.recog = TextRecognizer(args, self.text_predictor)
@@ -603,7 +600,7 @@ class TextEmbeddingModule(nn.Module):
 
         self.embedding_manager.encode_text(text_info)
         negative_prompt_embeds = self.frozen_CLIP_embedder_t3.encode(
-            [negative_prompt or ''], embedding_manager=self.embedding_manager
+            [negative_prompt or ""], embedding_manager=self.embedding_manager
         )
 
         return prompt_embeds, negative_prompt_embeds, text_info, np_hint
