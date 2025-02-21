@@ -1178,7 +1178,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer.preprocess_model(
                 model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
             )
-        print(keep_in_fp32_modules)
+
         # Now that the model is loaded, we can determine the device_map
         device_map = _determine_device_map(
             model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
