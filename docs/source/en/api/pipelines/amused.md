@@ -12,10 +12,6 @@ specific language governing permissions and limitations under the License.
 
 # aMUSEd
 
-<div class="flex flex-wrap space-x-1">
-  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
-</div>
-
 aMUSEd was introduced in [aMUSEd: An Open MUSE Reproduction](https://huggingface.co/papers/2401.01808) by Suraj Patil, William Berman, Robin Rombach, and Patrick von Platen.
 
 Amused is a lightweight text to image model based off of the [MUSE](https://arxiv.org/abs/2301.00704) architecture. Amused is particularly useful in applications that require a lightweight and fast model such as generating many images quickly at once.
