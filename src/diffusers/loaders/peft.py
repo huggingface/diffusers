@@ -16,7 +16,7 @@ import inspect
 import os
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import safetensors
 import torch
@@ -144,8 +144,7 @@ class PeftAdapterMixin:
     def load_lora_adapter(
         self, pretrained_model_name_or_path_or_dict, prefix="transformer", hotswap: bool = False, **kwargs
     ):
-        r"""
-        Loads a LoRA adapter into the underlying model.
+        r"""Loads a LoRA adapter into the underlying model.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -194,21 +193,21 @@ class PeftAdapterMixin:
                 However, the main advantage of hotswapping is that when the model is compiled with torch.compile,
                 loading the new adapter does not require recompilation of the model.
 
-                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
-                to call an additional method before loading the adapter:
+                If the model is compiled, or if the new adapter and the old adapter have different ranks and/or LoRA
+                alphas (i.e. scaling), you need to call an additional method before loading the adapter:
 
                 ```py
-                from peft.utils.hotswap import prepare_model_for_compiled_hotswap
-
-                model = ...  # load diffusers model with first LoRA adapter
+                pipeline = ...  # load diffusers pipeline
                 max_rank = ...  # the highest rank among all LoRAs that you want to load
-                prepare_model_for_compiled_hotswap(model, target_rank=max_rank)  # call *before* compiling
-                model = torch.compile(model)
-                model.load_lora_adapter(..., hotswap=True)  # now hotswap the 2nd adapter
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
                 ```
 
                 There are some limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
+
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
@@ -837,16 +836,35 @@ class PeftAdapterMixin:
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
 
-    def enable_lora_hotswap(self, target_rank: int) -> None:
+    def enable_lora_hotswap(
+        self, target_rank: int = 128, check_compiled: Literal["error", "warn", "ignore"] = "error"
+    ) -> None:
         """Enables the possibility to hotswap LoRA adapters.
 
         Calling this method is only required when hotswapping adapters and if the model is compiled or if the ranks of
         the loaded adapters differ.
 
         Args:
-            target_rank (`int`):
+            target_rank (`int`, *optional*, defaults to `128`):
                 The highest rank among all the adapters that will be loaded.
+
+            check_correct (`str`, *optional*, defaults to `"error"`):
+                How to handle the case when the model is already compiled, which should generally be avoided. The
+                options are:
+                  - "error" (default): raise an error
+                  - "warn": issue a warning
+                  - "ignore": do nothing
         """
         if getattr(self, "peft_config", {}):
-            raise RuntimeError("Call `enable_lora_hotswap` before loading the first adapter.")
-        self._prepare_lora_hotswap_kwargs = {"target_rank": target_rank}
+            if check_compiled == "error":
+                raise RuntimeError("Call `enable_lora_hotswap` before loading the first adapter.")
+            elif check_compiled == "warn":
+                logger.warning(
+                    "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
+                )
+            elif check_compiled != "ignore":
+                raise ValueError(
+                    f"check_compiles should be one of 'error', 'warn', or 'ignore', got '{check_compiled}' instead."
+                )
+
+        self._prepare_lora_hotswap_kwargs = {"target_rank": target_rank, "check_compiled": check_compiled}

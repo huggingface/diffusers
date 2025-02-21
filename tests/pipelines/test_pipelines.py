@@ -24,6 +24,7 @@ import tempfile
 import traceback
 import unittest
 import unittest.mock as mock
+import warnings
 
 import numpy as np
 import PIL.Image
@@ -2341,7 +2342,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         with torch._dynamo.config.patch(error_on_recompile=True):
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
 
-    def test_enable_lora_hotswap_called_too_late_raises(self):
+    def test_enable_lora_hotswap_called_after_adapter_added_raises(self):
         # ensure that enable_lora_hotswap is called before loading the first adapter
         lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
         pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
@@ -2349,3 +2350,36 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         msg = re.escape("Call `enable_lora_hotswap` before loading the first adapter.")
         with self.assertRaisesRegex(RuntimeError, msg):
             pipeline.enable_lora_hotswap(target_rank=32)
+
+    def test_enable_lora_hotswap_called_after_adapter_added_warns(self):
+        # ensure that enable_lora_hotswap is called before loading the first adapter
+        from diffusers.loaders.peft import logger
+
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        pipeline.unet.add_adapter(lora_config)
+        msg = (
+            "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
+        )
+        with self.assertLogs(logger=logger, level="WARNING") as cm:
+            pipeline.enable_lora_hotswap(target_rank=32, check_compiled="warn")
+            assert any(msg in log for log in cm.output)
+
+    def test_enable_lora_hotswap_called_after_adapter_added_ignore(self):
+        # check possibility to ignore the error/warning
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        pipeline.unet.add_adapter(lora_config)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")  # Capture all warnings
+            pipeline.enable_lora_hotswap(target_rank=32, check_compiled="warn")
+            self.assertEqual(len(w), 0, f"Expected no warnings, but got: {[str(warn.message) for warn in w]}")
+
+    def test_enable_lora_hotswap_wrong_check_compiled_argument_raises(self):
+        # check that wrong argument value raises an error
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        pipeline.unet.add_adapter(lora_config)
+        msg = re.escape("check_compiles should be one of 'error', 'warn', or 'ignore', got 'wrong-argument' instead.")
+        with self.assertRaisesRegex(ValueError, msg):
+            pipeline.enable_lora_hotswap(target_rank=32, check_compiled="wrong-argument")

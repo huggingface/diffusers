@@ -118,13 +118,12 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 to call an additional method before loading the adapter:
 
                 ```py
-                from peft.utils.hotswap import prepare_model_for_compiled_hotswap
-
-                model = ...  # load diffusers model with first LoRA adapter
+                pipeline = ...  # load diffusers pipeline
                 max_rank = ...  # the highest rank among all LoRAs that you want to load
-                prepare_model_for_compiled_hotswap(model, target_rank=max_rank)  # call *before* compiling
-                model = torch.compile(model)
-                model.load_lora_adapter(..., hotswap=True)  # now hotswap the 2nd adapter
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
                 ```
 
                 There are some limitations to this technique, which are documented here:
@@ -330,13 +329,12 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 to call an additional method before loading the adapter:
 
                 ```py
-                from peft.utils.hotswap import prepare_model_for_compiled_hotswap
-
-                model = ...  # load diffusers model with first LoRA adapter
+                pipeline = ...  # load diffusers pipeline
                 max_rank = ...  # the highest rank among all LoRAs that you want to load
-                prepare_model_for_compiled_hotswap(model, target_rank=max_rank)  # call *before* compiling
-                model = torch.compile(model)
-                model.load_lora_adapter(..., hotswap=True)  # now hotswap the 2nd adapter
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
                 ```
 
                 There are some limitations to this technique, which are documented here:
@@ -800,13 +798,12 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 to call an additional method before loading the adapter:
 
                 ```py
-                from peft.utils.hotswap import prepare_model_for_compiled_hotswap
-
-                model = ...  # load diffusers model with first LoRA adapter
+                pipeline = ...  # load diffusers pipeline
                 max_rank = ...  # the highest rank among all LoRAs that you want to load
-                prepare_model_for_compiled_hotswap(model, target_rank=max_rank)  # call *before* compiling
-                model = torch.compile(model)
-                model.load_lora_adapter(..., hotswap=True)  # now hotswap the 2nd adapter
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
                 ```
 
                 There are some limitations to this technique, which are documented here:
