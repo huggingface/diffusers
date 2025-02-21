@@ -20,6 +20,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer, LlamaModel, LlamaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...loaders import HunyuanVideoLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -44,23 +45,33 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import HunyuanSkyreelsImageToVideoPipeline, HunyuanVideoTransformer3DModel
+        >>> from diffusers.utils import load_image, export_to_video
 
         >>> model_id = "hunyuanvideo-community/HunyuanVideo"
+        >>> transformer_model_id = "Skywork/SkyReels-V1-Hunyuan-I2V"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        ...     transformer_model_id, torch_dtype=torch.bfloat16
         ... )
-        >>> pipe = HunyuanVideoPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.float16)
+        >>> pipe = HunyuanSkyreelsImageToVideoPipeline.from_pretrained(
+        ...     model_id, transformer=transformer, torch_dtype=torch.float16
+        ... )
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 
+        >>> prompt = "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
+        >>> negative_prompt = "Aerial view, aerial view, overexposed, low quality, deformation, a poor composition, bad hands, bad teeth, bad eyes, bad limbs, distortion"
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+        ... )
+
         >>> output = pipe(
-        ...     prompt="A cat walks on the grass, realistic",
-        ...     height=320,
-        ...     width=512,
-        ...     num_frames=61,
+        ...     image=image,
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
         ...     num_inference_steps=30,
+        ...     true_cfg_scale=6.0,
+        ...     guidance_scale=1.0,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=15)
         ```
@@ -141,9 +152,23 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+class HunyuanSkyreelsImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     r"""
-    Pipeline for text-to-video generation using HunyuanVideo.
+    Pipeline for image-to-video generation using HunyuanVideo.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -194,8 +219,10 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
         self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
+        self.vae_scaling_factor = self.vae.config.scaling_factor if getattr(self, "vae", None) else 0.476986
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+    # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_llama_prompt_embeds
     def _get_llama_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -262,6 +289,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
         return prompt_embeds, prompt_attention_mask
 
+    # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -301,6 +329,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -337,6 +366,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
         return prompt_embeds, pooled_prompt_embeds, prompt_attention_mask
 
+    # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -386,34 +416,47 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
     def prepare_latents(
         self,
+        image: torch.Tensor,
         batch_size: int,
         num_channels_latents: int = 32,
-        height: int = 720,
-        width: int = 1280,
-        num_frames: int = 129,
+        height: int = 544,
+        width: int = 960,
+        num_frames: int = 97,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-
-        shape = (
-            batch_size,
-            num_channels_latents,
-            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        return latents
+        image = image.unsqueeze(2)  # [B, C, 1, H, W]
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
+            ]
+        else:
+            image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
+
+        image_latents = torch.cat(image_latents, dim=0).to(dtype) * self.vae_scaling_factor
+
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        latent_height, latent_width = height // self.vae_scale_factor_spatial, width // self.vae_scale_factor_spatial
+        shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
+        padding_shape = (batch_size, num_channels_latents, num_latent_frames - 1, latent_height, latent_width)
+
+        latents_padding = torch.zeros(padding_shape, dtype=dtype, device=device)
+        image_latents = torch.cat([image_latents, latents_padding], dim=2)
+
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, dtype=dtype, device=device)
+        else:
+            latents = latents.to(dtype=dtype, device=device)
+
+        return latents, image_latents
 
     def enable_vae_slicing(self):
         r"""
@@ -468,17 +511,18 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         prompt_2: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
         negative_prompt_2: Union[str, List[str]] = None,
-        height: int = 720,
-        width: int = 1280,
-        num_frames: int = 129,
+        height: int = 544,
+        width: int = 960,
+        num_frames: int = 97,
         num_inference_steps: int = 50,
         sigmas: List[float] = None,
-        true_cfg_scale: float = 1.0,
-        guidance_scale: float = 6.0,
+        true_cfg_scale: float = 6.0,
+        guidance_scale: float = 1.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -663,8 +707,11 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
 
         # 5. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels
-        latents = self.prepare_latents(
+        vae_dtype = self.vae.dtype
+        image = self.video_processor.preprocess(image, height=height, width=width).to(device, vae_dtype)
+        num_channels_latents = self.transformer.config.in_channels // 2
+        latents, image_latents = self.prepare_latents(
+            image,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
@@ -675,6 +722,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
             generator,
             latents,
         )
+        latent_image_input = image_latents.to(transformer_dtype)
 
         # 6. Prepare guidance condition
         guidance = torch.tensor([guidance_scale] * latents.shape[0], dtype=transformer_dtype, device=device) * 1000.0
@@ -690,6 +738,8 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
                 self._current_timestep = t
                 latent_model_input = latents.to(transformer_dtype)
+                latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=1)
+
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
