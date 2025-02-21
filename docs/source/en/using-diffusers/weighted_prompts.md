@@ -277,6 +277,13 @@ bad hands,missing fingers,(extra arms and legs),(worst quality:2),(low quality:2
 
 Use the `get_weighted_text_embeddings_sdxl` function to generate the prompt embeddings and the negative prompt embeddings. It'll also generated the pooled and negative pooled prompt embeddings since you're using the SDXL model.
 
+> [!TIP]
+> You can safely ignore the error message below about the token index length exceeding the models maximum sequence length. All your tokens will be used in the embedding process.
+>
+> ```
+> Token indices sequence length is longer than the specified maximum sequence length for this model
+> ```
+
 ```py
 ( 
   prompt_embeds,
@@ -303,7 +310,7 @@ image = pipe(
 image
 ```
 
-<div class="flex jsutify-center">
+<div class="flex justify-center">
   <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sd_embed_sdxl.png"/>
 </div>
 
