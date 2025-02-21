@@ -75,8 +75,9 @@ class SD3Transformer2DLoadersMixin:
             if not low_cpu_mem_usage:
                 attn_procs[name].load_state_dict(layer_state_dict[idx], strict=True)
             else:
+                device_map = {"": self.device}
                 load_model_dict_into_meta(
-                    attn_procs[name], layer_state_dict[idx], device=self.device, dtype=self.dtype
+                    attn_procs[name], layer_state_dict[idx], device_map=device_map, dtype=self.dtype
                 )
 
         return attn_procs
@@ -144,7 +145,8 @@ class SD3Transformer2DLoadersMixin:
         if not low_cpu_mem_usage:
             image_proj.load_state_dict(updated_state_dict, strict=True)
         else:
-            load_model_dict_into_meta(image_proj, updated_state_dict, device=self.device, dtype=self.dtype)
+            device_map = {"": self.device}
+            load_model_dict_into_meta(image_proj, updated_state_dict, device_map=device_map, dtype=self.dtype)
 
         return image_proj
 
