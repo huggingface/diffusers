@@ -30,7 +30,7 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import load_model_dict_into_meta, load_state_dict
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -143,7 +143,7 @@ class UNet2DConditionLoadersMixin:
         adapter_name = kwargs.pop("adapter_name", None)
         _pipeline = kwargs.pop("_pipeline", None)
         network_alphas = kwargs.pop("network_alphas", None)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         allow_pickle = False
 
         if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
@@ -540,7 +540,7 @@ class UNet2DConditionLoadersMixin:
 
         return state_dict
 
-    def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict, low_cpu_mem_usage=False):
+    def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
         if low_cpu_mem_usage:
             if is_accelerate_available():
                 from accelerate import init_empty_weights
@@ -758,7 +758,7 @@ class UNet2DConditionLoadersMixin:
 
         return image_projection
 
-    def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
+    def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
         from ..models.attention_processor import (
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
@@ -854,7 +854,7 @@ class UNet2DConditionLoadersMixin:
 
         return attn_procs
 
-    def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=False):
+    def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
         if not isinstance(state_dicts, list):
             state_dicts = [state_dicts]
 
