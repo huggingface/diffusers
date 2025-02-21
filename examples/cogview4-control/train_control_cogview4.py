@@ -37,7 +37,12 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 
 import diffusers
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, CogView4ControlPipeline,CogView4Transformer2DModel
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    CogView4ControlPipeline,
+    CogView4Transformer2DModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     compute_density_for_timestep_sampling,
@@ -787,7 +792,7 @@ def main(args):
 
     # enable image inputs
     with torch.no_grad():
-        patch_size =  cogview4_transformer.config.patch_size
+        patch_size = cogview4_transformer.config.patch_size
         initial_input_channels = cogview4_transformer.config.in_channels * patch_size**2
         new_linear = torch.nn.Linear(
             cogview4_transformer.patch_embed.proj.in_features * 2,
@@ -803,7 +808,9 @@ def main(args):
         cogview4_transformer.patch_embed.proj = new_linear
 
     assert torch.all(cogview4_transformer.patch_embed.proj.weight[:, initial_input_channels:].data == 0)
-    cogview4_transformer.register_to_config(in_channels=cogview4_transformer.config.in_channels * 2, out_channels=cogview4_transformer.config.in_channels)
+    cogview4_transformer.register_to_config(
+        in_channels=cogview4_transformer.config.in_channels * 2, out_channels=cogview4_transformer.config.in_channels
+    )
 
     if args.only_target_transformer_blocks:
         cogview4_transformer.patch_embed.proj.requires_grad_(True)
@@ -1050,34 +1057,41 @@ def main(args):
                 )
 
                 # Add noise according for cogview4
-                #FIXME: The issue of variable-length training has not been resolved, here it is still extended to the longest one.
+                # FIXME: The issue of variable-length training has not been resolved, here it is still extended to the longest one.
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=pixel_latents.device)
                 sigmas = noise_scheduler_copy.sigmas[indices].to(device=pixel_latents.device)
                 captions = batch["captions"]
-                image_seq_lens = torch.tensor(pixel_latents.shape[2] * pixel_latents.shape[3] // patch_size ** 2, dtype=pixel_latents.dtype, device=pixel_latents.device) # H * W  / VAE patch_size
+                image_seq_lens = torch.tensor(
+                    pixel_latents.shape[2] * pixel_latents.shape[3] // patch_size**2,
+                    dtype=pixel_latents.dtype,
+                    device=pixel_latents.device,
+                )  # H * W  / VAE patch_size
                 mu = torch.sqrt(image_seq_lens / 256)
                 mu = mu * 0.75 + 0.25
-                scale_factors = mu / (mu + (1 / sigmas - 1) ** 1.0).to(dtype=pixel_latents.dtype, device=pixel_latents.device)
+                scale_factors = mu / (mu + (1 / sigmas - 1) ** 1.0).to(
+                    dtype=pixel_latents.dtype, device=pixel_latents.device
+                )
                 scale_factors = scale_factors.view(len(batch["captions"]), 1, 1, 1)
                 noisy_model_input = (1.0 - scale_factors) * pixel_latents + scale_factors * noise
                 concatenated_noisy_model_input = torch.cat([noisy_model_input, control_latents], dim=1)
                 text_encoding_pipeline = text_encoding_pipeline.to("cuda")
 
                 with torch.no_grad():
-                    prompt_embeds, pooled_prompt_embeds, = text_encoding_pipeline.encode_prompt(
-                        captions, ""
-                    )
+                    (
+                        prompt_embeds,
+                        pooled_prompt_embeds,
+                    ) = text_encoding_pipeline.encode_prompt(captions, "")
                 original_size = (args.resolution, args.resolution)
                 original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
 
-                target_size = (args.resolution,args.resolution)
+                target_size = (args.resolution, args.resolution)
                 target_size = torch.tensor([target_size], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
 
                 target_size = target_size.repeat(len(batch["captions"]), 1)
                 original_size = original_size.repeat(len(batch["captions"]), 1)
 
-                #TODO: Should a parameter be set here for passing? This is not present in Flux.
+                # TODO: Should a parameter be set here for passing? This is not present in Flux.
                 crops_coords_top_left = torch.tensor([(0, 0)], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
                 crops_coords_top_left = crops_coords_top_left.repeat(len(batch["captions"]), 1)
                 # Predict.
@@ -1108,7 +1122,9 @@ def main(args):
                 target = noise - pixel_latents
 
                 weighting = weighting.view(len(batch["captions"]), 1, 1, 1)
-                loss = torch.mean((weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1),1)
+                loss = torch.mean(
+                    (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
+                )
                 loss = loss.mean()
                 accelerator.backward(loss)
 
