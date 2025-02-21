@@ -21,7 +21,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import JointTransformerBlock
 from ..attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
@@ -262,10 +262,6 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     # Notes: This is for SD3.5 8b controlnet, which shares the pos_embed with the transformer
     # we should have handled this in conversion script
     def _get_pos_embed_from_transformer(self, transformer):
@@ -382,30 +378,16 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 if self.context_embedder is not None:
-                    encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(block),
+                    encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                        block,
                         hidden_states,
                         encoder_hidden_states,
                         temb,
-                        **ckpt_kwargs,
                     )
                 else:
                     # SD3.5 8b controlnet use single transformer block, which does not use `encoder_hidden_states`
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(block), hidden_states, temb, **ckpt_kwargs
-                    )
+                    hidden_states = self._gradient_checkpointing_func(block, hidden_states, temb)
 
             else:
                 if self.context_embedder is not None:

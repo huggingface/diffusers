@@ -507,19 +507,12 @@ class AllegroEncoder3D(nn.Module):
         sample = sample + residual
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module(*inputs)
-
-                return custom_forward
-
             # Down blocks
             for down_block in self.down_blocks:
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample)
+                sample = self._gradient_checkpointing_func(down_block, sample)
 
             # Mid block
-            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+            sample = self._gradient_checkpointing_func(self.mid_block, sample)
         else:
             # Down blocks
             for down_block in self.down_blocks:
@@ -647,19 +640,12 @@ class AllegroDecoder3D(nn.Module):
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module(*inputs)
-
-                return custom_forward
-
             # Mid block
-            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+            sample = self._gradient_checkpointing_func(self.mid_block, sample)
 
             # Up blocks
             for up_block in self.up_blocks:
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
+                sample = self._gradient_checkpointing_func(up_block, sample)
 
         else:
             # Mid block
@@ -808,10 +794,6 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             sample_size - self.tile_overlap_h,
             sample_size - self.tile_overlap_w,
         )
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (AllegroEncoder3D, AllegroDecoder3D)):
-            module.gradient_checkpointing = value
 
     def enable_tiling(self) -> None:
         r"""
