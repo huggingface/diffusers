@@ -753,7 +753,8 @@ class UNet2DConditionLoadersMixin:
         if not low_cpu_mem_usage:
             image_projection.load_state_dict(updated_state_dict, strict=True)
         else:
-            load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
+            device_map = {"": self.device}
+            load_model_dict_into_meta(image_projection, updated_state_dict, device_map=device_map, dtype=self.dtype)
 
         return image_projection
 
@@ -846,7 +847,8 @@ class UNet2DConditionLoadersMixin:
                 else:
                     device = next(iter(value_dict.values())).device
                     dtype = next(iter(value_dict.values())).dtype
-                    load_model_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
+                    device_map = {"": device}
+                    load_model_dict_into_meta(attn_procs[name], value_dict, device_map=device_map, dtype=dtype)
 
                 key_id += 2
 
