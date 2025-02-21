@@ -477,7 +477,6 @@ class FluxControlInpaintPipeline(
 
         return timesteps, num_inference_steps - t_start
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux_img2img.FluxImg2ImgPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
