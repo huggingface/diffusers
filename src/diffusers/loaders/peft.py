@@ -52,6 +52,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HunyuanVideoTransformer3DModel": lambda model_cls, weights: weights,
     "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
+    "Lumina2Transformer2DModel": lambda model_cls, weights: weights,
 }
 _NO_CONFIG_UPDATE_KEYS = ["to_k", "to_q", "to_v"]
 

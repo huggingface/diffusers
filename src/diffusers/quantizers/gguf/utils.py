@@ -418,7 +418,7 @@ class GGUFParameter(torch.nn.Parameter):
         # so that we preserve quant_type information
         quant_type = None
         for arg in args:
-            if isinstance(arg, list) and (arg[0], GGUFParameter):
+            if isinstance(arg, list) and isinstance(arg[0], GGUFParameter):
                 quant_type = arg[0].quant_type
                 break
             if isinstance(arg, GGUFParameter):

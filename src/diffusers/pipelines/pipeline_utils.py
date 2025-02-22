@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import enum
 import fnmatch
 import importlib
 import inspect
@@ -79,10 +78,12 @@ from .pipeline_loading_utils import (
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
+    _get_detailed_type,
     _get_final_device_map,
     _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
+    _is_valid_type,
     _maybe_raise_error_for_incorrect_transformers,
     _maybe_raise_warning_for_inpainting,
     _resolve_custom_pipeline_and_cls,
@@ -324,7 +325,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 create_pr=create_pr,
             )
 
-    def to(self, *args, **kwargs):
+    def to(self, *args, **kwargs) -> Self:
         r"""
         Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
         arguments of `self.to(*args, **kwargs).`
@@ -693,7 +694,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
-        offload_state_dict = kwargs.pop("offload_state_dict", False)
+        offload_state_dict = kwargs.pop("offload_state_dict", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         dduf_file = kwargs.pop("dduf_file", None)
@@ -876,26 +877,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
-        for key in init_dict.keys():
-            if key not in passed_class_obj:
-                continue
-            if "scheduler" in key:
-                continue
-
-            class_obj = passed_class_obj[key]
-            _expected_class_types = []
-            for expected_type in expected_types[key]:
-                if isinstance(expected_type, enum.EnumMeta):
-                    _expected_class_types.extend(expected_type.__members__.keys())
-                else:
-                    _expected_class_types.append(expected_type.__name__)
-
-            _is_valid_type = class_obj.__class__.__name__ in _expected_class_types
-            if not _is_valid_type:
-                logger.warning(
-                    f"Expected types for {key}: {_expected_class_types}, got {class_obj.__class__.__name__}."
-                )
-
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
             raise NotImplementedError(
@@ -1015,10 +996,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
 
-        # 10. Instantiate the pipeline
+        # 10. Type checking init arguments
+        for kw, arg in init_kwargs.items():
+            # Too complex to validate with type annotation alone
+            if "scheduler" in kw:
+                continue
+            # Many tokenizer annotations don't include its "Fast" variant, so skip this
+            # e.g T5Tokenizer but not T5TokenizerFast
+            elif "tokenizer" in kw:
+                continue
+            elif (
+                arg is not None  # Skip if None
+                and not expected_types[kw] == (inspect.Signature.empty,)  # Skip if no type annotations
+                and not _is_valid_type(arg, expected_types[kw])  # Check type
+            ):
+                logger.warning(f"Expected types for {kw}: {expected_types[kw]}, got {_get_detailed_type(arg)}.")
+
+        # 11. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
 
-        # 11. Save where the model was instantiated from
+        # 12. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         if device_map is not None:
             setattr(model, "hf_device_map", final_device_map)
@@ -1462,6 +1459,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
+            # also allow downloading generation_config.json of the transformers model
+            allow_patterns += [os.path.join(k, "generation_config.json") for k in model_folder_names]
             allow_patterns += [
                 SCHEDULER_CONFIG_NAME,
                 CONFIG_NAME,
