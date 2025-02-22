@@ -11,6 +11,7 @@ from diffusers import (
     Lumina2Transformer2DModel,
 )
 from diffusers.utils.testing_utils import torch_device
+
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -122,4 +123,3 @@ class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             _ = Lumina2Text2ImgPipeline(**self.get_dummy_components()).to(torch_device)
         warning_message = str(warning.warnings[0].message)
         assert "renamed to `Lumina2Pipeline`" in warning_message
-
