@@ -178,14 +178,6 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
                 f"Potentially unsupported `prediction_type='{prediction_type}'`; values supported by the pipeline: "
                 f"{self.supported_prediction_types}."
             )
-        if (
-            not isinstance(target_properties, dict)
-            or "target_names" not in target_properties
-            or not isinstance(target_properties["target_names"], list)
-        ):
-            raise ValueError(
-                "Expected `target_properties` dict to contain a key `target_names` with value a list of strings."
-            )
 
         self.register_modules(
             unet=unet,
@@ -204,7 +196,7 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
         self.target_properties = target_properties
-        self.n_targets = len(target_properties["target_names"])
+        self.n_targets = self.unet.config.out_channels // self.vae.config.latent_channels
         self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
 
