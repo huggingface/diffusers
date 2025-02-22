@@ -10,7 +10,7 @@ from diffusers import (
     Lumina2Text2ImgPipeline,
     Lumina2Transformer2DModel,
 )
-
+from diffusers.utils.testing_utils import torch_device
 from ..test_pipelines_common import PipelineTesterMixin
 
 
