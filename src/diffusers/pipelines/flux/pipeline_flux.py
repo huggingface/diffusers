@@ -878,11 +878,9 @@ class FluxPipeline(
         elif (ip_adapter_image is None and ip_adapter_image_embeds is None) and (
             negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None
         ):
-            ip_adapter_image = (
-                [np.zeros((width, height, 3), dtype=np.uint8) for _ in range(len(negative_ip_adapter_image))]
-                if isinstance(negative_ip_adapter_image, list)
-                else np.zeros((width, height, 3), dtype=np.uint8)
-            )
+            ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
+            if isinstance(negative_ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image] * len(negative_ip_adapter_image)
 
         if self.joint_attention_kwargs is None:
             self._joint_attention_kwargs = {}
