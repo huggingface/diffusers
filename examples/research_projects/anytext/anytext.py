@@ -81,16 +81,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> import torch
         >>> from diffusers import DiffusionPipeline
         >>> from anytext_controlnet import AnyTextControlNetModel
         >>> from diffusers import DDIMScheduler
         >>> from diffusers.utils import load_image
-        >>> import torch
+
+        >>> # I chose a font file shared by an HF staff:
+        >>> !wget https://huggingface.co/spaces/ysharma/TranslateQuotesInImageForwards/resolve/main/arial-unicode-ms.ttf
 
         >>> # load control net and stable diffusion v1-5
         >>> anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
         ...                                                             variant="fp16",)
-        >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", font_path="Arial_Unicode2.ttf",
+        >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", font_path="arial-unicode-ms.ttf",
         ...                                           controlnet=anytext_controlnet, torch_dtype=torch.float16,
         ...                                           trust_remote_code=True,
         ...                                           ).to("cuda")
