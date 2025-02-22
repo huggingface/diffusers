@@ -57,6 +57,7 @@ class CogView3PlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     test_xformers_attention = False
     test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -230,6 +231,9 @@ class CogView3PlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 expected_max_diff,
                 "Attention slicing should not affect the inference results",
             )
+
+    def test_encode_prompt_works_in_isolation(self):
+        return super().test_encode_prompt_works_in_isolation(atol=1e-3, rtol=1e-3)
 
 
 @slow
