@@ -169,3 +169,7 @@ class GligenPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=3, expected_max_diff=3e-3)
+
+    @unittest.skip("Test not supported as tokenizer is used for parsing bounding boxes.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass

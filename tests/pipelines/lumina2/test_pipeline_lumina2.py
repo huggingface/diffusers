@@ -1,8 +1,7 @@
 import unittest
 
-import numpy as np
 import torch
-from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
+from transformers import AutoTokenizer, Gemma2Config, Gemma2Model
 
 from diffusers import (
     AutoencoderKL,
@@ -11,7 +10,6 @@ from diffusers import (
     Lumina2Text2ImgPipeline,
     Lumina2Transformer2DModel,
 )
-from diffusers.utils.testing_utils import torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -82,21 +80,22 @@ class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
 
         torch.manual_seed(0)
-        config = GemmaConfig(
-            head_dim=2,
+        config = Gemma2Config(
+            head_dim=4,
             hidden_size=8,
-            intermediate_size=37,
-            num_attention_heads=4,
+            intermediate_size=8,
+            num_attention_heads=2,
             num_hidden_layers=2,
-            num_key_value_heads=4,
+            num_key_value_heads=2,
+            sliding_window=2,
         )
-        text_encoder = GemmaForCausalLM(config)
+        text_encoder = Gemma2Model(config)
 
         components = {
-            "transformer": transformer.eval(),
+            "transformer": transformer,
             "vae": vae.eval(),
             "scheduler": scheduler,
-            "text_encoder": text_encoder.eval(),
+            "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
         return components
@@ -118,37 +117,9 @@ class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         }
         return inputs
 
-    def test_lumina_prompt_embeds(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-
-        output_with_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        do_classifier_free_guidance = inputs["guidance_scale"] > 1
-        (
-            prompt_embeds,
-            prompt_attention_mask,
-            negative_prompt_embeds,
-            negative_prompt_attention_mask,
-        ) = pipe.encode_prompt(
-            prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            device=torch_device,
-        )
-        output_with_embeds = pipe(
-            prompt_embeds=prompt_embeds,
-            prompt_attention_mask=prompt_attention_mask,
-            **inputs,
-        ).images[0]
-
-        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
-
     def test_deprecation_raises_warning(self):
         with self.assertWarns(FutureWarning) as warning:
             _ = Lumina2Text2ImgPipeline(**self.get_dummy_components()).to(torch_device)
         warning_message = str(warning.warnings[0].message)
         assert "renamed to `Lumina2Pipeline`" in warning_message
+
