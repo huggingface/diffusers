@@ -85,15 +85,6 @@ class AnyTextControlNetConditioningEmbedding(nn.Module):
 
         self.fuse_block = nn.Conv2d(256 + 64 + 4, conditioning_embedding_channels, 3, padding=1)
 
-        # self.glyph_block.load_state_dict(load_file("glyph_block.safetensors", device=str(self.device)))
-        # self.position_block.load_state_dict(load_file("position_block.safetensors", device=str(self.device)))
-        # self.fuse_block.load_state_dict(load_file("fuse_block.safetensors", device=str(self.device)))
-
-        # if use_fp16:
-        #     self.glyph_block = self.glyph_block.to(dtype=torch.float16)
-        #     self.position_block = self.position_block.to(dtype=torch.float16)
-        #     self.fuse_block = self.fuse_block.to(dtype=torch.float16)
-
     def forward(self, glyphs, positions, text_info):
         glyph_embedding = self.glyph_block(glyphs.to(self.glyph_block[0].weight.device))
         position_embedding = self.position_block(positions.to(self.position_block[0].weight.device))

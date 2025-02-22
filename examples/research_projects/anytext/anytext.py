@@ -25,6 +25,7 @@ import math
 import os
 import re
 import sys
+import unicodedata
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -324,12 +325,6 @@ def adjust_image(box, img):
     return result
 
 
-"""
-mask: numpy.ndarray, mask of textual, HWC
-src_img: torch.Tensor, source image, CHW
-"""
-
-
 def crop_image(src_img, mask):
     box = min_bounding_rect(mask)
     result = adjust_image(box, src_img)
@@ -526,10 +521,8 @@ class TextRecognizer(object):
 
 
 class TextEmbeddingModule(nn.Module):
-    # @register_to_config
     def __init__(self, font_path, use_fp16=False, device="cpu"):
         super().__init__()
-        # TODO: Learn if the recommended font file is free to use
         self.font = ImageFont.truetype(font_path, 60)
         self.use_fp16 = use_fp16
         self.device = device
