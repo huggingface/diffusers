@@ -15,6 +15,10 @@
 
 # Mochi 1 Preview
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 > [!TIP]
 > Only a research preview of the model weights is available at the moment.
 
