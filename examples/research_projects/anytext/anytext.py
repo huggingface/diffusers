@@ -723,10 +723,11 @@ class TextEmbeddingModule(nn.Module):
         ratio = min(W * 0.9 / text_width, H * 0.9 / text_height)
         new_font = font.font_variant(size=int(g_size * ratio))
 
-        text_width, text_height = new_font.getsize(text)
-        offset_x, offset_y = new_font.getoffset(text)
+        left, top, right, bottom = new_font.getbbox(text)
+        text_width = right - left
+        text_height = bottom - top
         x = (img.width - text_width) // 2
-        y = (img.height - text_height) // 2 - offset_y // 2
+        y = (img.height - text_height) // 2 - top // 2
         draw.text((x, y), text, font=new_font, fill="white")
         img = np.expand_dims(np.array(img), axis=2).astype(np.float64)
         return img
