@@ -405,9 +405,9 @@ class FluxPipeline(
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
 
-            if len(ip_adapter_image) != len(self.transformer.encoder_hid_proj.image_projection_layers):
+            if len(ip_adapter_image) != self.transformer.encoder_hid_proj.num_ip_adapters:
                 raise ValueError(
-                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.transformer.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
                 )
 
             for single_ip_adapter_image, image_proj_layer in zip(
@@ -868,14 +868,23 @@ class FluxPipeline(
         else:
             guidance = None
 
+        # TODO: Clarify this section
         if (ip_adapter_image is not None or ip_adapter_image_embeds is not None) and (
             negative_ip_adapter_image is None and negative_ip_adapter_image_embeds is None
         ):
-            negative_ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
+            negative_ip_adapter_image = (
+                [np.zeros((width, height, 3), dtype=np.uint8) for _ in range(len(ip_adapter_image))]
+                if isinstance(ip_adapter_image, list)
+                else np.zeros((width, height, 3), dtype=np.uint8)
+            )
         elif (ip_adapter_image is None and ip_adapter_image_embeds is None) and (
             negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None
         ):
-            ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
+            ip_adapter_image = (
+                [np.zeros((width, height, 3), dtype=np.uint8) for _ in range(len(negative_ip_adapter_image))]
+                if isinstance(negative_ip_adapter_image, list)
+                else np.zeros((width, height, 3), dtype=np.uint8)
+            )
 
         if self.joint_attention_kwargs is None:
             self._joint_attention_kwargs = {}

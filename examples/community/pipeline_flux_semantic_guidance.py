@@ -537,9 +537,9 @@ class FluxSemanticGuidancePipeline(
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
 
-            if len(ip_adapter_image) != len(self.transformer.encoder_hid_proj.image_projection_layers):
+            if len(ip_adapter_image) != self.transformer.encoder_hid_proj.num_ip_adapters:
                 raise ValueError(
-                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.transformer.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
                 )
 
             for single_ip_adapter_image, image_proj_layer in zip(
