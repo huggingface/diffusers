@@ -939,8 +939,8 @@ class LuminaText2ImgPipeline(LuminaPipeline):
         transformer: LuminaNextDiT2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
-        text_encoder: AutoModel,
-        tokenizer: AutoTokenizer,
+        text_encoder: GemmaPreTrainedModel,
+        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
     ):
         deprecation_message = "`LuminaText2ImgPipeline` has been renamed to `LuminaPipeline` and will be removed in a future version. Please use `LuminaPipeline` instead."
         deprecate("diffusers.pipelines.lumina.pipeline_lumina.LuminaText2ImgPipeline", "0.34", deprecation_message)
