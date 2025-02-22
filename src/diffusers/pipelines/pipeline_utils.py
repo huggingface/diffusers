@@ -1006,9 +1006,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             elif "tokenizer" in kw:
                 continue
             elif (
-                arg is not None # Skip if None
+                arg is not None  # Skip if None
                 and not expected_types[kw] == (inspect.Signature.empty,)  # Skip if no type annotations
-                and not _is_valid_type(arg, expected_types[kw]) # Check type
+                and not _is_valid_type(arg, expected_types[kw])  # Check type
             ):
                 logger.warning(f"Expected types for {kw}: {expected_types[kw]}, got {_get_detailed_type(arg)}.")
 
