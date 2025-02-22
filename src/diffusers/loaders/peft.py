@@ -54,7 +54,6 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
     "Lumina2Transformer2DModel": lambda model_cls, weights: weights,
 }
-_NO_CONFIG_UPDATE_KEYS = ["to_k", "to_q", "to_v"]
 
 
 def _maybe_adjust_config(config):
@@ -64,40 +63,38 @@ def _maybe_adjust_config(config):
     method removes the ambiguity by following what is described here:
     https://github.com/huggingface/diffusers/pull/9985#issuecomment-2493840028.
     """
+    # Track keys that have been explicitly removed to prevent re-adding them.
+    deleted_keys = set()
+
     rank_pattern = config["rank_pattern"].copy()
     target_modules = config["target_modules"]
     original_r = config["r"]
 
     for key in list(rank_pattern.keys()):
-        if any(prefix in key for prefix in _NO_CONFIG_UPDATE_KEYS):
-            continue
         key_rank = rank_pattern[key]
 
         # try to detect ambiguity
-        # `target_modules` can also be a str, in which case this loop would loop
-        # over the chars of the str. The technically correct way to match LoRA keys
-        # in PEFT is to use LoraModel._check_target_module_exists (lora_config, key).
-        # But this cuts it for now.
         exact_matches = [mod for mod in target_modules if mod == key]
         substring_matches = [mod for mod in target_modules if key in mod and mod != key]
         ambiguous_key = key
 
         if exact_matches and substring_matches:
-            # if ambiguous we update the rank associated with the ambiguous key (`proj_out`, for example)
+            # if ambiguous, update the rank associated with the ambiguous key (`proj_out`, for example)
             config["r"] = key_rank
-            # remove the ambiguous key from `rank_pattern` and update its rank to `r`, instead
+            # remove the ambiguous key from `rank_pattern` and record it as deleted
             del config["rank_pattern"][key]
+            deleted_keys.add(key)
+            # For substring matches, add them with the original rank only if they haven't been assigned already
             for mod in substring_matches:
-                # avoid overwriting if the module already has a specific rank
-                if mod not in config["rank_pattern"]:
+                if mod not in config["rank_pattern"] and mod not in deleted_keys:
                     config["rank_pattern"][mod] = original_r
 
-            # update the rest of the keys with the `original_r`
+            # Update the rest of the target modules with the original rank if not already set and not deleted
             for mod in target_modules:
-                if mod != ambiguous_key and mod not in config["rank_pattern"]:
+                if mod != ambiguous_key and mod not in config["rank_pattern"] and mod not in deleted_keys:
                     config["rank_pattern"][mod] = original_r
 
-    # handle alphas to deal with cases like
+    # Handle alphas to deal with cases like:
     # https://github.com/huggingface/diffusers/pull/9999#issuecomment-2516180777
     has_different_ranks = len(config["rank_pattern"]) > 1 and list(config["rank_pattern"])[0] != config["r"]
     if has_different_ranks:
