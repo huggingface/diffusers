@@ -1,45 +1,43 @@
 # AnyTextPipeline Pipeline
 
-From the project [page](https://zhendong-wang.github.io/prompt-diffusion.github.io/)
+From the repo [page](https://github.com/tyxsspa/AnyText)
 
-"With a prompt consisting of a task-specific example pair of images and text guidance, and a new query image, Prompt Diffusion can comprehend the desired task and generate the corresponding output image on both seen (trained) and unseen (new) task types."
+"AnyText comprises a diffusion pipeline with two primary elements: an auxiliary latent module and a text embedding module. The former uses inputs like text glyph, position, and masked image to generate latent features for text generation or editing. The latter employs an OCR model for encoding stroke data as embeddings, which blend with image caption embeddings from the tokenizer to generate texts that seamlessly integrate with the background. We employed text-control diffusion loss and text perceptual loss for training to further enhance writing accuracy."
 
-For any usage questions, please refer to the [paper](https://arxiv.org/abs/2305.01115).
-
-Prepare models by converting them from the [checkpoint](https://huggingface.co/zhendongw/prompt-diffusion)
-
-To convert the controlnet, use cldm_v15.yaml from the [repository](https://github.com/Zhendong-Wang/Prompt-Diffusion/tree/main/models/):
-
-```sh
-python convert_original_anytext_to_diffusers.py --checkpoint_path path-to-network-step04999.ckpt --original_config_file path-to-cldm_v15.yaml --dump_path path-to-output-directory
-```
-
-To learn about how to convert the fine-tuned stable diffusion model, see the [Load different Stable Diffusion formats guide](https://huggingface.co/docs/diffusers/main/en/using-diffusers/other-formats).
+For any usage questions, please refer to the [paper](https://arxiv.org/abs/2311.03054).
 
 
 ```py
 import torch
-from pipeline_anytext import AnyTextPipeline
-from text_controlnet import AnyTextControlNetModel
+from diffusers import DiffusionPipeline
+from anytext_controlnet import AnyTextControlNetModel
 from diffusers import DDIMScheduler
 from diffusers.utils import load_image
 
 
-controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
-                                                  variant="fp16")
-pipe = AnyTextPipeline.from_pretrained("tolgacangoz/anytext", controlnet=controlnet,
-                                        torch_dtype=torch.float16, variant="fp16")
+# I chose a font file shared by an HF staff:
+!wget https://huggingface.co/spaces/ysharma/TranslateQuotesInImageForwards/resolve/main/arial-unicode-ms.ttf
 
-# speed up diffusion process with faster scheduler and memory optimization
+# load control net and stable diffusion v1-5
+anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
+                                                            variant="fp16",)
+pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", font_path="arial-unicode-ms.ttf",
+                                       controlnet=anytext_controlnet, torch_dtype=torch.float16,
+                                       trust_remote_code=True,
+                                       ).to("cuda")
+
 pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-# uncomment following line if torch<2.0
+# uncomment following line if PyTorch>=2.0 is not installed for memory optimization
 #pipe.enable_xformers_memory_efficient_attention()
-pipe.enable_model_cpu_offload()
+
+# uncomment following line if you want to offload the model to CPU for memory optimization
+# also remove the `.to("cuda")` part
+#pipe.enable_model_cpu_offload()
+
 # generate image
-generator = torch.Generator("cpu").manual_seed(66273235)
 prompt = 'photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream'
-draw_pos = load_image("www.huggingface.co/a/AnyText/tree/main/examples/gen9.png")
-image = pipe(prompt, num_inference_steps=20, generator=generator, mode="generate", draw_pos=draw_pos,
-            ).images[0]
+draw_pos = load_image("https://raw.githubusercontent.com/tyxsspa/AnyText/refs/heads/main/example_images/gen9.png")
+image = pipe(prompt, num_inference_steps=20, mode="generate", draw_pos=draw_pos,
+          ).images[0]
 image
 ```

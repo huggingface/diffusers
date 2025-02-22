@@ -81,18 +81,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from pipeline_anytext import AnyTextPipeline
+        >>> from diffusers import DiffusionPipeline
         >>> from anytext_controlnet import AnyTextControlNetModel
         >>> from diffusers import DDIMScheduler
         >>> from diffusers.utils import load_image
         >>> import torch
 
         >>> # load control net and stable diffusion v1-5
-        >>> text_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
-        ...                                                        variant="fp16",)
-        >>> pipe = AnyTextPipeline.from_pretrained("tolgacangoz/anytext", controlnet=text_controlnet,
-        ...                                          torch_dtype=torch.float16, variant="fp16",
-        ...                                          ).to("cuda")
+        >>> anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
+        ...                                                             variant="fp16",)
+        >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", font_path="Arial_Unicode2.ttf",
+        ...                                           controlnet=anytext_controlnet, torch_dtype=torch.float16,
+        ...                                           trust_remote_code=True,
+        ...                                           ).to("cuda")
 
         >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         >>> # uncomment following line if PyTorch>=2.0 is not installed for memory optimization
@@ -103,11 +104,9 @@ EXAMPLE_DOC_STRING = """
         >>> #pipe.enable_model_cpu_offload()
 
         >>> # generate image
-        >>> generator = torch.Generator("cpu").manual_seed(66273235)
         >>> prompt = 'photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream'
-        >>> draw_pos = load_image("www.huggingface.co/a/AnyText/tree/main/examples/gen9.png")
-        >>> image = pipe(prompt, num_inference_steps=20, generator=generator, mode="generate",
-        ...              draw_pos=draw_pos,
+        >>> draw_pos = load_image("https://raw.githubusercontent.com/tyxsspa/AnyText/refs/heads/main/example_images/gen9.png")
+        >>> image = pipe(prompt, num_inference_steps=20, mode="generate", draw_pos=draw_pos,
         ...              ).images[0]
         >>> image
         ```
