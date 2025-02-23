@@ -242,6 +242,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         "add_time_ids",
         "negative_pooled_prompt_embeds",
         "add_neg_time_ids",
+        "control_image"
     ]
 
     def __init__(
