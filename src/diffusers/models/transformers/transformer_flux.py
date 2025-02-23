@@ -18,7 +18,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
@@ -45,20 +44,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @maybe_allow_in_graph
 class FluxSingleTransformerBlock(nn.Module):
-    r"""
-    A Transformer block following the MMDiT architecture, introduced in Stable Diffusion 3.
-
-    Reference: https://arxiv.org/abs/2403.03206
-
-    Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        context_pre_only (`bool`): Boolean to determine if we should add some blocks associated with the
-            processing of `context` conditions.
-    """
-
-    def __init__(self, dim, num_attention_heads, attention_head_dim, mlp_ratio=4.0):
+    def __init__(self, dim: int, num_attention_heads: int, attention_head_dim: int, mlp_ratio: float = 4.0):
         super().__init__()
         self.mlp_hidden_dim = int(dim * mlp_ratio)
 
@@ -113,39 +99,14 @@ class FluxSingleTransformerBlock(nn.Module):
 
 @maybe_allow_in_graph
 class FluxTransformerBlock(nn.Module):
-    r"""
-    A Transformer block following the MMDiT architecture, introduced in Stable Diffusion 3.
-
-    Reference: https://arxiv.org/abs/2403.03206
-
-    Args:
-        dim (`int`):
-            The embedding dimension of the block.
-        num_attention_heads (`int`):
-            The number of attention heads to use.
-        attention_head_dim (`int`):
-            The number of dimensions to use for each attention head.
-        qk_norm (`str`, defaults to `"rms_norm"`):
-            The normalization to use for the query and key tensors.
-        eps (`float`, defaults to `1e-6`):
-            The epsilon value to use for the normalization.
-    """
-
     def __init__(
         self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6
     ):
         super().__init__()
 
         self.norm1 = AdaLayerNormZero(dim)
-
         self.norm1_context = AdaLayerNormZero(dim)
 
-        if hasattr(F, "scaled_dot_product_attention"):
-            processor = FluxAttnProcessor2_0()
-        else:
-            raise ValueError(
-                "The current PyTorch version does not support the `scaled_dot_product_attention` function."
-            )
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
@@ -155,7 +116,7 @@ class FluxTransformerBlock(nn.Module):
             out_dim=dim,
             context_pre_only=False,
             bias=True,
-            processor=processor,
+            processor=FluxAttnProcessor2_0(),
             qk_norm=qk_norm,
             eps=eps,
         )
@@ -165,10 +126,6 @@ class FluxTransformerBlock(nn.Module):
 
         self.norm2_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff_context = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
-
-        # let chunk size default to None
-        self._chunk_size = None
-        self._chunk_dim = 0
 
     def forward(
         self,
