@@ -135,7 +135,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     JointTransformerBlock(
                         dim=self.inner_dim,
                         num_attention_heads=num_attention_heads,
-                        attention_head_dim=self.config.attention_head_dim,
+                        attention_head_dim=attention_head_dim,
                         context_pre_only=False,
                         qk_norm=qk_norm,
                         use_dual_attention=True if i in dual_attention_layers else False,
@@ -150,7 +150,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     SD3SingleTransformerBlock(
                         dim=self.inner_dim,
                         num_attention_heads=num_attention_heads,
-                        attention_head_dim=self.config.attention_head_dim,
+                        attention_head_dim=attention_head_dim,
                     )
                     for _ in range(num_layers)
                 ]
