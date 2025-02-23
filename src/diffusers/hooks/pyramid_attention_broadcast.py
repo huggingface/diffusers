@@ -20,17 +20,16 @@ import torch
 
 from ..models.attention_processor import Attention, MochiAttention
 from ..utils import logging
+from ._common import (
+    _ATTENTION_CLASSES,
+    _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS,
+    _SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS,
+    _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS,
+)
 from .hooks import HookRegistry, ModelHook
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-_ATTENTION_CLASSES = (Attention, MochiAttention)
-
-_SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks")
-_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
-_CROSS_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks")
 
 
 @dataclass
@@ -76,9 +75,9 @@ class PyramidAttentionBroadcastConfig:
     temporal_attention_timestep_skip_range: Tuple[int, int] = (100, 800)
     cross_attention_timestep_skip_range: Tuple[int, int] = (100, 800)
 
-    spatial_attention_block_identifiers: Tuple[str, ...] = _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS
-    temporal_attention_block_identifiers: Tuple[str, ...] = _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS
-    cross_attention_block_identifiers: Tuple[str, ...] = _CROSS_ATTENTION_BLOCK_IDENTIFIERS
+    spatial_attention_block_identifiers: Tuple[str, ...] = _SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS
+    temporal_attention_block_identifiers: Tuple[str, ...] = _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS
+    cross_attention_block_identifiers: Tuple[str, ...] = _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS
 
     current_timestep_callback: Callable[[], int] = None
 
