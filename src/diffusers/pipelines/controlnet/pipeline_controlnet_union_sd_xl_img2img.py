@@ -1563,6 +1563,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
                     add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
+                    control_image = callback_outputs.pop("control_image", control_image)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
