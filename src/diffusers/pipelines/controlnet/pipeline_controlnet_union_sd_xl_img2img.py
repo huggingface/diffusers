@@ -257,6 +257,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         "prompt_embeds",
         "add_text_embeds",
         "add_time_ids",
+        "control_image"
     ]
 
     def __init__(
