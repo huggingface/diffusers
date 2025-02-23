@@ -7,8 +7,8 @@ on:
         default: 'diffusers/diffusers-pytorch-cuda'
         description: 'Name of the Docker image'
         required: true
-      branch:
-        description: 'PR Branch to test on'
+      pr_number:
+        description: 'PR number to test on'
         required: true
       test:
         description: 'Tests to run (e.g.: `tests/models`).'
@@ -43,8 +43,8 @@ jobs:
             exit 1
           fi
 
-          if [[ ! "$PY_TEST" =~ ^tests/(models|pipelines) ]]; then
-            echo "Error: The input string must contain either 'models' or 'pipelines' after 'tests/'."
+          if [[ ! "$PY_TEST" =~ ^tests/(models|pipelines|lora) ]]; then
+            echo "Error: The input string must contain either 'models', 'pipelines', or 'lora' after 'tests/'."
             exit 1
           fi
 
@@ -53,13 +53,13 @@ jobs:
             exit 1
           fi
           echo "$PY_TEST"
+        
+        shell: bash -e {0}
 
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.branch }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-
+          ref: refs/pull/${{ inputs.pr_number }}/head
 
       - name: Install pytest
         run: |
