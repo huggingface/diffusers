@@ -237,6 +237,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
         "add_neg_time_ids",
         "mask",
         "masked_image_latents",
+        "control_image"
     ]
 
     def __init__(
