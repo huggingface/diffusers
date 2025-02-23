@@ -40,6 +40,48 @@ class SD3ControlNetOutput(BaseOutput):
 
 
 class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+    r"""
+    ControlNet model for [Stable Diffusion 3](https://huggingface.co/papers/2403.03206).
+
+    Parameters:
+        sample_size (`int`, defaults to `128`):
+            The width/height of the latents. This is fixed during training since it is used to learn a number of
+            position embeddings.
+        patch_size (`int`, defaults to `2`):
+            Patch size to turn the input data into small patches.
+        in_channels (`int`, defaults to `16`):
+            The number of latent channels in the input.
+        num_layers (`int`, defaults to `18`):
+            The number of layers of transformer blocks to use.
+        attention_head_dim (`int`, defaults to `64`):
+            The number of channels in each head.
+        num_attention_heads (`int`, defaults to `18`):
+            The number of heads to use for multi-head attention.
+        joint_attention_dim (`int`, defaults to `4096`):
+            The embedding dimension to use for joint text-image attention.
+        caption_projection_dim (`int`, defaults to `1152`):
+            The embedding dimension of caption embeddings.
+        pooled_projection_dim (`int`, defaults to `2048`):
+            The embedding dimension of pooled text projections.
+        out_channels (`int`, defaults to `16`):
+            The number of latent channels in the output.
+        pos_embed_max_size (`int`, defaults to `96`):
+            The maximum latent height/width of positional embeddings.
+        extra_conditioning_channels (`int`, defaults to `0`):
+            The number of extra channels to use for conditioning for patch embedding.
+        dual_attention_layers (`Tuple[int, ...]`, defaults to `()`):
+            The number of dual-stream transformer blocks to use.
+        qk_norm (`str`, *optional*, defaults to `None`):
+            The normalization to use for query and key in the attention layer. If `None`, no normalization is used.
+        pos_embed_type (`str`, defaults to `"sincos"`):
+            The type of positional embedding to use. Choose between `"sincos"` and `None`.
+        use_pos_embed (`bool`, defaults to `True`):
+            Whether to use positional embeddings.
+        force_zeros_for_pooled_projection (`bool`, defaults to `True`):
+            Whether to force zeros for pooled projection embeddings. This is handled in the pipelines by reading the
+            config value of the ControlNet model.
+    """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
