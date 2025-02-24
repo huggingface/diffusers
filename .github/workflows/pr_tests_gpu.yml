@@ -11,7 +11,6 @@ on:
       - "src/diffusers/loaders/lora_base.py"
       - "src/diffusers/loaders/lora_pipeline.py"
       - "src/diffusers/loaders/peft.py"
-      - "src/diffusers/loaders/ip_adapter.py"
   workflow_dispatch:
 
 concurrency:
@@ -171,11 +170,9 @@ jobs:
       run: |
         pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
         if [ -z "$pattern" ]; then
-          # If pattern is empty, run without specific tests pattern
-          python -m pytest -n 1 -k "not Flax and not Onnx" tests/${{ matrix.module }}
+          python -m pytest -n 1 -sv -k --max-worker-restart=0 --dist=loadfile "not Flax and not Onnx" tests/${{ matrix.module }}
         else
-          # If pattern exists, use it
-          python -m pytest -n 1 -k "not Flax and not Onnx and \"$pattern\"" tests/${{ matrix.module }}
+          python -m pytest -n 1 -sv -k --max-worker-restart=0 --dist=loadfile "not Flax and not Onnx and $pattern" tests/${{ matrix.module }}
         fi
 
     - name: Failure short reports
