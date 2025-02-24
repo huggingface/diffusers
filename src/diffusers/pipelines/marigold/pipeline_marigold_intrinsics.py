@@ -203,6 +203,10 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
 
         self.image_processor = MarigoldImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    @property
+    def n_targets(self):
+        return self.unet.config.out_channels // self.vae.config.latent_channels
+
     def check_inputs(
         self,
         image: PipelineImageInput,
@@ -550,9 +554,8 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         # 6. Decode predictions from latent into pixel space. The resulting `N * E` predictions have shape `(PPH, PPW)`,
         # which requires slight postprocessing. Decoding into pixel space happens in batches of size `batch_size`.
         # Model invocation: self.vae.decoder.
-        n_targets = self.unet.config.out_channels // self.vae.config.latent_channels
         pred_latent_for_decoding = pred_latent.reshape(
-            num_images * ensemble_size * n_targets, self.vae.config.latent_channels, *pred_latent.shape[2:]
+            num_images * ensemble_size * self.n_targets, self.vae.config.latent_channels, *pred_latent.shape[2:]
         )  # [N*E*T,4,PPH,PPW]
         prediction = torch.cat(
             [
@@ -577,7 +580,7 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         uncertainty = None
         if ensemble_size > 1:
             prediction = prediction.reshape(
-                num_images, ensemble_size, n_targets, *prediction.shape[1:]
+                num_images, ensemble_size, self.n_targets, *prediction.shape[1:]
             )  # [N,E,T,3,PH,PW]
             prediction = [
                 self.ensemble_intrinsics(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
@@ -650,9 +653,8 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
 
         pred_latent = latents
         if pred_latent is None:
-            n_targets = self.unet.config.out_channels // self.vae.config.latent_channels
             pred_latent = randn_tensor(
-                (N_E, n_targets * C, H, W),
+                (N_E, self.n_targets * C, H, W),
                 generator=generator,
                 device=image_latent.device,
                 dtype=image_latent.dtype,
