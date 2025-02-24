@@ -878,7 +878,7 @@ class FluxPipeline(
         ):
             negative_ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
             negative_ip_adapter_image = [negative_ip_adapter_image] * self.transformer.encoder_hid_proj.num_ip_adapters
-        
+
         elif (ip_adapter_image is None and ip_adapter_image_embeds is None) and (
             negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None
         ):
