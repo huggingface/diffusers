@@ -172,7 +172,7 @@ jobs:
         if [ -z "$pattern" ]; then
           python -m pytest -n 1 -sv --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx" tests/${{ matrix.module }}
         else
-          python -m pytest -n 1 -sv --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx $pattern" tests/${{ matrix.module }}
+          python -m pytest -n 1 -sv --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx and $pattern" tests/${{ matrix.module }}
         fi
 
     - name: Failure short reports
