@@ -237,7 +237,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
         "add_neg_time_ids",
         "mask",
         "masked_image_latents",
-        "control_image"
+        "control_image",
     ]
 
     def __init__(
@@ -744,7 +744,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
         if padding_mask_crop is not None:
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                    f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
                 )
             if not isinstance(mask_image, PIL.Image.Image):
                 raise ValueError(
@@ -752,7 +752,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     f" {type(mask_image)}."
                 )
             if output_type != "pil":
-                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is {output_type}.")
 
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
@@ -1645,7 +1645,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
                     f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
                     f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    f" = {num_channels_latents + num_channels_masked_image + num_channels_mask}. Please verify the config of"
                     " `pipeline.unet` or your `mask_image` or `image` input."
                 )
         elif num_channels_unet != 4:
@@ -1837,7 +1837,6 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
                     control_image = callback_outputs.pop("control_image", control_image)
-
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

@@ -252,13 +252,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         "feature_extractor",
         "image_encoder",
     ]
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "add_text_embeds",
-        "add_time_ids",
-        "control_image"
-    ]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "add_text_embeds", "add_time_ids", "control_image"]
 
     def __init__(
         self,
