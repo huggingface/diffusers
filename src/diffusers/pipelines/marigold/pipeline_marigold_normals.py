@@ -306,6 +306,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         return num_images
 
+    @torch.compiler.disable
     def progress_bar(self, iterable=None, total=None, desc=None, leave=True):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}
