@@ -12,7 +12,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Marigold Pipelines for Computer Vision Tasks
+# Marigold Computer Vision
 
 ![marigold](https://marigoldmonodepth.github.io/images/teaser_collage_compressed.jpg)
 
