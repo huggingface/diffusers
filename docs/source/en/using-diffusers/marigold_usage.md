@@ -80,8 +80,7 @@ depth_16bit = pipe.image_processor.export_depth_to_16bit_png(depth.prediction)
 depth_16bit[0].save("einstein_depth_16bit.png")
 ```
 
-The visualization function for depth 
-[`~pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_depth`] applies one of 
+The [`~pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_depth`] function applies one of 
 [matplotlib's colormaps](https://matplotlib.org/stable/users/explain/colors/colormaps.html) (`Spectral` by default) to map the predicted pixel values from a single-channel `[0, 1]` 
 depth range into an RGB image.
 With the `Spectral` colormap, pixels with near depth are painted red, and far pixels are assigned blue color.
