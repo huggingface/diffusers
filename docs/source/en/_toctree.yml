@@ -543,6 +543,10 @@
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
+    - local: api/schedulers/ddim_cogvideox
+      title: CogVideoXDDIMScheduler
+    - local: api/schedulers/multistep_dpm_solver_cogvideox
+      title: CogVideoXDPMScheduler
     - local: api/schedulers/consistency_decoder
       title: ConsistencyDecoderScheduler
     - local: api/schedulers/cosine_dpm
@@ -551,8 +555,6 @@
       title: DDIMInverseScheduler
     - local: api/schedulers/ddim
       title: DDIMScheduler
-    - local: api/schedulers/ddim_cogvideox
-      title: CogVideoXDDIMScheduler
     - local: api/schedulers/ddpm
       title: DDPMScheduler
     - local: api/schedulers/deis
@@ -565,8 +567,6 @@
       title: DPMSolverSDEScheduler
     - local: api/schedulers/singlestep_dpm_solver
       title: DPMSolverSinglestepScheduler
-    - local: api/schedulers/multistep_dpm_solver_cogvideox
-      title: CogVideoXDPMScheduler
     - local: api/schedulers/edm_multistep_dpm_solver
       title: EDMDPMSolverMultistepScheduler
     - local: api/schedulers/edm_euler

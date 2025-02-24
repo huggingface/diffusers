@@ -21,10 +21,11 @@ from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
-from ..pipelines.pipeline_loading_utils import _get_detailed_type, _is_valid_type
 from ..utils import (
     USE_PEFT_BACKEND,
+    _get_detailed_type,
     _get_model_file,
+    _is_valid_type,
     is_accelerate_available,
     is_torch_version,
     is_transformers_available,
