@@ -73,9 +73,6 @@ from .model_loading_utils import (
 )
 
 
-print("test")
-
-
 class ContextManagers:
     """
     Wrapper for `contextlib.ExitStack` which enters a collection of context managers. Adaptation of `ContextManagers`
@@ -95,7 +92,7 @@ class ContextManagers:
 
 
 logger = logging.get_logger(__name__)
-
+logger.debug("testing")
 _REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
 
 TORCH_INIT_FUNCTIONS = {
