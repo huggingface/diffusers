@@ -196,6 +196,11 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         output_type: str,
         output_uncertainty: bool,
     ) -> int:
+        actual_vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        if actual_vae_scale_factor != self.vae_scale_factor:
+            raise ValueError(
+                f"`vae_scale_factor` computed at initialization ({self.vae_scale_factor}) differs from the actual one ({actual_vae_scale_factor})."
+            )
         if num_inference_steps is None:
             raise ValueError("`num_inference_steps` is not specified and could not be resolved from the model config.")
         if num_inference_steps < 1:

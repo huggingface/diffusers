@@ -196,7 +196,6 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
         self.target_properties = target_properties
-        self.n_targets = self.unet.config.out_channels // self.vae.config.latent_channels
         self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
 
@@ -219,6 +218,11 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         output_type: str,
         output_uncertainty: bool,
     ) -> int:
+        actual_vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        if actual_vae_scale_factor != self.vae_scale_factor:
+            raise ValueError(
+                f"`vae_scale_factor` computed at initialization ({self.vae_scale_factor}) differs from the actual one ({actual_vae_scale_factor})."
+            )
         if num_inference_steps is None:
             raise ValueError("`num_inference_steps` is not specified and could not be resolved from the model config.")
         if num_inference_steps < 1:
@@ -310,7 +314,7 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
                 W, H = new_W, new_H
             w = (W + self.vae_scale_factor - 1) // self.vae_scale_factor
             h = (H + self.vae_scale_factor - 1) // self.vae_scale_factor
-            shape_expected = (num_images * ensemble_size, self.n_targets * self.vae.config.latent_channels, h, w)
+            shape_expected = (num_images * ensemble_size, self.unet.config.out_channels, h, w)
 
             if latents.shape != shape_expected:
                 raise ValueError(f"`latents` has unexpected shape={latents.shape} expected={shape_expected}.")
@@ -546,8 +550,9 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         # 6. Decode predictions from latent into pixel space. The resulting `N * E` predictions have shape `(PPH, PPW)`,
         # which requires slight postprocessing. Decoding into pixel space happens in batches of size `batch_size`.
         # Model invocation: self.vae.decoder.
+        n_targets = self.unet.config.out_channels // self.vae.config.latent_channels
         pred_latent_for_decoding = pred_latent.reshape(
-            num_images * ensemble_size * self.n_targets, self.vae.config.latent_channels, *pred_latent.shape[2:]
+            num_images * ensemble_size * n_targets, self.vae.config.latent_channels, *pred_latent.shape[2:]
         )  # [N*E*T,4,PPH,PPW]
         prediction = torch.cat(
             [
@@ -572,7 +577,7 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         uncertainty = None
         if ensemble_size > 1:
             prediction = prediction.reshape(
-                num_images, ensemble_size, self.n_targets, *prediction.shape[1:]
+                num_images, ensemble_size, n_targets, *prediction.shape[1:]
             )  # [N,E,T,3,PH,PW]
             prediction = [
                 self.ensemble_intrinsics(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
@@ -645,8 +650,9 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
 
         pred_latent = latents
         if pred_latent is None:
+            n_targets = self.unet.config.out_channels // self.vae.config.latent_channels
             pred_latent = randn_tensor(
-                (N_E, self.n_targets * C, H, W),
+                (N_E, n_targets * C, H, W),
                 generator=generator,
                 device=image_latent.device,
                 dtype=image_latent.dtype,
