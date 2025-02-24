@@ -49,7 +49,7 @@ processing capability.
 
 The early Marigold models (`v1-0` and earlier) were optimized for best results with at least 10 inference steps.
 LCM models were later developed to enable high-quality inference in just 1 to 4 steps.
-These models were eventually superseded by `v1-1` and later versions, which use the DDIM scheduler and achieve optimal 
+Marigold models `v1-1` and later use the DDIM scheduler to achieve optimal 
 results in as few as 1 to 4 steps.
 
 </Tip>
