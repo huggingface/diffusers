@@ -171,7 +171,7 @@ jobs:
       run: |
         pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and \"$pattern\"" \
+          -s -v -k "not Flax and not Onnx and $pattern" \
           --make-reports=tests_torch_cuda_${{ matrix.module }} \
           tests/${{ matrix.module }}
 
