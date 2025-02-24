@@ -96,7 +96,8 @@ jobs:
         id: extract_tests
         run: |
           pattern=$(python utils/extract_tests_from_mixin.py --type pipeline)
-          echo "TEST_PATTERN=${pattern}" >> $GITHUB_OUTPUT
+          echo "$pattern" > /tmp/test_pattern.txt
+          echo "pattern_file=/tmp/test_pattern.txt" >> $GITHUB_OUTPUT
 
       - name: PyTorch CUDA checkpoint tests on Ubuntu
         env:
@@ -104,8 +105,9 @@ jobs:
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
+          pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -s -v -k "not Flax and not Onnx ${{ steps.extract_tests.outputs.TEST_PATTERN }}" \
+            -s -v -k "not Flax and not Onnx \"$pattern\"" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
             tests/pipelines/${{ matrix.module }}
 
@@ -158,7 +160,8 @@ jobs:
       id: extract_tests
       run: |
         pattern=$(python utils/extract_tests_from_mixin.py --type ${{ matrix.module }})
-        echo "TEST_PATTERN=${pattern}" >> $GITHUB_OUTPUT
+        echo "$pattern" > /tmp/test_pattern.txt
+        echo "pattern_file=/tmp/test_pattern.txt" >> $GITHUB_OUTPUT
 
     - name: Run PyTorch CUDA tests
       env:
@@ -166,8 +169,9 @@ jobs:
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
+        pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and ${{ steps.extract_tests.outputs.TEST_PATTERN }}" \
+          -s -v -k "not Flax and not Onnx and \"$pattern\"" \
           --make-reports=tests_torch_cuda_${{ matrix.module }} \
           tests/${{ matrix.module }}
 
