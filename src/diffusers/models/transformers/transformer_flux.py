@@ -31,7 +31,7 @@ from ...models.attention_processor import (
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.import_utils import is_torch_npu_available
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..cache_utils import CacheMixin
@@ -54,9 +54,15 @@ class FluxSingleTransformerBlock(nn.Module):
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
         if is_torch_npu_available():
+            deprecation_message = (
+                "Defaulting to FluxAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
+                "should be set explicitly using the `set_attn_processor` method."
+            )
+            deprecate("npu_processor", "0.34.0", deprecation_message)
             processor = FluxAttnProcessor2_0_NPU()
         else:
             processor = FluxAttnProcessor2_0()
+
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
