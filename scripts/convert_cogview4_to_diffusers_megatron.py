@@ -311,6 +311,7 @@ def main(args):
             "norm_num_groups": 32,
             "sample_size": 1024,
             "scaling_factor": 1.0,
+            "shift_factor": 0.0,
             "force_upcast": True,
             "use_quant_conv": False,
             "use_post_quant_conv": False,
