@@ -85,8 +85,8 @@ The [`~pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visua
 depth range into an RGB image.
 With the `Spectral` colormap, pixels with near depth are painted red, and far pixels are blue.
 The 16-bit PNG file stores the single channel values mapped linearly from the `[0, 1]` range into `[0, 65535]`.
-Below are the raw and the visualized predictions; as can be seen, dark areas (mustache) are easier to distinguish in 
-the visualization:
+Below are the raw and the visualized predictions. The darker and closer areas (mustache) are easier to distinguish in 
+the visualization.
 
 <div class="flex gap-4">
   <div style="flex: 1 1 50%; max-width: 50%;">
