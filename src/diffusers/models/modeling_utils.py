@@ -92,7 +92,7 @@ class ContextManagers:
 
 
 logger = logging.get_logger(__name__)
-logger.debug("testing")
+
 _REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
 
 TORCH_INIT_FUNCTIONS = {
