@@ -74,6 +74,10 @@ def _maybe_adjust_config(config):
         key_rank = rank_pattern[key]
 
         # try to detect ambiguity
+        # `target_modules` can also be a str, in which case this loop would loop
+        # over the chars of the str. The technically correct way to match LoRA keys
+        # in PEFT is to use LoraModel._check_target_module_exists (lora_config, key).
+        # But this cuts it for now.
         exact_matches = [mod for mod in target_modules if mod == key]
         substring_matches = [mod for mod in target_modules if key in mod and mod != key]
         ambiguous_key = key
