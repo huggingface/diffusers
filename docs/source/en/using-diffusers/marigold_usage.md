@@ -124,8 +124,7 @@ vis = pipe.image_processor.visualize_normals(normals.prediction)
 vis[0].save("einstein_normals.png")
 ```
 
-The visualization function for normals 
-[`~pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_normals`] maps the three-dimensional 
+The [`~pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_normals`] maps the three-dimensional 
 prediction with pixel values in the range `[-1, 1]` into an RGB image.
 The visualization function supports flipping surface normals axes to make the visualization compatible with other 
 choices of the frame of reference.
