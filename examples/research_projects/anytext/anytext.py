@@ -34,7 +34,6 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
-from easydict import EasyDict as edict
 from huggingface_hub import hf_hub_download
 from ocr_recog.RecModel import RecModel
 from PIL import Image, ImageDraw, ImageFont
@@ -58,6 +57,8 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusio
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.configuration_utils import register_to_config, ConfigMixin
+from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import (
     USE_PEFT_BACKEND,
     deprecate,
@@ -203,18 +204,18 @@ def get_recog_emb(encoder, img_list):
     return preds_neck
 
 
-class EmbeddingManager(nn.Module):
+class EmbeddingManager(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
         embedder,
         placeholder_string="*",
         use_fp16=False,
+        token_dim = 768,
+        get_recog_emb = None,
     ):
         super().__init__()
         get_token_for_string = partial(get_clip_token_for_string, embedder.tokenizer)
-        token_dim = 768
-        self.get_recog_emb = None
-        self.token_dim = token_dim
 
         self.proj = nn.Linear(40 * 64, token_dim)
         proj_dir = hf_hub_download(
@@ -226,12 +227,14 @@ class EmbeddingManager(nn.Module):
         if use_fp16:
             self.proj = self.proj.to(dtype=torch.float16)
 
+        # self.register_parameter("proj", proj)
         self.placeholder_token = get_token_for_string(placeholder_string)
+        # self.register_config(placeholder_token=placeholder_token)
 
     @torch.no_grad()
     def encode_text(self, text_info):
-        if self.get_recog_emb is None:
-            self.get_recog_emb = partial(get_recog_emb, self.recog)
+        if self.config.get_recog_emb is None:
+            self.config.get_recog_emb = partial(get_recog_emb, self.recog)
 
         gline_list = []
         for i in range(len(text_info["n_lines"])):  # sample index in a batch
@@ -240,7 +243,7 @@ class EmbeddingManager(nn.Module):
                 gline_list += [text_info["gly_line"][j][i : i + 1]]
 
         if len(gline_list) > 0:
-            recog_emb = self.get_recog_emb(gline_list)
+            recog_emb = self.config.get_recog_emb(gline_list)
             enc_glyph = self.proj(recog_emb.reshape(recog_emb.shape[0], -1).to(self.proj.weight.dtype))
 
         self.text_embs_all = []
@@ -332,13 +335,12 @@ def crop_image(src_img, mask):
     return result
 
 
-def create_predictor(model_dir=None, model_lang="ch", device="cpu", use_fp16=False):
-    if model_dir is None or not os.path.exists(model_dir):
-        model_dir = hf_hub_download(
-            repo_id="tolgacangoz/anytext",
-            filename="text_embedding_module/OCR/ppv3_rec.pth",
-            cache_dir=HF_MODULES_CACHE,
-        )
+def create_predictor(model_lang="ch", device="cpu", use_fp16=False):
+    model_dir = hf_hub_download(
+        repo_id="tolgacangoz/anytext",
+        filename="text_embedding_module/OCR/ppv3_rec.pth",
+        cache_dir=HF_MODULES_CACHE,
+    )
     if not os.path.exists(model_dir):
         raise ValueError("not find model file path {}".format(model_dir))
 
@@ -533,24 +535,24 @@ class AbstractEncoder(nn.Module):
         raise NotImplementedError
 
 
-class FrozenCLIPEmbedderT3(AbstractEncoder):
+class FrozenCLIPEmbedderT3(AbstractEncoder, ModelMixin, ConfigMixin):
     """Uses the CLIP transformer encoder for text (from Hugging Face)"""
-
+    @register_to_config
     def __init__(
         self,
-        version="openai/clip-vit-large-patch14",
         device="cpu",
         max_length=77,
         freeze=True,
         use_fp16=False,
+        variant: Optional[str] = None,
     ):
         super().__init__()
-        self.tokenizer = CLIPTokenizer.from_pretrained(version)
-        self.transformer = CLIPTextModel.from_pretrained(
-            version, use_safetensors=True, torch_dtype=torch.float16 if use_fp16 else torch.float32
-        ).to(device)
-        self.device = device
-        self.max_length = max_length
+        self.tokenizer = CLIPTokenizer.from_pretrained("tolgacangoz/anytext", subfolder="tokenizer")
+        self.transformer = CLIPTextModel.from_pretrained("tolgacangoz/anytext", subfolder="text_encoder",
+                                                        torch_dtype=torch.float16 if use_fp16 else torch.float32,
+                                                        variant="fp16" if use_fp16 else None)
+        # self.device = device
+        # self.max_length = max_length
         if freeze:
             self.freeze()
 
@@ -686,7 +688,7 @@ class FrozenCLIPEmbedderT3(AbstractEncoder):
         batch_encoding = self.tokenizer(
             text,
             truncation=False,
-            max_length=self.max_length,
+            max_length=self.config.max_length,
             return_length=True,
             return_overflowing_tokens=False,
             padding="longest",
@@ -729,33 +731,38 @@ class FrozenCLIPEmbedderT3(AbstractEncoder):
             tokens_list.append(remaining_group_pad)
         return tokens_list
 
-    def to(self, *args, **kwargs):
-        self.transformer = self.transformer.to(*args, **kwargs)
-        self.device = self.transformer.device
-        return self
+    # def to(self, *args, **kwargs):
+    #     self.transformer = self.transformer.to(*args, **kwargs)
+    #     self.device = self.transformer.device
+    #     return self
 
 
-class TextEmbeddingModule(nn.Module):
+class TextEmbeddingModule(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(self, font_path, use_fp16=False, device="cpu"):
         super().__init__()
-        self.font = ImageFont.truetype(font_path, 60)
-        self.use_fp16 = use_fp16
-        self.device = device
+        font = ImageFont.truetype(font_path, 60)
+
+        # self.use_fp16 = use_fp16
+        # self.device = device
         self.frozen_CLIP_embedder_t3 = FrozenCLIPEmbedderT3(device=device, use_fp16=use_fp16)
         self.embedding_manager = EmbeddingManager(self.frozen_CLIP_embedder_t3, use_fp16=use_fp16)
-        rec_model_dir = "./text_embedding_module/OCR/ppv3_rec.pth"
-        self.text_predictor = create_predictor(rec_model_dir, device=device, use_fp16=use_fp16).eval()
-        args = {}
-        args["rec_image_shape"] = "3, 48, 320"
-        args["rec_batch_num"] = 6
-        args["rec_char_dict_path"] = "./text_embedding_module/OCR/ppocr_keys_v1.txt"
-        args["rec_char_dict_path"] = hf_hub_download(
-            repo_id="tolgacangoz/anytext",
-            filename="text_embedding_module/OCR/ppocr_keys_v1.txt",
-            cache_dir=HF_MODULES_CACHE,
-        )
-        args["use_fp16"] = use_fp16
+        self.text_predictor = create_predictor(device=device, use_fp16=use_fp16).eval()
+        args = {"rec_image_shape": "3, 48, 320",
+                "rec_batch_num": 6,
+                "rec_char_dict_path": hf_hub_download(
+                    repo_id="tolgacangoz/anytext",
+                    filename="text_embedding_module/OCR/ppocr_keys_v1.txt",
+                    cache_dir=HF_MODULES_CACHE,
+                ),
+                "use_fp16": use_fp16}
         self.embedding_manager.recog = TextRecognizer(args, self.text_predictor)
+
+        # self.register_modules(
+        #     frozen_CLIP_embedder_t3=frozen_CLIP_embedder_t3,
+        #     embedding_manager=embedding_manager,
+        # )
+        self.register_to_config(font=font)
 
     @torch.no_grad()
     def forward(
@@ -837,9 +844,9 @@ class TextEmbeddingModule(nn.Module):
                 text = text[:max_chars]
             gly_scale = 2
             if pre_pos[i].mean() != 0:
-                gly_line = self.draw_glyph(self.font, text)
+                gly_line = self.draw_glyph(self.config.font, text)
                 glyphs = self.draw_glyph2(
-                    self.font, text, poly_list[i], scale=gly_scale, width=w, height=h, add_space=False
+                    self.config.font, text, poly_list[i], scale=gly_scale, width=w, height=h, add_space=False
                 )
                 if revise_pos:
                     resize_gly = cv2.resize(glyphs, (pre_pos[i].shape[1], pre_pos[i].shape[0]))
@@ -881,7 +888,7 @@ class TextEmbeddingModule(nn.Module):
     def arr2tensor(self, arr, bs):
         arr = np.transpose(arr, (2, 0, 1))
         _arr = torch.from_numpy(arr.copy()).float().cpu()
-        if self.use_fp16:
+        if self.config.use_fp16:
             _arr = _arr.half()
         _arr = torch.stack([_arr for _ in range(bs)], dim=0)
         return _arr
@@ -1021,12 +1028,10 @@ class TextEmbeddingModule(nn.Module):
             new_string += char + " " * nSpace
         return new_string[:-nSpace]
 
-    def to(self, *args, **kwargs):
-        self.frozen_CLIP_embedder_t3 = self.frozen_CLIP_embedder_t3.to(*args, **kwargs)
-        self.embedding_manager = self.embedding_manager.to(*args, **kwargs)
-        self.text_predictor = self.text_predictor.to(*args, **kwargs)
-        self.device = self.frozen_CLIP_embedder_t3.device
-        return self
+    # def to(self, *args, **kwargs):
+    #     self.frozen_CLIP_embedder_t3 = self.frozen_CLIP_embedder_t3.to(*args, **kwargs)
+    #     self.embedding_manager = self.embedding_manager.to(*args, **kwargs)
+    #     return self
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -1043,20 +1048,17 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class AuxiliaryLatentModule(nn.Module):
+class AuxiliaryLatentModule(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
-        font_path,
-        vae=None,
+        # font_path,
+        vae,
         device="cpu",
-        use_fp16=False,
     ):
         super().__init__()
-        self.font = ImageFont.truetype(font_path, 60)
-        self.use_fp16 = use_fp16
-        self.device = device
-
-        self.vae = vae.eval() if vae is not None else None
+        # self.font = ImageFont.truetype(font_path, 60)
+        # self.vae = vae.eval() if vae is not None else None
 
     @torch.no_grad()
     def forward(
@@ -1093,12 +1095,13 @@ class AuxiliaryLatentModule(nn.Module):
         # get masked_x
         masked_img = ((edit_image.astype(np.float32) / 127.5) - 1.0) * (1 - np_hint)
         masked_img = np.transpose(masked_img, (2, 0, 1))
-        device = next(self.vae.parameters()).device
+        device = next(self.config.vae.parameters()).device
+        dtype = next(self.config.vae.parameters()).dtype
         masked_img = torch.from_numpy(masked_img.copy()).float().to(device)
-        if self.use_fp16:
+        if dtype == torch.float16:
             masked_img = masked_img.half()
-        masked_x = (retrieve_latents(self.vae.encode(masked_img[None, ...])) * self.vae.config.scaling_factor).detach()
-        if self.use_fp16:
+        masked_x = (retrieve_latents(self.config.vae.encode(masked_img[None, ...])) * self.config.vae.config.scaling_factor).detach()
+        if dtype == torch.float16:
             masked_x = masked_x.half()
         text_info["masked_x"] = torch.cat([masked_x for _ in range(num_images_per_prompt)], dim=0)
 
@@ -1137,10 +1140,10 @@ class AuxiliaryLatentModule(nn.Module):
             new_string += char + " " * nSpace
         return new_string[:-nSpace]
 
-    def to(self, *args, **kwargs):
-        self.vae = self.vae.to(*args, **kwargs)
-        self.device = self.vae.device
-        return self
+    # def to(self, *args, **kwargs):
+    #     self.vae = self.vae.to(*args, **kwargs)
+    #     self.device = self.vae.device
+    #     return self
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -1255,7 +1258,6 @@ class AnyTextPipeline(
 
     def __init__(
         self,
-        font_path: str,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -1264,18 +1266,25 @@ class AnyTextPipeline(
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        font_path: str = None,
+        text_embedding_module: Optional[TextEmbeddingModule] = None,
+        auxiliary_latent_module: Optional[AuxiliaryLatentModule] = None,
         trust_remote_code: bool = False,
-        text_embedding_module: TextEmbeddingModule = None,
-        auxiliary_latent_module: AuxiliaryLatentModule = None,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        self.text_embedding_module = TextEmbeddingModule(
-            use_fp16=unet.dtype == torch.float16, device=unet.device, font_path=font_path
+        if font_path is None:
+            raise ValueError("font_path is required!")
+
+        text_embedding_module = TextEmbeddingModule(
+            font_path=font_path,
+            use_fp16=unet.dtype == torch.float16,
         )
-        self.auxiliary_latent_module = AuxiliaryLatentModule(
-            vae=vae, use_fp16=unet.dtype == torch.float16, device=unet.device, font_path=font_path
+        auxiliary_latent_module = AuxiliaryLatentModule(
+            # font_path=font_path,
+            vae=vae,
+            # use_fp16=unet.dtype == torch.float16,
         )
 
         if safety_checker is None and requires_safety_checker:
@@ -1307,15 +1316,15 @@ class AnyTextPipeline(
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
-            text_embedding_module=self.text_embedding_module,
-            auxiliary_latent_module=self.auxiliary_latent_module,
+            text_embedding_module=text_embedding_module,
+            auxiliary_latent_module=auxiliary_latent_module,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
-        self.register_to_config(requires_safety_checker=requires_safety_checker, font_path=font_path)
+        self.register_to_config(requires_safety_checker=requires_safety_checker)#, font_path=font_path)
 
     def modify_prompt(self, prompt):
         prompt = prompt.replace("“", '"')
@@ -2331,7 +2340,7 @@ class AnyTextPipeline(
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    control_model_input,
+                    control_model_input.to(self.controlnet.dtype),
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=guided_hint,
