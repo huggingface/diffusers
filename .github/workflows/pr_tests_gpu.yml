@@ -170,9 +170,9 @@ jobs:
       run: |
         pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
         if [ -z "$pattern" ]; then
-          python -m pytest -n 1 -sv --make-reports=tests_torch_cuda_${{ matrix.module }}_stats --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx" tests/${{ matrix.module }}
+          python -m pytest -n 1 -sv --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx" tests/${{ matrix.module }}
         else
-          python -m pytest -n 1 -sv --make-reports=tests_torch_cuda_${{ matrix.module }}_stats --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx $pattern" tests/${{ matrix.module }}
+          python -m pytest -n 1 -sv --max-worker-restart=0 --dist=loadfile -k "not Flax and not Onnx $pattern" tests/${{ matrix.module }}
         fi
 
     - name: Failure short reports
