@@ -58,7 +58,7 @@ This makes it easier to compare visualizations of the predictions across various
 
 ## Depth Prediction
 
-To get the first depth prediction, load `prs-eth/marigold-depth-v1-1` checkpoint into `MarigoldDepthPipeline` pipeline, 
+To get a depth prediction, load the `prs-eth/marigold-depth-v1-1` checkpoint into [`MarigoldDepthPipeline`], 
 put the image through the pipeline, and save the predictions:
 
 ```python
