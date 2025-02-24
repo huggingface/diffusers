@@ -73,8 +73,7 @@ class EasyAnimateAttnProcessor2_0:
     used in the EasyAnimateTransformer3DModel model.
     """
 
-    def __init__(self, attn2=None):
-        self.attn2 = attn2
+    def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
                 "EasyAnimateAttnProcessor2_0 requires PyTorch 2.0 or above. To use it, please install PyTorch 2.0."
@@ -84,11 +83,11 @@ class EasyAnimateAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if self.attn2 is None and encoder_hidden_states is not None:
+        if attn.add_q_proj is None and encoder_hidden_states is not None:
             hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         # 1. QKV projections
@@ -107,19 +106,19 @@ class EasyAnimateAttnProcessor2_0:
             key = attn.norm_k(key)
 
         # 3. Encoder condition QKV projection and normalization
-        if self.attn2.to_q is not None and encoder_hidden_states is not None:
-            encoder_query = self.attn2.to_q(encoder_hidden_states)
-            encoder_key = self.attn2.to_k(encoder_hidden_states)
-            encoder_value = self.attn2.to_v(encoder_hidden_states)
+        if attn.add_q_proj is not None and encoder_hidden_states is not None:
+            encoder_query = attn.add_q_proj(encoder_hidden_states)
+            encoder_key = attn.add_k_proj(encoder_hidden_states)
+            encoder_value = attn.add_v_proj(encoder_hidden_states)
 
             encoder_query = encoder_query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
             encoder_key = encoder_key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
             encoder_value = encoder_value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
-            if self.attn2.norm_q is not None:
-                encoder_query = self.attn2.norm_q(encoder_query)
-            if self.attn2.norm_k is not None:
-                encoder_key = self.attn2.norm_k(encoder_key)
+            if attn.norm_added_q is not None:
+                encoder_query = attn.norm_added_q(encoder_query)
+            if attn.norm_added_k is not None:
+                encoder_key = attn.norm_added_k(encoder_key)
 
             query = torch.cat([encoder_query, query], dim=2)
             key = torch.cat([encoder_key, key], dim=2)
@@ -154,9 +153,8 @@ class EasyAnimateAttnProcessor2_0:
                 hidden_states = attn.to_out[0](hidden_states)
                 hidden_states = attn.to_out[1](hidden_states)
 
-            if self.attn2 is not None and getattr(self.attn2, "to_out", None) is not None:
-                encoder_hidden_states = self.attn2.to_out[0](encoder_hidden_states)
-                encoder_hidden_states = self.attn2.to_out[1](encoder_hidden_states)
+            if getattr(attn, "to_add_out", None) is not None:
+                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
         else:
             if getattr(attn, "to_out", None) is not None:
                 hidden_states = attn.to_out[0](hidden_states)
@@ -192,19 +190,6 @@ class EasyAnimateTransformerBlock(nn.Module):
             time_embed_dim, dim, norm_elementwise_affine, norm_eps, norm_type=norm_type, bias=True
         )
 
-        if is_mmdit_block:
-            self.attn2 = Attention(
-                query_dim=dim,
-                dim_head=attention_head_dim,
-                heads=num_attention_heads,
-                qk_norm="layer_norm" if qk_norm else None,
-                eps=1e-6,
-                bias=True,
-                processor=EasyAnimateAttnProcessor2_0(),
-            )
-        else:
-            self.attn2 = None
-
         self.attn1 = Attention(
             query_dim=dim,
             dim_head=attention_head_dim,
@@ -212,7 +197,10 @@ class EasyAnimateTransformerBlock(nn.Module):
             qk_norm="layer_norm" if qk_norm else None,
             eps=1e-6,
             bias=True,
-            processor=EasyAnimateAttnProcessor2_0(self.attn2),
+            added_proj_bias=True,
+            added_kv_proj_dim=dim if is_mmdit_block else None,
+            context_pre_only=False if is_mmdit_block else None,
+            processor=EasyAnimateAttnProcessor2_0(),
         )
 
         # FFN Part
