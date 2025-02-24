@@ -170,10 +170,13 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and $pattern" \
-          --make-reports=tests_torch_cuda_${{ matrix.module }} \
-          tests/${{ matrix.module }}
+        if [ -z "$pattern" ]; then
+          # If pattern is empty, run without specific tests pattern
+          python -m pytest -n 1 -k "not Flax and not Onnx" tests/${{ matrix.module }}
+        else
+          # If pattern exists, use it
+          python -m pytest -n 1 -k "not Flax and not Onnx and \"$pattern\"" tests/${{ matrix.module }}
+        fi
 
     - name: Failure short reports
       if: ${{ failure() }}
