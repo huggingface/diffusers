@@ -348,11 +348,11 @@ def create_predictor(model_dir=None, model_lang="ch", device="cpu", use_fp16=Fal
         n_class = 97
     else:
         raise ValueError(f"Unsupported OCR recog model_lang: {model_lang}")
-    rec_config = edict(
+    rec_config = dict(
         in_channels=3,
-        backbone=edict(type="MobileNetV1Enhance", scale=0.5, last_conv_stride=[1, 2], last_pool_type="avg"),
-        neck=edict(type="SequenceEncoder", encoder_type="svtr", dims=64, depth=2, hidden_dims=120, use_guide=True),
-        head=edict(type="CTCHead", fc_decay=0.00001, out_channels=n_class, return_feats=True),
+        backbone=dict(type="MobileNetV1Enhance", scale=0.5, last_conv_stride=[1, 2], last_pool_type="avg"),
+        neck=dict(type="SequenceEncoder", encoder_type="svtr", dims=64, depth=2, hidden_dims=120, use_guide=True),
+        head=dict(type="CTCHead", fc_decay=0.00001, out_channels=n_class, return_feats=True),
     )
 
     rec_model = RecModel(rec_config)
