@@ -105,7 +105,7 @@ the visualization.
 
 ## Surface Normals Estimation
 
-Load `prs-eth/marigold-normals-v1-1` checkpoint into `MarigoldNormalsPipeline` pipeline, put the image through the 
+Load the `prs-eth/marigold-normals-v1-1` checkpoint into [`MarigoldNormalsPipeline`], put the image through the 
 pipeline, and save the predictions:
 
 ```python
