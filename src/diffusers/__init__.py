@@ -865,6 +865,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableCascadeCombinedPipeline,
             StableCascadeDecoderPipeline,
             StableCascadePriorPipeline,
+            StableDiffusion3ControlNetInpaintingPipeline,
             StableDiffusion3ControlNetPipeline,
             StableDiffusion3Img2ImgPipeline,
             StableDiffusion3InpaintPipeline,
