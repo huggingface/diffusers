@@ -4,9 +4,18 @@ import json
 from typing import List, Literal, Optional, Union, cast
 
 import requests
-import torch
+
+from .import_utils import is_safetensors_available, is_torch_available
+
+
+if is_torch_available():
+    import torch
+
 from PIL import Image
-from safetensors.torch import _tobytes
+
+
+if is_safetensors_available():
+    from safetensors.torch import _tobytes
 
 from ..image_processor import VaeImageProcessor
 from ..video_processor import VideoProcessor
