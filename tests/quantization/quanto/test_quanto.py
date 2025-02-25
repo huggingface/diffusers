@@ -197,6 +197,12 @@ class QuantoBaseTesterMixin:
         max_diff = numpy_cosine_similarity_distance(model_output.flatten(), compiled_model_output.flatten())
         assert max_diff < 1e-3
 
+    def test_device_map_error(self):
+        with self.assertRaises(ValueError):
+            model = self.model_cls.from_pretrained(
+                **self.get_dummy_model_init_kwargs(), device_map={0: "8GB", "cpu": "16GB"}
+            )
+
 
 class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
     model_id = "hf-internal-testing/tiny-flux-transformer"
