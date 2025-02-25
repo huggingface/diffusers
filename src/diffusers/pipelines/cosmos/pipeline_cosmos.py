@@ -191,15 +191,14 @@ class CosmosPipeline(DiffusionPipeline):
             padding="max_length",
             max_length=max_sequence_length,
             truncation=True,
-            add_special_tokens=True,
             return_tensors="pt",
+            return_length=True,
+            return_offsets_mapping=False,
         )
         text_input_ids = text_inputs.input_ids
-        prompt_attention_mask = text_inputs.attention_mask
-        prompt_attention_mask = prompt_attention_mask.bool().to(device)
+        prompt_attention_mask = text_inputs.attention_mask.bool().to(device)
 
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
             removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
             logger.warning(
@@ -207,18 +206,20 @@ class CosmosPipeline(DiffusionPipeline):
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device))[0]
+        prompt_embeds = self.text_encoder(
+            text_input_ids.to(device), attention_mask=prompt_attention_mask
+        ).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+
+        lengths = prompt_attention_mask.sum(dim=1).cpu()
+        for i, length in enumerate(lengths):
+            prompt_embeds[i, length:] = 0
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
-
-        prompt_attention_mask = prompt_attention_mask.view(batch_size, -1)
-        prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
-
-        return prompt_embeds, prompt_attention_mask
+        return prompt_embeds
 
     # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline.encode_prompt with 256->512
     def encode_prompt(
@@ -229,8 +230,6 @@ class CosmosPipeline(DiffusionPipeline):
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -270,7 +269,7 @@ class CosmosPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, prompt_attention_mask = self._get_t5_prompt_embeds(
+            prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -294,7 +293,7 @@ class CosmosPipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds, negative_prompt_attention_mask = self._get_t5_prompt_embeds(
+            negative_prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=negative_prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -302,7 +301,7 @@ class CosmosPipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
-        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+        return prompt_embeds, negative_prompt_embeds
 
     def prepare_latents(
         self,
@@ -402,9 +401,7 @@ class CosmosPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
@@ -448,13 +445,9 @@ class CosmosPipeline(DiffusionPipeline):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            prompt_attention_mask (`torch.Tensor`, *optional*):
-                Pre-generated attention mask for text embeddings.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
-            negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
-                Pre-generated attention mask for negative text embeddings.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -510,9 +503,7 @@ class CosmosPipeline(DiffusionPipeline):
         # 3. Encode input prompt
         (
             prompt_embeds,
-            prompt_attention_mask,
             negative_prompt_embeds,
-            negative_prompt_attention_mask,
         ) = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -520,15 +511,12 @@ class CosmosPipeline(DiffusionPipeline):
             num_videos_per_prompt=num_videos_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            prompt_attention_mask=prompt_attention_mask,
-            negative_prompt_attention_mask=negative_prompt_attention_mask,
             device=device,
             max_sequence_length=max_sequence_length,
         )
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device)
@@ -607,8 +595,17 @@ class CosmosPipeline(DiffusionPipeline):
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
-            video = self.vae.decode(latents, return_dict=False)[0]
+            latents_mean, latents_std = self.vae.config.latents_mean, self.vae.config.latents_std
+            latents_mean = torch.tensor(latents_mean).view(1, self.vae.config.latent_channels, -1, 1, 1)[
+                :, :, : latents.size(2)
+            ]
+            latents_std = torch.tensor(latents_std).view(1, self.vae.config.latent_channels, -1, 1, 1)[
+                :, :, : latents.size(2)
+            ]
+            latents = (
+                latents * self.vae.config.latent_std / self.scheduler.config.sigma_data + self.vae.config.latent_mean
+            )
+            video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents

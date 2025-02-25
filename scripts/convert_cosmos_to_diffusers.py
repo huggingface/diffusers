@@ -62,7 +62,9 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "pos_embedder.seq": remove_keys_,
 }
 
-VAE_KEYS_RENAME_DICT = {}
+VAE_KEYS_RENAME_DICT = {
+    "conv3d": "conv",
+}
 
 VAE_SPECIAL_KEYS_REMAP = {}
 
