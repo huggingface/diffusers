@@ -199,7 +199,7 @@ class QuantoBaseTesterMixin:
 
     def test_device_map_error(self):
         with self.assertRaises(ValueError):
-            model = self.model_cls.from_pretrained(
+            _ = self.model_cls.from_pretrained(
                 **self.get_dummy_model_init_kwargs(), device_map={0: "8GB", "cpu": "16GB"}
             )
 
