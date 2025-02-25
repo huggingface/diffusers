@@ -527,7 +527,9 @@ class FluxIPAdapterTesterMixin:
 
         The following scenarios are tested:
           - Single IP-Adapter with scale=0 should produce same output as no IP-Adapter.
+          - Multi IP-Adapter with scale=0 should produce same output as no IP-Adapter.
           - Single IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
+          - Multi IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
         """
         # Raising the tolerance for this test when it's run on a CPU because we
         # compare against static slices and that can be shaky (with a VVVV low probability).
@@ -545,6 +547,7 @@ class FluxIPAdapterTesterMixin:
         else:
             output_without_adapter = expected_pipe_slice
 
+        # 1. Single IP-Adapter test cases
         adapter_state_dict = create_flux_ip_adapter_state_dict(pipe.transformer)
         pipe.transformer._load_ip_adapter_weights(adapter_state_dict)
 
@@ -576,6 +579,44 @@ class FluxIPAdapterTesterMixin:
         )
         self.assertGreater(
             max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
+        )
+
+        # 2. Multi IP-Adapter test cases
+        adapter_state_dict_1 = create_flux_ip_adapter_state_dict(pipe.transformer)
+        adapter_state_dict_2 = create_flux_ip_adapter_state_dict(pipe.transformer)
+        pipe.transformer._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
+
+        # forward pass with multi ip adapter, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        inputs["negative_ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        pipe.set_ip_adapter_scale([0.0, 0.0])
+        output_without_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_without_multi_adapter_scale = output_without_multi_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        # forward pass with multi ip adapter, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        inputs["negative_ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        pipe.set_ip_adapter_scale([42.0, 42.0])
+        output_with_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_with_multi_adapter_scale = output_with_multi_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        max_diff_without_multi_adapter_scale = np.abs(
+            output_without_multi_adapter_scale - output_without_adapter
+        ).max()
+        max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
+        self.assertLess(
+            max_diff_without_multi_adapter_scale,
+            expected_max_diff,
+            "Output without multi-ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_multi_adapter_scale,
+            1e-2,
+            "Output with multi-ip-adapter scale must be different from normal inference",
         )
 
 
