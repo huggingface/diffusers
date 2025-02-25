@@ -24,7 +24,7 @@ from ...utils import get_logger
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution
+from .vae import DecoderOutput, IdentityDistribution
 
 
 logger = get_logger(__name__)
@@ -40,7 +40,7 @@ _WAVELETS = {
 # fmt: on
 
 
-class CosmosCausalConv3d(nn.Module):
+class CosmosCausalConv3d(nn.Conv3d):
     def __init__(
         self,
         in_channels: int = 1,
@@ -51,7 +51,6 @@ class CosmosCausalConv3d(nn.Module):
         padding: int = 1,
         pad_mode: str = "constant",
     ) -> None:
-        super().__init__()
         kernel_size = (kernel_size, kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
         dilation = (dilation, dilation, dilation) if isinstance(dilation, int) else dilation
         stride = (stride, stride, stride) if isinstance(stride, int) else stride
@@ -59,11 +58,7 @@ class CosmosCausalConv3d(nn.Module):
         _, height_kernel_size, width_kernel_size = kernel_size
         assert height_kernel_size % 2 == 1 and width_kernel_size % 2 == 1
 
-        self.pad_mode = pad_mode
-        self.temporal_pad = dilation[0] * (kernel_size[0] - 1) + (1 - stride[0])
-        self.spatial_pad = (padding, padding, padding, padding)
-
-        self.conv = nn.Conv3d(
+        super().__init__(
             in_channels,
             out_channels,
             kernel_size,
@@ -71,11 +66,15 @@ class CosmosCausalConv3d(nn.Module):
             dilation=dilation,
         )
 
+        self.pad_mode = pad_mode
+        self.temporal_pad = dilation[0] * (kernel_size[0] - 1) + (1 - stride[0])
+        self.spatial_pad = (padding, padding, padding, padding)
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states_prev = hidden_states[:, :, :1, ...].repeat(1, 1, self.temporal_pad, 1, 1)
         hidden_states = torch.cat([hidden_states_prev, hidden_states], dim=2)
         hidden_states = F.pad(hidden_states, (*self.spatial_pad, 0, 0), mode=self.pad_mode, value=0.0)
-        return self.conv(hidden_states)
+        return super().forward(hidden_states)
 
 
 class CosmosCausalGroupNorm(torch.nn.Module):
@@ -103,8 +102,6 @@ class CosmosCausalGroupNorm(torch.nn.Module):
 
 
 class CosmosPatcher3d(nn.Module):
-    """A 3D discrete wavelet transform for video data, expects 5D tensor, i.e. a batch of videos."""
-
     def __init__(self, patch_size: int = 1, patch_method: str = "haar") -> None:
         super().__init__()
 
@@ -113,7 +110,6 @@ class CosmosPatcher3d(nn.Module):
 
         self.register_buffer("wavelets", _WAVELETS[patch_method], persistent=False)
         self.register_buffer("_arange", torch.arange(_WAVELETS[patch_method].shape[0]), persistent=False)
-        self.register_buffer("patch_size_buffer", patch_size * torch.ones([1], dtype=torch.int32), persistent=False)
 
     def _dwt(self, hidden_states: torch.Tensor, mode: str = "reflect", rescale=False) -> torch.Tensor:
         dtype = hidden_states.dtype
@@ -150,7 +146,7 @@ class CosmosPatcher3d(nn.Module):
 
         hidden_states = torch.cat([xlll, xllh, xlhl, xlhh, xhll, xhlh, xhhl, xhhh], dim=1)
         if rescale:
-            hidden_states = hidden_states / (2 * torch.sqrt(torch.tensor(2.0)))
+            hidden_states = hidden_states / 8**0.5
         return hidden_states
 
     def _haar(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -174,35 +170,101 @@ class CosmosPatcher3d(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.patch_method == "haar":
             return self._haar(hidden_states)
-        elif self.patch_method == "arrange":
+        elif self.patch_method == "rearrange":
             return self._arrange(hidden_states)
         else:
             raise ValueError(f"Unsupported patch method: {self.patch_method}")
 
 
-class CosmosInputCausal3d(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int) -> None:
+class CosmosUnpatcher3d(nn.Module):
+    def __init__(self, patch_size: int = 1, patch_method: str = "haar"):
         super().__init__()
 
-        self.conv1 = CosmosCausalConv3d(in_channels, out_channels, kernel_size=(3, 1, 1), stride=1, padding=1)
-        self.conv2 = CosmosCausalConv3d(out_channels, out_channels, kernel_size=(1, 3, 3), stride=1, padding=0)
+        self.patch_size = patch_size
+        self.patch_method = patch_method
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.conv1(hidden_states)
-        hidden_states = self.conv2(hidden_states)
+        self.register_buffer("wavelets", _WAVELETS[patch_method], persistent=False)
+        self.register_buffer(
+            "_arange",
+            torch.arange(_WAVELETS[patch_method].shape[0]),
+            persistent=False,
+        )
+
+    def _idwt(self, hidden_states: torch.Tensor, rescale: bool = False) -> torch.Tensor:
+        dtype = hidden_states.dtype
+        h = self.wavelets
+
+        g = hidden_states.shape[1] // 8  # split into 8 spatio-temporal filtered tesnors.
+        hl = h.flip([0]).reshape(1, 1, -1).repeat([g, 1, 1])
+        hh = (h * ((-1) ** self._arange)).reshape(1, 1, -1).repeat(g, 1, 1)
+        hl = hl.to(dtype=dtype)
+        hh = hh.to(dtype=dtype)
+
+        xlll, xllh, xlhl, xlhh, xhll, xhlh, xhhl, xhhh = torch.chunk(hidden_states, 8, dim=1)
+
+        # Handle height transposed convolutions
+        xll = F.conv_transpose3d(xlll, hl.unsqueeze(2).unsqueeze(3), groups=g, stride=(1, 1, 2))
+        xll = F.conv_transpose3d(xllh, hh.unsqueeze(2).unsqueeze(3), groups=g, stride=(1, 1, 2)) + xll
+
+        xlh = F.conv_transpose3d(xlhl, hl.unsqueeze(2).unsqueeze(3), groups=g, stride=(1, 1, 2))
+        xlh = F.conv_transpose3d(xlhh, hh.unsqueeze(2).unsqueeze(3), groups=g, stride=(1, 1, 2)) + xlh
+
+        xhl = F.conv_transpose3d(xhll, hl.unsqueeze(2).unsqueeze(3), groups=g, stride=(1, 1, 2))
+        xhl = F.conv_transpose3d(xhlh, hh.unsqueeze(2).unsqueeze(3), groups=g, stride=(1, 1, 2)) + xhl
+
+        xhh = F.conv_transpose3d(xhhl, hl.unsqueeze(2).unsqueeze(3), groups=g, stride=(1, 1, 2))
+        xhh = F.conv_transpose3d(xhhh, hh.unsqueeze(2).unsqueeze(3), groups=g, stride=(1, 1, 2)) + xhh
+
+        # Handles width transposed convolutions
+        xl = F.conv_transpose3d(xll, hl.unsqueeze(2).unsqueeze(4), groups=g, stride=(1, 2, 1))
+        xl = F.conv_transpose3d(xlh, hh.unsqueeze(2).unsqueeze(4), groups=g, stride=(1, 2, 1)) + xl
+        xh = F.conv_transpose3d(xhl, hl.unsqueeze(2).unsqueeze(4), groups=g, stride=(1, 2, 1))
+        xh = F.conv_transpose3d(xhh, hh.unsqueeze(2).unsqueeze(4), groups=g, stride=(1, 2, 1)) + xh
+
+        # Handles time axis transposed convolutions
+        hidden_states = F.conv_transpose3d(xl, hl.unsqueeze(3).unsqueeze(4), groups=g, stride=(2, 1, 1))
+        hidden_states = (
+            F.conv_transpose3d(xh, hh.unsqueeze(3).unsqueeze(4), groups=g, stride=(2, 1, 1)) + hidden_states
+        )
+
+        if rescale:
+            hidden_states = hidden_states * 8**0.5
+
         return hidden_states
 
+    def _ihaar(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        for _ in range(int(math.log2(self.patch_size))):
+            hidden_states = self._idwt(hidden_states, rescale=True)
+        hidden_states = hidden_states[:, :, self.patch_size - 1 :, ...]
+        return hidden_states
 
-class CosmosOutputCausal3d(nn.Module):
+    def _irearrange(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        p = self.patch_size
+        hidden_states = hidden_states.unflatten(1, (-1, p, p, p))
+        hidden_states = hidden_states.permute(0, 1, 5, 2, 6, 3, 7, 4)
+        hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        hidden_states = hidden_states[:, :, p - 1 :, ...]
+        return hidden_states
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.patch_method == "haar":
+            return self._ihaar(hidden_states)
+        elif self.patch_method == "rearrange":
+            return self._irearrange(hidden_states)
+        else:
+            raise ValueError("Unknown patch method: " + self.patch_method)
+
+
+class CosmosConvProj3d(nn.Module):
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
 
-        self.conv1 = CosmosCausalConv3d(in_channels, out_channels, kernel_size=(1, 3, 3), stride=1, padding=1)
-        self.conv2 = CosmosCausalConv3d(out_channels, out_channels, kernel_size=(3, 1, 1), stride=1, padding=0)
+        self.conv_s = CosmosCausalConv3d(in_channels, out_channels, kernel_size=(1, 3, 3), stride=1, padding=1)
+        self.conv_t = CosmosCausalConv3d(out_channels, out_channels, kernel_size=(3, 1, 1), stride=1, padding=0)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.conv1(hidden_states)
-        hidden_states = self.conv2(hidden_states)
+        hidden_states = self.conv_s(hidden_states)
+        hidden_states = self.conv_t(hidden_states)
         return hidden_states
 
 
@@ -218,11 +280,11 @@ class CosmosResnetBlock3d(nn.Module):
         out_channels = out_channels or in_channels
 
         self.norm1 = CosmosCausalGroupNorm(in_channels, num_groups)
-        self.conv1 = CosmosInputCausal3d(in_channels, out_channels)
+        self.conv1 = CosmosConvProj3d(in_channels, out_channels)
 
         self.norm2 = CosmosCausalGroupNorm(out_channels, num_groups)
         self.dropout = nn.Dropout(dropout)
-        self.conv2 = CosmosInputCausal3d(out_channels, out_channels)
+        self.conv2 = CosmosConvProj3d(out_channels, out_channels)
 
         if in_channels != out_channels:
             self.conv_shortcut = CosmosCausalConv3d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
@@ -231,6 +293,7 @@ class CosmosResnetBlock3d(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         residual = hidden_states
+        residual = self.conv_shortcut(residual)
 
         hidden_states = self.norm1(hidden_states)
         hidden_states = F.silu(hidden_states)
@@ -240,8 +303,6 @@ class CosmosResnetBlock3d(nn.Module):
         hidden_states = F.silu(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states)
-
-        hidden_states = self.conv_shortcut(hidden_states)
 
         return hidden_states + residual
 
@@ -278,6 +339,41 @@ class CosmosDownsample3d(nn.Module):
             conv_out = self.conv2(hidden_states)
             pool_out = F.avg_pool3d(hidden_states, kernel_size=(2, 1, 1), stride=(2, 1, 1))
             hidden_states = conv_out + pool_out
+
+        hidden_states = self.conv3(hidden_states)
+        return hidden_states
+
+
+class CosmosUpsample3d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        spatial_upsample: bool = True,
+        temporal_upsample: bool = True,
+    ) -> None:
+        super().__init__()
+
+        self.spatial_upsample = spatial_upsample
+        self.temporal_upsample = temporal_upsample
+
+        self.conv1 = CosmosCausalConv3d(in_channels, in_channels, kernel_size=(3, 1, 1), stride=(1, 1, 1), padding=0)
+        self.conv2 = CosmosCausalConv3d(in_channels, in_channels, kernel_size=(1, 3, 3), stride=(1, 1, 1), padding=1)
+        self.conv3 = CosmosCausalConv3d(in_channels, in_channels, kernel_size=(1, 1, 1), stride=(1, 1, 1), padding=0)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if not self.spatial_upsample and not self.temporal_upsample:
+            return hidden_states
+
+        if self.temporal_upsample:
+            num_frames = hidden_states.size(2)
+            time_factor = int(1.0 + 1.0 * (num_frames > 1))
+            hidden_states = hidden_states.repeat_interleave(int(time_factor), dim=2)
+            hidden_states = hidden_states[..., time_factor - 1 :, :, :]
+            hidden_states = self.conv1(hidden_states) + hidden_states
+
+        if self.spatial_upsample:
+            hidden_states = hidden_states.repeat_interleave(2, dim=3).repeat_interleave(2, dim=4)
+            hidden_states = self.conv2(hidden_states) + hidden_states
 
         hidden_states = self.conv3(hidden_states)
         return hidden_states
@@ -399,6 +495,7 @@ class CosmosDownBlock3d(nn.Module):
         num_layers: int,
         dropout: float,
         use_attention: bool,
+        use_downsample: bool,
         spatial_downsample: bool,
         temporal_downsample: bool,
     ) -> None:
@@ -421,7 +518,7 @@ class CosmosDownBlock3d(nn.Module):
                         processor=CosmosSpatialAttentionProcessor2_0(),
                     )
                 )
-                temp_attentions(
+                temp_attentions.append(
                     CosmosCausalAttention(
                         num_attention_heads=1,
                         attention_head_dim=out_channel,
@@ -438,8 +535,8 @@ class CosmosDownBlock3d(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.temp_attentions = nn.ModuleList(temp_attentions)
 
-        self.downsampler = None
-        if spatial_downsample or temporal_downsample:
+        self.downsamplers = None
+        if use_downsample:
             self.downsamplers = nn.ModuleList([])
             self.downsamplers.append(CosmosDownsample3d(out_channel, spatial_downsample, temporal_downsample))
 
@@ -453,8 +550,9 @@ class CosmosDownBlock3d(nn.Module):
                 attention_mask = torch.tril(hidden_states.new_ones(num_frames, num_frames)).bool()
                 hidden_states = temp_attention(hidden_states, attention_mask)
 
-        if self.downsampler is not None:
-            hidden_states = self.downsampler(hidden_states)
+        if self.downsamplers is not None:
+            for downsampler in self.downsamplers:
+                hidden_states = downsampler(hidden_states)
 
         return hidden_states
 
@@ -505,13 +603,82 @@ class CosmosMidBlock3d(nn.Module):
         return hidden_states
 
 
+class CosmosUpBlock3d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_layers: int,
+        dropout: float,
+        use_attention: bool,
+        use_upsample: bool,
+        spatial_upsample: bool,
+        temporal_upsample: bool,
+    ) -> None:
+        super().__init__()
+
+        resnets, attention, temp_attentions = [], [], []
+        in_channel, out_channel = in_channels, out_channels
+
+        for _ in range(num_layers):
+            resnets.append(CosmosResnetBlock3d(in_channel, out_channel, dropout, num_groups=1))
+            in_channel = out_channel
+
+            if use_attention:
+                attention.append(
+                    CosmosCausalAttention(
+                        num_attention_heads=1,
+                        attention_head_dim=out_channel,
+                        num_groups=1,
+                        dropout=dropout,
+                        processor=CosmosSpatialAttentionProcessor2_0(),
+                    )
+                )
+                temp_attentions.append(
+                    CosmosCausalAttention(
+                        num_attention_heads=1,
+                        attention_head_dim=out_channel,
+                        num_groups=1,
+                        dropout=dropout,
+                        processor=CosmosTemporalAttentionProcessor2_0(),
+                    )
+                )
+            else:
+                attention.append(None)
+                temp_attentions.append(None)
+
+        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.ModuleList(attention)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
+
+        self.upsamplers = None
+        if use_upsample:
+            self.upsamplers = nn.ModuleList([])
+            self.upsamplers.append(CosmosUpsample3d(out_channel, spatial_upsample, temporal_upsample))
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        for resnet, attention, temp_attention in zip(self.resnets, self.attentions, self.temp_attentions):
+            hidden_states = resnet(hidden_states)
+            if attention is not None:
+                hidden_states = attention(hidden_states)
+            if temp_attention is not None:
+                num_frames = hidden_states.size(2)
+                attention_mask = torch.tril(hidden_states.new_ones(num_frames, num_frames)).bool()
+                hidden_states = temp_attention(hidden_states, attention_mask)
+
+        if self.upsamplers is not None:
+            for upsampler in self.upsamplers:
+                hidden_states = upsampler(hidden_states)
+
+        return hidden_states
+
+
 class CosmosEncoder(nn.Module):
     def __init__(
         self,
         in_channels: int = 3,
         out_channels: int = 16,
-        z_channels: int = 16,
-        block_out_channels: Tuple[int, ...] = (128, 256, 1024, 1024),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         num_resnet_blocks: int = 2,
         attention_resolutions: Tuple[int, ...] = (32,),
         resolution: int = 1024,
@@ -522,14 +689,14 @@ class CosmosEncoder(nn.Module):
         temporal_compression_ratio: int = 8,
     ) -> None:
         super().__init__()
-        # inner_dim = in_channels * patch_size ** 3
+        inner_dim = in_channels * patch_size**3
         num_spatial_layers = int(math.log2(spatial_compression_ratio)) - int(math.log2(patch_size))
         num_temporal_layers = int(math.log2(temporal_compression_ratio)) - int(math.log2(patch_size))
 
         # 1. Input patching & projection
         self.patch_embed = CosmosPatcher3d(patch_size, patch_type)
 
-        self.conv_in = CosmosInputCausal3d(in_channels, block_out_channels[0])
+        self.conv_in = CosmosConvProj3d(inner_dim, block_out_channels[0])
 
         # 2. Down blocks
         current_resolution = resolution // patch_size
@@ -541,9 +708,12 @@ class CosmosEncoder(nn.Module):
             use_attention = current_resolution in attention_resolutions
             spatial_downsample = temporal_downsample = False
             if i < len(block_out_channels) - 2:
+                use_downsample = True
                 spatial_downsample = i < num_spatial_layers
                 temporal_downsample = i < num_temporal_layers
                 current_resolution = current_resolution // 2
+            else:
+                use_downsample = False
 
             down_blocks.append(
                 CosmosDownBlock3d(
@@ -552,6 +722,7 @@ class CosmosEncoder(nn.Module):
                     num_resnet_blocks,
                     dropout,
                     use_attention,
+                    use_downsample,
                     spatial_downsample,
                     temporal_downsample,
                 )
@@ -563,7 +734,7 @@ class CosmosEncoder(nn.Module):
 
         # 4. Output norm & projection
         self.norm_out = CosmosCausalGroupNorm(block_out_channels[-1], num_groups=1)
-        self.conv_out = CosmosOutputCausal3d(block_out_channels[-1], z_channels)
+        self.conv_out = CosmosConvProj3d(block_out_channels[-1], out_channels)
 
         self.gradient_checkpointing = False
 
@@ -583,15 +754,105 @@ class CosmosEncoder(nn.Module):
         hidden_states = self.norm_out(hidden_states)
         hidden_states = F.silu(hidden_states)
         hidden_states = self.conv_out(hidden_states)
+        return hidden_states
 
 
 class CosmosDecoder(nn.Module):
-    pass
+    def __init__(
+        self,
+        in_channels: int = 16,
+        out_channels: int = 3,
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        num_resnet_blocks: int = 2,
+        attention_resolutions: Tuple[int, ...] = (32,),
+        resolution: int = 1024,
+        patch_size: int = 4,
+        patch_type: str = "haar",
+        dropout: float = 0.0,
+        spatial_compression_ratio: int = 8,
+        temporal_compression_ratio: int = 8,
+    ) -> None:
+        super().__init__()
+        inner_dim = out_channels * patch_size**3
+        num_spatial_layers = int(math.log2(spatial_compression_ratio)) - int(math.log2(patch_size))
+        num_temporal_layers = int(math.log2(temporal_compression_ratio)) - int(math.log2(patch_size))
+        reversed_block_out_channels = list(reversed(block_out_channels))
+
+        # 1. Input projection
+        self.conv_in = CosmosConvProj3d(in_channels, reversed_block_out_channels[0])
+
+        # 2. Mid block
+        self.mid_block = CosmosMidBlock3d(reversed_block_out_channels[0], num_layers=1, dropout=dropout, num_groups=1)
+
+        # 3. Up blocks
+        current_resolution = (resolution // patch_size) // 2 ** (len(block_out_channels) - 2)
+        up_blocks = []
+        for i in range(len(block_out_channels) - 1):
+            in_channel = reversed_block_out_channels[i]
+            out_channel = reversed_block_out_channels[i + 1]
+
+            use_attention = current_resolution in attention_resolutions
+            spatial_upsample = temporal_upsample = False
+            if i < len(block_out_channels) - 2:
+                use_upsample = True
+                temporal_upsample = 0 < i < num_temporal_layers + 1
+                spatial_upsample = temporal_upsample or (
+                    i < num_spatial_layers and num_spatial_layers > num_temporal_layers
+                )
+                current_resolution = current_resolution * 2
+            else:
+                use_upsample = False
+
+            up_blocks.append(
+                CosmosUpBlock3d(
+                    in_channel,
+                    out_channel,
+                    num_resnet_blocks + 1,
+                    dropout,
+                    use_attention,
+                    use_upsample,
+                    spatial_upsample,
+                    temporal_upsample,
+                )
+            )
+        self.up_blocks = nn.ModuleList(up_blocks)
+
+        # 4. Output norm & projection & unpatching
+        self.norm_out = CosmosCausalGroupNorm(reversed_block_out_channels[-1], num_groups=1)
+        self.conv_out = CosmosConvProj3d(reversed_block_out_channels[-1], inner_dim)
+
+        self.unpatch_embed = CosmosUnpatcher3d(patch_size, patch_type)
+
+        self.gradient_checkpointing = False
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.conv_in(hidden_states)
+        hidden_states = self.mid_block(hidden_states)
+
+        for block in self.up_blocks:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(block, hidden_states)
+            else:
+                hidden_states = block(hidden_states)
+
+        hidden_states = self.norm_out(hidden_states)
+        hidden_states = F.silu(hidden_states)
+        hidden_states = self.conv_out(hidden_states)
+        hidden_states = self.unpatch_embed(hidden_states)
+        return hidden_states
 
 
 class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
     r"""
     Autoencoder used in [Cosmos](https://huggingface.co/papers/2501.03575).
+
+    Args:
+        in_channels (`int`, defaults to `3`):
+            Number of input channels.
+        out_channels (`int`, defaults to `3`):
+            Number of output channels.
+        latent_channels (`int`, defaults to `16`):
+            Number of latent channels.
     """
 
     _supports_gradient_checkpointing = True
@@ -602,9 +863,13 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 16,
-        z_channels: int = 16,
-        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 1024, 1024),
-        decode_block_out_channels: Tuple[int, ...] = (128, 256, 1024, 1024),
+        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        decode_block_out_channels: Tuple[int, ...] = (256, 512, 512, 512),
+        attention_resolutions: Tuple[int, ...] = (32,),
+        resolution: int = 1024,
+        num_layers: int = 2,
+        patch_size: int = 4,
+        patch_type: str = "haar",
         scaling_factor: float = 1.0,
         spatial_compression_ratio: int = 8,
         temporal_compression_ratio: int = 8,
@@ -613,11 +878,33 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
     ) -> None:
         super().__init__()
 
-        self.encoder = CosmosEncoder()
-        self.decoder = CosmosDecoder()
+        self.encoder = CosmosEncoder(
+            in_channels=in_channels,
+            out_channels=latent_channels,
+            block_out_channels=encoder_block_out_channels,
+            num_resnet_blocks=num_layers,
+            attention_resolutions=attention_resolutions,
+            resolution=resolution,
+            patch_size=patch_size,
+            patch_type=patch_type,
+            spatial_compression_ratio=spatial_compression_ratio,
+            temporal_compression_ratio=temporal_compression_ratio,
+        )
+        self.decoder = CosmosDecoder(
+            in_channels=latent_channels,
+            out_channels=out_channels,
+            block_out_channels=decode_block_out_channels,
+            num_resnet_blocks=num_layers,
+            attention_resolutions=attention_resolutions,
+            resolution=resolution,
+            patch_size=patch_size,
+            patch_type=patch_type,
+            spatial_compression_ratio=spatial_compression_ratio,
+            temporal_compression_ratio=temporal_compression_ratio,
+        )
 
-        self.quant_conv = CosmosCausalConv3d(z_channels, latent_channels, kernel_size=1, padding=0)
-        self.post_quant_conv = CosmosCausalConv3d(latent_channels, z_channels, kernel_size=1, padding=0)
+        self.quant_conv = CosmosCausalConv3d(latent_channels, latent_channels, kernel_size=1, padding=0)
+        self.post_quant_conv = CosmosCausalConv3d(latent_channels, latent_channels, kernel_size=1, padding=0)
 
         # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
         # to perform decoding of a single video latent at a time.
@@ -712,7 +999,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(self, x: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
         h = self._encode(x)
-        posterior = DiagonalGaussianDistribution(h)
+        posterior = IdentityDistribution(h)
 
         if not return_dict:
             return (posterior,)
@@ -724,7 +1011,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
 
         if not return_dict:
             return (dec,)
-        return DecoderOutput(decoder_output=dec)
+        return DecoderOutput(sample=dec)
 
     @apply_forward_hook
     def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
@@ -732,7 +1019,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
 
         if not return_dict:
             return (decoded,)
-        return DecoderOutput(decoder_output=decoded)
+        return DecoderOutput(sample=decoded)
 
     def forward(
         self,
@@ -750,4 +1037,4 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         dec = self.decode(z).sample
         if not return_dict:
             return (dec,)
-        return DecoderOutput(decoder_output=dec)
+        return DecoderOutput(sample=dec)
