@@ -17,16 +17,15 @@ if is_torch_available():
     if is_safetensors_available():
         import safetensors
 
+    DTYPE_MAP = {
+        "float16": torch.float16,
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "uint8": torch.uint8,
+    }
+
+
 from PIL import Image
-
-
-DTYPE_MAP = {
-    "float16": torch.float16,
-    "float32": torch.float32,
-    "bfloat16": torch.bfloat16,
-    "uint8": torch.uint8,
-}
-
 
 def remote_decode(
     endpoint: str,
