@@ -601,5 +601,5 @@ unlike depth and surface normals. It is also higher in shaded regions and at dis
 
 ## Conclusion
 
-Hopefully, you will find Marigold useful for solving your downstream tasks, be it a part of a more broad generative 
-workflow, or a perception task, such as 3D reconstruction.
+We hope Marigold proves valuable for your downstream tasks, whether as part of a broader generative workflow or for 
+perception-based applications like 3D reconstruction.
