@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Models: "alibaba-pai/EasyAnimateV5.1-12b-zh"
         >>> pipe = EasyAnimatePipeline.from_pretrained(
-        ...     "alibaba-pai/EasyAnimateV5.1-7b-zh", torch_dtype=torch.float16
+        ...     "alibaba-pai/EasyAnimateV5.1-7b-zh-diffusers", torch_dtype=torch.float16
         ... ).to("cuda")
         >>> prompt = (
         ...     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
@@ -877,30 +877,6 @@ class EasyAnimatePipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7 create image_rotary_emb, style embedding & time ids
-        grid_height = height // 8 // self.transformer.config.patch_size
-        grid_width = width // 8 // self.transformer.config.patch_size
-        if self.transformer.config.get("time_position_encoding_type", "2d_rope") == "3d_rope":
-            base_size_width = 720 // 8 // self.transformer.config.patch_size
-            base_size_height = 480 // 8 // self.transformer.config.patch_size
-
-            grid_crops_coords = get_resize_crop_region_for_grid(
-                (grid_height, grid_width), base_size_width, base_size_height
-            )
-            image_rotary_emb = get_3d_rotary_pos_embed(
-                self.transformer.config.attention_head_dim,
-                grid_crops_coords,
-                grid_size=(grid_height, grid_width),
-                temporal_size=latents.size(2),
-                use_real=True,
-            )
-        else:
-            base_size = 512 // 8 // self.transformer.config.patch_size
-            grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size, base_size)
-            image_rotary_emb = get_2d_rotary_pos_embed(
-                self.transformer.config.attention_head_dim, grid_crops_coords, (grid_height, grid_width)
-            )
-
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
@@ -915,7 +891,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
             prompt_embeds_2 = prompt_embeds_2.to(device=device)
             prompt_attention_mask_2 = prompt_attention_mask_2.to(device=device)
 
-        # 8. Denoising loop
+        # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -939,7 +915,6 @@ class EasyAnimatePipeline(DiffusionPipeline):
                     t_expand,
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_t5=prompt_embeds_2,
-                    image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]
 
