@@ -27,10 +27,11 @@ if is_torch_available():
 
 from PIL import Image
 
+
 def remote_decode(
     endpoint: str,
-    tensor: torch.Tensor,
-    processor: Optional[Union[VaeImageProcessor, VideoProcessor]] = None,
+    tensor: "torch.Tensor",
+    processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
     do_scaling: bool = True,
     output_type: Literal["mp4", "pil", "pt"] = "pil",
     image_format: Literal["png", "jpg"] = "jpg",
@@ -39,7 +40,7 @@ def remote_decode(
     output_tensor_type: Literal["base64", "binary"] = "base64",
     height: Optional[int] = None,
     width: Optional[int] = None,
-) -> Union[Image.Image, List[Image.Image], bytes, torch.Tensor]:
+) -> Union[Image.Image, List[Image.Image], bytes, "torch.Tensor"]:
     if tensor.ndim == 3 and height is None and width is None:
         raise ValueError("`height` and `width` required for packed latents.")
     if output_type == "pt" and partial_postprocess is False and processor is None:
