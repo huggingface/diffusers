@@ -57,6 +57,12 @@ class QuantoQuantizer(DiffusersQuantizer):
                 "Loading an optimum-quanto quantized model requires accelerate library (`pip install accelerate`)"
             )
 
+        device_map = kwargs.get("device_map", None)
+        if isinstance(device_map, dict) and len(device_map.keys()) > 1:
+            raise ValueError(
+                "`device_map` for multi-GPU inference or CPU/disk offload is currently not supported with the Quanto backend"
+            )
+
     def check_if_quantized_param(
         self,
         model: "ModelMixin",
@@ -104,14 +110,14 @@ class QuantoQuantizer(DiffusersQuantizer):
         return max_memory
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
-        if is_accelerate_version(">=0.27.0"):
+        if is_accelerate_version(">=", "0.27.0"):
             mapping = {
                 "int8": torch.int8,
                 "float8": CustomDtype.FP8,
                 "int4": CustomDtype.INT4,
                 "int2": CustomDtype.INT2,
             }
-            target_dtype = mapping[self.quantization_config.weights]
+            target_dtype = mapping[self.quantization_config.weights_dtype]
 
         return target_dtype
 
