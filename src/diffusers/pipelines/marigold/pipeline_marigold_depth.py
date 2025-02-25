@@ -736,6 +736,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 param = init_s.cpu().numpy()
             else:
                 raise ValueError("Unrecognized alignment.")
+            param = param.astype(np.float64)
 
             return param
 
@@ -778,7 +779,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
             if regularizer_strength > 0:
                 prediction, _ = ensemble(depth_aligned, return_uncertainty=False)
-                err_near = (0.0 - prediction.min()).abs().item()
+                err_near = prediction.min().abs().item()
                 err_far = (1.0 - prediction.max()).abs().item()
                 cost += (err_near + err_far) * regularizer_strength
 
