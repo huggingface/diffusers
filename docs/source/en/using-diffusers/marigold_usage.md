@@ -247,7 +247,8 @@ step performed by the U-Net.
 Finally, the prediction latent is decoded with the VAE decoder into pixel space.
 In this setup, two out of three module calls are dedicated to converting between the pixel and latent spaces of the LDM.
 Since Marigold's latent space is compatible with Stable Diffusion 2.0, inference can be accelerated by more than 3x, 
-reducing the call time to 85ms on an RTX 3090, by using a [lightweight replacement of the SD VAE](../api/models/autoencoder_tiny):
+reducing the call time to 85ms on an RTX 3090, by using a [lightweight replacement of the SD VAE](../api/models/autoencoder_tiny). 
+Note that using a lightweight VAE may slightly reduce the visual quality of the predictions.
 
 ```diff
   import diffusers
@@ -266,17 +267,45 @@ reducing the call time to 85ms on an RTX 3090, by using a [lightweight replaceme
   depth = pipe(image, num_inference_steps=1)
 ```
 
-As suggested in [Optimizations](../optimization/torch2.0#torch.compile), adding `torch.compile` may squeeze extra performance depending on the target 
-hardware:
+So far, we have optimized the number of diffusion steps and model components. Self-attention operations account for a 
+significant portion of computations. 
+Speeding them up can be achieved by using a more efficient attention processor:
 
 ```diff
   import diffusers
   import torch
++ from diffusers.models.attention_processor import AttnProcessor2_0
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
       "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
   ).to("cuda")
 
++ pipe.vae.set_attn_processor(AttnProcessor2_0()) 
++ pipe.unet.set_attn_processor(AttnProcessor2_0())
+
+  image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
+
+  depth = pipe(image, num_inference_steps=1)
+```
+
+Finally, as suggested in [Optimizations](../optimization/torch2.0#torch.compile), enabling `torch.compile` can further enhance performance depending on 
+the target hardware.
+However, compilation incurs a significant overhead during the first pipeline invocation, making it beneficial only when 
+the same pipeline instance is called repeatedly, such as within a loop.
+
+```diff
+  import diffusers
+  import torch
+  from diffusers.models.attention_processor import AttnProcessor2_0
+
+  pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
+      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+  ).to("cuda")
+
+  pipe.vae.set_attn_processor(AttnProcessor2_0()) 
+  pipe.unet.set_attn_processor(AttnProcessor2_0())
+
++ pipe.vae = torch.compile(pipe.vae, mode="reduce-overhead", fullgraph=True)
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -325,94 +354,6 @@ The effect of ensembling is particularly well-seen with surface normals:
 As can be seen, all areas with fine-grained structurers, such as hair, got more conservative and on average more 
 correct predictions.
 Such a result is more suitable for precision-sensitive downstream tasks, such as 3D reconstruction.
-
-## Quantitative Evaluation
-
-To evaluate Marigold quantitatively in standard leaderboards and benchmarks (such as NYU, KITTI, and other datasets), 
-follow the evaluation protocol outlined in the paper: load the full precision fp32 model and use appropriate values 
-for `num_inference_steps` and `ensemble_size`.
-Optionally seed randomness to ensure reproducibility. 
-Maximizing `batch_size` will deliver maximum device utilization.
-
-```python
-import diffusers
-import torch
-
-device = "cuda"
-seed = 2024
-
-generator = torch.Generator(device=device).manual_seed(seed)
-pipe = diffusers.MarigoldDepthPipeline.from_pretrained("prs-eth/marigold-depth-v1-1").to(device)
-
-image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
-
-depth = pipe(
-    image, 
-    num_inference_steps=4,  # set according to the evaluation protocol from the paper
-    ensemble_size=10,       # set according to the evaluation protocol from the paper
-    generator=generator,
-)
-
-# evaluate metrics
-```
-
-## Using Predictive Uncertainty
-
-The ensembling mechanism built into Marigold pipelines combines multiple predictions obtained from different random 
-latents.
-As a side effect, it can be used to quantify epistemic (model) uncertainty; simply specify `ensemble_size` greater 
-or equal than 3 and set `output_uncertainty=True`.
-The resulting uncertainty will be available in the `uncertainty` field of the output.
-It can be visualized as follows:
-
-```python
-import diffusers
-import torch
-
-pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
-).to("cuda")
-
-image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
-
-depth = pipe(
-	image,
-	ensemble_size=10,  # any number >= 3
-	output_uncertainty=True,
-)
-
-uncertainty = pipe.image_processor.visualize_uncertainty(depth.uncertainty)
-uncertainty[0].save("einstein_depth_uncertainty.png")
-```
-
-<div class="flex gap-4">
-  <div style="flex: 1 1 33%; max-width: 33%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_depth_uncertainty.png"/>
-    <figcaption class="mt-1 text-center text-sm text-gray-500">
-      Depth uncertainty
-    </figcaption>
-  </div>
-  <div style="flex: 1 1 33%; max-width: 33%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_normals_uncertainty.png"/>
-    <figcaption class="mt-1 text-center text-sm text-gray-500">
-      Surface normals uncertainty
-    </figcaption>
-  </div>
-  <div style="flex: 1 1 33%; max-width: 33%;">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/4f83035d84a24e5ec44fdda129b1d51eba12ce04/marigold/marigold_einstein_albedo_uncertainty.png"/>
-    <figcaption class="mt-1 text-center text-sm text-gray-500">
-      Albedo uncertainty
-    </figcaption>
-  </div>
-</div>
-
-The interpretation of uncertainty is easy: higher values (white) correspond to pixels, where the model struggles to 
-make consistent predictions.
-- The depth model exhibits the most uncertainty around discontinuities, where object depth changes abruptly.
-- The surface normals model is least confident in fine-grained structures like hair and in dark regions such as the 
-collar area.
-- Albedo uncertainty is represented as an RGB image, as it captures uncertainty independently for each color channel, 
-unlike depth and surface normals. It is also higher in shaded regions and at discontinuities.
 
 ## Frame-by-frame Video Processing with Temporal Consistency
 
@@ -565,6 +506,96 @@ controlnet_out[0].save("motorcycle_controlnet_out.png")
     </figcaption>
   </div>
 </div>
+
+## Quantitative Evaluation
+
+To evaluate Marigold quantitatively in standard leaderboards and benchmarks (such as NYU, KITTI, and other datasets), 
+follow the evaluation protocol outlined in the paper: load the full precision fp32 model and use appropriate values 
+for `num_inference_steps` and `ensemble_size`.
+Optionally seed randomness to ensure reproducibility. 
+Maximizing `batch_size` will deliver maximum device utilization.
+
+```python
+import diffusers
+import torch
+
+device = "cuda"
+seed = 2024
+
+generator = torch.Generator(device=device).manual_seed(seed)
+pipe = diffusers.MarigoldDepthPipeline.from_pretrained("prs-eth/marigold-depth-v1-1").to(device)
+
+image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
+
+depth = pipe(
+    image, 
+    num_inference_steps=4,  # set according to the evaluation protocol from the paper
+    ensemble_size=10,       # set according to the evaluation protocol from the paper
+    generator=generator,
+)
+
+# evaluate metrics
+```
+
+## Using Predictive Uncertainty
+
+The ensembling mechanism built into Marigold pipelines combines multiple predictions obtained from different random 
+latents.
+As a side effect, it can be used to quantify epistemic (model) uncertainty; simply specify `ensemble_size` greater 
+or equal than 3 and set `output_uncertainty=True`.
+The resulting uncertainty will be available in the `uncertainty` field of the output.
+It can be visualized as follows:
+
+```python
+import diffusers
+import torch
+
+pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
+    "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+).to("cuda")
+
+image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
+
+depth = pipe(
+	image,
+	ensemble_size=10,  # any number >= 3
+	output_uncertainty=True,
+)
+
+uncertainty = pipe.image_processor.visualize_uncertainty(depth.uncertainty)
+uncertainty[0].save("einstein_depth_uncertainty.png")
+```
+
+<div class="flex gap-4">
+  <div style="flex: 1 1 33%; max-width: 33%;">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_depth_uncertainty.png"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">
+      Depth uncertainty
+    </figcaption>
+  </div>
+  <div style="flex: 1 1 33%; max-width: 33%;">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/marigold/marigold_einstein_normals_uncertainty.png"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">
+      Surface normals uncertainty
+    </figcaption>
+  </div>
+  <div style="flex: 1 1 33%; max-width: 33%;">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/4f83035d84a24e5ec44fdda129b1d51eba12ce04/marigold/marigold_einstein_albedo_uncertainty.png"/>
+    <figcaption class="mt-1 text-center text-sm text-gray-500">
+      Albedo uncertainty
+    </figcaption>
+  </div>
+</div>
+
+The interpretation of uncertainty is easy: higher values (white) correspond to pixels, where the model struggles to 
+make consistent predictions.
+- The depth model exhibits the most uncertainty around discontinuities, where object depth changes abruptly.
+- The surface normals model is least confident in fine-grained structures like hair and in dark regions such as the 
+collar area.
+- Albedo uncertainty is represented as an RGB image, as it captures uncertainty independently for each color channel, 
+unlike depth and surface normals. It is also higher in shaded regions and at discontinuities.
+
+## Conclusion
 
 Hopefully, you will find Marigold useful for solving your downstream tasks, be it a part of a more broad generative 
 workflow, or a perception task, such as 3D reconstruction.
