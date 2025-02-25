@@ -26,7 +26,7 @@ In order to use the Quanto backend, you will first need to install `optimum-quan
 pip install optimum-quanto accelerate
 ```
 
-Now you can quantize a model by passing the `QuantoConfig` object to the `from_pretrained()` method. The following snippet demonstrates how to apply `float8` quantization with Quanto.
+Now you can quantize a model by passing the `QuantoConfig` object to the `from_pretrained()` method. Although the Quanto library does allow quantizing `nn.Conv2d` and `nn.LayerNorm` modules, currently, Diffusers only supports quantizing the `nn.Linear` layers in a model. The following snippet demonstrates how to apply `float8` quantization with Quanto.   
 
 ```python
 import torch
