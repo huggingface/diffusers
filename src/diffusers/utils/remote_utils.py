@@ -11,14 +11,13 @@ from .import_utils import is_safetensors_available, is_torch_available
 if is_torch_available():
     import torch
 
+    from ..image_processor import VaeImageProcessor
+    from ..video_processor import VideoProcessor
+
+    if is_safetensors_available():
+        import safetensors
+
 from PIL import Image
-
-
-if is_safetensors_available():
-    import safetensors
-
-from ..image_processor import VaeImageProcessor
-from ..video_processor import VideoProcessor
 
 
 DTYPE_MAP = {
