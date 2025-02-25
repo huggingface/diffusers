@@ -104,26 +104,28 @@ This ensures high-quality predictions when invoking the pipeline with only the `
 
 See also Marigold [usage examples](../../using-diffusers/marigold_usage).
 
-## MarigoldDepthPipeline
+## Marigold Depth Prediction API
+
 [[autodoc]] MarigoldDepthPipeline
-	- all
 	- __call__
 
-## MarigoldNormalsPipeline
-[[autodoc]] MarigoldNormalsPipeline
-	- all
-	- __call__
-
-## MarigoldIntrinsicsPipeline
-[[autodoc]] MarigoldIntrinsicsPipeline
-	- all
-	- __call__
-
-## MarigoldDepthOutput
 [[autodoc]] pipelines.marigold.pipeline_marigold_depth.MarigoldDepthOutput
 
-## MarigoldNormalsOutput
+[[autodoc]] pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_depth
+
+## Marigold Normals Estimation API
+[[autodoc]] MarigoldNormalsPipeline
+	- __call__
+
 [[autodoc]] pipelines.marigold.pipeline_marigold_normals.MarigoldNormalsOutput
 
-## MarigoldIntrinsicsOutput
+[[autodoc]] pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_normals
+
+## Marigold Intrinsic Image Decomposition API
+
+[[autodoc]] MarigoldIntrinsicsPipeline
+	- __call__
+
 [[autodoc]] pipelines.marigold.pipeline_marigold_intrinsics.MarigoldIntrinsicsOutput
+
+[[autodoc]] pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_intrinsics
