@@ -528,7 +528,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
     for all models (such as downloading or saving).
     """
 
-    _supports_gradient_checkpointing = True
+    _supports_gradient_checkpointing = False
 
     @register_to_config
     def __init__(
@@ -596,7 +596,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
         mu = (mu - self.scale[0].view(1, self.z_dim, 1, 1, 1)) * self.scale[1].view(1, self.z_dim, 1, 1, 1)
         logvar = (logvar - self.scale[0].view(1, self.z_dim, 1, 1, 1)) * self.scale[1].view(1, self.z_dim, 1, 1, 1)
         enc = torch.cat([mu, logvar], dim=1)
-
+        self.clear_cache()
         return enc
 
     @apply_forward_hook
@@ -637,6 +637,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
                 out = torch.cat([out, out_], 2)  
 
         out = torch.clamp(out, min=-1.0, max=1.0)
+        self.clear_cache()
         if not return_dict:
             return (out,)
 

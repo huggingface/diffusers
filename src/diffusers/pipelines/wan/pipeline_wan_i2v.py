@@ -466,6 +466,7 @@ class WanI2VPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        autocast_dtype: torch.dtype = torch.bfloat16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -523,6 +524,8 @@ class WanI2VPipeline(DiffusionPipeline):
                 The maximum sequence length of the prompt.
             shift (`float`, *optional*, defaults to `5.0`):
                 The shift of the flow.
+            autocast_dtype (`torch.dtype`, *optional*, defaults to `torch.bfloat16`):
+                The dtype to use for the torch.amp.autocast.
         Examples:
 
         Returns:
@@ -568,18 +571,15 @@ class WanI2VPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
-            dtype=self.transformer.dtype,
+            dtype=autocast_dtype,
         )
         # encode image embedding
         image_embeds = self.encode_image(image)
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
-        negative_image_embeds = image_embeds
 
-        transformer_dtype = self.transformer.dtype
-        prompt_embeds = prompt_embeds.to(transformer_dtype)
-        negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
-        image_embeds = image_embeds.to(transformer_dtype)
-        negative_image_embeds = negative_image_embeds.to(transformer_dtype)
+        prompt_embeds = prompt_embeds.to(autocast_dtype)
+        negative_prompt_embeds = negative_prompt_embeds.to(autocast_dtype)
+        image_embeds = image_embeds.to(autocast_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.flow_shift = flow_shift
@@ -622,16 +622,16 @@ class WanI2VPipeline(DiffusionPipeline):
 
         with (
             self.progress_bar(total=num_inference_steps) as progress_bar,
-            amp.autocast('cuda', dtype=self.transformer.dtype)
+            amp.autocast('cuda', dtype=autocast_dtype, cache_enabled=False)
         ):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 self._current_timestep = t
-                latent_model_input = latents.to(transformer_dtype)
+                latent_model_input = latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = t.expand(latents.shape[0])
 
                 noise_pred = self.transformer(
                     hidden_states=torch.concat([latent_model_input, condition], dim=1),
