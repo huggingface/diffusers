@@ -76,45 +76,42 @@ def remote_decode(
         processor (`VaeImageProcessor` or `VideoProcessor`, *optional*):
             Used with `return_type="pt"`, and `return_type="pil"` for Video models.
         do_scaling (`bool`, default `True`, *optional*):
-            When `True` scaling e.g. `latents / self.vae.config.scaling_factor` is
-            applied remotely. If `False`, input must be passed with scaling applied.
+            When `True` scaling e.g. `latents / self.vae.config.scaling_factor` is applied remotely. If `False`, input
+            must be passed with scaling applied.
         output_type (`"mp4"` or `"pil"` or `"pt", default `"pil"):
             **Endpoint** output type. Subject to change. Report feedback on preferred type.
 
-            `"mp4": Supported by video models. Endpoint returns `bytes` of video.
-            `"pil"`: Supported by image and video models.
-                Image models: Endpoint returns `bytes` of an image in `image_format`.
-                Video models: Endpoint returns `torch.Tensor` with partial `postprocessing` applied.
+            `"mp4": Supported by video models. Endpoint returns `bytes` of video. `"pil"`: Supported by image and video
+            models.
+                Image models: Endpoint returns `bytes` of an image in `image_format`. Video models: Endpoint returns
+                `torch.Tensor` with partial `postprocessing` applied.
                     Requires `processor` as a flag (any `None` value will work).
             `"pt"`: Support by image and video models. Endpoint returns `torch.Tensor`.
                 With `partial_postprocess=True` the tensor is postprocessed `uint8` image tensor.
 
             Recommendations:
-                `"pt"` with `partial_postprocess=True` is the smallest transfer for full quality.
-                `"pt"` with `partial_postprocess=False` is the most compatible with third party code.
-                `"pil"` with `image_format="jpg"` is the smallest transfer overall.
+                `"pt"` with `partial_postprocess=True` is the smallest transfer for full quality. `"pt"` with
+                `partial_postprocess=False` is the most compatible with third party code. `"pil"` with
+                `image_format="jpg"` is the smallest transfer overall.
 
         return_type (`"mp4"` or `"pil"` or `"pt", default `"pil"):
             **Function** return type.
 
-            `"mp4": Function returns `bytes` of video.
-            `"pil"`: Function returns `PIL.Image.Image`.
-                With `output_type="pil" no further processing is applied.
-                With `output_type="pt" a `PIL.Image.Image` is created.
-                    `partial_postprocess=False` `processor` is required.
-                    `partial_postprocess=True` `processor` is **not** required.
+            `"mp4": Function returns `bytes` of video. `"pil"`: Function returns `PIL.Image.Image`.
+                With `output_type="pil" no further processing is applied. With `output_type="pt" a `PIL.Image.Image` is
+                created.
+                    `partial_postprocess=False` `processor` is required. `partial_postprocess=True` `processor` is
+                    **not** required.
             `"pt"`: Function returns `torch.Tensor`.
-                `processor` is **not** required.
-                `partial_postprocess=False` tensor is `float16` or `bfloat16`, without denormalization.
-                `partial_postprocess=True` tensor is `uint8`, denormalized.
+                `processor` is **not** required. `partial_postprocess=False` tensor is `float16` or `bfloat16`, without
+                denormalization. `partial_postprocess=True` tensor is `uint8`, denormalized.
 
         image_format (`"png"` or `"jpg"`, default `jpg`):
             Used with `output_type="pil"`. Endpoint returns `jpg` or `png`.
 
         partial_postprocess (`bool`, default `False`):
-            Used with `output_type="pt"`.
-            `partial_postprocess=False` tensor is `float16` or `bfloat16`, without denormalization.
-            `partial_postprocess=True` tensor is `uint8`, denormalized.
+            Used with `output_type="pt"`. `partial_postprocess=False` tensor is `float16` or `bfloat16`, without
+            denormalization. `partial_postprocess=True` tensor is `uint8`, denormalized.
 
         input_tensor_type (`"base64"` or `"binary"`, default `"base64"`):
             With `"base64"` `tensor` is sent to endpoint base64 encoded. `"binary"` reduces overhead and transfer.
