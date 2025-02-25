@@ -853,6 +853,34 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
             Number of output channels.
         latent_channels (`int`, defaults to `16`):
             Number of latent channels.
+        encoder_block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+            Number of output channels for each encoder down block.
+        decode_block_out_channels (`Tuple[int, ...]`, defaults to `(256, 512, 512, 512)`):
+            Number of output channels for each decoder up block.
+        attention_resolutions (`Tuple[int, ...]`, defaults to `(32,)`):
+            List of image/video resolutions at which to apply attention.
+        resolution (`int`, defaults to `1024`):
+            Base image/video resolution used for computing whether a block should have attention layers.
+        num_layers (`int`, defaults to `2`):
+            Number of resnet blocks in each encoder/decoder block.
+        patch_size (`int`, defaults to `4`):
+            Patch size used for patching the input image/video.
+        patch_type (`str`, defaults to `haar`):
+            Patch type used for patching the input image/video. Can be either `haar` or `rearrange`.
+        scaling_factor (`float`, defaults to `1.0`):
+            The component-wise standard deviation of the trained latent space computed using the first batch of the
+            training set. This is used to scale the latent space to have unit variance when training the diffusion
+            model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
+            diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
+            / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
+            Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper. Not applicable in Cosmos,
+            but we default to 1.0 for consistency.
+        spatial_compression_ratio (`int`, defaults to `8`):
+            The spatial compression ratio to apply in the VAE. The number of downsample blocks is determined using
+            this.
+        temporal_compression_ratio (`int`, defaults to `8`):
+            The temporal compression ratio to apply in the VAE. The number of downsample blocks is determined using
+            this.
     """
 
     _supports_gradient_checkpointing = True

@@ -595,16 +595,20 @@ class CosmosPipeline(DiffusionPipeline):
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents_mean, latents_std = self.vae.config.latents_mean, self.vae.config.latents_std
-            latents_mean = torch.tensor(latents_mean).view(1, self.vae.config.latent_channels, -1, 1, 1)[
-                :, :, : latents.size(2)
-            ]
-            latents_std = torch.tensor(latents_std).view(1, self.vae.config.latent_channels, -1, 1, 1)[
-                :, :, : latents.size(2)
-            ]
-            latents = (
-                latents * self.vae.config.latent_std / self.scheduler.config.sigma_data + self.vae.config.latent_mean
-            )
+            if self.vae.config.latents_mean is not None:
+                latents_mean, latents_std = self.vae.config.latents_mean, self.vae.config.latents_std
+                latents_mean = torch.tensor(latents_mean).view(1, self.vae.config.latent_channels, -1, 1, 1)[
+                    :, :, : latents.size(2)
+                ]
+                latents_std = torch.tensor(latents_std).view(1, self.vae.config.latent_channels, -1, 1, 1)[
+                    :, :, : latents.size(2)
+                ]
+                latents = (
+                    latents * self.vae.config.latent_std / self.scheduler.config.sigma_data
+                    + self.vae.config.latent_mean
+                )
+            else:
+                latents = latents / self.scheduler.config.sigma_data
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:

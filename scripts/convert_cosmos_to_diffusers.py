@@ -1,11 +1,13 @@
 import argparse
+import pathlib
 from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
+from huggingface_hub import snapshot_download
 from transformers import T5EncoderModel, T5TokenizerFast
 
-from diffusers import CosmosTransformer3DModel, EDMEulerScheduler
+from diffusers import AutoencoderKLCosmos, CosmosTransformer3DModel, EDMEulerScheduler
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -63,10 +65,81 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
 }
 
 VAE_KEYS_RENAME_DICT = {
-    "conv3d": "conv",
+    "down.0": "down_blocks.0",
+    "down.1": "down_blocks.1",
+    "down.2": "down_blocks.2",
+    "up.0": "up_blocks.2",
+    "up.1": "up_blocks.1",
+    "up.2": "up_blocks.0",
+    ".block.": ".resnets.",
+    "downsample": "downsamplers.0",
+    "upsample": "upsamplers.0",
+    "mid.block_1": "mid_block.resnets.0",
+    "mid.attn_1.0": "mid_block.attentions.0",
+    "mid.attn_1.1": "mid_block.temp_attentions.0",
+    "mid.block_2": "mid_block.resnets.1",
+    ".q.conv3d": ".to_q",
+    ".k.conv3d": ".to_k",
+    ".v.conv3d": ".to_v",
+    ".proj_out.conv3d": ".to_out.0",
+    ".0.conv3d": ".conv_s",
+    ".1.conv3d": ".conv_t",
+    "conv1.conv3d": "conv1",
+    "conv2.conv3d": "conv2",
+    "conv3.conv3d": "conv3",
+    "nin_shortcut.conv3d": "conv_shortcut",
+    "quant_conv.conv3d": "quant_conv",
+    "post_quant_conv.conv3d": "post_quant_conv",
 }
 
-VAE_SPECIAL_KEYS_REMAP = {}
+VAE_SPECIAL_KEYS_REMAP = {
+    "wavelets": remove_keys_,
+    "_arange": remove_keys_,
+    "patch_size_buffer": remove_keys_,
+}
+
+VAE_CONFIGS = {
+    "CV8x8x8-0.1": {
+        "name": "nvidia/Cosmos-0.1-Tokenizer-CV8x8x8",
+        "diffusers_config": {
+            "in_channels": 3,
+            "out_channels": 3,
+            "latent_channels": 16,
+            "encoder_block_out_channels": (128, 256, 512, 512),
+            "decode_block_out_channels": (256, 512, 512, 512),
+            "attention_resolutions": (32,),
+            "resolution": 1024,
+            "num_layers": 2,
+            "patch_size": 4,
+            "patch_type": "haar",
+            "scaling_factor": 1.0,
+            "spatial_compression_ratio": 8,
+            "temporal_compression_ratio": 8,
+            "latents_mean": None,
+            "latents_std": None,
+        },
+    },
+    "CV8x8x8-1.0": {
+        "name": "nvidia/Cosmos-1.0-Tokenizer-CV8x8x8",
+        "diffusers_config": {
+            "in_channels": 3,
+            "out_channels": 3,
+            "latent_channels": 16,
+            "encoder_block_out_channels": (128, 256, 512, 512),
+            "decode_block_out_channels": (256, 512, 512, 512),
+            "attention_resolutions": (32,),
+            "resolution": 1024,
+            "num_layers": 2,
+            "patch_size": 4,
+            "patch_type": "haar",
+            "scaling_factor": 1.0,
+            "spatial_compression_ratio": 8,
+            "temporal_compression_ratio": 8,
+            "latents_mean": None,
+            "latents_std": None,
+        },
+    },
+}
 
 
 def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -105,26 +178,43 @@ def convert_transformer(ckpt_path: str):
     return transformer
 
 
-# def convert_vae(ckpt_path: str):
-#     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", weights_only=True))
+def convert_vae(vae_type: str):
+    model_name = VAE_CONFIGS[vae_type]["name"]
+    snapshot_directory = snapshot_download(model_name, repo_type="model")
+    directory = pathlib.Path(snapshot_directory)
 
-#     with init_empty_weights():
-#         vae = AutoencoderKLHunyuanVideo()
+    autoencoder_file = directory / "autoencoder.jit"
+    mean_std_file = directory / "mean_std.pt"
 
-#     for key in list(original_state_dict.keys()):
-#         new_key = key[:]
-#         for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
-#             new_key = new_key.replace(replace_key, rename_key)
-#         update_state_dict_(original_state_dict, key, new_key)
+    original_state_dict = torch.jit.load(autoencoder_file.as_posix()).state_dict()
+    if mean_std_file.exists():
+        mean_std = torch.load(mean_std_file, map_location="cpu", weights_only=True)
+    else:
+        mean_std = (None, None)
 
-#     for key in list(original_state_dict.keys()):
-#         for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
-#             if special_key not in key:
-#                 continue
-#             handler_fn_inplace(key, original_state_dict)
+    config = VAE_CONFIGS[vae_type]["diffusers_config"]
+    config.update(
+        {
+            "latents_mean": mean_std[0],
+            "latents_std": mean_std[1],
+        }
+    )
+    vae = AutoencoderKLCosmos(**config)
 
-#     vae.load_state_dict(original_state_dict, strict=True, assign=True)
-#     return vae
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_(original_state_dict, key, new_key)
+
+    for key in list(original_state_dict.keys()):
+        for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, original_state_dict)
+
+    vae.load_state_dict(original_state_dict, strict=True, assign=True)
+    return vae
 
 
 def get_args():
@@ -132,9 +222,9 @@ def get_args():
     parser.add_argument(
         "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
-    parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original VAE checkpoint")
-    parser.add_argument("--text_encoder_path", type=str, default=None, help="Path to original T5 checkpoint")
-    parser.add_argument("--tokenizer_path", type=str, default=None, help="Path to original T5 tokenizer")
+    parser.add_argument("--vae_type", type=str, default=None, choices=list(VAE_CONFIGS.keys()), help="Type of VAE")
+    parser.add_argument("--text_encoder_path", type=str, default=None, help="Path or HF id to original T5 checkpoint")
+    parser.add_argument("--tokenizer_path", type=str, default=None, help="Path or HF id to original T5 tokenizer")
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the transformer in.")
@@ -155,7 +245,8 @@ if __name__ == "__main__":
     dtype = DTYPE_MAPPING[args.dtype]
 
     if args.save_pipeline:
-        assert args.transformer_ckpt_path is not None and args.vae_ckpt_path is not None
+        assert args.transformer_ckpt_path is not None
+        assert args.vae_type is not None
         assert args.text_encoder_path is not None
         assert args.tokenizer_path is not None
         assert args.text_encoder_2_path is not None
@@ -166,10 +257,10 @@ if __name__ == "__main__":
         if not args.save_pipeline:
             transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
-    # if args.vae_ckpt_path is not None:
-    #     vae = convert_vae(args.vae_ckpt_path)
-    #     if not args.save_pipeline:
-    #         vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    if args.vae_type is not None:
+        vae = convert_vae(args.vae_type)
+        if not args.save_pipeline:
+            vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
     if args.save_pipeline:
         text_encoder = T5EncoderModel.from_pretrained(args.text_encoder_path, torch_dtype=dtype)
@@ -184,6 +275,7 @@ if __name__ == "__main__":
             num_train_timesteps=1000,
             prediction_type="epsilon",
             rho=7.0,
+            final_sigmas_type="sigma_min",
         )
 
     # if args.save_pipeline:
