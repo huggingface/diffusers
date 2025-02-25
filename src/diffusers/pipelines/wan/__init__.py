@@ -22,8 +22,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_wanx"] = ["WanxPipeline"]
-    _import_structure["pipeline_wanx_i2v"] = ["WanxI2VPipeline"]
+    _import_structure["pipeline_wan"] = ["WanPipeline"]
+    _import_structure["pipeline_wan_i2v"] = ["WanI2VPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

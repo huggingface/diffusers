@@ -1,4 +1,4 @@
-# Copyright 2024 The Wanx Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 The Wan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,11 +34,11 @@ from ..modeling_utils import ModelMixin
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanxAttnProcessor2_0:
+class WanAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "WanxAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
+                "WanAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -177,7 +177,7 @@ def rope_apply(x, grid_sizes, freqs):
     return torch.stack(output).float()
 
 
-class WanxRMSNorm(nn.Module):
+class WanRMSNorm(nn.Module):
 
     def __init__(self, dim, eps=1e-5):
         super().__init__()
@@ -192,7 +192,7 @@ class WanxRMSNorm(nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
 
 
-class WanxLayerNorm(nn.LayerNorm):
+class WanLayerNorm(nn.LayerNorm):
 
     def __init__(self, dim, eps=1e-6, elementwise_affine=False):
         super().__init__(dim, elementwise_affine=elementwise_affine, eps=eps)
@@ -201,7 +201,7 @@ class WanxLayerNorm(nn.LayerNorm):
         return super().forward(x.float()).type_as(x)
 
 
-class WanxBlock(nn.Module):
+class WanBlock(nn.Module):
 
     def __init__(self,
                  dim,
@@ -221,7 +221,7 @@ class WanxBlock(nn.Module):
         self.cross_attn_norm = cross_attn_norm
         self.eps = eps
 
-        self.norm1 = WanxLayerNorm(dim, eps)
+        self.norm1 = WanLayerNorm(dim, eps)
         # self attn
         self.attn1 = Attention(
             query_dim=dim,
@@ -233,7 +233,7 @@ class WanxBlock(nn.Module):
             bias=True,
             cross_attention_dim=None,
             out_bias=True,
-            processor=WanxAttnProcessor2_0(),
+            processor=WanAttnProcessor2_0(),
         )
 
         # cross attn
@@ -249,14 +249,14 @@ class WanxBlock(nn.Module):
             out_bias=True,
             added_kv_proj_dim=added_kv_proj_dim,
             added_proj_bias=True,
-            processor=WanxAttnProcessor2_0(),
+            processor=WanAttnProcessor2_0(),
         )
 
-        self.norm3 = WanxLayerNorm(
+        self.norm3 = WanLayerNorm(
             dim, eps,
             elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
-        self.norm2 = WanxLayerNorm(dim, eps)
+        self.norm2 = WanLayerNorm(dim, eps)
         self.ffn = nn.Sequential(
             nn.Linear(dim, ffn_dim), nn.GELU(approximate='tanh'),
             nn.Linear(ffn_dim, dim))
@@ -310,7 +310,7 @@ class WanxBlock(nn.Module):
         return hidden_states
 
 
-class WanxHead(nn.Module):
+class WanHead(nn.Module):
 
     def __init__(self, dim, out_dim, patch_size, eps=1e-6):
         super().__init__()
@@ -321,7 +321,7 @@ class WanxHead(nn.Module):
 
         # layers
         out_dim = math.prod(patch_size) * out_dim
-        self.norm = WanxLayerNorm(dim, eps)
+        self.norm = WanLayerNorm(dim, eps)
         self.head = nn.Linear(dim, out_dim)
 
         # modulation
@@ -350,9 +350,9 @@ class MLPProj(torch.nn.Module):
         return clip_extra_context_tokens
 
 
-class WanxTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
-    A Transformer model for video-like data used in the Wanx model.
+    A Transformer model for video-like data used in the Wan model.
 
     Args:
         in_channels (`int`, defaults to `16`):
@@ -392,8 +392,8 @@ class WanxTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "text_embedding", "time_embedding", "time_projection"]
     _no_split_modules = [
-        "WanxBlock",
-        "WanxHead",
+        "WanBlock",
+        "WanHead",
     ]
 
     @register_to_config
@@ -437,14 +437,14 @@ class WanxTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
         # blocks
         self.blocks = nn.ModuleList([
-            WanxBlock(inner_dim, ffn_dim, num_attention_heads,
+            WanBlock(inner_dim, ffn_dim, num_attention_heads,
                       window_size, qk_norm, cross_attn_norm, eps,
                       added_kv_proj_dim)
             for _ in range(num_layers)
         ])
 
         # head
-        self.head = WanxHead(inner_dim, out_channels, patch_size, eps)
+        self.head = WanHead(inner_dim, out_channels, patch_size, eps)
 
         # buffers (don't use register_buffer otherwise dtype will be changed in to())
         assert attention_head_dim % 2 == 0
@@ -609,8 +609,6 @@ class WanxTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         hidden_states = self.head(hidden_states, e)
 
         # 5. Unpatchify
-
-        # TODO: don't use list here
         hidden_states = self.unpatchify(hidden_states, grid_sizes)
         hidden_states = torch.stack(hidden_states)
 

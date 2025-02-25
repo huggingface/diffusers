@@ -1,20 +1,20 @@
 from diffusers.utils import load_image, export_to_video
 from transformers import CLIPVisionModel, CLIPImageProcessor
-from diffusers import WanxI2VPipeline, WanxTransformer3DModel
+from diffusers import WanI2VPipeline, WanTransformer3DModel
 import torch
 
-pretrained_model_name_or_path = "xxx/wanx_i2v"  # TODO replace with our hf id
+pretrained_model_name_or_path = "xxx/wan_i2v"  # TODO replace with our hf id
 image_encoder = CLIPVisionModel.from_pretrained(pretrained_model_name_or_path, subfolder='image_encoder',
                                                 torch_dtype=torch.float16)
-transformer_i2v = WanxTransformer3DModel.from_pretrained(pretrained_model_name_or_path, subfolder='transformer_i2v_480p',
+transformer_i2v = WanTransformer3DModel.from_pretrained(pretrained_model_name_or_path, subfolder='transformer_i2v_480p',
                                                          torch_dtype=torch.bfloat16)
 # for 720p
-# transformer_i2v = WanxTransformer3DModel.from_pretrained(pretrained_model_name_or_path, subfolder='transformer_i2v_720p',
+# transformer_i2v = WanTransformer3DModel.from_pretrained(pretrained_model_name_or_path, subfolder='transformer_i2v_720p',
 #                                                          torch_dtype=torch.bfloat16)
 
 image_processor = CLIPImageProcessor.from_pretrained(pretrained_model_name_or_path, subfolder='image_processor')
 
-pipe = WanxI2VPipeline.from_pretrained(
+pipe = WanI2VPipeline.from_pretrained(
     pretrained_model_name_or_path,
     transformer=transformer_i2v,
     image_encoder=image_encoder,

@@ -1,4 +1,4 @@
-# Copyright 2025 The Wanx Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,11 +40,11 @@ CACHE_T = 2
 def count_conv3d(model):
     count = 0
     for m in model.modules():
-        if isinstance(m, WanxCausalConv3d): 
+        if isinstance(m, WanCausalConv3d): 
             count += 1
     return count
 
-class WanxCausalConv3d(nn.Conv3d):
+class WanCausalConv3d(nn.Conv3d):
     def __init__(self, *args, **kwargs)-> None:
         super().__init__(*args, **kwargs)
         self._padding = (
@@ -69,7 +69,7 @@ class WanxCausalConv3d(nn.Conv3d):
     #     hidden_states = F.pad(hidden_states, self.time_causal_padding, mode=self.pad_mode)
     #     return self.conv(hidden_states)
 
-class WanxRMS_norm(nn.Module): 
+class WanRMS_norm(nn.Module): 
     r"""
     A custom RMS normalization layer.
 
@@ -100,7 +100,7 @@ class WanxRMS_norm(nn.Module):
         return F.normalize(x, dim = (1 if self.channel_first else -1)) * self.scale * self.gamma + self.bias
 
 
-class WanxUpsample(nn.Upsample):
+class WanUpsample(nn.Upsample):
 
     def forward(self, x):
         """
@@ -110,7 +110,7 @@ class WanxUpsample(nn.Upsample):
 
 
 
-class WanxResample(nn.Module):
+class WanResample(nn.Module):
     r"""
     A custom resampling module for 2D and 3D data.
 
@@ -138,15 +138,15 @@ class WanxResample(nn.Module):
         # layers
         if mode == 'upsample2d':
             self.resample = nn.Sequential(
-                WanxUpsample(scale_factor=(2., 2.), mode='nearest-exact'),
+                WanUpsample(scale_factor=(2., 2.), mode='nearest-exact'),
                 nn.Conv2d(dim, dim//2, 3, padding=1)
             )
         elif mode == 'upsample3d':
             self.resample = nn.Sequential(
-                WanxUpsample(scale_factor=(2., 2.), mode='nearest-exact'),
+                WanUpsample(scale_factor=(2., 2.), mode='nearest-exact'),
                 nn.Conv2d(dim, dim//2, 3, padding=1)
             )
-            self.time_conv = WanxCausalConv3d(dim, dim*2, (3,1,1), padding=(1,0,0))
+            self.time_conv = WanCausalConv3d(dim, dim*2, (3,1,1), padding=(1,0,0))
             
         elif mode == 'downsample2d':
             self.resample = nn.Sequential(
@@ -158,7 +158,7 @@ class WanxResample(nn.Module):
                 nn.ZeroPad2d((0, 1, 0, 1)),
                 nn.Conv2d(dim, dim, 3, stride=(2, 2))
             )
-            self.time_conv = WanxCausalConv3d(dim, dim, (3,1,1), stride=(2, 1, 1), padding=(0,0,0))
+            self.time_conv = WanCausalConv3d(dim, dim, (3,1,1), stride=(2, 1, 1), padding=(0,0,0))
             
         else:
             self.resample = nn.Identity()
@@ -227,7 +227,7 @@ class WanxResample(nn.Module):
         conv.weight.data.copy_(conv_weight)
         nn.init.zeros_(conv.bias.data)
     
-class WanxResidualBlock(nn.Module):
+class WanResidualBlock(nn.Module):
 
     def __init__(
         self,
@@ -243,21 +243,21 @@ class WanxResidualBlock(nn.Module):
         
         # layers
         self.residual = nn.Sequential(
-            WanxRMS_norm(in_dim, images=False),
+            WanRMS_norm(in_dim, images=False),
             self.nonlinearity,
-            WanxCausalConv3d(in_dim, out_dim, 3, padding=1),
-            WanxRMS_norm(out_dim, images=False),
+            WanCausalConv3d(in_dim, out_dim, 3, padding=1),
+            WanRMS_norm(out_dim, images=False),
             self.nonlinearity,
             nn.Dropout(dropout),
-            WanxCausalConv3d(out_dim, out_dim, 3, padding=1)
+            WanCausalConv3d(out_dim, out_dim, 3, padding=1)
         )
-        self.shortcut = WanxCausalConv3d(in_dim, out_dim, 1) \
+        self.shortcut = WanCausalConv3d(in_dim, out_dim, 1) \
             if in_dim != out_dim else nn.Identity()
     
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         h = self.shortcut(x)
         for layer in self.residual:
-            if isinstance(layer, WanxCausalConv3d) and feat_cache is not None:
+            if isinstance(layer, WanCausalConv3d) and feat_cache is not None:
                 idx = feat_idx[0]
                 cache_x = x[:, :, -CACHE_T:, :, :].clone()
                 if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
@@ -271,7 +271,7 @@ class WanxResidualBlock(nn.Module):
         return x + h
 
 
-class WanxAttentionBlock(nn.Module):
+class WanAttentionBlock(nn.Module):
     """
     Causal self-attention with a single head.
     """
@@ -280,7 +280,7 @@ class WanxAttentionBlock(nn.Module):
         self.dim = dim
 
         # layers
-        self.norm = WanxRMS_norm(dim)
+        self.norm = WanRMS_norm(dim)
         self.to_qkv = nn.Conv2d(dim, dim * 3, 1)
         self.proj = nn.Conv2d(dim, dim, 1)
         
@@ -309,7 +309,7 @@ class WanxAttentionBlock(nn.Module):
         return x + identity
 
 
-class WanxEncoder3d(nn.Module):
+class WanEncoder3d(nn.Module):
 
     def __init__(
         self,
@@ -336,37 +336,37 @@ class WanxEncoder3d(nn.Module):
         scale = 1.0
 
         # init block
-        self.conv1 = WanxCausalConv3d(3, dims[0], 3, padding=1)
+        self.conv1 = WanCausalConv3d(3, dims[0], 3, padding=1)
 
         # downsample blocks
         downsamples = []
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             # residual (+attention) blocks
             for _ in range(num_res_blocks):
-                downsamples.append(WanxResidualBlock(in_dim, out_dim, dropout))
+                downsamples.append(WanResidualBlock(in_dim, out_dim, dropout))
                 if scale in attn_scales:
-                    downsamples.append(WanxAttentionBlock(out_dim))
+                    downsamples.append(WanAttentionBlock(out_dim))
                 in_dim = out_dim
             
             # downsample block
             if i != len(dim_mult) - 1:
                 mode = 'downsample3d' if temperal_downsample[i] else 'downsample2d'
-                downsamples.append(WanxResample(out_dim, mode=mode))
+                downsamples.append(WanResample(out_dim, mode=mode))
                 scale /= 2.0
         self.downsamples = nn.Sequential(*downsamples)
 
         # middle blocks
         self.middle = nn.Sequential(
-            WanxResidualBlock(out_dim, out_dim, dropout),
-            WanxAttentionBlock(out_dim),
-            WanxResidualBlock(out_dim, out_dim, dropout)
+            WanResidualBlock(out_dim, out_dim, dropout),
+            WanAttentionBlock(out_dim),
+            WanResidualBlock(out_dim, out_dim, dropout)
         )
 
         # output blocks
         self.head = nn.Sequential(
-            WanxRMS_norm(out_dim, images=False),
+            WanRMS_norm(out_dim, images=False),
             self.nonlinearity,
-            WanxCausalConv3d(out_dim, z_dim, 3, padding=1)
+            WanCausalConv3d(out_dim, z_dim, 3, padding=1)
         )
         
     def forward(self, x, feat_cache=None, feat_idx=[0]):
@@ -391,14 +391,14 @@ class WanxEncoder3d(nn.Module):
 
         ## middle 
         for layer in self.middle:
-            if isinstance(layer, WanxResidualBlock) and feat_cache is not None:
+            if isinstance(layer, WanResidualBlock) and feat_cache is not None:
                 x = layer(x, feat_cache, feat_idx)  
             else:
                 x = layer(x) 
 
         ## head 
         for layer in self.head:
-            if isinstance(layer, WanxCausalConv3d) and feat_cache is not None:
+            if isinstance(layer, WanCausalConv3d) and feat_cache is not None:
                 idx = feat_idx[0]
                 cache_x = x[:, :, -CACHE_T:, :, :].clone()
                 if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
@@ -412,7 +412,7 @@ class WanxEncoder3d(nn.Module):
         return x
 
 
-class WanxDecoder3d(nn.Module):
+class WanDecoder3d(nn.Module):
 
     def __init__(
         self,
@@ -440,13 +440,13 @@ class WanxDecoder3d(nn.Module):
         scale = 1.0 / 2 ** (len(dim_mult) - 2)
 
         # init block
-        self.conv1 = WanxCausalConv3d(z_dim, dims[0], 3, padding=1)
+        self.conv1 = WanCausalConv3d(z_dim, dims[0], 3, padding=1)
 
         # middle blocks
         self.middle = nn.Sequential(
-            WanxResidualBlock(dims[0], dims[0], dropout),
-            WanxAttentionBlock(dims[0]),
-            WanxResidualBlock(dims[0], dims[0], dropout)
+            WanResidualBlock(dims[0], dims[0], dropout),
+            WanAttentionBlock(dims[0]),
+            WanResidualBlock(dims[0], dims[0], dropout)
         )
 
         # upsample blocks
@@ -456,23 +456,23 @@ class WanxDecoder3d(nn.Module):
             if i > 0:
                 in_dim = in_dim //2
             for _ in range(num_res_blocks + 1):
-                upsamples.append(WanxResidualBlock(in_dim, out_dim, dropout))
+                upsamples.append(WanResidualBlock(in_dim, out_dim, dropout))
                 if scale in attn_scales:
-                    upsamples.append(WanxAttentionBlock(out_dim))
+                    upsamples.append(WanAttentionBlock(out_dim))
                 in_dim = out_dim
             
             # upsample block
             if i != len(dim_mult) - 1:
                 mode = 'upsample3d' if temperal_upsample[i] else 'upsample2d'
-                upsamples.append(WanxResample(out_dim, mode=mode))
+                upsamples.append(WanResample(out_dim, mode=mode))
                 scale *= 2.0
         self.upsamples = nn.Sequential(*upsamples)
 
         # output blocks
         self.head = nn.Sequential(
-            WanxRMS_norm(out_dim, images=False),
+            WanRMS_norm(out_dim, images=False),
             self.nonlinearity,
-            WanxCausalConv3d(out_dim, 3, 3, padding=1)
+            WanCausalConv3d(out_dim, 3, 3, padding=1)
         )
     
     def forward(self, x, feat_cache=None, feat_idx=[0]):
@@ -491,7 +491,7 @@ class WanxDecoder3d(nn.Module):
         
         ## middle 
         for layer in self.middle:
-            if isinstance(layer, WanxResidualBlock) and feat_cache is not None:
+            if isinstance(layer, WanResidualBlock) and feat_cache is not None:
                 x = layer(x, feat_cache, feat_idx)  
             else:
                 x = layer(x) 
@@ -505,7 +505,7 @@ class WanxDecoder3d(nn.Module):
 
         ## head 
         for layer in self.head:
-            if isinstance(layer, WanxCausalConv3d) and feat_cache is not None:
+            if isinstance(layer, WanCausalConv3d) and feat_cache is not None:
                 idx = feat_idx[0]
                 cache_x = x[:, :, -CACHE_T:, :, :].clone()
                 if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
@@ -519,10 +519,10 @@ class WanxDecoder3d(nn.Module):
         return x
 
 
-class AutoencoderKLWanx(ModelMixin, ConfigMixin):
+class AutoencoderKLWan(ModelMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
-    Introduced in [Wanx](https://huggingface.co/papers/).
+    Introduced in [Wan](https://huggingface.co/papers/).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -557,14 +557,14 @@ class AutoencoderKLWanx(ModelMixin, ConfigMixin):
         self.temperal_downsample = temperal_downsample
         self.temperal_upsample = temperal_downsample[::-1]
 
-        self.encoder = WanxEncoder3d(
+        self.encoder = WanEncoder3d(
             base_dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales,
             self.temperal_downsample, dropout
         )
-        self.conv1 = WanxCausalConv3d(z_dim * 2, z_dim * 2, 1)
-        self.conv2 = WanxCausalConv3d(z_dim, z_dim, 1)
+        self.conv1 = WanCausalConv3d(z_dim * 2, z_dim * 2, 1)
+        self.conv2 = WanCausalConv3d(z_dim, z_dim, 1)
         
-        self.decoder = WanxDecoder3d(
+        self.decoder = WanDecoder3d(
             base_dim, z_dim, dim_mult, num_res_blocks, attn_scales,
             self.temperal_upsample, dropout
         )

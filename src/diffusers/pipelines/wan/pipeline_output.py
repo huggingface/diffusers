@@ -6,9 +6,9 @@ from diffusers.utils import BaseOutput
 
 
 @dataclass
-class WanxPipelineOutput(BaseOutput):
+class WanPipelineOutput(BaseOutput):
     r"""
-    Output class for Wanx pipelines.
+    Output class for Wan pipelines.
 
     Args:
         frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
