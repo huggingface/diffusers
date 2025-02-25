@@ -91,8 +91,10 @@ class WanxAttnProcessor2_0:
         hidden_states_img = None
         if encoder_hidden_states_img is not None:
             key_img = attn.add_k_proj(encoder_hidden_states_img)
-            key_img = attn.norm_added_k(key).view(batch_size, -1, attn.heads, head_dim)
+            key_img = attn.norm_added_k(key_img).view(batch_size, -1, attn.heads, head_dim)
             value_img = attn.add_v_proj(encoder_hidden_states_img).view(batch_size, -1, attn.heads, head_dim)
+            key_img = key_img.transpose(1, 2)
+            value_img = value_img.transpose(1, 2)
             hidden_states_img = F.scaled_dot_product_attention(
                 query, key_img, value_img, attn_mask=None, dropout_p=0.0, is_causal=False
             )
@@ -451,8 +453,9 @@ class WanxTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             rope_params(1024, 2 * (attention_head_dim // 6)),
             rope_params(1024, 2 * (attention_head_dim // 6))
         ],
-                               dim=1)
+        dim=1)
 
+        self.add_img_emb = add_img_emb
         if add_img_emb:
             self.img_emb = MLPProj(1280, inner_dim)
 
@@ -526,6 +529,7 @@ class WanxTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         seq_len: int,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
+        **kwargs
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
@@ -548,17 +552,15 @@ class WanxTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         
         hidden_states = self.patch_embedding(hidden_states)
 
-        # TODO: don't use split here
-        hidden_states = list(torch.split(hidden_states, 1, dim=0))
-
         grid_sizes = torch.stack(
-            [torch.tensor(u.shape[2:], dtype=torch.long) for u in hidden_states])
-        hidden_states = [u.flatten(2).transpose(1, 2) for u in hidden_states]
-        seq_lens = torch.tensor([u.size(1) for u in hidden_states], dtype=torch.long)
+            [torch.tensor(u.shape[1:], dtype=torch.long) for u in hidden_states]
+            )
+        hidden_states = hidden_states.flatten(2).transpose(1, 2) # (b, l, c)
+        seq_lens = torch.tensor([u.size(0) for u in hidden_states], dtype=torch.long)
         assert seq_lens.max() <= seq_len
         hidden_states = torch.cat([
-            torch.cat([u, u.new_zeros(1, seq_len - u.size(1), u.size(2))],
-                      dim=1) for u in hidden_states
+            torch.cat([u.unsqueeze(0), u.new_zeros(1, seq_len - u.size(0), u.size(1))],
+                    dim=1) for u in hidden_states
         ])
 
         with torch.cuda.amp.autocast(dtype=torch.float32):
@@ -569,6 +571,12 @@ class WanxTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         
         context_lens = None
         encoder_hidden_states = self.text_embedding(encoder_hidden_states)
+        if self.add_img_emb:
+            img_encoder_hidden_states = kwargs.get('img_encoder_hidden_states', None)
+            if img_encoder_hidden_states is None:
+                raise ValueError('`add_img_emb` is set but `img_encoder_hidden_states` is not provided.')
+            img_encoder_hidden_states = self.img_emb(img_encoder_hidden_states)
+            encoder_hidden_states = torch.concat([img_encoder_hidden_states, encoder_hidden_states], dim=1)
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:

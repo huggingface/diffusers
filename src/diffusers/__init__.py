@@ -90,6 +90,7 @@ else:
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
+            "AutoencoderKLWanx",
             "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
             "AutoencoderKLHunyuanVideo",
@@ -441,6 +442,7 @@ else:
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
             "WanxPipeline",
+            "WanxI2VPipeline",
         ]
     )
 
@@ -612,6 +614,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
+            AutoencoderKLWanx,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLHunyuanVideo,
@@ -940,6 +943,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
             WanxPipeline,
+            WanxI2VPipeline
         )
 
     try:
