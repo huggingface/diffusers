@@ -641,6 +641,11 @@ def parse_args(input_args=None):
         action="store_true",
         help="Enable model cpu offload and save memory.",
     )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether to trust and execute remote code for loading datasets.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -690,10 +695,13 @@ def get_train_dataset(args, accelerator):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
+            trust_remote_code=args.trust_remote_code,
         )
     if args.jsonl_for_train is not None:
         # load from json
-        dataset = load_dataset("json", data_files=args.jsonl_for_train, cache_dir=args.cache_dir)
+        dataset = load_dataset(
+            "json", data_files=args.jsonl_for_train, cache_dir=args.cache_dir, trust_remote_code=args.trust_remote_code
+        )
         dataset = dataset.flatten_indices()
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
