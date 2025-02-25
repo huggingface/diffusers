@@ -28,6 +28,31 @@ if is_torch_available():
 from PIL import Image
 
 
+def check_inputs(
+    endpoint: str,
+    tensor: "torch.Tensor",
+    processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
+    do_scaling: bool = True,
+    output_type: Literal["mp4", "pil", "pt"] = "pil",
+    return_type: Literal["mp4", "pil", "pt"] = "pil",
+    image_format: Literal["png", "jpg"] = "jpg",
+    partial_postprocess: bool = False,
+    input_tensor_type: Literal["base64", "binary"] = "base64",
+    output_tensor_type: Literal["base64", "binary"] = "base64",
+    height: Optional[int] = None,
+    width: Optional[int] = None,
+):
+    if tensor.ndim == 3 and height is None and width is None:
+        raise ValueError("`height` and `width` required for packed latents.")
+    if (
+        output_type == "pt"
+        and return_type == "pil"
+        and not partial_postprocess
+        and not isinstance(processor, (VaeImageProcessor, VideoProcessor))
+    ):
+        raise ValueError("`processor` is required.")
+
+
 def remote_decode(
     endpoint: str,
     tensor: "torch.Tensor",
@@ -63,7 +88,7 @@ def remote_decode(
                     Requires `processor` as a flag (any `None` value will work).
             `"pt"`: Support by image and video models. Endpoint returns `torch.Tensor`.
                 With `partial_postprocess=True` the tensor is postprocessed `uint8` image tensor.
-            
+
             Recommendations:
                 `"pt"` with `partial_postprocess=True` is the smallest transfer for full quality.
                 `"pt"` with `partial_postprocess=False` is the most compatible with third party code.
@@ -85,28 +110,38 @@ def remote_decode(
 
         image_format (`"png"` or `"jpg"`, default `jpg`):
             Used with `output_type="pil"`. Endpoint returns `jpg` or `png`.
-        
+
         partial_postprocess (`bool`, default `False`):
             Used with `output_type="pt"`.
             `partial_postprocess=False` tensor is `float16` or `bfloat16`, without denormalization.
             `partial_postprocess=True` tensor is `uint8`, denormalized.
-        
+
         input_tensor_type (`"base64"` or `"binary"`, default `"base64"`):
             With `"base64"` `tensor` is sent to endpoint base64 encoded. `"binary"` reduces overhead and transfer.
 
         output_tensor_type (`"base64"` or `"binary"`, default `"base64"`):
             With `"base64"` `tensor` returned by endpoint is base64 encoded. `"binary"` reduces overhead and transfer.
-        
+
         height (`int`, **optional**):
             Required for `"packed"` latents.
 
         width (`int`, **optional**):
             Required for `"packed"` latents.
     """
-    if tensor.ndim == 3 and height is None and width is None:
-        raise ValueError("`height` and `width` required for packed latents.")
-    if output_type == "pt" and partial_postprocess is False and processor is None:
-        raise ValueError("`processor` is required with `output_type='pt' and `partial_postprocess=False`.")
+    check_inputs(
+        endpoint,
+        tensor,
+        processor,
+        do_scaling,
+        output_type,
+        return_type,
+        image_format,
+        partial_postprocess,
+        input_tensor_type,
+        output_tensor_type,
+        height,
+        width,
+    )
     headers = {}
     parameters = {
         "do_scaling": do_scaling,
@@ -160,11 +195,14 @@ def remote_decode(
         output_tensor = torch.frombuffer(bytearray(output_tensor), dtype=torch_dtype).reshape(shape)
     if output_type == "pt":
         if partial_postprocess:
-            output = [Image.fromarray(image.numpy()) for image in output_tensor]
-            if len(output) == 1:
-                output = output[0]
+            if return_type == "pil":
+                output = [Image.fromarray(image.numpy()) for image in output_tensor]
+                if len(output) == 1:
+                    output = output[0]
+            elif return_type == "pt":
+                output = output_tensor
         else:
-            if processor is None:
+            if processor is None or return_type == "pt":
                 output = output_tensor
             else:
                 if isinstance(processor, VideoProcessor):
@@ -177,13 +215,16 @@ def remote_decode(
                         Image.Image,
                         processor.postprocess(output_tensor, output_type="pil")[0],
                     )
-    elif output_type == "pil" and processor is None:
+    elif output_type == "pil" and return_type == "pil" and processor is None:
         output = Image.open(io.BytesIO(response.content)).convert("RGB")
     elif output_type == "pil" and processor is not None:
-        output = [
-            Image.fromarray(image)
-            for image in (output_tensor.permute(0, 2, 3, 1).float().numpy() * 255).round().astype("uint8")
-        ]
-    elif output_type == "mp4":
+        if return_type == "pil":
+            output = [
+                Image.fromarray(image)
+                for image in (output_tensor.permute(0, 2, 3, 1).float().numpy() * 255).round().astype("uint8")
+            ]
+        elif return_type == "pt":
+            output = output_tensor
+    elif output_type == "mp4" and return_type == "mp4":
         output = response.content
     return output
