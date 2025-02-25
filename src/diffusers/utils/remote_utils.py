@@ -15,7 +15,7 @@ from PIL import Image
 
 
 if is_safetensors_available():
-    from safetensors.torch import _tobytes
+    import safetensors
 
 from ..image_processor import VaeImageProcessor
 from ..video_processor import VideoProcessor
@@ -57,7 +57,7 @@ def remote_decode(
     if height is not None and width is not None:
         parameters["height"] = height
         parameters["width"] = width
-    tensor_data = _tobytes(tensor, "tensor")
+    tensor_data = safetensors.torch._tobytes(tensor, "tensor")
     if input_tensor_type == "base64":
         headers["Content-Type"] = "tensor/base64"
     elif input_tensor_type == "binary":
