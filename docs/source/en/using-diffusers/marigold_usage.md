@@ -380,13 +380,14 @@ corresponding to the previous frame prediction give sufficiently smooth results,
 
 ```python
 import imageio
-from PIL import Image
-from tqdm import tqdm
 import diffusers
 import torch
+from diffusers.models.attention_processor import AttnProcessor2_0
+from PIL import Image
+from tqdm import tqdm
 
 device = "cuda"
-path_in = "obama.mp4"
+path_in = "https://huggingface.co/spaces/prs-eth/marigold-lcm/resolve/c7adb5427947d2680944f898cd91d386bf0d4924/files/video/obama.mp4"
 path_out = "obama_depth.gif"
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
@@ -395,6 +396,9 @@ pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
 pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
     "madebyollin/taesd", torch_dtype=torch.float16
 ).to(device)
+pipe.unet.set_attn_processor(AttnProcessor2_0())
+pipe.vae = torch.compile(pipe.vae, mode="reduce-overhead", fullgraph=True)
+pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 pipe.set_progress_bar_config(disable=True)
 
 with imageio.get_reader(path_in) as reader:
