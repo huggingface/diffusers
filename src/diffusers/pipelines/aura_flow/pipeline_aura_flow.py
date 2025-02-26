@@ -271,9 +271,6 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
             lora_scale (`float`, *optional*):
                 A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
-        if device is None:
-            device = self._execution_device
-
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, AuraFlowLoraLoaderMixin):
@@ -283,6 +280,8 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
             if self.text_encoder is not None and USE_PEFT_BACKEND:
                 scale_lora_layers(self.text_encoder, lora_scale)
 
+        if device is None:
+            device = self._execution_device
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -366,6 +365,11 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
             negative_prompt_embeds = None
             negative_prompt_attention_mask = None
 
+        if self.text_encoder is not None:
+            if isinstance(self, AuraFlowLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
+
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.prepare_latents
@@ -422,6 +426,10 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
     @property
     def guidance_scale(self):
         return self._guidance_scale
+
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
 
     @property
     def num_timesteps(self):
@@ -669,16 +677,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         # Offload all models
         self.maybe_free_model_hooks()
 
-        if self.text_encoder is not None:
-            if isinstance(self, AuraFlowLoraLoaderMixin) and USE_PEFT_BACKEND:
-                # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder, lora_scale)
-
         if not return_dict:
             return (image,)
 
         return ImagePipelineOutput(images=image)
-
-    @property
-    def attention_kwargs(self):
-        return self._attention_kwargs
