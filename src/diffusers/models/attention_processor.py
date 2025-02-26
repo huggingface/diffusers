@@ -213,7 +213,9 @@ class Attention(nn.Module):
             self.norm_q = LpNorm(p=2, dim=-1, eps=eps)
             self.norm_k = LpNorm(p=2, dim=-1, eps=eps)
         else:
-            raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None,'layer_norm','fp32_layer_norm','rms_norm'")
+            raise ValueError(
+                f"unknown qk_norm: {qk_norm}. Should be one of None, 'layer_norm', 'fp32_layer_norm', 'layer_norm_across_heads', 'rms_norm', 'rms_norm_across_heads', 'l2'."
+            )
 
         if cross_attention_norm is None:
             self.norm_cross = None
@@ -405,11 +407,12 @@ class Attention(nn.Module):
             else:
                 try:
                     # Make sure we can run the memory efficient attention
-                    _ = xformers.ops.memory_efficient_attention(
-                        torch.randn((1, 2, 40), device="cuda"),
-                        torch.randn((1, 2, 40), device="cuda"),
-                        torch.randn((1, 2, 40), device="cuda"),
-                    )
+                    dtype = None
+                    if attention_op is not None:
+                        op_fw, op_bw = attention_op
+                        dtype, *_ = op_fw.SUPPORTED_DTYPES
+                    q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
+                    _ = xformers.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
                     raise e
 
@@ -1407,7 +1410,7 @@ class JointAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("JointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -2777,9 +2780,8 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
 
             # IP-adapter
             ip_query = hidden_states_query_proj
-            ip_attn_output = None
-            # for ip-adapter
-            # TODO: support for multiple adapters
+            ip_attn_output = torch.zeros_like(hidden_states)
+
             for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
                 ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
             ):
@@ -2790,12 +2792,14 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
                 ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 # the output of sdp = (batch, num_heads, seq_len, head_dim)
                 # TODO: add support for attn.scale when we move to Torch 2.1
-                ip_attn_output = F.scaled_dot_product_attention(
+                current_ip_hidden_states = F.scaled_dot_product_attention(
                     ip_query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
                 )
-                ip_attn_output = ip_attn_output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                ip_attn_output = scale * ip_attn_output
-                ip_attn_output = ip_attn_output.to(ip_query.dtype)
+                current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
+                    batch_size, -1, attn.heads * head_dim
+                )
+                current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
+                ip_attn_output += scale * current_ip_hidden_states
 
             return hidden_states, encoder_hidden_states, ip_attn_output
         else:
@@ -2824,9 +2828,7 @@ class CogVideoXAttnProcessor2_0:
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        batch_size, sequence_length, _ = hidden_states.shape
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -3154,6 +3156,11 @@ class AttnProcessorNPU:
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+            attention_mask = attention_mask.repeat(1, 1, hidden_states.shape[1], 1)
+            if attention_mask.dtype == torch.bool:
+                attention_mask = torch.logical_not(attention_mask.bool())
+            else:
+                attention_mask = attention_mask.bool()
 
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)

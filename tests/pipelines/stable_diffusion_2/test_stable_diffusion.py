@@ -75,6 +75,8 @@ class StableDiffusion2PipelineFastTests(
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -309,6 +311,13 @@ class StableDiffusion2PipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
 
 @slow

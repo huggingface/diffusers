@@ -19,6 +19,7 @@ import torch
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import LocalEntryNotFoundError, validate_hf_hub_args
 from packaging import version
+from typing_extensions import Self
 
 from ..utils import deprecate, is_transformers_available, logging
 from .single_file_utils import (
@@ -269,7 +270,7 @@ class FromSingleFileMixin:
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+    def from_single_file(cls, pretrained_model_link_or_path, **kwargs) -> Self:
         r"""
         Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` or `.safetensors`
         format. The pipeline is set in evaluation mode (`model.eval()`) by default.
@@ -359,10 +360,16 @@ class FromSingleFileMixin:
         cache_dir = kwargs.pop("cache_dir", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
         is_legacy_loading = False
+
+        if not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
 
         # We shouldn't allow configuring individual models components through a Pipeline creation method
         # These model kwargs should be deprecated

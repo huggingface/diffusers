@@ -198,3 +198,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {image_slice.flatten()}, but got {image_slice.flatten()}"
+
+    @unittest.skip("Test not supported because of complexities in deriving query_embeds.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass

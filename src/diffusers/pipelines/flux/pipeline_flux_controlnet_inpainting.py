@@ -89,7 +89,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -930,8 +930,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         if isinstance(self.controlnet, FluxControlNetModel):
             control_image = self.prepare_image(
                 image=control_image,
-                width=height,
-                height=width,
+                width=width,
+                height=height,
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
@@ -1019,7 +1019,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             self.scheduler.config.get("base_image_seq_len", 256),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.5),
-            self.scheduler.config.get("max_shift", 1.16),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
