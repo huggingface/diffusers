@@ -149,7 +149,6 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import DiffusionPipeline
         >>> from anytext_controlnet import AnyTextControlNetModel
-        >>> from diffusers import DDIMScheduler
         >>> from diffusers.utils import load_image
 
         >>> # I chose a font file shared by an HF staff:
@@ -162,7 +161,6 @@ EXAMPLE_DOC_STRING = """
         ...                                           trust_remote_code=False,  # One needs to give permission to run this pipeline's code
         ...                                           ).to("cuda")
 
-        >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 
         >>> # generate image
         >>> prompt = 'photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream'
