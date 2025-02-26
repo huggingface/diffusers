@@ -44,6 +44,16 @@ def count_conv3d(model):
     return count
 
 class WanCausalConv3d(nn.Conv3d):
+    r"""
+    A custom 3D causal convolution layer.
+
+    This layer extends the standard Conv3D layer by ensuring causality in the time dimension.
+    It achieves this by dynamically adjusting padding based on the presence of cached input data.
+
+    Args:
+        *args: Positional arguments for the parent Conv3d class.
+        **kwargs: Keyword arguments for the parent Conv3d class.
+    """
     def __init__(self, *args, **kwargs)-> None:
         super().__init__(*args, **kwargs)
         self._padding = (
@@ -63,10 +73,6 @@ class WanCausalConv3d(nn.Conv3d):
             padding[4] -= cache_x.shape[2]
         x = F.pad(x, padding)
         return super().forward(x)
-
-    # def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-    #     hidden_states = F.pad(hidden_states, self.time_causal_padding, mode=self.pad_mode)
-    #     return self.conv(hidden_states)
 
 class WanRMS_norm(nn.Module): 
     r"""
@@ -100,11 +106,17 @@ class WanRMS_norm(nn.Module):
 
 
 class WanUpsample(nn.Upsample):
+    r"""
+    Perform upsampling while ensuring the output tensor has the same data type as the input.
+    
+    Args:
+        x (torch.Tensor): Input tensor to be upsampled.
 
+    Returns:
+        torch.Tensor: Upsampled tensor with the same data type as the input.
+    """
     def forward(self, x):
-        """
-        Fix bfloat16 support for nearest neighbor interpolation.
-        """
+
         return super().forward(x.float()).type_as(x)
 
 
@@ -146,7 +158,7 @@ class WanResample(nn.Module):
                 nn.Conv2d(dim, dim//2, 3, padding=1)
             )
             self.time_conv = WanCausalConv3d(dim, dim*2, (3,1,1), padding=(1,0,0))
-            
+
         elif mode == 'downsample2d':
             self.resample = nn.Sequential(
                 nn.ZeroPad2d((0, 1, 0, 1)),
@@ -227,7 +239,15 @@ class WanResample(nn.Module):
         nn.init.zeros_(conv.bias.data)
     
 class WanResidualBlock(nn.Module):
+    r"""
+    A custom residual block module.
 
+    Args:
+        in_dim (int): Number of input channels.
+        out_dim (int): Number of output channels.
+        dropout (float, optional): Dropout rate for the dropout layer. Default is 0.0.
+        non_linearity (str, optional): Type of non-linearity to use. Default is "silu".
+    """
     def __init__(
         self,
         in_dim: int,
@@ -271,8 +291,11 @@ class WanResidualBlock(nn.Module):
 
 
 class WanAttentionBlock(nn.Module):
-    """
+    r"""
     Causal self-attention with a single head.
+
+    Args:
+        dim (int): The number of channels in the input tensor.
     """
     def __init__(self, dim):
         super().__init__()
@@ -309,7 +332,19 @@ class WanAttentionBlock(nn.Module):
 
 
 class WanEncoder3d(nn.Module):
+    r"""
+    A 3D encoder module.
 
+    Args:
+        dim (int): The base number of channels in the first layer.
+        z_dim (int): The dimensionality of the latent space.
+        dim_mult (list of int): Multipliers for the number of channels in each block.
+        num_res_blocks (int): Number of residual blocks in each block.
+        attn_scales (list of float): Scales at which to apply attention mechanisms.
+        temperal_downsample (list of bool): Whether to downsample temporally in each block.
+        dropout (float): Dropout rate for the dropout layers.
+        non_linearity (str): Type of non-linearity to use.
+    """
     def __init__(
         self,
         dim=128,
@@ -412,7 +447,19 @@ class WanEncoder3d(nn.Module):
 
 
 class WanDecoder3d(nn.Module):
+    r"""
+    A 3D decoder module.
 
+    Args:
+        dim (int): The base number of channels in the first layer.
+        z_dim (int): The dimensionality of the latent space.
+        dim_mult (list of int): Multipliers for the number of channels in each block.
+        num_res_blocks (int): Number of residual blocks in each block.
+        attn_scales (list of float): Scales at which to apply attention mechanisms.
+        temperal_upsample (list of bool): Whether to upsample temporally in each block.
+        dropout (float): Dropout rate for the dropout layers.
+        non_linearity (str): Type of non-linearity to use.
+    """
     def __init__(
         self,
         dim=128,
@@ -521,7 +568,7 @@ class WanDecoder3d(nn.Module):
 class AutoencoderKLWan(ModelMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
-    Introduced in [Wan](https://huggingface.co/papers/).
+    Introduced in [Wan 2.1].
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
