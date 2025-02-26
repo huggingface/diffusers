@@ -1,4 +1,4 @@
-# Copyright 2024 The Wan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -282,7 +282,7 @@ class WanBlock(nn.Module):
 
         # self-attention
         attn_hidden_states = self.norm1(hidden_states).float() * (1 + e[1]) + e[0]
-        # TODO: replace seq_lens with attention mask
+
         attn_hidden_states = self.attn1(
             hidden_states=attn_hidden_states,
             grid_sizes=grid_sizes,
@@ -355,38 +355,36 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     A Transformer model for video-like data used in the Wan model.
 
     Args:
+        patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
+            3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
+        num_attention_heads (`int`, defaults to `40`):
+            Fixed length for text embeddings.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of channels in each head.
         in_channels (`int`, defaults to `16`):
             The number of channels in the input.
         out_channels (`int`, defaults to `16`):
             The number of channels in the output.
-        num_attention_heads (`int`, defaults to `24`):
-            The number of heads to use for multi-head attention.
-        attention_head_dim (`int`, defaults to `128`):
-            The number of channels in each head.
-        num_layers (`int`, defaults to `20`):
-            The number of layers of dual-stream blocks to use.
-        num_single_layers (`int`, defaults to `40`):
-            The number of layers of single-stream blocks to use.
-        num_refiner_layers (`int`, defaults to `2`):
-            The number of layers of refiner blocks to use.
-        mlp_ratio (`float`, defaults to `4.0`):
-            The ratio of the hidden layer size to the input size in the feedforward network.
-        patch_size (`int`, defaults to `2`):
-            The size of the spatial patches to use in the patch embedding layer.
-        patch_size_t (`int`, defaults to `1`):
-            The size of the tmeporal patches to use in the patch embedding layer.
-        qk_norm (`str`, defaults to `rms_norm`):
-            The normalization to use for the query and key projections in the attention layers.
-        guidance_embeds (`bool`, defaults to `True`):
-            Whether to use guidance embeddings in the model.
-        text_embed_dim (`int`, defaults to `4096`):
-            Input dimension of text embeddings from the text encoder.
-        pooled_projection_dim (`int`, defaults to `768`):
-            The dimension of the pooled projection of the text embeddings.
-        rope_theta (`float`, defaults to `256.0`):
-            The value of theta to use in the RoPE layer.
-        rope_axes_dim (`Tuple[int]`, defaults to `(16, 56, 56)`):
-            The dimensions of the axes to use in the RoPE layer.
+        text_dim (`int`, defaults to `512`):
+            Input dimension for text embeddings.
+        freq_dim (`int`, defaults to `256`):
+            Dimension for sinusoidal time embeddings.
+        ffn_dim (`int`, defaults to `13824`):
+            Intermediate dimension in feed-forward network.
+        num_layers (`int`, defaults to `40`):
+            The number of layers of transformer blocks to use.
+        window_size (`Tuple[int]`, defaults to `(-1, -1)`):
+            Window size for local attention (-1 indicates global attention).
+        cross_attn_norm (`bool`, defaults to `True`):
+            Enable cross-attention normalization.
+        qk_norm (`bool`, defaults to `True`):
+            Enable query/key normalization.
+        eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        add_img_emb (`bool`, defaults to `False`):
+            Whether to use img_emb.
+        added_kv_proj_dim (`int`, *optional*, defaults to `None`):
+            The number of channels to use for the added key and value projections. If `None`, no projection is used.
     """
 
     _supports_gradient_checkpointing = True
@@ -400,14 +398,14 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     def __init__(
         self,
         patch_size: Tuple[int] = (1, 2, 2),
-        num_attention_heads: int = 30,
-        attention_head_dim: int = 64,
+        num_attention_heads: int = 40,
+        attention_head_dim: int = 128,
         in_channels: int = 16,
         out_channels: int = 16,
         text_dim: int = 512,
         freq_dim: int = 256,
         ffn_dim: int = 13824,
-        num_layers: int = 20,
+        num_layers: int = 40,
         window_size: Tuple[int] = (-1, -1),
         cross_attn_norm: bool = True,
         qk_norm: bool = True,
@@ -545,8 +543,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 logger.warning(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-        
-        # TODO: can we avoid this
+
         if self.freqs.device != hidden_states.device:
             self.freqs = self.freqs.to(hidden_states.device)
         

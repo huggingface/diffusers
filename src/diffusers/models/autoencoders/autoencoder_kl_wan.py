@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# Contact: lipandeng.lpd@alibaba-inc.com
 
 from typing import Optional, Tuple, List, Union
 from einops import rearrange
@@ -213,7 +212,7 @@ class WanResample(nn.Module):
         one_matrix = torch.eye(c1, c2) 
         init_matrix = one_matrix    
         nn.init.zeros_(conv_weight) 
-        conv_weight.data[:,:,1,0,0] = init_matrix  #* 0.5 
+        conv_weight.data[:,:,1,0,0] = init_matrix
         conv.weight.data.copy_(conv_weight)
         nn.init.zeros_(conv.bias.data)
     
@@ -590,7 +589,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
             else:
                 out_ = self.encoder(x[:,:,1+4*(i-1):1+4*i,:,:], feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx)
                 out = torch.cat([out, out_], 2)  
-        # mu, logvar = self.conv1(out).chunk(2, dim=1) 
+
         enc = self.conv1(out) 
         mu, logvar = enc[:, :self.z_dim, :, :, :], enc[:, self.z_dim:, :, :, :]
         mu = (mu - self.scale[0].view(1, self.z_dim, 1, 1, 1)) * self.scale[1].view(1, self.z_dim, 1, 1, 1)

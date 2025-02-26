@@ -1,4 +1,4 @@
-# Copyright 2024 The Wan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,21 +47,35 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```python
-        >>> pretrained_model_name_or_path = 'xxx/wan_i2v'  # TODO replace with our hf id
-        >>> image_encoder = CLIPVisionModel.from_pretrained(pretrained_model_name_or_path, subfolder='image_encoder',
-        ...                                                 torch_dtype=torch.float16)
-        >>> transformer_i2v = WanTransformer3DModel.from_pretrained(pretrained_model_name_or_path, subfolder='transformer_i2v_720p',
-        ...                                                          torch_dtype=torch.bfloat16)
-        >>> image_processor = CLIPImageProcessor.from_pretrained(pretrained_model_name_or_path, subfolder='image_processor')
+        >>> import torch
+        >>> from diffusers import WanI2VPipeline, WanTransformer3DModel
+        >>> from transformers import CLIPVisionModel, CLIPImageProcessor, UMT5EncoderModel
+        >>> from diffusers.utils import load_image, export_to_video
+
+        >>> model_id = "Wan/Wan"
+        >>> image_encoder = CLIPVisionModel.from_pretrained(
+        ...     model_id, subfolder='image_encoder'
+        ...)
+        >>> text_encoder = UMT5EncoderModel.from_pretrained(
+        ...     model_id, subfolder='text_encoder'
+        ... )
+        >>> transformer_i2v = WanTransformer3DModel.from_pretrained(
+        ...     model_id, subfolder='transformer_i2v_720p'
+        ... )
+        >>> image_processor = CLIPImageProcessor.from_pretrained(
+        ...     model_id, subfolder='image_processor'
+        ... )
         >>> pipe = WanI2VPipeline.from_pretrained(
-        ...     pretrained_model_name_or_path,
+        ...     model_id,
         ...     transformer=transformer_i2v,
+        ...     text_encoder=text_encoder,
         ...     image_encoder=image_encoder,
         ...     image_processor=image_processor
         ... )
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
         ... )
+
         >>> device = "cuda"
         >>> seed = 0
         >>> prompt = ("An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
@@ -69,6 +83,7 @@ EXAMPLE_DOC_STRING = """
         >>> generator = torch.Generator(device=device).manual_seed(seed)
         >>> pipe.to(device)
         >>> pipe.enable_model_cpu_offload()
+
         >>> inputs = {
         ...     'image': image,
         ...     "prompt": prompt,
@@ -82,7 +97,7 @@ EXAMPLE_DOC_STRING = """
         ...     "shift": 5.0,
         ... }
         >>> output = pipe(**inputs).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=15)
+        >>> export_to_video(output, "output.mp4", fps=16)
         ```
 """
 
@@ -135,8 +150,8 @@ class WanI2VPipeline(DiffusionPipeline):
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModel), specifically
             the [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large) variant.
         transformer ([`WanTransformer3DModel`]):
-            Conditional Transformer to denoise the encoded image latents.
-        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            Conditional Transformer to denoise the input latents.
+        scheduler ([`UniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
@@ -458,7 +473,7 @@ class WanI2VPipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
@@ -485,7 +500,7 @@ class WanI2VPipeline(DiffusionPipeline):
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, defaults to `6.0`):
+            guidance_scale (`float`, defaults to `5.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >

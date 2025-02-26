@@ -1,4 +1,4 @@
-# Copyright 2024 The Wan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,24 +49,39 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> from diffusers import WanPipeline, WanTransformer3DModel
+        >>> from transformers import UMT5EncoderModel
         >>> from diffusers.utils import export_to_video
 
         >>> model_id = "Wan/Wan"
-        >>> transformer = WanTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        >>> text_encoder = UMT5EncoderModel.from_pretrained(
+        ...     model_id, subfolder='text_encoder'
         ... )
-        >>> pipe = WanPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.float16)
-        >>> pipe.vae.enable_tiling()
-        >>> pipe.to("cuda")
+        >>> transformer = WanTransformer3DModel.from_pretrained(
+        ...     model_id, subfolder="transformer"
+        ... )
+        >>> pipe = WanPipeline.from_pretrained(
+        ...     model_id, 
+        ...     transformer=transformer, 
+        ...     text_encoder=text_encoder
+        ... )
+
+        >>> device = "cuda"
+        >>> seed = 0
+        >>> generator = torch.Generator(device=device).manual_seed(seed)
+        >>> pipe.to(device)
+        >>> pipe.enable_model_cpu_offload()
 
         >>> output = pipe(
         ...     prompt="A cat walks on the grass, realistic",
-        ...     height=320,
-        ...     width=512,
-        ...     num_frames=61,
-        ...     num_inference_steps=30,
+        ...     height=720,
+        ...     width=1280,
+        ...     num_frames=81,
+        ...     num_inference_steps=50,
+        ...     flow_shift=5.0,
+        ...     guidance_scale=5.0,
+        ...     generator=generator
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=15)
+        >>> export_to_video(output, "output.mp4", fps=16)
         ```
 """
 
@@ -96,22 +111,18 @@ class WanPipeline(DiffusionPipeline):
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
-        text_encoder ([`LlamaModel`]):
-            [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
-        tokenizer (`LlamaTokenizer`):
-            Tokenizer from [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
+        tokenizer ([`T5Tokenizer`]):
+            Tokenizer from [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5Tokenizer),
+            specifically the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
+        text_encoder ([`T5EncoderModel`]):
+            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
+            the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
         transformer ([`WanTransformer3DModel`]):
-            Conditional Transformer to denoise the encoded image latents.
-        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            Conditional Transformer to denoise the input latents.
+        scheduler ([`UniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
-        text_encoder_2 ([`CLIPTextModel`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer_2 (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -206,8 +217,6 @@ class WanPipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
-                Whether to use classifier free guidance or not.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
             prompt_embeds (`torch.Tensor`, *optional*):
@@ -308,7 +317,7 @@ class WanPipeline(DiffusionPipeline):
     def prepare_latents(
         self,
         batch_size: int,
-        num_channels_latents: 32,
+        num_channels_latents: 16,
         height: int = 720,
         width: int = 1280,
         num_latent_frames: int = 21,
@@ -374,7 +383,7 @@ class WanPipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
@@ -400,7 +409,7 @@ class WanPipeline(DiffusionPipeline):
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, defaults to `6.0`):
+            guidance_scale (`float`, defaults to `5.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -426,9 +435,6 @@ class WanPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
