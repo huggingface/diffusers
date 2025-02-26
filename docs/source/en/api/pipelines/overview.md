@@ -65,7 +65,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Latte](latte) | text2image |
 | [LEDITS++](ledits_pp) | image editing |
 | [Lumina-T2X](lumina) | text2image |
-| [Marigold](marigold) | depth |
+| [Marigold](marigold) | depth-estimation, normals-estimation, intrinsic-decomposition |
 | [MultiDiffusion](panorama) | text2image |
 | [MusicLDM](musicldm) | text2audio |
 | [PAG](pag) | text2image |

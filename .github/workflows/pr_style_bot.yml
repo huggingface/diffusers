@@ -53,9 +53,9 @@ jobs:
           HEADREF: ${{ steps.pr_info.outputs.headRef }}
           PRNUMBER: ${{ steps.pr_info.outputs.prNumber }}
         run: |
-          echo "PR number: ${{ env.PRNUMBER }}"
-          echo "Head Ref: ${{ env.HEADREF }}"
-          echo "Head Repo Full Name: ${{ env.HEADREPOFULLNAME }}"
+          echo "PR number: $PRNUMBER"
+          echo "Head Ref: $HEADREF"
+          echo "Head Repo Full Name: $HEADREPOFULLNAME"
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -104,20 +104,20 @@ jobs:
           PRNUMBER: ${{ steps.pr_info.outputs.prNumber }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "HEADREPOFULLNAME: ${{ env.HEADREPOFULLNAME }}, HEADREF: ${{ env.HEADREF }}"
+          echo "HEADREPOFULLNAME: $HEADREPOFULLNAME, HEADREF: $HEADREF"
           # Configure git with the Actions bot user
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Make sure your 'origin' remote is set to the contributor's fork
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ env.HEADREPOFULLNAME }}.git"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$HEADREPOFULLNAME.git"
 
           # If there are changes after running style/quality, commit them
           if [ -n "$(git status --porcelain)" ]; then
             git add .
             git commit -m "Apply style fixes"
             # Push to the original contributor's forked branch
-            git push origin HEAD:${{ env.HEADREF }}
+            git push origin HEAD:$HEADREF
             echo "changes_pushed=true" >> $GITHUB_OUTPUT
           else
             echo "No changes to commit."
