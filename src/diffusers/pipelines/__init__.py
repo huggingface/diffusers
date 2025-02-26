@@ -261,6 +261,7 @@ else:
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
+            "MarigoldIntrinsicsPipeline",
             "MarigoldNormalsPipeline",
         ]
     )
@@ -603,6 +604,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .lumina2 import Lumina2Text2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
+            MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
