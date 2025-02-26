@@ -61,35 +61,55 @@ Examples:
 >>> import diffusers
 >>> import torch
 
->>> pipe = diffusers.MarigoldNormalsPipeline.from_pretrained(
-...     "prs-eth/marigold-normals-v1-1", variant="fp16", torch_dtype=torch.float16
+>>> pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
+...     "prs-eth/marigold-iid-appearance-v1-1", variant="fp16", torch_dtype=torch.float16
 ... ).to("cuda")
 
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
->>> normals = pipe(image)
+>>> intrinsics = pipe(image)
 
->>> vis = pipe.image_processor.visualize_normals(normals.prediction)
->>> vis[0].save("einstein_normals.png")
+>>> vis = pipe.image_processor.visualize_intrinsics(intrinsics.prediction, pipe.target_properties)
+>>> vis[0]["albedo"].save("einstein_albedo.png")
+>>> vis[0]["roughness"].save("einstein_roughness.png")
+>>> vis[0]["metallicity"].save("einstein_metallicity.png")
+```
+```py
+>>> import diffusers
+>>> import torch
+
+>>> pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
+...     "prs-eth/marigold-iid-lighting-v1-1", variant="fp16", torch_dtype=torch.float16
+... ).to("cuda")
+
+>>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
+>>> intrinsics = pipe(image)
+
+>>> vis = pipe.image_processor.visualize_intrinsics(intrinsics.prediction, pipe.target_properties)
+>>> vis[0]["albedo"].save("einstein_albedo.png")
+>>> vis[0]["shading"].save("einstein_shading.png")
+>>> vis[0]["residual"].save("einstein_residual.png")
 ```
 """
 
 
 @dataclass
-class MarigoldNormalsOutput(BaseOutput):
+class MarigoldIntrinsicsOutput(BaseOutput):
     """
-    Output class for Marigold monocular normals prediction pipeline.
+    Output class for Marigold Intrinsic Image Decomposition pipeline.
 
     Args:
         prediction (`np.ndarray`, `torch.Tensor`):
-            Predicted normals with values in the range [-1, 1]. The shape is $numimages \times 3 \times height \times
-            width$ for `torch.Tensor` or $numimages \times height \times width \times 3$ for `np.ndarray`.
+            Predicted image intrinsics with values in the range [0, 1]. The shape is $(numimages * numtargets) \times 3
+            \times height \times width$ for `torch.Tensor` or $(numimages * numtargets) \times height \times width
+            \times 3$ for `np.ndarray`, where `numtargets` corresponds to the number of predicted target modalities of
+            the intrinsic image decomposition.
         uncertainty (`None`, `np.ndarray`, `torch.Tensor`):
-            Uncertainty maps computed from the ensemble, with values in the range [0, 1]. The shape is $numimages
-            \times 1 \times height \times width$ for `torch.Tensor` or $numimages \times height \times width \times 1$
-            for `np.ndarray`.
+            Uncertainty maps computed from the ensemble, with values in the range [0, 1]. The shape is $(numimages *
+            numtargets) \times 3 \times height \times width$ for `torch.Tensor` or $(numimages * numtargets) \times
+            height \times width \times 3$ for `np.ndarray`.
         latent (`None`, `torch.Tensor`):
             Latent features corresponding to the predictions, compatible with the `latents` argument of the pipeline.
-            The shape is $numimages * numensemble \times 4 \times latentheight \times latentwidth$.
+            The shape is $(numimages * numensemble) \times (numtargets * 4) \times latentheight \times latentwidth$.
     """
 
     prediction: Union[np.ndarray, torch.Tensor]
@@ -97,16 +117,17 @@ class MarigoldNormalsOutput(BaseOutput):
     latent: Union[None, torch.Tensor]
 
 
-class MarigoldNormalsPipeline(DiffusionPipeline):
+class MarigoldIntrinsicsPipeline(DiffusionPipeline):
     """
-    Pipeline for monocular normals estimation using the Marigold method: https://marigoldmonodepth.github.io.
+    Pipeline for Intrinsic Image Decomposition (IID) using the Marigold method:
+    https://marigoldcomputervision.github.io.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
         unet (`UNet2DConditionModel`):
-            Conditional U-Net to denoise the normals latent, conditioned on image latent.
+            Conditional U-Net to denoise the targets latent, conditioned on image latent.
         vae (`AutoencoderKL`):
             Variational Auto-Encoder (VAE) Model to encode and decode images and predictions to and from latent
             representations.
@@ -118,9 +139,10 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             CLIP tokenizer.
         prediction_type (`str`, *optional*):
             Type of predictions made by the model.
-        use_full_z_range (`bool`, *optional*):
-            Whether the normals predicted by this model utilize the full range of the Z dimension, or only its positive
-            half.
+        target_properties (`Dict[str, Any]`, *optional*):
+            Properties of the predicted modalities, such as `target_names`, a `List[str]` used to define the number,
+            order and names of the predicted modalities, and any other metadata that may be required to interpret the
+            predictions.
         default_denoising_steps (`int`, *optional*):
             The minimum number of denoising diffusion steps that are required to produce a prediction of reasonable
             quality with the given model. This value must be set in the model config. When the pipeline is called
@@ -135,7 +157,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
-    supported_prediction_types = ("normals",)
+    supported_prediction_types = ("intrinsics",)
 
     def __init__(
         self,
@@ -145,7 +167,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         prediction_type: Optional[str] = None,
-        use_full_z_range: Optional[bool] = True,
+        target_properties: Optional[Dict[str, Any]] = None,
         default_denoising_steps: Optional[int] = None,
         default_processing_resolution: Optional[int] = None,
     ):
@@ -166,20 +188,24 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         )
         self.register_to_config(
             prediction_type=prediction_type,
-            use_full_z_range=use_full_z_range,
+            target_properties=target_properties,
             default_denoising_steps=default_denoising_steps,
             default_processing_resolution=default_processing_resolution,
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
-        self.use_full_z_range = use_full_z_range
+        self.target_properties = target_properties
         self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
 
         self.empty_text_embedding = None
 
         self.image_processor = MarigoldImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
+    @property
+    def n_targets(self):
+        return self.unet.config.out_channels // self.vae.config.latent_channels
 
     def check_inputs(
         self,
@@ -247,8 +273,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         if ensembling_kwargs is not None:
             if not isinstance(ensembling_kwargs, dict):
                 raise ValueError("`ensembling_kwargs` must be a dictionary.")
-            if "reduction" in ensembling_kwargs and ensembling_kwargs["reduction"] not in ("closest", "mean"):
-                raise ValueError("`ensembling_kwargs['reduction']` can be either `'closest'` or `'mean'`.")
+            if "reduction" in ensembling_kwargs and ensembling_kwargs["reduction"] not in ("median", "mean"):
+                raise ValueError("`ensembling_kwargs['reduction']` can be either `'median'` or `'mean'`.")
 
         # image checks
         num_images = 0
@@ -292,7 +318,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 W, H = new_W, new_H
             w = (W + self.vae_scale_factor - 1) // self.vae_scale_factor
             h = (H + self.vae_scale_factor - 1) // self.vae_scale_factor
-            shape_expected = (num_images * ensemble_size, self.vae.config.latent_channels, h, w)
+            shape_expected = (num_images * ensemble_size, self.unet.config.out_channels, h, w)
 
             if latents.shape != shape_expected:
                 raise ValueError(f"`latents` has unexpected shape={latents.shape} expected={shape_expected}.")
@@ -355,9 +381,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         Args:
             image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`),
-                `List[torch.Tensor]`: An input image or images used as an input for the normals estimation task. For
-                arrays and tensors, the expected value range is between `[0, 1]`. Passing a batch of images is possible
-                by providing a four-dimensional array or a tensor. Additionally, a list of images of two- or
+                `List[torch.Tensor]`: An input image or images used as an input for the intrinsic decomposition task.
+                For arrays and tensors, the expected value range is between `[0, 1]`. Passing a batch of images is
+                possible by providing a four-dimensional array or a tensor. Additionally, a list of images of two- or
                 three-dimensional arrays or tensors can be passed. In the latter case, all list elements must have the
                 same width and height.
             num_inference_steps (`int`, *optional*, defaults to `None`):
@@ -382,8 +408,8 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 Batch size; only matters when setting `ensemble_size` or passing a tensor of images.
             ensembling_kwargs (`dict`, *optional*, defaults to `None`)
                 Extra dictionary with arguments for precise ensembling control. The following options are available:
-                - reduction (`str`, *optional*, defaults to `"closest"`): Defines the ensembling function applied in
-                  every pixel location, can be either `"closest"` or `"mean"`.
+                - reduction (`str`, *optional*, defaults to `"median"`): Defines the ensembling function applied in
+                  every pixel location, can be either `"median"` or `"mean"`.
             latents (`torch.Tensor`, *optional*, defaults to `None`):
                 Latent noise tensors to replace the random initialization. These can be taken from the previous
                 function call's output.
@@ -400,13 +426,13 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
                 within the ensemble. These codes can be saved, modified, and used for subsequent calls with the
                 `latents` argument.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.marigold.MarigoldNormalsOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.marigold.MarigoldIntrinsicsOutput`] instead of a plain tuple.
 
         Examples:
 
         Returns:
-            [`~pipelines.marigold.MarigoldNormalsOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.marigold.MarigoldNormalsOutput`] is returned, otherwise a
+            [`~pipelines.marigold.MarigoldIntrinsicsOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.marigold.MarigoldIntrinsicsOutput`] is returned, otherwise a
                 `tuple` is returned where the first element is the prediction, the second element is the uncertainty
                 (or `None`), and the third is the latent (or `None`).
         """
@@ -465,15 +491,17 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         # 4. Encode input image into latent space. At this step, each of the `N` input images is represented with `E`
         # ensemble members. Each ensemble member is an independent diffused prediction, just initialized independently.
         # Latents of each such predictions across all input images and all ensemble members are represented in the
-        # `pred_latent` variable. The variable `image_latent` is of the same shape: it contains each input image encoded
-        # into latent space and replicated `E` times. The latents can be either generated (see `generator` to ensure
-        # reproducibility), or passed explicitly via the `latents` argument. The latter can be set outside the pipeline
-        # code. This behavior can be achieved by setting the `output_latent` argument to `True`. The latent space
-        # dimensions are `(h, w)`. Encoding into latent space happens in batches of size `batch_size`.
+        # `pred_latent` variable. The variable `image_latent` contains each input image encoded into latent space and
+        # replicated `E` times. The variable `pred_latent` contains latents initialization, where the latent space is
+        # replicated `T` times relative to the single latent space of `image_latent`, where `T` is the number of the
+        # predicted targets. The latents can be either generated (see `generator` to ensure reproducibility), or passed
+        # explicitly via the `latents` argument. The latter can be set outside the pipeline code. This behavior can be
+        # achieved by setting the `output_latent` argument to `True`. The latent space dimensions are `(h, w)`. Encoding
+        # into latent space happens in batches of size `batch_size`.
         # Model invocation: self.vae.encoder.
         image_latent, pred_latent = self.prepare_latents(
             image, latents, generator, ensemble_size, batch_size
-        )  # [N*E,4,h,w], [N*E,4,h,w]
+        )  # [N*E,4,h,w], [N*E,T*4,h,w]
 
         del image
 
@@ -493,24 +521,24 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
             range(0, num_images * ensemble_size, batch_size), leave=True, desc="Marigold predictions..."
         ):
             batch_image_latent = image_latent[i : i + batch_size]  # [B,4,h,w]
-            batch_pred_latent = pred_latent[i : i + batch_size]  # [B,4,h,w]
+            batch_pred_latent = pred_latent[i : i + batch_size]  # [B,T*4,h,w]
             effective_batch_size = batch_image_latent.shape[0]
             text = batch_empty_text_embedding[:effective_batch_size]  # [B,2,1024]
 
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             for t in self.progress_bar(self.scheduler.timesteps, leave=False, desc="Diffusion steps..."):
-                batch_latent = torch.cat([batch_image_latent, batch_pred_latent], dim=1)  # [B,8,h,w]
-                noise = self.unet(batch_latent, t, encoder_hidden_states=text, return_dict=False)[0]  # [B,4,h,w]
+                batch_latent = torch.cat([batch_image_latent, batch_pred_latent], dim=1)  # [B,(1+T)*4,h,w]
+                noise = self.unet(batch_latent, t, encoder_hidden_states=text, return_dict=False)[0]  # [B,T*4,h,w]
                 batch_pred_latent = self.scheduler.step(
                     noise, t, batch_pred_latent, generator=generator
-                ).prev_sample  # [B,4,h,w]
+                ).prev_sample  # [B,T*4,h,w]
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
             pred_latents.append(batch_pred_latent)
 
-        pred_latent = torch.cat(pred_latents, dim=0)  # [N*E,4,h,w]
+        pred_latent = torch.cat(pred_latents, dim=0)  # [N*E,T*4,h,w]
 
         del (
             pred_latents,
@@ -526,59 +554,63 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         # 6. Decode predictions from latent into pixel space. The resulting `N * E` predictions have shape `(PPH, PPW)`,
         # which requires slight postprocessing. Decoding into pixel space happens in batches of size `batch_size`.
         # Model invocation: self.vae.decoder.
+        pred_latent_for_decoding = pred_latent.reshape(
+            num_images * ensemble_size * self.n_targets, self.vae.config.latent_channels, *pred_latent.shape[2:]
+        )  # [N*E*T,4,PPH,PPW]
         prediction = torch.cat(
             [
-                self.decode_prediction(pred_latent[i : i + batch_size])
-                for i in range(0, pred_latent.shape[0], batch_size)
+                self.decode_prediction(pred_latent_for_decoding[i : i + batch_size])
+                for i in range(0, pred_latent_for_decoding.shape[0], batch_size)
             ],
             dim=0,
-        )  # [N*E,3,PPH,PPW]
+        )  # [N*E*T,3,PPH,PPW]
 
+        del pred_latent_for_decoding
         if not output_latent:
             pred_latent = None
 
         # 7. Remove padding. The output shape is (PH, PW).
-        prediction = self.image_processor.unpad_image(prediction, padding)  # [N*E,3,PH,PW]
+        prediction = self.image_processor.unpad_image(prediction, padding)  # [N*E*T,3,PH,PW]
 
-        # 8. Ensemble and compute uncertainty (when `output_uncertainty` is set). This code treats each of the `N`
+        # 8. Ensemble and compute uncertainty (when `output_uncertainty` is set). This code treats each of the `N*T`
         # groups of `E` ensemble predictions independently. For each group it computes an ensembled prediction of shape
         # `(PH, PW)` and an optional uncertainty map of the same dimensions. After computing this pair of outputs for
-        # each group independently, it stacks them respectively into batches of `N` almost final predictions and
+        # each group independently, it stacks them respectively into batches of `N*T` almost final predictions and
         # uncertainty maps.
         uncertainty = None
         if ensemble_size > 1:
-            prediction = prediction.reshape(num_images, ensemble_size, *prediction.shape[1:])  # [N,E,3,PH,PW]
+            prediction = prediction.reshape(
+                num_images, ensemble_size, self.n_targets, *prediction.shape[1:]
+            )  # [N,E,T,3,PH,PW]
             prediction = [
-                self.ensemble_normals(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
+                self.ensemble_intrinsics(prediction[i], output_uncertainty, **(ensembling_kwargs or {}))
                 for i in range(num_images)
-            ]  # [ [[1,3,PH,PW], [1,1,PH,PW]], ... ]
-            prediction, uncertainty = zip(*prediction)  # [[1,3,PH,PW], ... ], [[1,1,PH,PW], ... ]
-            prediction = torch.cat(prediction, dim=0)  # [N,3,PH,PW]
+            ]  # [ [[T,3,PH,PW], [T,3,PH,PW]], ... ]
+            prediction, uncertainty = zip(*prediction)  # [[T,3,PH,PW], ... ], [[T,3,PH,PW], ... ]
+            prediction = torch.cat(prediction, dim=0)  # [N*T,3,PH,PW]
             if output_uncertainty:
-                uncertainty = torch.cat(uncertainty, dim=0)  # [N,1,PH,PW]
+                uncertainty = torch.cat(uncertainty, dim=0)  # [N*T,3,PH,PW]
             else:
                 uncertainty = None
 
         # 9. If `match_input_resolution` is set, the output prediction and the uncertainty are upsampled to match the
         # input resolution `(H, W)`. This step may introduce upsampling artifacts, and therefore can be disabled.
-        # After upsampling, the native resolution normal maps are renormalized to unit length to reduce the artifacts.
         # Depending on the downstream use-case, upsampling can be also chosen based on the tolerated artifacts by
         # setting the `resample_method_output` parameter (e.g., to `"nearest"`).
         if match_input_resolution:
             prediction = self.image_processor.resize_antialias(
                 prediction, original_resolution, resample_method_output, is_aa=False
-            )  # [N,3,H,W]
-            prediction = self.normalize_normals(prediction)  # [N,3,H,W]
+            )  # [N*T,3,H,W]
             if uncertainty is not None and output_uncertainty:
                 uncertainty = self.image_processor.resize_antialias(
                     uncertainty, original_resolution, resample_method_output, is_aa=False
-                )  # [N,1,H,W]
+                )  # [N*T,1,H,W]
 
         # 10. Prepare the final outputs.
         if output_type == "np":
-            prediction = self.image_processor.pt_to_numpy(prediction)  # [N,H,W,3]
+            prediction = self.image_processor.pt_to_numpy(prediction)  # [N*T,H,W,3]
             if uncertainty is not None and output_uncertainty:
-                uncertainty = self.image_processor.pt_to_numpy(uncertainty)  # [N,H,W,1]
+                uncertainty = self.image_processor.pt_to_numpy(uncertainty)  # [N*T,H,W,3]
 
         # 11. Offload all models
         self.maybe_free_model_hooks()
@@ -586,13 +618,12 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         if not return_dict:
             return (prediction, uncertainty, pred_latent)
 
-        return MarigoldNormalsOutput(
+        return MarigoldIntrinsicsOutput(
             prediction=prediction,
             uncertainty=uncertainty,
             latent=pred_latent,
         )
 
-    # Copied from diffusers.pipelines.marigold.pipeline_marigold_depth.MarigoldDepthPipeline.prepare_latents
     def prepare_latents(
         self,
         image: torch.Tensor,
@@ -618,15 +649,16 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         )  # [N,4,h,w]
         image_latent = image_latent * self.vae.config.scaling_factor
         image_latent = image_latent.repeat_interleave(ensemble_size, dim=0)  # [N*E,4,h,w]
+        N_E, C, H, W = image_latent.shape
 
         pred_latent = latents
         if pred_latent is None:
             pred_latent = randn_tensor(
-                image_latent.shape,
+                (N_E, self.n_targets * C, H, W),
                 generator=generator,
                 device=image_latent.device,
                 dtype=image_latent.dtype,
-            )  # [N*E,4,h,w]
+            )  # [N*E,T*4,h,w]
 
         return image_latent, pred_latent
 
@@ -638,68 +670,52 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
 
         prediction = self.vae.decode(pred_latent / self.vae.config.scaling_factor, return_dict=False)[0]  # [B,3,H,W]
 
-        prediction = torch.clip(prediction, -1.0, 1.0)
-
-        if not self.use_full_z_range:
-            prediction[:, 2, :, :] *= 0.5
-            prediction[:, 2, :, :] += 0.5
-
-        prediction = self.normalize_normals(prediction)  # [B,3,H,W]
+        prediction = torch.clip(prediction, -1.0, 1.0)  # [B,3,H,W]
+        prediction = (prediction + 1.0) / 2.0
 
         return prediction  # [B,3,H,W]
 
     @staticmethod
-    def normalize_normals(normals: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        if normals.dim() != 4 or normals.shape[1] != 3:
-            raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {normals.shape}.")
-
-        norm = torch.norm(normals, dim=1, keepdim=True)
-        normals /= norm.clamp(min=eps)
-
-        return normals
-
-    @staticmethod
-    def ensemble_normals(
-        normals: torch.Tensor, output_uncertainty: bool, reduction: str = "closest"
+    def ensemble_intrinsics(
+        targets: torch.Tensor,
+        output_uncertainty: bool = False,
+        reduction: str = "median",
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
-        Ensembles the normals maps represented by the `normals` tensor with expected shape `(B, 3, H, W)`, where B is
-        the number of ensemble members for a given prediction of size `(H x W)`.
+        Ensembles the intrinsic decomposition represented by the `targets` tensor with expected shape `(B, T, 3, H,
+        W)`, where B is the number of ensemble members for a given prediction of size `(H x W)`, and T is the number of
+        predicted targets.
 
         Args:
-            normals (`torch.Tensor`):
-                Input ensemble normals maps.
+            targets (`torch.Tensor`):
+                Input ensemble of intrinsic image decomposition maps.
             output_uncertainty (`bool`, *optional*, defaults to `False`):
                 Whether to output uncertainty map.
-            reduction (`str`, *optional*, defaults to `"closest"`):
-                Reduction method used to ensemble aligned predictions. The accepted values are: `"closest"` and
+            reduction (`str`, *optional*, defaults to `"mean"`):
+                Reduction method used to ensemble aligned predictions. The accepted values are: `"median"` and
                 `"mean"`.
 
         Returns:
-            A tensor of aligned and ensembled normals maps with shape `(1, 3, H, W)` and optionally a tensor of
-            uncertainties of shape `(1, 1, H, W)`.
+            A tensor of aligned and ensembled intrinsic decomposition maps with shape `(T, 3, H, W)` and optionally a
+            tensor of uncertainties of shape `(T, 3, H, W)`.
         """
-        if normals.dim() != 4 or normals.shape[1] != 3:
-            raise ValueError(f"Expecting 4D tensor of shape [B,3,H,W]; got {normals.shape}.")
-        if reduction not in ("closest", "mean"):
+        if targets.dim() != 5 or targets.shape[2] != 3:
+            raise ValueError(f"Expecting 4D tensor of shape [B,T,3,H,W]; got {targets.shape}.")
+        if reduction not in ("median", "mean"):
             raise ValueError(f"Unrecognized reduction method: {reduction}.")
 
-        mean_normals = normals.mean(dim=0, keepdim=True)  # [1,3,H,W]
-        mean_normals = MarigoldNormalsPipeline.normalize_normals(mean_normals)  # [1,3,H,W]
-
-        sim_cos = (mean_normals * normals).sum(dim=1, keepdim=True)  # [E,1,H,W]
-        sim_cos = sim_cos.clamp(-1, 1)  # required to avoid NaN in uncertainty with fp16
-
+        B, T, _, H, W = targets.shape
         uncertainty = None
-        if output_uncertainty:
-            uncertainty = sim_cos.arccos()  # [E,1,H,W]
-            uncertainty = uncertainty.mean(dim=0, keepdim=True) / np.pi  # [1,1,H,W]
-
         if reduction == "mean":
-            return mean_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
-
-        closest_indices = sim_cos.argmax(dim=0, keepdim=True)  # [1,1,H,W]
-        closest_indices = closest_indices.repeat(1, 3, 1, 1)  # [1,3,H,W]
-        closest_normals = torch.gather(normals, 0, closest_indices)  # [1,3,H,W]
-
-        return closest_normals, uncertainty  # [1,3,H,W], [1,1,H,W]
+            prediction = torch.mean(targets, dim=0)  # [T,3,H,W]
+            if output_uncertainty:
+                uncertainty = torch.std(targets, dim=0)  # [T,3,H,W]
+        elif reduction == "median":
+            prediction = torch.median(targets, dim=0, keepdim=True).values  # [1,T,3,H,W]
+            if output_uncertainty:
+                uncertainty = torch.abs(targets - prediction)  # [B,T,3,H,W]
+                uncertainty = torch.median(uncertainty, dim=0).values  # [T,3,H,W]
+            prediction = prediction.squeeze(0)  # [T,3,H,W]
+        else:
+            raise ValueError(f"Unrecognized reduction method: {reduction}.")
+        return prediction, uncertainty

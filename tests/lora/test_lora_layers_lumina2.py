@@ -16,6 +16,7 @@ import sys
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, GemmaForCausalLM
 
@@ -25,7 +26,7 @@ from diffusers import (
     Lumina2Text2ImgPipeline,
     Lumina2Transformer2DModel,
 )
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, torch_device
+from diffusers.utils.testing_utils import floats_tensor, is_torch_version, require_peft_backend, skip_mps, torch_device
 
 
 sys.path.append(".")
@@ -132,6 +133,12 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
+    @skip_mps
+    @pytest.mark.xfail(
+        condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
+        reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
+        strict=False,
+    )
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
@@ -152,17 +159,7 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
             # corrupt one LoRA weight with `inf` values
             with torch.no_grad():
-                if self.unet_kwargs:
-                    pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_A[
-                        "adapter-1"
-                    ].weight += float("inf")
-                else:
-                    named_modules = [name for name, _ in pipe.transformer.named_modules()]
-                    has_attn1 = any("attn1" in name for name in named_modules)
-                    if has_attn1:
-                        pipe.transformer.layers[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
-                    else:
-                        pipe.transformer.layers[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
+                pipe.transformer.layers[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
 
             # with `safe_fusing=True` we should see an Error
             with self.assertRaises(ValueError):
