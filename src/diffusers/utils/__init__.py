@@ -123,6 +123,7 @@ from .state_dict_utils import (
     convert_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
 )
+from .typing_utils import _get_detailed_type, _is_valid_type
 
 
 logger = get_logger(__name__)

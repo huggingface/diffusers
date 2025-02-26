@@ -866,7 +866,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
@@ -878,6 +878,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+
+        if not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1178,7 +1184,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer.preprocess_model(
                 model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
             )
-        print(keep_in_fp32_modules)
+
         # Now that the model is loaded, we can determine the device_map
         device_map = _determine_device_map(
             model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
