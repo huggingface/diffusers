@@ -89,6 +89,11 @@ jobs:
             diff_failed=1
           fi
 
+          if [ $diff_failed -eq 1 ]; then
+            echo "❌ Error happened as we detected changes in the files that should not be changed ❌"
+            exit 1
+          fi
+
           echo "No changes in the files. Proceeding..."
           rm -rf main_Makefile main_setup.py main_check_doc_toc.py
 
