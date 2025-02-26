@@ -41,7 +41,6 @@ from ..test_pipelines_common import (
     PipelineFromPipeTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -53,7 +52,6 @@ class StableDiffusionXLControlNetPAGImg2ImgPipelineFastTests(
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     PipelineFromPipeTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLControlNetPAGImg2ImgPipeline
