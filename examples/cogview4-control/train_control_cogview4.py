@@ -18,6 +18,7 @@ import copy
 import logging
 import math
 import os
+import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
@@ -1094,6 +1095,14 @@ def main(args):
                 # TODO: Should a parameter be set here for passing? This is not present in Flux.
                 crops_coords_top_left = torch.tensor([(0, 0)], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
                 crops_coords_top_left = crops_coords_top_left.repeat(len(batch["captions"]), 1)
+
+                # this could be optimized by not having to do any text encoding and just
+                # doing zeros on specified shapes for `prompt_embeds` and `pooled_prompt_embeds`
+                if args.proportion_empty_prompts and random.random() < args.proportion_empty_prompts:
+                    # 这里，直接将 pooled_prompt_embeds 16个 pad token 提供给 prompt_embeds
+                    prompt_embeds = pooled_prompt_embeds
+                if args.offload:
+                    text_encoding_pipeline = text_encoding_pipeline.to("cpu")
                 # Predict.
                 noise_pred_cond = cogview4_transformer(
                     hidden_states=concatenated_noisy_model_input,
@@ -1104,17 +1113,6 @@ def main(args):
                     crop_coords=crops_coords_top_left,
                     return_dict=False,
                 )[0]
-
-                noise_pred_uncond = cogview4_transformer(
-                    hidden_states=concatenated_noisy_model_input,
-                    encoder_hidden_states=pooled_prompt_embeds,
-                    timestep=timesteps,
-                    original_size=original_size,
-                    target_size=target_size,
-                    crop_coords=crops_coords_top_left,
-                    return_dict=False,
-                )[0]
-                model_pred = noise_pred_uncond + (noise_pred_cond - noise_pred_uncond)
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
@@ -1123,7 +1121,7 @@ def main(args):
 
                 weighting = weighting.view(len(batch["captions"]), 1, 1, 1)
                 loss = torch.mean(
-                    (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
+                    (weighting.float() * (noise_pred_cond.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
                 )
                 loss = loss.mean()
                 accelerator.backward(loss)
