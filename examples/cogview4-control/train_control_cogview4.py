@@ -132,6 +132,8 @@ def log_validation(cogview4_transformer, args, accelerator, weight_dtype, step, 
                     control_image=validation_image,
                     num_inference_steps=50,
                     guidance_scale=args.guidance_scale,
+                    max_sequence_length=max_sequence_length, # For downstream task training usage, training can be performed on a batch basis.
+                    padding_type="max_length",
                     generator=generator,
                     height=args.resolution,
                     width=args.resolution,
@@ -266,6 +268,9 @@ def parse_args(input_args=None):
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
         ),
+    )
+    parser.add_argument(
+        "--max_sequence_length", type=int, default=128, help="The maximum sequence length for the prompt."
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -1079,10 +1084,12 @@ def main(args):
                 text_encoding_pipeline = text_encoding_pipeline.to("cuda")
 
                 with torch.no_grad():
-                    (
-                        prompt_embeds,
-                        pooled_prompt_embeds,
-                    ) = text_encoding_pipeline.encode_prompt(captions, "")
+                    # Since the batch will be padded, max_length should be used for padding.
+                    prompt_embeds,pooled_prompt_embeds,= text_encoding_pipeline.encode_prompt(
+                    captions, "",
+                        max_sequence_length=args.max_sequence_length,
+                        padding_type="max_length"
+                    )
                 original_size = (args.resolution, args.resolution)
                 original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
 
@@ -1099,7 +1106,7 @@ def main(args):
                 # this could be optimized by not having to do any text encoding and just
                 # doing zeros on specified shapes for `prompt_embeds` and `pooled_prompt_embeds`
                 if args.proportion_empty_prompts and random.random() < args.proportion_empty_prompts:
-                    # 这里，直接将 pooled_prompt_embeds 16个 pad token 提供给 prompt_embeds
+                    # Here, we directly pass 16 pad tokens from pooled_prompt_embeds to prompt_embeds.
                     prompt_embeds = pooled_prompt_embeds
                 if args.offload:
                     text_encoding_pipeline = text_encoding_pipeline.to("cpu")
