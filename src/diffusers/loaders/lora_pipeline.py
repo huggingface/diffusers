@@ -1345,7 +1345,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -1530,7 +1530,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights with unet->transformer
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
@@ -1577,7 +1577,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.Mochi1LoraLoaderMixin.fuse_lora
+    # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -1621,7 +1621,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.Mochi1LoraLoaderMixin.unfuse_lora
+    # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
         Reverses the effect of
@@ -1638,29 +1638,6 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
         super().unfuse_lora(components=components)
-
-    @staticmethod
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin._calculate_module_shape
-    def _calculate_module_shape(
-        model: "torch.nn.Module",
-        base_module: "torch.nn.Linear" = None,
-        base_weight_param_name: str = None,
-    ) -> "torch.Size":
-        def _get_weight_shape(weight: torch.Tensor):
-            return weight.quant_state.shape if weight.__class__.__name__ == "Params4bit" else weight.shape
-
-        if base_module is not None:
-            return _get_weight_shape(base_module.weight)
-        elif base_weight_param_name is not None:
-            if not base_weight_param_name.endswith(".weight"):
-                raise ValueError(
-                    f"Invalid `base_weight_param_name` passed as it does not end with '.weight' {base_weight_param_name=}."
-                )
-            module_path = base_weight_param_name.rsplit(".weight", 1)[0]
-            submodule = get_submodule_by_name(model, module_path)
-            return _get_weight_shape(submodule.weight)
-
-        raise ValueError("Either `base_module` or `base_weight_param_name` must be provided.")
 
 
 class FluxLoraLoaderMixin(LoraBaseMixin):
