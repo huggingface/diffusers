@@ -224,7 +224,7 @@ class AnimateDiffVideoToVideoPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
+        unet: Union[UNet2DConditionModel, UNetMotionModel],
         motion_adapter: MotionAdapter,
         scheduler: Union[
             DDIMScheduler,

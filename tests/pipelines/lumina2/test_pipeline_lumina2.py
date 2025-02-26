@@ -91,10 +91,10 @@ class Lumina2Text2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTester
         text_encoder = Gemma2Model(config)
 
         components = {
-            "transformer": transformer.eval(),
+            "transformer": transformer,
             "vae": vae.eval(),
             "scheduler": scheduler,
-            "text_encoder": text_encoder.eval(),
+            "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
         return components
