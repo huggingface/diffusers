@@ -382,6 +382,7 @@ class WanPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        autocast_dtype: torch.dtype = torch.bfloat16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -437,6 +438,8 @@ class WanPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            autocast_dtype (`torch.dtype`, *optional*, defaults to `torch.bfloat16`):
+                The dtype to use for the torch.amp.autocast.
 
         Examples:
 
@@ -485,12 +488,11 @@ class WanPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
-            dtype=self.transformer.dtype,
+            dtype=autocast_dtype,
         )
 
-        transformer_dtype = self.transformer.dtype
-        prompt_embeds = prompt_embeds.to(transformer_dtype)
-        negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+        prompt_embeds = prompt_embeds.to(autocast_dtype)
+        negative_prompt_embeds = negative_prompt_embeds.to(autocast_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.flow_shift = flow_shift
@@ -525,16 +527,16 @@ class WanPipeline(DiffusionPipeline):
 
         with (
             self.progress_bar(total=num_inference_steps) as progress_bar,
-            amp.autocast('cuda', dtype=self.transformer.dtype)
+            amp.autocast('cuda', dtype=autocast_dtype, cache_enabled=False)
         ):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 self._current_timestep = t
-                latent_model_input = latents.to(transformer_dtype)
+                latent_model_input = latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = t.expand(latents.shape[0])
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
