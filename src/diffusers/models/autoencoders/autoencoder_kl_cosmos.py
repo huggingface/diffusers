@@ -101,7 +101,7 @@ class CosmosCausalGroupNorm(torch.nn.Module):
         return hidden_states
 
 
-class CosmosPatcher3d(nn.Module):
+class CosmosPatchEmbed3d(nn.Module):
     def __init__(self, patch_size: int = 1, patch_method: str = "haar") -> None:
         super().__init__()
 
@@ -255,7 +255,7 @@ class CosmosUnpatcher3d(nn.Module):
             raise ValueError("Unknown patch method: " + self.patch_method)
 
 
-class CosmosConvProj3d(nn.Module):
+class CosmosConvProjection3d(nn.Module):
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
 
@@ -280,11 +280,11 @@ class CosmosResnetBlock3d(nn.Module):
         out_channels = out_channels or in_channels
 
         self.norm1 = CosmosCausalGroupNorm(in_channels, num_groups)
-        self.conv1 = CosmosConvProj3d(in_channels, out_channels)
+        self.conv1 = CosmosConvProjection3d(in_channels, out_channels)
 
         self.norm2 = CosmosCausalGroupNorm(out_channels, num_groups)
         self.dropout = nn.Dropout(dropout)
-        self.conv2 = CosmosConvProj3d(out_channels, out_channels)
+        self.conv2 = CosmosConvProjection3d(out_channels, out_channels)
 
         if in_channels != out_channels:
             self.conv_shortcut = CosmosCausalConv3d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
@@ -673,7 +673,7 @@ class CosmosUpBlock3d(nn.Module):
         return hidden_states
 
 
-class CosmosEncoder(nn.Module):
+class CosmosEncoder3d(nn.Module):
     def __init__(
         self,
         in_channels: int = 3,
@@ -694,9 +694,9 @@ class CosmosEncoder(nn.Module):
         num_temporal_layers = int(math.log2(temporal_compression_ratio)) - int(math.log2(patch_size))
 
         # 1. Input patching & projection
-        self.patch_embed = CosmosPatcher3d(patch_size, patch_type)
+        self.patch_embed = CosmosPatchEmbed3d(patch_size, patch_type)
 
-        self.conv_in = CosmosConvProj3d(inner_dim, block_out_channels[0])
+        self.conv_in = CosmosConvProjection3d(inner_dim, block_out_channels[0])
 
         # 2. Down blocks
         current_resolution = resolution // patch_size
@@ -734,7 +734,7 @@ class CosmosEncoder(nn.Module):
 
         # 4. Output norm & projection
         self.norm_out = CosmosCausalGroupNorm(block_out_channels[-1], num_groups=1)
-        self.conv_out = CosmosConvProj3d(block_out_channels[-1], out_channels)
+        self.conv_out = CosmosConvProjection3d(block_out_channels[-1], out_channels)
 
         self.gradient_checkpointing = False
 
@@ -757,7 +757,7 @@ class CosmosEncoder(nn.Module):
         return hidden_states
 
 
-class CosmosDecoder(nn.Module):
+class CosmosDecoder3d(nn.Module):
     def __init__(
         self,
         in_channels: int = 16,
@@ -779,7 +779,7 @@ class CosmosDecoder(nn.Module):
         reversed_block_out_channels = list(reversed(block_out_channels))
 
         # 1. Input projection
-        self.conv_in = CosmosConvProj3d(in_channels, reversed_block_out_channels[0])
+        self.conv_in = CosmosConvProjection3d(in_channels, reversed_block_out_channels[0])
 
         # 2. Mid block
         self.mid_block = CosmosMidBlock3d(reversed_block_out_channels[0], num_layers=1, dropout=dropout, num_groups=1)
@@ -819,7 +819,7 @@ class CosmosDecoder(nn.Module):
 
         # 4. Output norm & projection & unpatching
         self.norm_out = CosmosCausalGroupNorm(reversed_block_out_channels[-1], num_groups=1)
-        self.conv_out = CosmosConvProj3d(reversed_block_out_channels[-1], inner_dim)
+        self.conv_out = CosmosConvProjection3d(reversed_block_out_channels[-1], inner_dim)
 
         self.unpatch_embed = CosmosUnpatcher3d(patch_size, patch_type)
 
@@ -906,7 +906,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
     ) -> None:
         super().__init__()
 
-        self.encoder = CosmosEncoder(
+        self.encoder = CosmosEncoder3d(
             in_channels=in_channels,
             out_channels=latent_channels,
             block_out_channels=encoder_block_out_channels,
@@ -918,7 +918,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
             spatial_compression_ratio=spatial_compression_ratio,
             temporal_compression_ratio=temporal_compression_ratio,
         )
-        self.decoder = CosmosDecoder(
+        self.decoder = CosmosDecoder3d(
             in_channels=latent_channels,
             out_channels=out_channels,
             block_out_channels=decode_block_out_channels,
