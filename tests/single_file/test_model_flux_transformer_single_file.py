@@ -22,6 +22,7 @@ from diffusers import (
     FluxTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
+    slow,
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
@@ -32,6 +33,7 @@ from diffusers.utils.testing_utils import (
 enable_full_determinism()
 
 
+@slow
 @require_torch_accelerator
 class FluxTransformer2DModelSingleFileTests(unittest.TestCase):
     model_class = FluxTransformer2DModel
