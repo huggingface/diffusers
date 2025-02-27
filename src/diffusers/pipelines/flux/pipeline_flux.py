@@ -75,7 +75,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -405,23 +405,28 @@ class FluxPipeline(
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
 
-            if len(ip_adapter_image) != len(self.transformer.encoder_hid_proj.image_projection_layers):
+            if len(ip_adapter_image) != self.transformer.encoder_hid_proj.num_ip_adapters:
                 raise ValueError(
-                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.transformer.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
                 )
 
-            for single_ip_adapter_image, image_proj_layer in zip(
-                ip_adapter_image, self.transformer.encoder_hid_proj.image_projection_layers
-            ):
+            for single_ip_adapter_image in ip_adapter_image:
                 single_image_embeds = self.encode_image(single_ip_adapter_image, device, 1)
-
                 image_embeds.append(single_image_embeds[None, :])
         else:
+            if not isinstance(ip_adapter_image_embeds, list):
+                ip_adapter_image_embeds = [ip_adapter_image_embeds]
+
+            if len(ip_adapter_image_embeds) != self.transformer.encoder_hid_proj.num_ip_adapters:
+                raise ValueError(
+                    f"`ip_adapter_image_embeds` must have same length as the number of IP Adapters. Got {len(ip_adapter_image_embeds)} image embeds and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
+                )
+
             for single_image_embeds in ip_adapter_image_embeds:
                 image_embeds.append(single_image_embeds)
 
         ip_adapter_image_embeds = []
-        for i, single_image_embeds in enumerate(image_embeds):
+        for single_image_embeds in image_embeds:
             single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
             single_image_embeds = single_image_embeds.to(device=device)
             ip_adapter_image_embeds.append(single_image_embeds)
@@ -849,7 +854,7 @@ class FluxPipeline(
             self.scheduler.config.get("base_image_seq_len", 256),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.5),
-            self.scheduler.config.get("max_shift", 1.16),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -872,10 +877,13 @@ class FluxPipeline(
             negative_ip_adapter_image is None and negative_ip_adapter_image_embeds is None
         ):
             negative_ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
+            negative_ip_adapter_image = [negative_ip_adapter_image] * self.transformer.encoder_hid_proj.num_ip_adapters
+
         elif (ip_adapter_image is None and ip_adapter_image_embeds is None) and (
             negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None
         ):
             ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
+            ip_adapter_image = [ip_adapter_image] * self.transformer.encoder_hid_proj.num_ip_adapters
 
         if self.joint_attention_kwargs is None:
             self._joint_attention_kwargs = {}
