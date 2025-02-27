@@ -32,7 +32,6 @@ from transformers import (
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLMagvit, EasyAnimateTransformer3DModel
-from ...models.embeddings import get_2d_rotary_pos_embed, get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -92,6 +91,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 def preprocess_image(image, sample_size):
     """
     Preprocess a single image (PIL.Image, numpy.ndarray, or torch.Tensor) to a resized tensor.
@@ -119,9 +119,7 @@ def preprocess_image(image, sample_size):
     return image
 
 
-def get_video_to_video_latent(
-    input_video, num_frames, sample_size, validation_video_mask=None, ref_image=None
-):
+def get_video_to_video_latent(input_video, num_frames, sample_size, validation_video_mask=None, ref_image=None):
     if input_video is not None:
         # Convert each frame in the list to tensor
         input_video = [preprocess_image(frame, sample_size=sample_size) for frame in input_video]
@@ -340,12 +338,20 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        self.vae_spatial_compression_ratio = (
+            self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 8
         )
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.vae_temporal_compression_ratio = (
+            self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 4
+        )
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_spatial_compression_ratio,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
+        )
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
 
     def encode_prompt(
         self,
@@ -715,18 +721,18 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds_2.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
-        mini_batch_encoder = self.vae.mini_batch_encoder
-        mini_batch_decoder = self.vae.mini_batch_decoder
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
         shape = (
             batch_size,
             num_channels_latents,
-            int((num_frames - 1) // mini_batch_encoder * mini_batch_decoder + 1) if num_frames != 1 else 1,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
+            (num_frames - 1) // self.vae_temporal_compression_ratio + 1,
+            height // self.vae_spatial_compression_ratio,
+            width // self.vae_spatial_compression_ratio,
         )
 
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -735,11 +741,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
-
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         # scale the initial noise by the standard deviation required by the scheduler
         if hasattr(self.scheduler, "init_noise_sigma"):
             latents = latents * self.scheduler.init_noise_sigma
@@ -1024,10 +1026,16 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
         elif control_video is not None:
             batch_size, channels, num_frames, height_video, width_video = control_video.shape
             control_video = self.image_processor.preprocess(
-                control_video.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height_video, width_video), height=height, width=width
+                control_video.permute(0, 2, 1, 3, 4).reshape(
+                    batch_size * num_frames, channels, height_video, width_video
+                ),
+                height=height,
+                width=width,
             )
             control_video = control_video.to(dtype=torch.float32)
-            control_video = control_video.reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
+            control_video = control_video.reshape(batch_size, num_frames, channels, height, width).permute(
+                0, 2, 1, 3, 4
+            )
             control_video_latents = self.prepare_control_latents(
                 None,
                 control_video,
@@ -1051,12 +1059,14 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
         if ref_image is not None:
             batch_size, channels, num_frames, height_video, width_video = ref_image.shape
             ref_image = self.image_processor.preprocess(
-                ref_image.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height_video, width_video), height=height, width=width
+                ref_image.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height_video, width_video),
+                height=height,
+                width=width,
             )
             ref_image = ref_image.to(dtype=torch.float32)
             ref_image = ref_image.reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
 
-            ref_image_latentes = self.prepare_control_latents(
+            ref_image_latents = self.prepare_control_latents(
                 None,
                 ref_image,
                 batch_size,
@@ -1068,23 +1078,23 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 self.do_classifier_free_guidance,
             )[1]
 
-            ref_image_latentes_conv_in = torch.zeros_like(latents)
+            ref_image_latents_conv_in = torch.zeros_like(latents)
             if latents.size()[2] != 1:
-                ref_image_latentes_conv_in[:, :, :1] = ref_image_latentes
-            ref_image_latentes_conv_in = (
-                torch.cat([ref_image_latentes_conv_in] * 2)
+                ref_image_latents_conv_in[:, :, :1] = ref_image_latents
+            ref_image_latents_conv_in = (
+                torch.cat([ref_image_latents_conv_in] * 2)
                 if self.do_classifier_free_guidance
-                else ref_image_latentes_conv_in
+                else ref_image_latents_conv_in
             ).to(device, dtype)
-            control_latents = torch.cat([control_latents, ref_image_latentes_conv_in], dim=1)
+            control_latents = torch.cat([control_latents, ref_image_latents_conv_in], dim=1)
         else:
-            ref_image_latentes_conv_in = torch.zeros_like(latents)
-            ref_image_latentes_conv_in = (
-                torch.cat([ref_image_latentes_conv_in] * 2)
+            ref_image_latents_conv_in = torch.zeros_like(latents)
+            ref_image_latents_conv_in = (
+                torch.cat([ref_image_latents_conv_in] * 2)
                 if self.do_classifier_free_guidance
-                else ref_image_latentes_conv_in
+                else ref_image_latents_conv_in
             ).to(device, dtype)
-            control_latents = torch.cat([control_latents, ref_image_latentes_conv_in], dim=1)
+            control_latents = torch.cat([control_latents, ref_image_latents_conv_in], dim=1)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)

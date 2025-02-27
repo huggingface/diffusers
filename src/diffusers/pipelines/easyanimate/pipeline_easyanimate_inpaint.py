@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import inspect
-import os
 from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -33,7 +32,6 @@ from transformers import (
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLMagvit, EasyAnimateTransformer3DModel
-from ...models.embeddings import get_2d_rotary_pos_embed, get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -120,8 +118,8 @@ def preprocess_image(image, sample_size):
 
 def get_image_to_video_latent(validation_image_start, validation_image_end, num_frames, sample_size):
     """
-    Generate latent representations for video from start and end images.
-    Inputs can be PIL.Image, numpy.ndarray, or torch.Tensor.
+    Generate latent representations for video from start and end images. Inputs can be PIL.Image, numpy.ndarray, or
+    torch.Tensor.
     """
     input_video = None
     input_video_mask = None
@@ -140,7 +138,7 @@ def get_image_to_video_latent(validation_image_start, validation_image_end, num_
                 dim=2,
             )
             input_video = torch.tile(start_video[:, :, :1], [1, 1, num_frames, 1, 1])
-            input_video[:, :, :len(image_start)] = start_video
+            input_video[:, :, : len(image_start)] = start_video
         else:
             input_video = torch.tile(
                 image_start.unsqueeze(1).unsqueeze(0),
@@ -152,7 +150,7 @@ def get_image_to_video_latent(validation_image_start, validation_image_end, num_
         # Create mask for the input video
         input_video_mask = torch.zeros_like(input_video[:, :1])
         if isinstance(image_start, list):
-            input_video_mask[:, :, len(image_start):] = 255
+            input_video_mask[:, :, len(image_start) :] = 255
         else:
             input_video_mask[:, :, 1:] = 255
 
@@ -164,8 +162,8 @@ def get_image_to_video_latent(validation_image_start, validation_image_end, num_
                     [img.unsqueeze(1).unsqueeze(0) for img in image_end],
                     dim=2,
                 )
-                input_video[:, :, -len(end_video):] = end_video
-                input_video_mask[:, :, -len(image_end):] = 0
+                input_video[:, :, -len(end_video) :] = end_video
+                input_video_mask[:, :, -len(image_end) :] = 0
             else:
                 image_end = preprocess_image(validation_image_end, sample_size)
                 input_video[:, :, -1:] = image_end.unsqueeze(1).unsqueeze(0)
@@ -246,13 +244,15 @@ def add_noise_to_reference_video(image, ratio=None, generator=None):
         sigma = torch.exp(sigma).to(image.dtype)
     else:
         sigma = torch.ones((image.shape[0],)).to(image.device, image.dtype) * ratio
-    
+
     if generator is not None:
-        image_noise = torch.randn(image.size(), generator=generator, dtype=image.dtype, device=image.device) * \
-            sigma[:, None, None, None, None]
+        image_noise = (
+            torch.randn(image.size(), generator=generator, dtype=image.dtype, device=image.device)
+            * sigma[:, None, None, None, None]
+        )
     else:
         image_noise = torch.randn_like(image) * sigma[:, None, None, None, None]
-    image_noise = torch.where(image==-1, torch.zeros_like(image), image_noise)
+    image_noise = torch.where(image == -1, torch.zeros_like(image), image_noise)
     image = image + image_noise
     return image
 
@@ -380,12 +380,20 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             text_encoder_2=text_encoder_2,
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        self.vae_spatial_compression_ratio = (
+            self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 8
         )
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.vae_temporal_compression_ratio = (
+            self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 4
+        )
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_spatial_compression_ratio,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
+        )
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
 
     def encode_prompt(
         self,
@@ -796,7 +804,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         if masked_image is not None:
             masked_image = masked_image.to(device=device, dtype=dtype)
             if self.transformer.config.add_noise_in_inpaint_model:
-                masked_image = add_noise_to_reference_video(masked_image, ratio=noise_aug_strength, generator=generator)
+                masked_image = add_noise_to_reference_video(
+                    masked_image, ratio=noise_aug_strength, generator=generator
+                )
             new_mask_pixel_values = []
             bs = 1
             for i in range(0, masked_image.shape[0], bs):
@@ -831,14 +841,12 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         return_noise=False,
         return_video_latents=False,
     ):
-        mini_batch_encoder = self.vae.mini_batch_encoder
-        mini_batch_decoder = self.vae.mini_batch_decoder
         shape = (
             batch_size,
             num_channels_latents,
-            int((num_frames - 1) // mini_batch_encoder * mini_batch_decoder + 1) if num_frames != 1 else 1,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
+            (num_frames - 1) // self.vae_temporal_compression_ratio + 1,
+            height // self.vae_spatial_compression_ratio,
+            width // self.vae_spatial_compression_ratio,
         )
 
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -889,11 +897,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             outputs += (video_latents,)
 
         return outputs
-
-    def decode_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-        video = self.vae.decode(latents).sample
-        return video
 
     @property
     def guidance_scale(self):
@@ -1149,7 +1152,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         if video is not None:
             batch_size, channels, num_frames, height_video, width_video = video.shape
             init_video = self.image_processor.preprocess(
-                video.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height_video, width_video), height=height, width=width
+                video.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height_video, width_video),
+                height=height,
+                width=width,
             )
             init_video = init_video.to(dtype=torch.float32)
             init_video = init_video.reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
@@ -1203,10 +1208,16 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                 # Prepare mask latent variables
                 batch_size, channels, num_frames, height_video, width_video = mask_video.shape
                 mask_condition = self.mask_processor.preprocess(
-                    mask_video.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height_video, width_video), height=height, width=width
+                    mask_video.permute(0, 2, 1, 3, 4).reshape(
+                        batch_size * num_frames, channels, height_video, width_video
+                    ),
+                    height=height,
+                    width=width,
                 )
                 mask_condition = mask_condition.to(dtype=torch.float32)
-                mask_condition = mask_condition.reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
+                mask_condition = mask_condition.reshape(batch_size, num_frames, channels, height, width).permute(
+                    0, 2, 1, 3, 4
+                )
 
                 if num_channels_transformer != num_channels_latents:
                     mask_condition_tile = torch.tile(mask_condition, [1, 3, 1, 1, 1])
@@ -1397,9 +1408,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        # Convert to tensor
         if not output_type == "latent":
-            video = self.decode_latents(latents)
+            latents = 1 / self.vae.config.scaling_factor * latents
+            video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents

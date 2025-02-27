@@ -28,7 +28,6 @@ from transformers import (
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLMagvit, EasyAnimateTransformer3DModel
-from ...models.embeddings import get_2d_rotary_pos_embed, get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -236,8 +235,13 @@ class EasyAnimatePipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.vae_spatial_compression_ratio = (
+            self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 8
+        )
+        self.vae_temporal_compression_ratio = (
+            self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 4
+        )
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
 
     def encode_prompt(
         self,
@@ -607,18 +611,18 @@ class EasyAnimatePipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds_2.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
-        mini_batch_encoder = self.vae.mini_batch_encoder
-        mini_batch_decoder = self.vae.mini_batch_decoder
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
         shape = (
             batch_size,
             num_channels_latents,
-            int((num_frames - 1) // mini_batch_encoder * mini_batch_decoder + 1) if num_frames != 1 else 1,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
+            (num_frames - 1) // self.vae_temporal_compression_ratio + 1,
+            height // self.vae_spatial_compression_ratio,
+            width // self.vae_spatial_compression_ratio,
         )
 
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -627,20 +631,11 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
-
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         # scale the initial noise by the standard deviation required by the scheduler
         if hasattr(self.scheduler, "init_noise_sigma"):
             latents = latents * self.scheduler.init_noise_sigma
         return latents
-
-    def decode_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-        video = self.vae.decode(latents).sample
-        return video
 
     @property
     def guidance_scale(self):
@@ -953,9 +948,9 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        # Convert to tensor
         if not output_type == "latent":
-            video = self.decode_latents(latents)
+            latents = 1 / self.vae.config.scaling_factor * latents
+            video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents

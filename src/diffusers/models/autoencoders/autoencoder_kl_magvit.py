@@ -568,11 +568,7 @@ class EasyAnimateDecoder(nn.Module):
         super().__init__()
 
         # 1. Input convolution
-        self.conv_in = EasyAnimateCausalConv3d(
-            in_channels,
-            block_out_channels[-1],
-            kernel_size=3,
-        )
+        self.conv_in = EasyAnimateCausalConv3d(in_channels, block_out_channels[-1], kernel_size=3)
 
         # 2. Middle block
         self.mid_block = EasyAnimateMidBlock3d(
@@ -734,21 +730,36 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
         self.quant_conv = nn.Conv3d(2 * latent_channels, 2 * latent_channels, kernel_size=1)
         self.post_quant_conv = nn.Conv3d(latent_channels, latent_channels, kernel_size=1)
 
-        # Assign mini-batch sizes for encoder and decoder
-        self.mini_batch_encoder = 4
-        self.mini_batch_decoder = 1
+        self.spatial_compression_ratio = 2 ** (len(block_out_channels) - 1)
+        self.temporal_compression_ratio = 2 ** (len(block_out_channels) - 2)
 
-        # Initialize tiling and slicing flags
+        # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
+        # to perform decoding of a single video latent at a time.
         self.use_slicing = False
+
+        # When decoding spatially large video latents, the memory requirement is very high. By breaking the video latent
+        # frames spatially into smaller tiles and performing multiple forward passes for decoding, and then blending the
+        # intermediate tiles together, the memory requirement can be lowered.
         self.use_tiling = False
 
-        # Set parameters for tiling if used
-        tile_overlap_factor = 0.25
-        self.tile_sample_min_size = 384
-        self.tile_overlap_factor = tile_overlap_factor
-        self.tile_latent_min_size = int(self.tile_sample_min_size / (2 ** (len(block_out_channels) - 1)))
-        # Assign the scaling factor for latent space
-        self.scaling_factor = scaling_factor
+        # When decoding temporally long video latents, the memory requirement is very high. By decoding latent frames
+        # at a fixed frame batch size (based on `self.num_latent_frames_batch_size`), the memory requirement can be lowered.
+        self.use_framewise_encoding = False
+        self.use_framewise_decoding = False
+
+        # Assign mini-batch sizes for encoder and decoder
+        self.num_sample_frames_batch_size = 4
+        self.num_latent_frames_batch_size = 1
+
+        # The minimal tile height and width for spatial tiling to be used
+        self.tile_sample_min_height = 512
+        self.tile_sample_min_width = 512
+        self.tile_sample_min_num_frames = 4
+
+        # The minimal distance between two spatial tiles
+        self.tile_sample_stride_height = 448
+        self.tile_sample_stride_width = 448
+        self.tile_sample_stride_num_frames = 8
 
     def _clear_conv_cache(self):
         # Clear cache for convolutional layers if needed
@@ -760,13 +771,39 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
 
     def enable_tiling(
         self,
+        tile_sample_min_height: Optional[int] = None,
+        tile_sample_min_width: Optional[int] = None,
+        tile_sample_min_num_frames: Optional[int] = None,
+        tile_sample_stride_height: Optional[float] = None,
+        tile_sample_stride_width: Optional[float] = None,
+        tile_sample_stride_num_frames: Optional[float] = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
+
+        Args:
+            tile_sample_min_height (`int`, *optional*):
+                The minimum height required for a sample to be separated into tiles across the height dimension.
+            tile_sample_min_width (`int`, *optional*):
+                The minimum width required for a sample to be separated into tiles across the width dimension.
+            tile_sample_stride_height (`int`, *optional*):
+                The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
+                no tiling artifacts produced across the height dimension.
+            tile_sample_stride_width (`int`, *optional*):
+                The stride between two consecutive horizontal tiles. This is to ensure that there are no tiling
+                artifacts produced across the width dimension.
         """
         self.use_tiling = True
+        self.use_framewise_decoding = True
+        self.use_framewise_encoding = True
+        self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
+        self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
+        self.tile_sample_min_num_frames = tile_sample_min_num_frames or self.tile_sample_min_num_frames
+        self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
+        self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
+        self.tile_sample_stride_num_frames = tile_sample_stride_num_frames or self.tile_sample_stride_num_frames
 
     def disable_tiling(self) -> None:
         r"""
@@ -805,14 +842,13 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
-            x = self.tiled_encode(x, return_dict=return_dict)
-            return x
+        if self.use_tiling and (x.shape[-1] > self.tile_sample_min_height or x.shape[-2] > self.tile_sample_min_width):
+            return self.tiled_encode(x, return_dict=return_dict)
 
-        first_frames = self.encoder(x[:, :, 0:1, :, :])
+        first_frames = self.encoder(x[:, :, :1, :, :])
         h = [first_frames]
-        for i in range(1, x.shape[2], self.mini_batch_encoder):
-            next_frames = self.encoder(x[:, :, i : i + self.mini_batch_encoder, :, :])
+        for i in range(1, x.shape[2], self.num_sample_frames_batch_size):
+            next_frames = self.encoder(x[:, :, i : i + self.num_sample_frames_batch_size, :, :])
             h.append(next_frames)
         h = torch.cat(h, dim=2)
         moments = self.quant_conv(h)
@@ -849,18 +885,22 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
-        if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
+        batch_size, num_channels, num_frames, height, width = z.shape
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+
+        if self.use_tiling and (z.shape[-1] > tile_latent_min_height or z.shape[-2] > tile_latent_min_width):
             return self.tiled_decode(z, return_dict=return_dict)
 
         z = self.post_quant_conv(z)
 
         # Process the first frame and save the result
-        first_frames = self.decoder(z[:, :, 0:1, :, :])
+        first_frames = self.decoder(z[:, :, :1, :, :])
         # Initialize the list to store the processed frames, starting with the first frame
         dec = [first_frames]
         # Process the remaining frames, with the number of frames processed at a time determined by mini_batch_decoder
-        for i in range(1, z.shape[2], self.mini_batch_decoder):
-            next_frames = self.decoder(z[:, :, i : i + self.mini_batch_decoder, :, :])
+        for i in range(1, z.shape[2], self.num_latent_frames_batch_size):
+            next_frames = self.decoder(z[:, :, i : i + self.num_latent_frames_batch_size, :, :])
             dec.append(next_frames)
         # Concatenate all processed frames along the channel dimension
         dec = torch.cat(dec, dim=2)
@@ -913,27 +953,35 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
         return b
 
     def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput:
-        overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
-        blend_extent = int(self.tile_latent_min_size * self.tile_overlap_factor)
-        row_limit = self.tile_latent_min_size - blend_extent
+        batch_size, num_channels, num_frames, height, width = x.shape
+        latent_height = height // self.spatial_compression_ratio
+        latent_width = width // self.spatial_compression_ratio
+
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+
+        blend_height = tile_latent_min_height - tile_latent_stride_height
+        blend_width = tile_latent_min_width - tile_latent_stride_width
 
         # Split the image into 512x512 tiles and encode them separately.
         rows = []
-        for i in range(0, x.shape[3], overlap_size):
+        for i in range(0, height, self.tile_sample_stride_height):
             row = []
-            for j in range(0, x.shape[4], overlap_size):
+            for j in range(0, width, self.tile_sample_stride_width):
                 tile = x[
                     :,
                     :,
                     :,
-                    i : i + self.tile_sample_min_size,
-                    j : j + self.tile_sample_min_size,
+                    i : i + self.tile_sample_min_height,
+                    j : j + self.tile_sample_min_width,
                 ]
 
                 first_frames = self.encoder(tile[:, :, 0:1, :, :])
                 tile_h = [first_frames]
-                for frame_index in range(1, tile.shape[2], self.mini_batch_encoder):
-                    next_frames = self.encoder(tile[:, :, frame_index : frame_index + self.mini_batch_encoder, :, :])
+                for k in range(1, num_frames, self.num_sample_frames_batch_size):
+                    next_frames = self.encoder(tile[:, :, k : k + self.num_sample_frames_batch_size, :, :])
                     tile_h.append(next_frames)
                 tile = torch.cat(tile_h, dim=2)
                 tile = self.quant_conv(tile)
@@ -947,42 +995,50 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_extent)
-                result_row.append(tile[:, :, :, :row_limit, :row_limit])
+                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                result_row.append(tile[:, :, :, :latent_height, :latent_width])
             result_rows.append(torch.cat(result_row, dim=4))
 
-        moments = torch.cat(result_rows, dim=3)
+        moments = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
         return moments
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
-        overlap_size = int(self.tile_latent_min_size * (1 - self.tile_overlap_factor))
-        blend_extent = int(self.tile_sample_min_size * self.tile_overlap_factor)
-        row_limit = self.tile_sample_min_size - blend_extent
+        batch_size, num_channels, num_frames, height, width = z.shape
+        sample_height = height * self.spatial_compression_ratio
+        sample_width = width * self.spatial_compression_ratio
+
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+
+        blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
+        blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
 
         # Split z into overlapping 64x64 tiles and decode them separately.
         # The tiles have an overlap to avoid seams between tiles.
         rows = []
-        for i in range(0, z.shape[3], overlap_size):
+        for i in range(0, height, tile_latent_stride_height):
             row = []
-            for j in range(0, z.shape[4], overlap_size):
+            for j in range(0, width, tile_latent_stride_width):
                 tile = z[
                     :,
                     :,
                     :,
-                    i : i + self.tile_latent_min_size,
-                    j : j + self.tile_latent_min_size,
+                    i : i + tile_latent_min_height,
+                    j : j + tile_latent_min_width,
                 ]
                 tile = self.post_quant_conv(tile)
 
                 # Process the first frame and save the result
-                first_frames = self.decoder(tile[:, :, 0:1, :, :])
+                first_frames = self.decoder(tile[:, :, :1, :, :])
                 # Initialize the list to store the processed frames, starting with the first frame
                 tile_dec = [first_frames]
                 # Process the remaining frames, with the number of frames processed at a time determined by mini_batch_decoder
-                for frame_index in range(1, tile.shape[2], self.mini_batch_decoder):
-                    next_frames = self.decoder(tile[:, :, frame_index : frame_index + self.mini_batch_decoder, :, :])
+                for k in range(1, num_frames, self.num_latent_frames_batch_size):
+                    next_frames = self.decoder(tile[:, :, k : k + self.num_latent_frames_batch_size, :, :])
                     tile_dec.append(next_frames)
                 # Concatenate all processed frames along the channel dimension
                 decoded = torch.cat(tile_dec, dim=2)
@@ -996,13 +1052,13 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_extent)
-                result_row.append(tile[:, :, :, :row_limit, :row_limit])
+                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                result_row.append(tile[:, :, :, : self.tile_sample_stride_height, : self.tile_sample_stride_width])
             result_rows.append(torch.cat(result_row, dim=4))
 
-        dec = torch.cat(result_rows, dim=3)
+        dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
 
         if not return_dict:
             return (dec,)

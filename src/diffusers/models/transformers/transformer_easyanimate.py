@@ -13,12 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
@@ -74,7 +73,7 @@ class EasyAnimateRotaryPosEmbed(nn.Module):
 
         self.patch_size = patch_size
         self.rope_dim = rope_dim
-    
+
     def get_resize_crop_region_for_grid(self, src, tgt_width, tgt_height):
         tw = tgt_width
         th = tgt_height
