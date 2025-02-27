@@ -477,20 +477,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         encoder_hidden_states = torch.cat(
             [self.register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
         )
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
 
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
         # MMDiT blocks.
         for index_block, block in enumerate(self.joint_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
