@@ -18,12 +18,13 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from torch import nn
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
-from ..embeddings import TimestepEmbedding, Timesteps
+from ..embeddings import TimestepEmbedding, Timesteps, get_3d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, FP32LayerNorm, RMSNorm
@@ -65,6 +66,50 @@ class EasyAnimateLayerNormZero(nn.Module):
             1
         )
         return hidden_states, encoder_hidden_states, gate, enc_gate
+
+
+class EasyAnimateRotaryPosEmbed(nn.Module):
+    def __init__(self, patch_size: int, rope_dim: List[int]) -> None:
+        super().__init__()
+
+        self.patch_size = patch_size
+        self.rope_dim = rope_dim
+    
+    def get_resize_crop_region_for_grid(self, src, tgt_width, tgt_height):
+        tw = tgt_width
+        th = tgt_height
+        h, w = src
+        r = h / w
+        if r > (th / tw):
+            resize_height = th
+            resize_width = int(round(th / h * w))
+        else:
+            resize_width = tw
+            resize_height = int(round(tw / w * h))
+
+        crop_top = int(round((th - resize_height) / 2.0))
+        crop_left = int(round((tw - resize_width) / 2.0))
+
+        return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        bs, c, num_frames, grid_height, grid_width = hidden_states.size()
+        grid_height = grid_height // self.patch_size
+        grid_width = grid_width // self.patch_size
+        base_size_width = 90 // self.patch_size
+        base_size_height = 60 // self.patch_size
+
+        grid_crops_coords = self.get_resize_crop_region_for_grid(
+            (grid_height, grid_width), base_size_width, base_size_height
+        )
+        image_rotary_emb = get_3d_rotary_pos_embed(
+            self.rope_dim,
+            grid_crops_coords,
+            grid_size=(grid_height, grid_width),
+            temporal_size=hidden_states.size(2),
+            use_real=True,
+        )
+        return image_rotary_emb
 
 
 class EasyAnimateAttnProcessor2_0:
@@ -361,6 +406,7 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         # 1. Timestep embedding
         self.time_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
+        self.rope_embedding = EasyAnimateRotaryPosEmbed(patch_size, attention_head_dim)
 
         # 2. Patch embedding
         self.proj = nn.Conv2d(
@@ -422,7 +468,6 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_hidden_states_t5: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
         inpaint_latents: Optional[torch.Tensor] = None,
         control_latents: Optional[torch.Tensor] = None,
         return_dict: bool = True,
@@ -435,6 +480,7 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         # 1. Time embedding
         temb = self.time_proj(timestep).to(dtype=hidden_states.dtype)
         temb = self.time_embedding(temb, timestep_cond)
+        image_rotary_emb = self.rope_embedding(hidden_states)
 
         # 2. Patch embedding
         if inpaint_latents is not None:

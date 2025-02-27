@@ -20,7 +20,6 @@ from typing import Callable, Dict, List, Optional, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
-from einops import rearrange
 from PIL import Image
 from transformers import (
     BertModel,
@@ -62,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> pipe = EasyAnimateInpaintPipeline.from_pretrained(
-        ...     "alibaba-pai/EasyAnimateV5.1-12b-zh-InP", torch_dtype=torch.bfloat16
+        ...     "alibaba-pai/EasyAnimateV5.1-12b-zh-InP-diffusers", torch_dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 
@@ -74,14 +73,14 @@ EXAMPLE_DOC_STRING = """
         >>> validation_image_end = None
         >>> sample_size = (448, 576)
         >>> num_frames = 49
-        >>> input_video, input_video_mask, _ = get_image_to_video_latent(
+        >>> input_video, input_video_mask = get_image_to_video_latent(
         ...     [validation_image_start], validation_image_end, num_frames, sample_size
         ... )
 
         >>> video = pipe(
         ...     prompt,
         ...     num_frames=num_frames,
-        ...     negative_prompt="bad detailed",
+        ...     negative_prompt="Twisted body, limb deformities, text subtitles, comics, stillness, ugliness, errors, garbled text.",
         ...     height=sample_size[0],
         ...     width=sample_size[1],
         ...     video=input_video,
@@ -92,119 +91,92 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+def preprocess_image(image, sample_size):
+    """
+    Preprocess a single image (PIL.Image, numpy.ndarray, or torch.Tensor) to a resized tensor.
+    """
+    if isinstance(image, torch.Tensor):
+        # If input is a tensor, assume it's in CHW format and resize using interpolation
+        image = torch.nn.functional.interpolate(
+            image.unsqueeze(0), size=sample_size, mode="bilinear", align_corners=False
+        ).squeeze(0)
+    elif isinstance(image, Image.Image):
+        # If input is a PIL image, resize and convert to numpy array
+        image = image.resize((sample_size[1], sample_size[0]))
+        image = np.array(image)
+    elif isinstance(image, np.ndarray):
+        # If input is a numpy array, resize using PIL
+        image = Image.fromarray(image).resize((sample_size[1], sample_size[0]))
+        image = np.array(image)
+    else:
+        raise ValueError("Unsupported input type. Expected PIL.Image, numpy.ndarray, or torch.Tensor.")
+
+    # Convert to tensor if not already
+    if not isinstance(image, torch.Tensor):
+        image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0  # HWC -> CHW, normalize to [0, 1]
+
+    return image
+
+
 def get_image_to_video_latent(validation_image_start, validation_image_end, num_frames, sample_size):
-    if validation_image_start is not None and validation_image_end is not None:
-        if isinstance(validation_image_start, str) and os.path.isfile(validation_image_start):
-            image_start = clip_image = Image.open(validation_image_start).convert("RGB")
-            image_start = image_start.resize([sample_size[1], sample_size[0]])
-            clip_image = clip_image.resize([sample_size[1], sample_size[0]])
-        else:
-            image_start = clip_image = validation_image_start
-            image_start = [_image_start.resize([sample_size[1], sample_size[0]]) for _image_start in image_start]
-            clip_image = [_clip_image.resize([sample_size[1], sample_size[0]]) for _clip_image in clip_image]
+    """
+    Generate latent representations for video from start and end images.
+    Inputs can be PIL.Image, numpy.ndarray, or torch.Tensor.
+    """
+    input_video = None
+    input_video_mask = None
 
-        if isinstance(validation_image_end, str) and os.path.isfile(validation_image_end):
-            image_end = Image.open(validation_image_end).convert("RGB")
-            image_end = image_end.resize([sample_size[1], sample_size[0]])
+    if validation_image_start is not None:
+        # Preprocess the starting image(s)
+        if isinstance(validation_image_start, list):
+            image_start = [preprocess_image(img, sample_size) for img in validation_image_start]
         else:
-            image_end = validation_image_end
-            image_end = [_image_end.resize([sample_size[1], sample_size[0]]) for _image_end in image_end]
+            image_start = preprocess_image(validation_image_start, sample_size)
 
+        # Create video tensor from the starting image(s)
         if isinstance(image_start, list):
-            clip_image = clip_image[0]
             start_video = torch.cat(
-                [
-                    torch.from_numpy(np.array(_image_start)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0)
-                    for _image_start in image_start
-                ],
+                [img.unsqueeze(1).unsqueeze(0) for img in image_start],
                 dim=2,
             )
             input_video = torch.tile(start_video[:, :, :1], [1, 1, num_frames, 1, 1])
-            input_video[:, :, : len(image_start)] = start_video
-
-            input_video_mask = torch.zeros_like(input_video[:, :1])
-            input_video_mask[:, :, len(image_start) :] = 255
+            input_video[:, :, :len(image_start)] = start_video
         else:
             input_video = torch.tile(
-                torch.from_numpy(np.array(image_start)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0),
+                image_start.unsqueeze(1).unsqueeze(0),
                 [1, 1, num_frames, 1, 1],
             )
-            input_video_mask = torch.zeros_like(input_video[:, :1])
+
+        # Normalize input video (already normalized in preprocess_image)
+
+        # Create mask for the input video
+        input_video_mask = torch.zeros_like(input_video[:, :1])
+        if isinstance(image_start, list):
+            input_video_mask[:, :, len(image_start):] = 255
+        else:
             input_video_mask[:, :, 1:] = 255
 
-        if isinstance(image_end, list):
-            image_end = [
-                _image_end.resize(image_start[0].size if isinstance(image_start, list) else image_start.size)
-                for _image_end in image_end
-            ]
-            end_video = torch.cat(
-                [
-                    torch.from_numpy(np.array(_image_end)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0)
-                    for _image_end in image_end
-                ],
-                dim=2,
-            )
-            input_video[:, :, -len(end_video) :] = end_video
-
-            input_video_mask[:, :, -len(image_end) :] = 0
-        else:
-            image_end = image_end.resize(image_start[0].size if isinstance(image_start, list) else image_start.size)
-            input_video[:, :, -1:] = torch.from_numpy(np.array(image_end)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0)
-            input_video_mask[:, :, -1:] = 0
-
-        input_video = input_video / 255
-
-    elif validation_image_start is not None:
-        if isinstance(validation_image_start, str) and os.path.isfile(validation_image_start):
-            image_start = clip_image = Image.open(validation_image_start).convert("RGB")
-            image_start = image_start.resize([sample_size[1], sample_size[0]])
-            clip_image = clip_image.resize([sample_size[1], sample_size[0]])
-        else:
-            image_start = clip_image = validation_image_start
-            image_start = [_image_start.resize([sample_size[1], sample_size[0]]) for _image_start in image_start]
-            clip_image = [_clip_image.resize([sample_size[1], sample_size[0]]) for _clip_image in clip_image]
-        image_end = None
-
-        if isinstance(image_start, list):
-            clip_image = clip_image[0]
-            start_video = torch.cat(
-                [
-                    torch.from_numpy(np.array(_image_start)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0)
-                    for _image_start in image_start
-                ],
-                dim=2,
-            )
-            input_video = torch.tile(start_video[:, :, :1], [1, 1, num_frames, 1, 1])
-            input_video[:, :, : len(image_start)] = start_video
-            input_video = input_video / 255
-
-            input_video_mask = torch.zeros_like(input_video[:, :1])
-            input_video_mask[:, :, len(image_start) :] = 255
-        else:
-            input_video = (
-                torch.tile(
-                    torch.from_numpy(np.array(image_start)).permute(2, 0, 1).unsqueeze(1).unsqueeze(0),
-                    [1, 1, num_frames, 1, 1],
+        # Handle ending image(s) if provided
+        if validation_image_end is not None:
+            if isinstance(validation_image_end, list):
+                image_end = [preprocess_image(img, sample_size) for img in validation_image_end]
+                end_video = torch.cat(
+                    [img.unsqueeze(1).unsqueeze(0) for img in image_end],
+                    dim=2,
                 )
-                / 255
-            )
-            input_video_mask = torch.zeros_like(input_video[:, :1])
-            input_video_mask[
-                :,
-                :,
-                1:,
-            ] = 255
-    else:
-        image_start = None
-        image_end = None
+                input_video[:, :, -len(end_video):] = end_video
+                input_video_mask[:, :, -len(image_end):] = 0
+            else:
+                image_end = preprocess_image(validation_image_end, sample_size)
+                input_video[:, :, -1:] = image_end.unsqueeze(1).unsqueeze(0)
+                input_video_mask[:, :, -1:] = 0
+
+    elif validation_image_start is None:
+        # If no starting image is provided, initialize empty tensors
         input_video = torch.zeros([1, 3, num_frames, sample_size[0], sample_size[1]])
         input_video_mask = torch.ones([1, 1, num_frames, sample_size[0], sample_size[1]]) * 255
-        clip_image = None
 
-    del image_start
-    del image_end
-
-    return input_video, input_video_mask, clip_image
+    return input_video, input_video_mask
 
 
 # Similar to diffusers.pipelines.hunyuandit.pipeline_hunyuandit.get_resize_crop_region_for_grid
@@ -268,15 +240,19 @@ def resize_mask(mask, latent, process_first_frame_only=True):
 
 
 ## Add noise to reference video
-def add_noise_to_reference_video(image, ratio=None):
+def add_noise_to_reference_video(image, ratio=None, generator=None):
     if ratio is None:
         sigma = torch.normal(mean=-3.0, std=0.5, size=(image.shape[0],)).to(image.device)
         sigma = torch.exp(sigma).to(image.dtype)
     else:
         sigma = torch.ones((image.shape[0],)).to(image.device, image.dtype) * ratio
-
-    image_noise = torch.randn_like(image) * sigma[:, None, None, None, None]
-    image_noise = torch.where(image == -1, torch.zeros_like(image), image_noise)
+    
+    if generator is not None:
+        image_noise = torch.randn(image.size(), generator=generator, dtype=image.dtype, device=image.device) * \
+            sigma[:, None, None, None, None]
+    else:
+        image_noise = torch.randn_like(image) * sigma[:, None, None, None, None]
+    image_noise = torch.where(image==-1, torch.zeros_like(image), image_noise)
     image = image + image_noise
     return image
 
@@ -820,7 +796,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         if masked_image is not None:
             masked_image = masked_image.to(device=device, dtype=dtype)
             if self.transformer.config.add_noise_in_inpaint_model:
-                masked_image = add_noise_to_reference_video(masked_image, ratio=noise_aug_strength)
+                masked_image = add_noise_to_reference_video(masked_image, ratio=noise_aug_strength, generator=generator)
             new_mask_pixel_values = []
             bs = 1
             for i in range(0, masked_image.shape[0], bs):
@@ -1171,12 +1147,12 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         is_strength_max = strength == 1.0
 
         if video is not None:
-            num_frames = video.shape[2]
+            batch_size, channels, num_frames, height_video, width_video = video.shape
             init_video = self.image_processor.preprocess(
-                rearrange(video, "b c f h w -> (b f) c h w"), height=height, width=width
+                video.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height_video, width_video), height=height, width=width
             )
             init_video = init_video.to(dtype=torch.float32)
-            init_video = rearrange(init_video, "(b f) c h w -> b c f h w", f=num_frames)
+            init_video = init_video.reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
         else:
             init_video = None
 
@@ -1225,12 +1201,12 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                 inpaint_latents = torch.cat([mask_input, masked_video_latents_input], dim=1).to(dtype)
             else:
                 # Prepare mask latent variables
-                num_frames = video.shape[2]
+                batch_size, channels, num_frames, height_video, width_video = mask_video.shape
                 mask_condition = self.mask_processor.preprocess(
-                    rearrange(mask_video, "b c f h w -> (b f) c h w"), height=height, width=width
+                    mask_video.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height_video, width_video), height=height, width=width
                 )
                 mask_condition = mask_condition.to(dtype=torch.float32)
-                mask_condition = rearrange(mask_condition, "(b f) c h w -> b c f h w", f=num_frames)
+                mask_condition = mask_condition.reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
 
                 if num_channels_transformer != num_channels_latents:
                     mask_condition_tile = torch.tile(mask_condition, [1, 3, 1, 1, 1])
@@ -1329,30 +1305,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 8. create image_rotary_emb, style embedding & time ids
-        grid_height = height // 8 // self.transformer.config.patch_size
-        grid_width = width // 8 // self.transformer.config.patch_size
-        if self.transformer.config.get("time_position_encoding_type", "2d_rope") == "3d_rope":
-            base_size_width = 720 // 8 // self.transformer.config.patch_size
-            base_size_height = 480 // 8 // self.transformer.config.patch_size
-
-            grid_crops_coords = get_resize_crop_region_for_grid(
-                (grid_height, grid_width), base_size_width, base_size_height
-            )
-            image_rotary_emb = get_3d_rotary_pos_embed(
-                self.transformer.config.attention_head_dim,
-                grid_crops_coords,
-                grid_size=(grid_height, grid_width),
-                temporal_size=latents.size(2),
-                use_real=True,
-            )
-        else:
-            base_size = 512 // 8 // self.transformer.config.patch_size
-            grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size, base_size)
-            image_rotary_emb = get_2d_rotary_pos_embed(
-                self.transformer.config.attention_head_dim, grid_crops_coords, (grid_height, grid_width)
-            )
-
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
@@ -1367,7 +1319,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             prompt_embeds_2 = prompt_embeds_2.to(device=device)
             prompt_attention_mask_2 = prompt_attention_mask_2.to(device=device)
 
-        # 9. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1391,7 +1343,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     t_expand,
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_t5=prompt_embeds_2,
-                    image_rotary_emb=image_rotary_emb,
                     inpaint_latents=inpaint_latents,
                     return_dict=False,
                 )[0]
