@@ -1139,6 +1139,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         # With attention slicing
         backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
         backend_reset_peak_memory_stats(torch_device)
 
         pipe.enable_attention_slicing()
