@@ -78,10 +78,10 @@ from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
 from diffusers.utils import export_to_video
 
 transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-    "tencent/HunyuanVideo", subfolder="transformer", torch_dtype=torch.bfloat16
+    "hunyuanvideo-community/HunyuanVideo", subfolder="transformer", torch_dtype=torch.bfloat16
 )
 pipe = HunyuanVideoPipeline.from_pretrained(
-  "tencent/HunyuanVideo", transformer=transformer, torch_dtype=torch.float16
+  "hunyuanvideo-community/HunyuanVideo", transformer=transformer, torch_dtype=torch.float16
 )
 
 # reduce memory requirements

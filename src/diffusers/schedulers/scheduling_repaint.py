@@ -319,7 +319,11 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         prev_unknown_part = alpha_prod_t_prev**0.5 * pred_original_sample + pred_sample_direction + variance
 
         # 8. Algorithm 1 Line 5 https://arxiv.org/pdf/2201.09865.pdf
-        prev_known_part = (alpha_prod_t_prev**0.5) * original_image + (1 - alpha_prod_t_prev) * noise
+        # The computation reported in Algorithm 1 Line 5 is incorrect. Line 5 refers to formula (8a) of the same paper,
+        # which tells to sample from a Gaussian distribution with mean "(alpha_prod_t_prev**0.5) * original_image"
+        # and variance "(1 - alpha_prod_t_prev)". This means that the standard Gaussian distribution "noise" should be
+        # scaled by the square root of the variance (as it is done here), however Algorithm 1 Line 5 tells to scale by the variance.
+        prev_known_part = (alpha_prod_t_prev**0.5) * original_image + ((1 - alpha_prod_t_prev) ** 0.5) * noise
 
         # 9. Algorithm 1 Line 8 https://arxiv.org/pdf/2201.09865.pdf
         pred_prev_sample = mask * prev_known_part + (1.0 - mask) * prev_unknown_part

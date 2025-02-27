@@ -14,6 +14,10 @@
 
 # SanaPipeline
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 [SANA: Efficient High-Resolution Image Synthesis with Linear Diffusion Transformers](https://huggingface.co/papers/2410.10629) from NVIDIA and MIT HAN Lab, by Enze Xie, Junsong Chen, Junyu Chen, Han Cai, Haotian Tang, Yujun Lin, Zhekai Zhang, Muyang Li, Ligeng Zhu, Yao Lu, Song Han.
 
 The abstract from the paper is:
@@ -22,7 +26,7 @@ The abstract from the paper is:
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading.md#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
 </Tip>
 
@@ -59,10 +63,10 @@ Refer to the [Quantization](../../quantization/overview) overview to learn more 
 ```py
 import torch
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, SanaTransformer2DModel, SanaPipeline
-from transformers import BitsAndBytesConfig as BitsAndBytesConfig, AutoModelForCausalLM
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, AutoModel
 
 quant_config = BitsAndBytesConfig(load_in_8bit=True)
-text_encoder_8bit = AutoModelForCausalLM.from_pretrained(
+text_encoder_8bit = AutoModel.from_pretrained(
     "Efficient-Large-Model/Sana_1600M_1024px_diffusers",
     subfolder="text_encoder",
     quantization_config=quant_config,

@@ -29,8 +29,9 @@ from diffusers import (
 from diffusers.models import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -56,6 +57,7 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
+    test_layerwise_casting = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -176,21 +178,27 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
         # TODO(YiYi) need to fix later
         pass
 
+    @unittest.skip(
+        "Test not supported as `encode_prompt` is called two times separately which deivates from about 99% of the pipelines we have."
+    )
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = HunyuanDiTControlNetPipeline
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_canny(self):
         controlnet = HunyuanDiT2DControlNetModel.from_pretrained(
@@ -199,7 +207,7 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
             "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -238,7 +246,7 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
             "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -277,7 +285,7 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
             "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -318,7 +326,7 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         pipe = HunyuanDiTControlNetPipeline.from_pretrained(
             "Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)

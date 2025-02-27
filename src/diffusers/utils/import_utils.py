@@ -115,6 +115,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _transformers_available = False
 
+_hf_hub_available = importlib.util.find_spec("huggingface_hub") is not None
+try:
+    _hf_hub_version = importlib_metadata.version("huggingface_hub")
+    logger.debug(f"Successfully imported huggingface_hub version {_hf_hub_version}")
+except importlib_metadata.PackageNotFoundError:
+    _hf_hub_available = False
+
 
 _inflect_available = importlib.util.find_spec("inflect") is not None
 try:
@@ -142,6 +149,7 @@ if _onnx_available:
         "onnxruntime-openvino",
         "ort_nightly_directml",
         "onnxruntime-rocm",
+        "onnxruntime-migraphx",
         "onnxruntime-training",
     )
     _onnxruntime_version = None
@@ -767,6 +775,21 @@ def is_transformers_version(operation: str, version: str):
     return compare_versions(parse(_transformers_version), operation, version)
 
 
+def is_hf_hub_version(operation: str, version: str):
+    """
+    Compares the current Hugging Face Hub version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _hf_hub_available:
+        return False
+    return compare_versions(parse(_hf_hub_version), operation, version)
+
+
 def is_accelerate_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -792,7 +815,7 @@ def is_peft_version(operation: str, version: str):
         version (`str`):
             A version string
     """
-    if not _peft_version:
+    if not _peft_available:
         return False
     return compare_versions(parse(_peft_version), operation, version)
 
@@ -806,7 +829,7 @@ def is_bitsandbytes_version(operation: str, version: str):
         version (`str`):
             A version string
     """
-    if not _bitsandbytes_version:
+    if not _bitsandbytes_available:
         return False
     return compare_versions(parse(_bitsandbytes_version), operation, version)
 

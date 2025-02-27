@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -94,6 +94,12 @@ CHECKPOINT_KEY_NAMES = {
     "animatediff_sdxl_beta": "up_blocks.2.motion_modules.0.temporal_transformer.norm.weight",
     "animatediff_scribble": "controlnet_cond_embedding.conv_in.weight",
     "animatediff_rgb": "controlnet_cond_embedding.weight",
+    "auraflow": [
+        "double_layers.0.attn.w2q.weight",
+        "double_layers.0.attn.w1q.weight",
+        "cond_seq_linear.weight",
+        "t_embedder.mlp.0.weight",
+    ],
     "flux": [
         "double_blocks.0.img_attn.norm.key_norm.scale",
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
@@ -109,6 +115,8 @@ CHECKPOINT_KEY_NAMES = {
     "autoencoder-dc-sana": "encoder.project_in.conv.bias",
     "mochi-1-preview": ["model.diffusion_model.blocks.0.attn.qkv_x.weight", "blocks.0.attn.qkv_x.weight"],
     "hunyuan-video": "txt_in.individual_token_refiner.blocks.0.adaLN_modulation.1.bias",
+    "instruct-pix2pix": "model.diffusion_model.input_blocks.0.0.weight",
+    "lumina2": ["model.diffusion_model.cap_embedder.0.weight", "cap_embedder.0.weight"],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -153,6 +161,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "animatediff_sdxl_beta": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-sdxl-beta"},
     "animatediff_scribble": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-scribble"},
     "animatediff_rgb": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-rgb"},
+    "auraflow": {"pretrained_model_name_or_path": "fal/AuraFlow-v0.3"},
     "flux-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-dev"},
     "flux-fill": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Fill-dev"},
     "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
@@ -165,6 +174,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "autoencoder-dc-f32c32-sana": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"},
     "mochi-1-preview": {"pretrained_model_name_or_path": "genmo/mochi-1-preview"},
     "hunyuan-video": {"pretrained_model_name_or_path": "hunyuanvideo-community/HunyuanVideo"},
+    "instruct-pix2pix": {"pretrained_model_name_or_path": "timbrooks/instruct-pix2pix"},
+    "lumina2": {"pretrained_model_name_or_path": "Alpha-VLLM/Lumina-Image-2.0"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -177,6 +188,7 @@ DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
     "inpainting": 512,
     "inpainting_v2": 512,
     "controlnet": 512,
+    "instruct-pix2pix": 512,
     "v2": 768,
     "v1": 512,
 }
@@ -378,6 +390,7 @@ def load_single_file_checkpoint(
     cache_dir=None,
     local_files_only=None,
     revision=None,
+    disable_mmap=False,
 ):
     if os.path.isfile(pretrained_model_link_or_path):
         pretrained_model_link_or_path = pretrained_model_link_or_path
@@ -395,7 +408,7 @@ def load_single_file_checkpoint(
             revision=revision,
         )
 
-    checkpoint = load_state_dict(pretrained_model_link_or_path)
+    checkpoint = load_state_dict(pretrained_model_link_or_path, disable_mmap=disable_mmap)
 
     # some checkpoints contain the model state dict under a "state_dict" key
     while "state_dict" in checkpoint:
@@ -595,10 +608,14 @@ def infer_diffusers_model_type(checkpoint):
         if any(
             g in checkpoint for g in ["guidance_in.in_layer.bias", "model.diffusion_model.guidance_in.in_layer.bias"]
         ):
-            if checkpoint["img_in.weight"].shape[1] == 384:
-                model_type = "flux-fill"
+            if "model.diffusion_model.img_in.weight" in checkpoint:
+                key = "model.diffusion_model.img_in.weight"
+            else:
+                key = "img_in.weight"
 
-            elif checkpoint["img_in.weight"].shape[1] == 128:
+            if checkpoint[key].shape[1] == 384:
+                model_type = "flux-fill"
+            elif checkpoint[key].shape[1] == 128:
                 model_type = "flux-depth"
             else:
                 model_type = "flux-dev"
@@ -632,6 +649,18 @@ def infer_diffusers_model_type(checkpoint):
 
     elif CHECKPOINT_KEY_NAMES["hunyuan-video"] in checkpoint:
         model_type = "hunyuan-video"
+
+    elif all(key in checkpoint for key in CHECKPOINT_KEY_NAMES["auraflow"]):
+        model_type = "auraflow"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["instruct-pix2pix"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["instruct-pix2pix"]].shape[1] == 8
+    ):
+        model_type = "instruct-pix2pix"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["lumina2"]):
+        model_type = "lumina2"
 
     else:
         model_type = "v1"
@@ -1564,18 +1593,9 @@ def create_diffusers_clip_model_from_ldm(
         raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
 
     if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
     else:
-        _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
-
-    if model._keys_to_ignore_on_load_unexpected is not None:
-        for pat in model._keys_to_ignore_on_load_unexpected:
-            unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-    if len(unexpected_keys) > 0:
-        logger.warning(
-            f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-        )
+        model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
     if torch_dtype is not None:
         model.to(torch_dtype)
@@ -2032,16 +2052,7 @@ def create_diffusers_t5_model_from_checkpoint(
     diffusers_format_checkpoint = convert_sd3_t5_checkpoint_to_diffusers(checkpoint)
 
     if is_accelerate_available():
-        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        if model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
+        load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
     else:
         model.load_state_dict(diffusers_format_checkpoint)
 
@@ -2082,6 +2093,7 @@ def convert_animatediff_checkpoint_to_diffusers(checkpoint, **kwargs):
 def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())
+
     for k in keys:
         if "model.diffusion_model." in k:
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
@@ -2681,3 +2693,167 @@ def convert_hunyuan_video_transformer_to_diffusers(checkpoint, **kwargs):
             handler_fn_inplace(key, checkpoint)
 
     return checkpoint
+
+
+def convert_auraflow_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+    state_dict_keys = list(checkpoint.keys())
+
+    # Handle register tokens and positional embeddings
+    converted_state_dict["register_tokens"] = checkpoint.pop("register_tokens", None)
+
+    # Handle time step projection
+    converted_state_dict["time_step_proj.linear_1.weight"] = checkpoint.pop("t_embedder.mlp.0.weight", None)
+    converted_state_dict["time_step_proj.linear_1.bias"] = checkpoint.pop("t_embedder.mlp.0.bias", None)
+    converted_state_dict["time_step_proj.linear_2.weight"] = checkpoint.pop("t_embedder.mlp.2.weight", None)
+    converted_state_dict["time_step_proj.linear_2.bias"] = checkpoint.pop("t_embedder.mlp.2.bias", None)
+
+    # Handle context embedder
+    converted_state_dict["context_embedder.weight"] = checkpoint.pop("cond_seq_linear.weight", None)
+
+    # Calculate the number of layers
+    def calculate_layers(keys, key_prefix):
+        layers = set()
+        for k in keys:
+            if key_prefix in k:
+                layer_num = int(k.split(".")[1])  # get the layer number
+                layers.add(layer_num)
+        return len(layers)
+
+    mmdit_layers = calculate_layers(state_dict_keys, key_prefix="double_layers")
+    single_dit_layers = calculate_layers(state_dict_keys, key_prefix="single_layers")
+
+    # MMDiT blocks
+    for i in range(mmdit_layers):
+        # Feed-forward
+        path_mapping = {"mlpX": "ff", "mlpC": "ff_context"}
+        weight_mapping = {"c_fc1": "linear_1", "c_fc2": "linear_2", "c_proj": "out_projection"}
+        for orig_k, diffuser_k in path_mapping.items():
+            for k, v in weight_mapping.items():
+                converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.{v}.weight"] = checkpoint.pop(
+                    f"double_layers.{i}.{orig_k}.{k}.weight", None
+                )
+
+        # Norms
+        path_mapping = {"modX": "norm1", "modC": "norm1_context"}
+        for orig_k, diffuser_k in path_mapping.items():
+            converted_state_dict[f"joint_transformer_blocks.{i}.{diffuser_k}.linear.weight"] = checkpoint.pop(
+                f"double_layers.{i}.{orig_k}.1.weight", None
+            )
+
+        # Attentions
+        x_attn_mapping = {"w2q": "to_q", "w2k": "to_k", "w2v": "to_v", "w2o": "to_out.0"}
+        context_attn_mapping = {"w1q": "add_q_proj", "w1k": "add_k_proj", "w1v": "add_v_proj", "w1o": "to_add_out"}
+        for attn_mapping in [x_attn_mapping, context_attn_mapping]:
+            for k, v in attn_mapping.items():
+                converted_state_dict[f"joint_transformer_blocks.{i}.attn.{v}.weight"] = checkpoint.pop(
+                    f"double_layers.{i}.attn.{k}.weight", None
+                )
+
+    # Single-DiT blocks
+    for i in range(single_dit_layers):
+        # Feed-forward
+        mapping = {"c_fc1": "linear_1", "c_fc2": "linear_2", "c_proj": "out_projection"}
+        for k, v in mapping.items():
+            converted_state_dict[f"single_transformer_blocks.{i}.ff.{v}.weight"] = checkpoint.pop(
+                f"single_layers.{i}.mlp.{k}.weight", None
+            )
+
+        # Norms
+        converted_state_dict[f"single_transformer_blocks.{i}.norm1.linear.weight"] = checkpoint.pop(
+            f"single_layers.{i}.modCX.1.weight", None
+        )
+
+        # Attentions
+        x_attn_mapping = {"w1q": "to_q", "w1k": "to_k", "w1v": "to_v", "w1o": "to_out.0"}
+        for k, v in x_attn_mapping.items():
+            converted_state_dict[f"single_transformer_blocks.{i}.attn.{v}.weight"] = checkpoint.pop(
+                f"single_layers.{i}.attn.{k}.weight", None
+            )
+    # Final blocks
+    converted_state_dict["proj_out.weight"] = checkpoint.pop("final_linear.weight", None)
+
+    # Handle the final norm layer
+    norm_weight = checkpoint.pop("modF.1.weight", None)
+    if norm_weight is not None:
+        converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(norm_weight, dim=None)
+    else:
+        converted_state_dict["norm_out.linear.weight"] = None
+
+    converted_state_dict["pos_embed.pos_embed"] = checkpoint.pop("positional_encoding")
+    converted_state_dict["pos_embed.proj.weight"] = checkpoint.pop("init_x_linear.weight")
+    converted_state_dict["pos_embed.proj.bias"] = checkpoint.pop("init_x_linear.bias")
+
+    return converted_state_dict
+
+
+def convert_lumina2_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+
+    # Original Lumina-Image-2 has an extra norm paramter that is unused
+    # We just remove it here
+    checkpoint.pop("norm_final.weight", None)
+
+    # Comfy checkpoints add this prefix
+    keys = list(checkpoint.keys())
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    LUMINA_KEY_MAP = {
+        "cap_embedder": "time_caption_embed.caption_embedder",
+        "t_embedder.mlp.0": "time_caption_embed.timestep_embedder.linear_1",
+        "t_embedder.mlp.2": "time_caption_embed.timestep_embedder.linear_2",
+        "attention": "attn",
+        ".out.": ".to_out.0.",
+        "k_norm": "norm_k",
+        "q_norm": "norm_q",
+        "w1": "linear_1",
+        "w2": "linear_2",
+        "w3": "linear_3",
+        "adaLN_modulation.1": "norm1.linear",
+    }
+    ATTENTION_NORM_MAP = {
+        "attention_norm1": "norm1.norm",
+        "attention_norm2": "norm2",
+    }
+    CONTEXT_REFINER_MAP = {
+        "context_refiner.0.attention_norm1": "context_refiner.0.norm1",
+        "context_refiner.0.attention_norm2": "context_refiner.0.norm2",
+        "context_refiner.1.attention_norm1": "context_refiner.1.norm1",
+        "context_refiner.1.attention_norm2": "context_refiner.1.norm2",
+    }
+    FINAL_LAYER_MAP = {
+        "final_layer.adaLN_modulation.1": "norm_out.linear_1",
+        "final_layer.linear": "norm_out.linear_2",
+    }
+
+    def convert_lumina_attn_to_diffusers(tensor, diffusers_key):
+        q_dim = 2304
+        k_dim = v_dim = 768
+
+        to_q, to_k, to_v = torch.split(tensor, [q_dim, k_dim, v_dim], dim=0)
+
+        return {
+            diffusers_key.replace("qkv", "to_q"): to_q,
+            diffusers_key.replace("qkv", "to_k"): to_k,
+            diffusers_key.replace("qkv", "to_v"): to_v,
+        }
+
+    for key in keys:
+        diffusers_key = key
+        for k, v in CONTEXT_REFINER_MAP.items():
+            diffusers_key = diffusers_key.replace(k, v)
+        for k, v in FINAL_LAYER_MAP.items():
+            diffusers_key = diffusers_key.replace(k, v)
+        for k, v in ATTENTION_NORM_MAP.items():
+            diffusers_key = diffusers_key.replace(k, v)
+        for k, v in LUMINA_KEY_MAP.items():
+            diffusers_key = diffusers_key.replace(k, v)
+
+        if "qkv" in diffusers_key:
+            converted_state_dict.update(convert_lumina_attn_to_diffusers(checkpoint.pop(key), diffusers_key))
+        else:
+            converted_state_dict[diffusers_key] = checkpoint.pop(key)
+
+    return converted_state_dict
