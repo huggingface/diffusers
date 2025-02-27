@@ -1151,7 +1151,10 @@ def get_1d_rotary_pos_embed(
         / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype, device=pos.device)[: (dim // 2)] / dim))
         / linear_factor
     )  # [D/2]
-    freqs = torch.outer(pos, freqs).float()  # type: ignore   # [S, D/2]
+    freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
+    is_npu = freqs.device.type == "npu"
+    if is_npu:
+        freqs = freqs.float()
     if use_real and repeat_interleave_real:
         # flux, hunyuan-dit, cogvideox
         freqs_cos = freqs.cos().repeat_interleave(2, dim=1).float()  # [S, D]
