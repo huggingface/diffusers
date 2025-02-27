@@ -537,8 +537,8 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_pipeline_with_model_offloading(self):
         backend_empty_cache(torch_device)
-        backend_reset_peak_memory_stats(torch_device)
         backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
 
