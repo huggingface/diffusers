@@ -495,10 +495,13 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         mask_shape = (batch_size, 1, num_frames, height, width)
 
         if latents is not None:
-            conditioning_mask = latents.new_zeros(shape)
+            conditioning_mask = latents.new_zeros(mask_shape)
             conditioning_mask[:, :, 0] = 1.0
             conditioning_mask = self._pack_latents(
                 conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+            ).squeeze(-1)
+            latents = self._pack_latents(
+                latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
             )
             return latents.to(device=device, dtype=dtype), conditioning_mask
 
