@@ -409,9 +409,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 This means that, instead of loading an additional adapter, this will take the existing adapter weights
                 and replace them with the weights of the new adapter. This can be faster and more memory efficient.
                 However, the main advantage of hotswapping is that when the model is compiled with torch.compile,
-                loading the new adapter does not require recompilation of the model.
-                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
-                to call an additional method before loading the adapter:
+                loading the new adapter does not require recompilation of the model. If the new adapter and the old
+                adapter have different ranks and/or LoRA alphas (i.e. scaling), you need to call an additional method
+                before loading the adapter:
                 ```py
                 pipeline = ...  # load diffusers pipeline
                 max_rank = ...  # the highest rank among all LoRAs that you want to load
