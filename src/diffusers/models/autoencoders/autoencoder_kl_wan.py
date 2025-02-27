@@ -45,17 +45,35 @@ def count_conv3d(model):
 
 class WanCausalConv3d(nn.Conv3d):
     r"""
-    A custom 3D causal convolution layer.
+    A custom 3D causal convolution layer with feature caching support.
 
-    This layer extends the standard Conv3D layer by ensuring causality in the time dimension.
-    It achieves this by dynamically adjusting padding based on the presence of cached input data.
+    This layer extends the standard Conv3D layer by ensuring causality in the time dimension
+    and handling feature caching for efficient inference.
 
     Args:
-        *args: Positional arguments for the parent Conv3d class.
-        **kwargs: Keyword arguments for the parent Conv3d class.
+        in_channels (int): Number of channels in the input image
+        out_channels (int): Number of channels produced by the convolution
+        kernel_size (int or tuple): Size of the convolving kernel
+        stride (int or tuple, optional): Stride of the convolution. Default: 1
+        padding (int or tuple, optional): Zero-padding added to all three sides of the input. Default: 0
     """
-    def __init__(self, *args, **kwargs)-> None:
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self, 
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int, int]],
+        stride: Union[int, Tuple[int, int, int]] = 1,
+        padding: Union[int, Tuple[int, int, int]] = 0,
+    ) -> None:
+        super().__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+        )
+        
+        # Set up causal padding
         self._padding = (
             self.padding[2],
             self.padding[2],
@@ -73,6 +91,89 @@ class WanCausalConv3d(nn.Conv3d):
             padding[4] -= cache_x.shape[2]
         x = F.pad(x, padding)
         return super().forward(x)
+
+
+class WanCausalConv3dYiYi(nn.Conv3d):
+    r"""
+    A custom 3D causal convolution layer with feature caching support.
+
+    This layer extends the standard Conv3D layer by ensuring causality in the time dimension
+    and handling feature caching for efficient inference.
+
+    Args:
+        in_channels (int): Number of channels in the input image
+        out_channels (int): Number of channels produced by the convolution
+        kernel_size (int or tuple): Size of the convolving kernel
+        stride (int or tuple, optional): Stride of the convolution. Default: 1
+        padding (int or tuple, optional): Zero-padding added to all three sides of the input. Default: 0
+    """
+    def __init__(
+        self, 
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int, int]],
+        stride: Union[int, Tuple[int, int, int]] = 1,
+        padding: Union[int, Tuple[int, int, int]] = 0,
+    ) -> None:
+        super().__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+        )
+        
+        # Set up causal padding
+        self._padding = (
+            self.padding[2],
+            self.padding[2],
+            self.padding[1],
+            self.padding[1],
+            2 * self.padding[0],
+            0
+        )
+        self.padding = (0, 0, 0)
+    
+    def forward(self, x, feat_cache=None, feat_idx=[0]):
+        """
+        Forward pass with feature caching support.
+        
+        Args:
+            x (torch.Tensor): Input tensor
+            feat_cache (list, optional): List to store cached features
+            feat_idx (list, optional): List with a single integer indicating the current cache index
+            
+        Returns:
+            torch.Tensor: Output tensor after convolution
+        """
+        # Handle feature caching
+        if feat_cache is not None:
+            idx = feat_idx[0]
+            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            
+            # Concatenate with cached frame if available
+            if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
+                # cache last frame of last two chunk
+                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+            
+            # Apply padding and convolution with cached data
+            padding = list(self._padding)
+            if feat_cache[idx] is not None and self._padding[4] > 0 :
+                x = torch.cat([feat_cache[idx], x], dim=2)
+                padding[4] -= feat_cache[idx].shape[2]
+            
+            x = F.pad(x, padding)
+            result = super().forward(x)
+            
+            # Update cache
+            feat_cache[idx] = cache_x
+            feat_idx[0] += 1
+            
+            return result
+        else:
+            # Standard forward pass without caching
+            x = F.pad(x, self._padding)
+            return super().forward(x)
 
 class WanRMS_norm(nn.Module): 
     r"""
@@ -135,13 +236,6 @@ class WanResample(nn.Module):
             - 'downsample3d': 3D downsampling with zero-padding, convolution, and causal 3D convolution.
     """
     def __init__(self, dim: int, mode: str) -> None:
-        assert mode in (
-            'none',
-            'upsample2d',
-            'upsample3d',
-            'downsample2d',
-            'downsample3d'
-        )
         super().__init__()
         self.dim = dim
         self.mode = mode
@@ -200,9 +294,9 @@ class WanResample(nn.Module):
                     x = torch.stack((x[:,0,:,:,:,:],x[:,1,:,:,:,:]),3)
                     x = x.reshape(b,c,t*2,h,w) 
         t = x.shape[2]
-        x = rearrange(x, 'b c t h w -> (b t) c h w')
+        x = x.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
         x = self.resample(x)
-        x = rearrange(x, '(b t) c h w -> b c t h w', t=t)
+        x = x.view(b, t, x.size(1), x.size(2), x.size(3)).permute(0, 2, 1, 3, 4)
         
         if self.mode == 'downsample3d':
             if feat_cache is not None:                    
@@ -217,26 +311,7 @@ class WanResample(nn.Module):
                     feat_idx[0] += 1  
         return x
 
-    def init_weight(self, conv): 
-        conv_weight = conv.weight 
-        nn.init.zeros_(conv_weight)
-        c1, c2, t, h, w = conv_weight.size()
-        one_matrix = torch.eye(c1, c2) 
-        init_matrix = one_matrix    
-        nn.init.zeros_(conv_weight) 
-        conv_weight.data[:,:,1,0,0] = init_matrix
-        conv.weight.data.copy_(conv_weight)
-        nn.init.zeros_(conv.bias.data)
-    
-    def init_weight2(self, conv):  
-        conv_weight = conv.weight.data
-        nn.init.zeros_(conv_weight)
-        c1, c2, t, h, w = conv_weight.size() 
-        init_matrix = torch.eye(c1//2, c2)
-        conv_weight[:c1//2,:,-1,0,0] = init_matrix  
-        conv_weight[c1//2:,:,-1,0,0] = init_matrix  
-        conv.weight.data.copy_(conv_weight)
-        nn.init.zeros_(conv.bias.data)
+
     
 class WanResidualBlock(nn.Module):
     r"""
@@ -261,32 +336,53 @@ class WanResidualBlock(nn.Module):
         self.nonlinearity = get_activation(non_linearity)
         
         # layers
-        self.residual = nn.Sequential(
-            WanRMS_norm(in_dim, images=False),
-            self.nonlinearity,
-            WanCausalConv3d(in_dim, out_dim, 3, padding=1),
-            WanRMS_norm(out_dim, images=False),
-            self.nonlinearity,
-            nn.Dropout(dropout),
-            WanCausalConv3d(out_dim, out_dim, 3, padding=1)
-        )
-        self.shortcut = WanCausalConv3d(in_dim, out_dim, 1) \
-            if in_dim != out_dim else nn.Identity()
+        self.norm1 = WanRMS_norm(in_dim, images=False)
+        self.conv1 = WanCausalConv3d(in_dim, out_dim, 3, padding=1)
+        self.norm2 = WanRMS_norm(out_dim, images=False)
+        self.dropout = nn.Dropout(dropout)
+        self.conv2 = WanCausalConv3d(out_dim, out_dim, 3, padding=1)
+        self.conv_shortcut = WanCausalConv3d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
     
     def forward(self, x, feat_cache=None, feat_idx=[0]):
-        h = self.shortcut(x)
-        for layer in self.residual:
-            if isinstance(layer, WanCausalConv3d) and feat_cache is not None:
-                idx = feat_idx[0]
-                cache_x = x[:, :, -CACHE_T:, :, :].clone()
-                if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
-                    # cache last frame of last two chunk
-                    cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-                x = layer(x, feat_cache[idx])
-                feat_cache[idx] = cache_x
-                feat_idx[0] += 1
-            else:
-                x = layer(x)
+        # Apply shortcut connection
+        h = self.conv_shortcut(x)
+        
+        # First normalization and activation
+        x = self.norm1(x)
+        x = self.nonlinearity(x)
+        
+        if feat_cache is not None:
+            idx = feat_idx[0]
+            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
+                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+      
+            x = self.conv1(x, feat_cache[idx])
+            feat_cache[idx] = cache_x
+            feat_idx[0] += 1
+        else:
+            x = self.conv1(x)
+        
+        # Second normalization and activation
+        x = self.norm2(x)
+        x = self.nonlinearity(x)
+        
+        # Dropout
+        x = self.dropout(x)
+        
+        if feat_cache is not None:
+            idx = feat_idx[0]
+            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
+                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+      
+            x = self.conv2(x, feat_cache[idx]) 
+            feat_cache[idx] = cache_x
+            feat_idx[0] += 1
+        else:
+            x = self.conv2(x)
+        
+        # Add residual connection
         return x + h
 
 
@@ -311,24 +407,68 @@ class WanAttentionBlock(nn.Module):
     
     def forward(self, x): 
         identity = x
-        b, c, t, h, w = x.size()
-        x = rearrange(x, 'b c t h w -> (b t) c h w')
+        batch_size, channels, time, height, width = x.size()
+        
+        x = x.permute(0, 2, 1, 3, 4).reshape(batch_size * time, channels, height, width)
         x = self.norm(x) 
-        # compute query, key, value        
-        q, k, v = self.to_qkv(x).reshape(
-            b*t, 1, c * 3, -1
-        ).permute(0, 1, 3, 2).contiguous().chunk(3, dim=-1)
+        
+        # compute query, key, value
+        qkv = self.to_qkv(x)
+        qkv = qkv.reshape(batch_size * time, 1, channels * 3, -1)
+        qkv = qkv.permute(0, 1, 3, 2).contiguous()
+        q, k, v = qkv.chunk(3, dim=-1)
 
         # apply attention
-        x = F.scaled_dot_product_attention(
-            q, k, v,
-        )
-        x = x.squeeze(1).permute(0, 2, 1).reshape(b*t, c, h, w)
+        x = F.scaled_dot_product_attention(q, k, v)
+        
+        x = x.squeeze(1).permute(0, 2, 1).reshape(batch_size * time, channels, height, width)
 
-        # output
+        # output projection
         x = self.proj(x)
-        x = rearrange(x, '(b t) c h w-> b c t h w',t=t) 
+        
+        # Reshape back: [(b*t), c, h, w] -> [b, c, t, h, w]
+        x = x.view(batch_size, time, channels, height, width)
+        x = x.permute(0, 2, 1, 3, 4)
+        
         return x + identity
+
+
+class WanMidBlock(nn.Module):
+    """
+    Middle block for WanVAE encoder and decoder.
+    
+    Args:
+        dim (int): Number of input/output channels.
+        dropout (float): Dropout rate.
+        non_linearity (str): Type of non-linearity to use.
+    """
+    def __init__(self, dim: int, dropout: float = 0.0, non_linearity: str = "silu", num_layers: int = 1):
+        super().__init__()
+        self.dim = dim
+        
+        # Create the components
+        resnets = [WanResidualBlock(dim, dim, dropout, non_linearity)]
+        attentions = []
+        for _ in range(num_layers):
+            attentions.append(WanAttentionBlock(dim))
+            resnets.append(WanResidualBlock(dim, dim, dropout, non_linearity))
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+
+        self.gradient_checkpointing = False
+    
+    def forward(self, x, feat_cache=None, feat_idx=[0]):
+        # First residual block
+        x = self.resnets[0](x, feat_cache, feat_idx)
+        
+        # Process through attention and residual blocks
+        for attn, resnet in zip(self.attentions, self.resnets[1:]):
+            if attn is not None:
+                x = attn(x)
+            
+            x = resnet(x, feat_cache, feat_idx)
+        
+        return x
 
 
 class WanEncoder3d(nn.Module):
@@ -373,21 +513,20 @@ class WanEncoder3d(nn.Module):
         self.conv1 = WanCausalConv3d(3, dims[0], 3, padding=1)
 
         # downsample blocks
-        downsamples = []
+        self.downsamples = nn.ModuleList([])
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             # residual (+attention) blocks
             for _ in range(num_res_blocks):
-                downsamples.append(WanResidualBlock(in_dim, out_dim, dropout))
+                self.downsamples.append(WanResidualBlock(in_dim, out_dim, dropout))
                 if scale in attn_scales:
-                    downsamples.append(WanAttentionBlock(out_dim))
+                    self.downsamples.append(WanAttentionBlock(out_dim))
                 in_dim = out_dim
             
             # downsample block
             if i != len(dim_mult) - 1:
                 mode = 'downsample3d' if temperal_downsample[i] else 'downsample2d'
-                downsamples.append(WanResample(out_dim, mode=mode))
+                self.downsamples.append(WanResample(out_dim, mode=mode))
                 scale /= 2.0
-        self.downsamples = nn.Sequential(*downsamples)
 
         # middle blocks
         self.middle = nn.Sequential(
@@ -704,8 +843,10 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
         """
+        # torch.save(z, "z.pt")
         self.scale = self.scale.to(z.device)
         decoded = self._decode(z, self.scale).sample
+        # torch.save(decoded, "decoded.pt")
         if not return_dict:
             return (decoded,)
 
