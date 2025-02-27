@@ -20,7 +20,7 @@ import urllib.parse as ul
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import GemmaPreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
@@ -144,13 +144,10 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`AutoModel`]):
-            Frozen text-encoder. Lumina-T2I uses
-            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.AutoModel), specifically the
-            [t5-v1_1-xxl](https://huggingface.co/Alpha-VLLM/tree/main/t5-v1_1-xxl) variant.
-        tokenizer (`AutoModel`):
-            Tokenizer of class
-            [AutoModel](https://huggingface.co/docs/transformers/model_doc/t5#transformers.AutoModel).
+        text_encoder ([`GemmaPreTrainedModel`]):
+            Frozen Gemma text-encoder.
+        tokenizer (`GemmaTokenizer` or `GemmaTokenizerFast`):
+            Gemma tokenizer.
         transformer ([`Transformer2DModel`]):
             A text conditioned `Transformer2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
@@ -185,8 +182,8 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         transformer: LuminaNextDiT2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
-        text_encoder: AutoModel,
-        tokenizer: AutoTokenizer,
+        text_encoder: GemmaPreTrainedModel,
+        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
     ):
         super().__init__()
 
