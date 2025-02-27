@@ -2405,7 +2405,6 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         from peft import LoraConfig
 
         pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
-        max_rank = 8
         lora_config0 = LoraConfig(target_modules=["q_proj"])
         lora_config1 = LoraConfig(target_modules=["q_proj"])
 
