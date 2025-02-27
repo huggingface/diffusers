@@ -31,11 +31,15 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     enable_full_determinism,
     load_numpy,
     numpy_cosine_similarity_distance,
     require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -49,13 +53,13 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @property
     def dummy_cond_unet(self):
@@ -258,19 +262,19 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_diffusion_v_pred_default(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2")
@@ -357,7 +361,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_attention_slicing_v_pred(self):
-        torch.cuda.reset_peak_memory_stats()
+        backend_reset_peak_memory_stats(torch_device)
         model_id = "stabilityai/stable-diffusion-2"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
         pipe.to(torch_device)
@@ -373,8 +377,8 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         )
         image_chunked = output_chunked.images
 
-        mem_bytes = torch.cuda.max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        mem_bytes = backend_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
         # make sure that less than 5.5 GB is allocated
         assert mem_bytes < 5.5 * 10**9
 
@@ -385,7 +389,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image = output.images
 
         # make sure that more than 3.0 GB is allocated
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         assert mem_bytes > 3 * 10**9
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_chunked.flatten())
         assert max_diff < 1e-3
@@ -421,7 +425,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe.scheduler = DDIMScheduler.from_config(
             pipe.scheduler.config, timestep_spacing="trailing", rescale_betas_zero_snr=True
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
@@ -466,7 +470,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         pipe = StableDiffusionPipeline.from_single_file(filename, torch_dtype=torch.float16)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         image_out = pipe("test", num_inference_steps=1, output_type="np").images[0]
 
@@ -530,20 +534,20 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         assert 2 * low_cpu_mem_usage_time < normal_load_time
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading_v_pred(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         pipeline_id = "stabilityai/stable-diffusion-2"
         prompt = "Andromeda galaxy in a bottle"
 
         pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
         pipeline.enable_attention_slicing(1)
-        pipeline.enable_sequential_cpu_offload()
+        pipeline.enable_sequential_cpu_offload(device=torch_device)
 
         generator = torch.manual_seed(0)
         _ = pipeline(prompt, generator=generator, num_inference_steps=5)
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         # make sure that less than 2.8 GB is allocated
         assert mem_bytes < 2.8 * 10**9
