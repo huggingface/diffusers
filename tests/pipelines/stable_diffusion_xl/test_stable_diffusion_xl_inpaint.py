@@ -311,6 +311,7 @@ class StableDiffusionXLInpaintPipelineFastTests(
     def test_save_load_optional_components(self):
         pass
 
+    @require_torch_accelerator
     def test_stable_diffusion_xl_inpaint_negative_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLInpaintPipeline(**components)
