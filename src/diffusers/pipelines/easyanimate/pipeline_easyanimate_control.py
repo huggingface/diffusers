@@ -794,11 +794,6 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
 
         return control, control_image_latents
 
-    def decode_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-        video = self.vae.decode(latents).sample
-        return video
-
     @property
     def guidance_scale(self):
         return self._guidance_scale
