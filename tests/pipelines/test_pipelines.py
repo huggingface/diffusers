@@ -2413,11 +2413,15 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dirname:
             # save the adapter checkpoints
-            lora0_state_dicts = self.get_lora_state_dicts({"text_encoder": pipeline.text_encoder}, adapter_name="adapter0")
+            lora0_state_dicts = self.get_lora_state_dicts(
+                {"text_encoder": pipeline.text_encoder}, adapter_name="adapter0"
+            )
             StableDiffusionPipeline.save_lora_weights(
                 save_directory=os.path.join(tmp_dirname, "adapter0"), safe_serialization=True, **lora0_state_dicts
             )
-            lora1_state_dicts = self.get_lora_state_dicts({"text_encoder": pipeline.text_encoder}, adapter_name="adapter1")
+            lora1_state_dicts = self.get_lora_state_dicts(
+                {"text_encoder": pipeline.text_encoder}, adapter_name="adapter1"
+            )
             StableDiffusionPipeline.save_lora_weights(
                 save_directory=os.path.join(tmp_dirname, "adapter1"), safe_serialization=True, **lora1_state_dicts
             )
@@ -2429,6 +2433,8 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
             file_name1 = os.path.join(tmp_dirname, "adapter1", "pytorch_lora_weights.safetensors")
 
             pipeline.load_lora_weights(file_name0)
-            msg = re.escape("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`")
+            msg = re.escape(
+                "At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`"
+            )
             with self.assertRaisesRegex(ValueError, msg):
                 pipeline.load_lora_weights(file_name1, hotswap=True, adapter_name="default_0")
