@@ -280,9 +280,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             act_fn="silu_fp32",
         )
 
-        self.text_embedding_padding = nn.Parameter(
-            torch.randn(text_len + text_len_t5, cross_attention_dim, dtype=torch.float32)
-        )
+        self.text_embedding_padding = nn.Parameter(torch.randn(text_len + text_len_t5, cross_attention_dim))
 
         self.pos_embed = PatchEmbed(
             height=sample_size,

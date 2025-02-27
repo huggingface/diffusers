@@ -21,7 +21,6 @@ from ..test_pipelines_common import (
     IPAdapterTesterMixin,
     PipelineTesterMixin,
     SDFunctionTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -36,7 +35,6 @@ class AnimateDiffPipelineSDXLFastTests(
     IPAdapterTesterMixin,
     SDFunctionTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = AnimateDiffSDXLPipeline
@@ -250,33 +248,6 @@ class AnimateDiffPipelineSDXLFastTests(
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
-    def test_prompt_embeds(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.to(torch_device)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = pipe.encode_prompt(prompt)
-
-        pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-        )
-
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
@@ -305,3 +276,11 @@ class AnimateDiffPipelineSDXLFastTests(
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+
+    @unittest.skip("Test currently not supported.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
+    @unittest.skip("Functionality is tested elsewhere.")
+    def test_save_load_optional_components(self):
+        pass

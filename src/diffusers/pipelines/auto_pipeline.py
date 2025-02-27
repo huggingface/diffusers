@@ -22,6 +22,7 @@ from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
+from .cogview4 import CogView4Pipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -32,6 +33,10 @@ from .controlnet import (
     StableDiffusionXLControlNetUnionImg2ImgPipeline,
     StableDiffusionXLControlNetUnionInpaintPipeline,
     StableDiffusionXLControlNetUnionPipeline,
+)
+from .controlnet_sd3 import (
+    StableDiffusion3ControlNetInpaintingPipeline,
+    StableDiffusion3ControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .flux import (
@@ -119,6 +124,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
         ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionPipeline),
+        ("stable-diffusion-3-controlnet", StableDiffusion3ControlNetPipeline),
         ("wuerstchen", WuerstchenCombinedPipeline),
         ("cascade", StableCascadeCombinedPipeline),
         ("lcm", LatentConsistencyModelPipeline),
@@ -138,6 +144,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("lumina", LuminaText2ImgPipeline),
         ("lumina2", Lumina2Text2ImgPipeline),
         ("cogview3", CogView3PlusPipeline),
+        ("cogview4", CogView4Pipeline),
     ]
 )
 
@@ -176,6 +183,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionInpaintPipeline),
+        ("stable-diffusion-3-controlnet", StableDiffusion3ControlNetInpaintingPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
         ("flux", FluxInpaintPipeline),
         ("flux-controlnet", FluxControlNetInpaintPipeline),
