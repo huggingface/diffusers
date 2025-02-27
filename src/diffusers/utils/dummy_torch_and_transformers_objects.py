@@ -407,7 +407,7 @@ class CycleDiffusionPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class EasyAnimatePipeline(metaclass=DummyObject):
+class EasyAnimateControlPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -437,7 +437,7 @@ class EasyAnimateInpaintPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class EasyAnimateControlPipeline(metaclass=DummyObject):
+class EasyAnimatePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
