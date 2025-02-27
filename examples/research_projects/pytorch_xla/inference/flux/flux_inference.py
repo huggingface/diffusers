@@ -92,7 +92,7 @@ def _main(index, args, text_pipe, ckpt_id):
         if index == 0:
             logger.info(f"inference time: {inference_time}")
         times.append(inference_time)
-    logger.info(f"avg. inference over {args.itters} iterations took {sum(times)/len(times)} sec.")
+    logger.info(f"avg. inference over {args.itters} iterations took {sum(times) / len(times)} sec.")
     image.save(f"/tmp/inference_out-{index}.png")
     if index == 0:
         metrics_report = met.metrics_report()

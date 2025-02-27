@@ -260,9 +260,9 @@ def main(args):
 
     model_name = args.model_path.split("/")[-1].split(".")[0]
     if not os.path.isfile(args.model_path):
-        assert (
-            model_name == args.model_path
-        ), f"Make sure to provide one of the official model names {MODELS_MAP.keys()}"
+        assert model_name == args.model_path, (
+            f"Make sure to provide one of the official model names {MODELS_MAP.keys()}"
+        )
         args.model_path = download(model_name)
 
     sample_rate = MODELS_MAP[model_name]["sample_rate"]
@@ -289,9 +289,9 @@ def main(args):
     assert all(k.endswith("kernel") for k in list(diffusers_minus_renamed)), f"Problem with {diffusers_minus_renamed}"
 
     for key, value in renamed_state_dict.items():
-        assert (
-            diffusers_state_dict[key].squeeze().shape == value.squeeze().shape
-        ), f"Shape for {key} doesn't match. Diffusers: {diffusers_state_dict[key].shape} vs. {value.shape}"
+        assert diffusers_state_dict[key].squeeze().shape == value.squeeze().shape, (
+            f"Shape for {key} doesn't match. Diffusers: {diffusers_state_dict[key].shape} vs. {value.shape}"
+        )
         if key == "time_proj.weight":
             value = value.squeeze()
 
