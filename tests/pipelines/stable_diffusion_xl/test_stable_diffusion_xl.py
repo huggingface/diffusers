@@ -265,9 +265,6 @@ class StableDiffusionXLPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
