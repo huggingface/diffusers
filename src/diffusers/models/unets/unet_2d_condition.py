@@ -1147,7 +1147,7 @@ class UNet2DConditionModel(
             else:
                 emb = emb + class_emb
 
-        # thesea modifed
+        # thesea modifed for text prompt mask
         if len(encoder_hidden_states.shape) == 3:
             aug_emb = self.get_aug_embed(
                 emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
