@@ -341,9 +341,9 @@ class AnimateDiffFreeNoiseMixin:
                 start_tensor = negative_prompt_embeds[i].unsqueeze(0)
                 end_tensor = negative_prompt_embeds[i + 1].unsqueeze(0)
 
-                negative_prompt_interpolation_embeds[
-                    start_frame : end_frame + 1
-                ] = self._free_noise_prompt_interpolation_callback(start_frame, end_frame, start_tensor, end_tensor)
+                negative_prompt_interpolation_embeds[start_frame : end_frame + 1] = (
+                    self._free_noise_prompt_interpolation_callback(start_frame, end_frame, start_tensor, end_tensor)
+                )
 
         prompt_embeds = prompt_interpolation_embeds
         negative_prompt_embeds = negative_prompt_interpolation_embeds

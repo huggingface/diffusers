@@ -91,7 +91,7 @@ def import_model_class_from_model_name_or_path(
 
 
 def log_validation(args, unet, vae, accelerator, weight_dtype, epoch, is_final_validation=False):
-    logger.info(f"Running validation... \n Generating images with prompts:\n" f" {VALIDATION_PROMPTS}.")
+    logger.info(f"Running validation... \n Generating images with prompts:\n {VALIDATION_PROMPTS}.")
 
     if is_final_validation:
         if args.mixed_precision == "fp16":

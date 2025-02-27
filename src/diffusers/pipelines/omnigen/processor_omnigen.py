@@ -95,13 +95,13 @@ class OmniGenMultiModalProcessor:
         image_ids = [int(s.split("|")[1].split("_")[-1]) for s in image_tags]
 
         unique_image_ids = sorted(set(image_ids))
-        assert unique_image_ids == list(
-            range(1, len(unique_image_ids) + 1)
-        ), f"image_ids must start from 1, and must be continuous int, e.g. [1, 2, 3], cannot be {unique_image_ids}"
+        assert unique_image_ids == list(range(1, len(unique_image_ids) + 1)), (
+            f"image_ids must start from 1, and must be continuous int, e.g. [1, 2, 3], cannot be {unique_image_ids}"
+        )
         # total images must be the same as the number of image tags
-        assert (
-            len(unique_image_ids) == len(input_images)
-        ), f"total images must be the same as the number of image tags, got {len(unique_image_ids)} image tags and {len(input_images)} images"
+        assert len(unique_image_ids) == len(input_images), (
+            f"total images must be the same as the number of image tags, got {len(unique_image_ids)} image tags and {len(input_images)} images"
+        )
 
         input_images = [input_images[x - 1] for x in image_ids]
 
