@@ -1,6 +1,7 @@
 from .autoencoder_asym_kl import AsymmetricAutoencoderKL
 from .autoencoder_dc import AutoencoderDC
 from .autoencoder_kl import AutoencoderKL
+from .autoencoder_kl_wan import AutoencoderKLWan
 from .autoencoder_kl_allegro import AutoencoderKLAllegro
 from .autoencoder_kl_cogvideox import AutoencoderKLCogVideoX
 from .autoencoder_kl_hunyuan_video import AutoencoderKLHunyuanVideo

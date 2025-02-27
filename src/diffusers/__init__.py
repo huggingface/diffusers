@@ -90,6 +90,7 @@ else:
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
+            "AutoencoderKLWan",
             "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
             "AutoencoderKLHunyuanVideo",
@@ -148,6 +149,7 @@ else:
             "UNetSpatioTemporalConditionModel",
             "UVit2DModel",
             "VQModel",
+            "WanTransformer3DModel",
         ]
     )
     _import_structure["optimization"] = [
@@ -441,6 +443,8 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "WanPipeline",
+            "WanI2VPipeline",
         ]
     )
 
@@ -612,6 +616,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
+            AutoencoderKLWan,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLHunyuanVideo,
@@ -669,6 +674,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
             VQModel,
+            WanTransformer3DModel,
         )
         from .optimization import (
             get_constant_schedule,
@@ -941,6 +947,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            WanPipeline,
+            WanI2VPipeline
         )
 
     try:
