@@ -124,9 +124,19 @@ class SD3Transformer2DLoadersMixin:
             updated_state_dict[key] = value
 
         # Image projetion parameters
-        embed_dim = updated_state_dict["proj_in.weight"].shape[1]
+        # thesea modified for color modality in multimodality model
+        color_modality = False
+        if "proj_in.weight" in updated_state_dict:
+            embed_dim = updated_state_dict["proj_in.weight"].shape[1]
+        else:
+            color_modality = True
+            embed_dim = 0
         output_dim = updated_state_dict["proj_out.weight"].shape[0]
-        hidden_dim = updated_state_dict["proj_in.weight"].shape[0]
+        # thesea modified for color modality in multimodality model
+        if "proj_in.weight" in updated_state_dict:
+            hidden_dim = updated_state_dict["proj_in.weight"].shape[0]
+        else:
+            hidden_dim = 0
         heads = updated_state_dict["layers.0.attn.to_q.weight"].shape[0] // 64
         num_queries = updated_state_dict["latents"].shape[1]
         timestep_in_dim = updated_state_dict["time_embedding.linear_1.weight"].shape[1]
@@ -140,6 +150,7 @@ class SD3Transformer2DLoadersMixin:
                 heads=heads,
                 num_queries=num_queries,
                 timestep_in_dim=timestep_in_dim,
+                color_modality=color_modality, # thesea modified for color modality in multimodality model
             )
 
         if not low_cpu_mem_usage:
@@ -150,7 +161,8 @@ class SD3Transformer2DLoadersMixin:
 
         return image_proj
 
-    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT) -> None:
+    # thesea modified for color modality in multimodality model
+    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT, color_modality: bool = False) -> None:
         """Sets IP-Adapter attention processors, image projection, and loads state_dict.
 
         Args:
