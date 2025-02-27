@@ -25,7 +25,7 @@ import argparse
 
 import torch
 from tqdm import tqdm
-from transformers import GlmForCausalLM, PreTrainedTokenizerFast
+from transformers import GlmModel, PreTrainedTokenizerFast
 
 from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
@@ -326,7 +326,7 @@ def main(args):
     # Load the text encoder and tokenizer
     text_encoder_id = "THUDM/glm-4-9b-hf"
     tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
-    text_encoder = GlmForCausalLM.from_pretrained(
+    text_encoder = GlmModel.from_pretrained(
         text_encoder_id,
         cache_dir=args.text_encoder_cache_dir,
         torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,

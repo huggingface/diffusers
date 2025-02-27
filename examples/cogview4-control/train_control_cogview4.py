@@ -660,7 +660,7 @@ def prepare_train_dataset(dataset, accelerator):
         [
             transforms.Resize((args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+            transforms.Lambda(lambda x: x * 2 - 1)
         ]
     )
 
