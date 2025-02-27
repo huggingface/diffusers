@@ -389,8 +389,8 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         backend_empty_cache(torch_device)
-        backend_reset_peak_memory_stats(torch_device)
         backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             "timbrooks/instruct-pix2pix", safety_checker=None, torch_dtype=torch.float16

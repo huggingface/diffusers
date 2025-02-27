@@ -252,8 +252,8 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         backend_empty_cache(torch_device)
-        backend_reset_peak_memory_stats(torch_device)
         backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"

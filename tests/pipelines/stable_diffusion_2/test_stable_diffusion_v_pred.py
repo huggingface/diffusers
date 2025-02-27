@@ -535,8 +535,8 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading_v_pred(self):
         backend_empty_cache(torch_device)
-        backend_reset_peak_memory_stats(torch_device)
         backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         pipeline_id = "stabilityai/stable-diffusion-2"
         prompt = "Andromeda galaxy in a bottle"
