@@ -1169,17 +1169,16 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
+        max_size = int(self.model_split_percents[0] * model_size)
+        # Force disk offload by setting very small CPU memory
+        max_memory = {0: max_size, "cpu": int(0.1 * max_size)}
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
-
             with self.assertRaises(ValueError):
-                max_size = int(self.model_split_percents[0] * model_size)
-                max_memory = {0: max_size, "cpu": max_size}
                 # This errors out because it's missing an offload folder
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
 
-            max_size = int(self.model_split_percents[0] * model_size)
-            max_memory = {0: max_size, "cpu": max_size}
             new_model = self.model_class.from_pretrained(
                 tmp_dir, device_map="auto", max_memory=max_memory, offload_folder=tmp_dir
             )
