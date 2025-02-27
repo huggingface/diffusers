@@ -170,6 +170,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
         )
 
     @classmethod
@@ -377,6 +378,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         adapter_name=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -402,6 +404,24 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing adapter with the newly loaded adapter in-place.
+                This means that, instead of loading an additional adapter, this will take the existing adapter weights
+                and replace them with the weights of the new adapter. This can be faster and more memory efficient.
+                However, the main advantage of hotswapping is that when the model is compiled with torch.compile,
+                loading the new adapter does not require recompilation of the model.
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+                ```py
+                pipeline = ...  # load diffusers pipeline
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
+                ```
+                There are some limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -413,6 +433,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
         )
 
     @classmethod

@@ -316,6 +316,7 @@ def _load_lora_into_text_encoder(
     adapter_name=None,
     _pipeline=None,
     low_cpu_mem_usage=False,
+    hotswap: bool = False,
 ):
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
@@ -344,6 +345,9 @@ def _load_lora_into_text_encoder(
 
     # Safe prefix to check with.
     if any(text_encoder_name in key for key in keys):
+        if hotswap:
+            raise ValueError("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`.")
+
         # Load the layers corresponding to text encoder and make necessary adjustments.
         text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".")[0] == prefix]
         text_encoder_lora_state_dict = {

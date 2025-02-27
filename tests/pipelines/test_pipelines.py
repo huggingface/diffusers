@@ -2399,3 +2399,37 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
                     do_compile=True, rank0=8, rank1=8, target_modules0=target_modules0, target_modules1=target_modules1
                 )
                 assert any("Hotswapping adapter0 was unsuccessful" in log for log in cm.output)
+
+    def test_hotswap_component_not_supported_raises(self):
+        # right now, not some components don't support hotswapping, e.g. the text_encoder
+        from peft import LoraConfig
+
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        max_rank = 8
+        lora_config0 = LoraConfig(target_modules=["q_proj"])
+        lora_config1 = LoraConfig(target_modules=["q_proj"])
+
+        pipeline.text_encoder.add_adapter(lora_config0, adapter_name="adapter0")
+        pipeline.text_encoder.add_adapter(lora_config1, adapter_name="adapter1")
+
+        with tempfile.TemporaryDirectory() as tmp_dirname:
+            # save the adapter checkpoints
+            lora0_state_dicts = self.get_lora_state_dicts({"text_encoder": pipeline.text_encoder}, adapter_name="adapter0")
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=os.path.join(tmp_dirname, "adapter0"), safe_serialization=True, **lora0_state_dicts
+            )
+            lora1_state_dicts = self.get_lora_state_dicts({"text_encoder": pipeline.text_encoder}, adapter_name="adapter1")
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=os.path.join(tmp_dirname, "adapter1"), safe_serialization=True, **lora1_state_dicts
+            )
+            del pipeline
+
+            # load the first adapter
+            pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+            file_name0 = os.path.join(tmp_dirname, "adapter0", "pytorch_lora_weights.safetensors")
+            file_name1 = os.path.join(tmp_dirname, "adapter1", "pytorch_lora_weights.safetensors")
+
+            pipeline.load_lora_weights(file_name0)
+            msg = re.escape("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`")
+            with self.assertRaisesRegex(ValueError, msg):
+                pipeline.load_lora_weights(file_name1, hotswap=True, adapter_name="default_0")
