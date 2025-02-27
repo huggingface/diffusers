@@ -377,12 +377,16 @@ class PeftAdapterMixin:
                 if hotswap:
                     state_dict = map_state_dict_for_hotswap(state_dict)
                     check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
-                    hotswap_adapter_from_state_dict(
-                        model=self,
-                        state_dict=state_dict,
-                        adapter_name=adapter_name,
-                        config=lora_config,
-                    )
+                    try:
+                        hotswap_adapter_from_state_dict(
+                            model=self,
+                            state_dict=state_dict,
+                            adapter_name=adapter_name,
+                            config=lora_config,
+                        )
+                    except Exception as e:
+                        logger.error(f"Hotswapping {adapter_name} was unsucessful with the following error: \n{e}")
+                        raise
                     # the hotswap function raises if there are incompatible keys, so if we reach this point we can set
                     # it to None
                     incompatible_keys = None

@@ -1725,7 +1725,7 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
 
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
-    def check_model_hotswap(self, do_compile, rank0, rank1, target_modules):
+    def check_model_hotswap(self, do_compile, rank0, rank1, target_modules0, target_modules1=None):
         """
         Check that hotswapping works on a small unet.
 
@@ -1744,8 +1744,10 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
         dummy_input = self.get_dummy_input()
         alpha0, alpha1 = rank0, rank1
         max_rank = max([rank0, rank1])
-        lora_config0 = self.get_unet_lora_config(rank0, alpha0, target_modules)
-        lora_config1 = self.get_unet_lora_config(rank1, alpha1, target_modules)
+        if target_modules1 is None:
+            target_modules1 = target_modules0[:]
+        lora_config0 = self.get_unet_lora_config(rank0, alpha0, target_modules0)
+        lora_config1 = self.get_unet_lora_config(rank1, alpha1, target_modules1)
 
         unet = self.get_small_unet()
         unet.add_adapter(lora_config0, adapter_name="adapter0")
@@ -1803,7 +1805,7 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_model(self, rank0, rank1):
         self.check_model_hotswap(
-            do_compile=False, rank0=rank0, rank1=rank1, target_modules=["to_q", "to_k", "to_v", "to_out.0"]
+            do_compile=False, rank0=rank0, rank1=rank1, target_modules0=["to_q", "to_k", "to_v", "to_out.0"]
         )
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
@@ -1811,21 +1813,21 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
         with torch._dynamo.config.patch(error_on_recompile=True):
-            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
+            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_model_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
         with torch._dynamo.config.patch(error_on_recompile=True):
-            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
+            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_model_both_linear_and_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
         with torch._dynamo.config.patch(error_on_recompile=True):
-            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules=target_modules)
+            self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     def test_enable_lora_hotswap_called_after_adapter_added_raises(self):
         # ensure that enable_lora_hotswap is called before loading the first adapter
@@ -1868,3 +1870,17 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
         msg = re.escape("check_compiles should be one of 'error', 'warn', or 'ignore', got 'wrong-argument' instead.")
         with self.assertRaisesRegex(ValueError, msg):
             unet.enable_lora_hotswap(target_rank=32, check_compiled="wrong-argument")
+
+    def test_hotswap_second_adapter_targets_more_layers_raises(self):
+        # check the error and log
+        from diffusers.loaders.peft import logger
+
+        # at the moment, PEFT requires the 2nd adapter to target the same or a subset of layers
+        target_modules0 = ["to_q"]
+        target_modules1 = ["to_q", "to_k"]
+        with self.assertRaises(RuntimeError):  # peft raises RuntimeError
+            with self.assertLogs(logger=logger, level="ERROR") as cm:
+                self.check_model_hotswap(
+                    do_compile=True, rank0=8, rank1=8, target_modules0=target_modules0, target_modules1=target_modules1
+                )
+                assert any("Hotswapping adapter0 was unsuccessful" in log for log in cm.output)
