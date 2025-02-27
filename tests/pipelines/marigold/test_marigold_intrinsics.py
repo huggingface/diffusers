@@ -24,30 +24,137 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
+import diffusers
 from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
-    LCMScheduler,
-    MarigoldDepthPipeline,
+    DDIMScheduler,
+    MarigoldIntrinsicsPipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    is_flaky,
     load_image,
     require_torch_gpu,
     slow,
+    torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = MarigoldDepthPipeline
+class MarigoldIntrinsicsPipelineTesterMixin(PipelineTesterMixin):
+    def _test_inference_batch_single_identical(
+        self,
+        batch_size=2,
+        expected_max_diff=1e-4,
+        additional_params_copy_to_batched_inputs=["num_inference_steps"],
+    ):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for components in pipe.components.values():
+            if hasattr(components, "set_default_attn_processor"):
+                components.set_default_attn_processor()
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is has been used in self.get_dummy_inputs
+        inputs["generator"] = self.get_generator(0)
+
+        logger = diffusers.logging.get_logger(pipe.__module__)
+        logger.setLevel(level=diffusers.logging.FATAL)
+
+        # batchify inputs
+        batched_inputs = {}
+        batched_inputs.update(inputs)
+
+        for name in self.batch_params:
+            if name not in inputs:
+                continue
+
+            value = inputs[name]
+            if name == "prompt":
+                len_prompt = len(value)
+                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+                batched_inputs[name][-1] = 100 * "very long"
+
+            else:
+                batched_inputs[name] = batch_size * [value]
+
+        if "generator" in inputs:
+            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+        if "batch_size" in inputs:
+            batched_inputs["batch_size"] = batch_size
+
+        for arg in additional_params_copy_to_batched_inputs:
+            batched_inputs[arg] = inputs[arg]
+
+        output = pipe(**inputs)
+        output_batch = pipe(**batched_inputs)
+
+        assert output_batch[0].shape[0] == batch_size * output[0].shape[0]  # only changed here
+
+        max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
+        assert max_diff < expected_max_diff
+
+    def _test_inference_batch_consistent(
+        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"], batch_generator=True
+    ):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["generator"] = self.get_generator(0)
+
+        logger = diffusers.logging.get_logger(pipe.__module__)
+        logger.setLevel(level=diffusers.logging.FATAL)
+
+        # prepare batched inputs
+        batched_inputs = []
+        for batch_size in batch_sizes:
+            batched_input = {}
+            batched_input.update(inputs)
+
+            for name in self.batch_params:
+                if name not in inputs:
+                    continue
+
+                value = inputs[name]
+                if name == "prompt":
+                    len_prompt = len(value)
+                    # make unequal batch sizes
+                    batched_input[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+
+                    # make last batch super long
+                    batched_input[name][-1] = 100 * "very long"
+
+                else:
+                    batched_input[name] = batch_size * [value]
+
+            if batch_generator and "generator" in inputs:
+                batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+            if "batch_size" in inputs:
+                batched_input["batch_size"] = batch_size
+
+            batched_inputs.append(batched_input)
+
+        logger.setLevel(level=diffusers.logging.WARNING)
+        for batch_size, batched_input in zip(batch_sizes, batched_inputs):
+            output = pipe(**batched_input)
+            assert len(output[0]) == batch_size * pipe.n_targets  # only changed here
+
+
+class MarigoldIntrinsicsPipelineFastTests(MarigoldIntrinsicsPipelineTesterMixin, unittest.TestCase):
+    pipeline_class = MarigoldIntrinsicsPipeline
     params = frozenset(["image"])
     batch_params = frozenset(["image"])
     image_params = frozenset(["image"])
@@ -69,13 +176,14 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             layers_per_block=2,
             time_cond_proj_dim=time_cond_proj_dim,
             sample_size=32,
-            in_channels=8,
-            out_channels=4,
+            in_channels=12,
+            out_channels=8,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        scheduler = LCMScheduler(
+        torch.manual_seed(0)
+        scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
             prediction_type="v_prediction",
@@ -115,9 +223,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "prediction_type": "depth",
-            "scale_invariant": True,
-            "shift_invariant": True,
+            "prediction_type": "intrinsics",
         }
         return components
 
@@ -140,7 +246,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    def _test_marigold_depth(
+    def _test_marigold_intrinsics(
         self,
         generator_seed: int = 0,
         expected_slice: np.ndarray = None,
@@ -162,26 +268,29 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
 
         if pipe_inputs.get("match_input_resolution", True):
-            self.assertEqual(prediction.shape, (1, 32, 32, 1), "Unexpected output resolution")
+            self.assertEqual(prediction.shape, (2, 32, 32, 3), "Unexpected output resolution")
         else:
-            self.assertTrue(prediction.shape[0] == 1 and prediction.shape[3] == 1, "Unexpected output dimensions")
+            self.assertTrue(prediction.shape[0] == 2 and prediction.shape[3] == 3, "Unexpected output dimensions")
             self.assertEqual(
                 max(prediction.shape[1:3]),
                 pipe_inputs.get("processing_resolution", 768),
                 "Unexpected output resolution",
             )
 
-        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
+        np.set_printoptions(precision=5, suppress=True)
+        msg = f"{prediction_slice}"
+        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol), msg)
+        # self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
 
     def test_marigold_depth_dummy_defaults(self):
-        self._test_marigold_depth(
-            expected_slice=np.array([0.4529, 0.5184, 0.4985, 0.4355, 0.4273, 0.4153, 0.5229, 0.4818, 0.4627]),
+        self._test_marigold_intrinsics(
+            expected_slice=np.array([0.6423, 0.40664, 0.41185, 0.65832, 0.63935, 0.43971, 0.51786, 0.55216, 0.47683]),
         )
 
     def test_marigold_depth_dummy_G0_S1_P32_E1_B1_M1(self):
-        self._test_marigold_depth(
+        self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.4529, 0.5184, 0.4985, 0.4355, 0.4273, 0.4153, 0.5229, 0.4818, 0.4627]),
+            expected_slice=np.array([0.6423, 0.40664, 0.41185, 0.65832, 0.63935, 0.43971, 0.51786, 0.55216, 0.47683]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
@@ -190,9 +299,9 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M1(self):
-        self._test_marigold_depth(
+        self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.4511, 0.4531, 0.4542, 0.5024, 0.4987, 0.4969, 0.5281, 0.5215, 0.5182]),
+            expected_slice=np.array([0.53132, 0.44487, 0.40164, 0.5326, 0.49073, 0.46979, 0.53324, 0.51366, 0.50387]),
             num_inference_steps=1,
             processing_resolution=16,
             ensemble_size=1,
@@ -201,9 +310,9 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
     def test_marigold_depth_dummy_G2024_S1_P32_E1_B1_M1(self):
-        self._test_marigold_depth(
+        self._test_marigold_intrinsics(
             generator_seed=2024,
-            expected_slice=np.array([0.4671, 0.4739, 0.5130, 0.4308, 0.4411, 0.4720, 0.5064, 0.4796, 0.4795]),
+            expected_slice=np.array([0.40257, 0.39468, 0.51373, 0.4161, 0.40162, 0.58535, 0.43581, 0.47834, 0.48951]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
@@ -212,9 +321,9 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
     def test_marigold_depth_dummy_G0_S2_P32_E1_B1_M1(self):
-        self._test_marigold_depth(
+        self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.4165, 0.4485, 0.4647, 0.4003, 0.4577, 0.5074, 0.5106, 0.5077, 0.5042]),
+            expected_slice=np.array([0.49636, 0.4518, 0.42722, 0.59044, 0.6362, 0.39011, 0.53522, 0.55153, 0.48699]),
             num_inference_steps=2,
             processing_resolution=32,
             ensemble_size=1,
@@ -223,9 +332,9 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
     def test_marigold_depth_dummy_G0_S1_P64_E1_B1_M1(self):
-        self._test_marigold_depth(
+        self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.4817, 0.5425, 0.5146, 0.5367, 0.5034, 0.4743, 0.4395, 0.4734, 0.4399]),
+            expected_slice=np.array([0.55547, 0.43511, 0.4887, 0.56399, 0.63867, 0.56337, 0.47889, 0.52925, 0.49235]),
             num_inference_steps=1,
             processing_resolution=64,
             ensemble_size=1,
@@ -233,11 +342,10 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             match_input_resolution=True,
         )
 
-    @is_flaky
     def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
-        self._test_marigold_depth(
+        self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.3260, 0.3591, 0.2837, 0.2971, 0.2750, 0.2426, 0.4200, 0.3588, 0.3254]),
+            expected_slice=np.array([0.57249, 0.49824, 0.54438, 0.57733, 0.52404, 0.5255, 0.56493, 0.56336, 0.48579]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=3,
@@ -246,11 +354,10 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             match_input_resolution=True,
         )
 
-    @is_flaky
     def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
-        self._test_marigold_depth(
+        self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.3180, 0.4194, 0.3013, 0.2902, 0.3245, 0.2897, 0.4718, 0.4174, 0.3705]),
+            expected_slice=np.array([0.6294, 0.5575, 0.53414, 0.61077, 0.57156, 0.53974, 0.52956, 0.55467, 0.48751]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=4,
@@ -260,9 +367,9 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M0(self):
-        self._test_marigold_depth(
+        self._test_marigold_intrinsics(
             generator_seed=0,
-            expected_slice=np.array([0.5515, 0.4588, 0.4197, 0.4741, 0.4229, 0.4328, 0.5333, 0.5314, 0.5182]),
+            expected_slice=np.array([0.63511, 0.68137, 0.48783, 0.46689, 0.58505, 0.36757, 0.58465, 0.54302, 0.50387]),
             num_inference_steps=1,
             processing_resolution=16,
             ensemble_size=1,
@@ -272,7 +379,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_marigold_depth_dummy_no_num_inference_steps(self):
         with self.assertRaises(ValueError) as e:
-            self._test_marigold_depth(
+            self._test_marigold_intrinsics(
                 num_inference_steps=None,
                 expected_slice=np.array([0.0]),
             )
@@ -280,7 +387,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_marigold_depth_dummy_no_processing_resolution(self):
         with self.assertRaises(ValueError) as e:
-            self._test_marigold_depth(
+            self._test_marigold_intrinsics(
                 processing_resolution=None,
                 expected_slice=np.array([0.0]),
             )
@@ -289,7 +396,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
+class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -300,13 +407,13 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def _test_marigold_depth(
+    def _test_marigold_intrinsics(
         self,
         is_fp16: bool = True,
         device: str = "cuda",
         generator_seed: int = 0,
         expected_slice: np.ndarray = None,
-        model_id: str = "prs-eth/marigold-lcm-v1-0",
+        model_id: str = "prs-eth/marigold-iid-appearance-v1-1",
         image_url: str = "https://marigoldmonodepth.github.io/images/einstein.jpg",
         atol: float = 1e-4,
         **pipe_kwargs,
@@ -316,7 +423,7 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             from_pretrained_kwargs["variant"] = "fp16"
             from_pretrained_kwargs["torch_dtype"] = torch.float16
 
-        pipe = MarigoldDepthPipeline.from_pretrained(model_id, **from_pretrained_kwargs)
+        pipe = MarigoldIntrinsicsPipeline.from_pretrained(model_id, **from_pretrained_kwargs)
         if device == "cuda":
             pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -331,23 +438,25 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
         prediction_slice = prediction[0, -3:, -3:, -1].flatten()
 
         if pipe_kwargs.get("match_input_resolution", True):
-            self.assertEqual(prediction.shape, (1, height, width, 1), "Unexpected output resolution")
+            self.assertEqual(prediction.shape, (2, height, width, 3), "Unexpected output resolution")
         else:
-            self.assertTrue(prediction.shape[0] == 1 and prediction.shape[3] == 1, "Unexpected output dimensions")
+            self.assertTrue(prediction.shape[0] == 2 and prediction.shape[3] == 3, "Unexpected output dimensions")
             self.assertEqual(
                 max(prediction.shape[1:3]),
                 pipe_kwargs.get("processing_resolution", 768),
                 "Unexpected output resolution",
             )
 
-        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
+        msg = f"{prediction_slice}"
+        self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol), msg)
+        # self.assertTrue(np.allclose(prediction_slice, expected_slice, atol=atol))
 
-    def test_marigold_depth_einstein_f32_cpu_G0_S1_P32_E1_B1_M1(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f32_cpu_G0_S1_P32_E1_B1_M1(self):
+        self._test_marigold_intrinsics(
             is_fp16=False,
             device="cpu",
             generator_seed=0,
-            expected_slice=np.array([0.4323, 0.4323, 0.4323, 0.4323, 0.4323, 0.4323, 0.4323, 0.4323, 0.4323]),
+            expected_slice=np.array([0.9162, 0.9162, 0.9162, 0.9162, 0.9162, 0.9162, 0.9162, 0.9162, 0.9162]),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
@@ -355,12 +464,12 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f32_cuda_G0_S1_P768_E1_B1_M1(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f32_cuda_G0_S1_P768_E1_B1_M1(self):
+        self._test_marigold_intrinsics(
             is_fp16=False,
             device="cuda",
             generator_seed=0,
-            expected_slice=np.array([0.1244, 0.1265, 0.1292, 0.1240, 0.1252, 0.1266, 0.1246, 0.1226, 0.1180]),
+            expected_slice=np.array([0.62127, 0.61906, 0.61687, 0.61946, 0.61903, 0.61961, 0.61808, 0.62099, 0.62894]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
@@ -368,12 +477,12 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P768_E1_B1_M1(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f16_cuda_G0_S1_P768_E1_B1_M1(self):
+        self._test_marigold_intrinsics(
             is_fp16=True,
             device="cuda",
             generator_seed=0,
-            expected_slice=np.array([0.1241, 0.1262, 0.1290, 0.1238, 0.1250, 0.1265, 0.1244, 0.1225, 0.1179]),
+            expected_slice=np.array([0.62109, 0.61914, 0.61719, 0.61963, 0.61914, 0.61963, 0.61816, 0.62109, 0.62891]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
@@ -381,12 +490,12 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G2024_S1_P768_E1_B1_M1(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f16_cuda_G2024_S1_P768_E1_B1_M1(self):
+        self._test_marigold_intrinsics(
             is_fp16=True,
             device="cuda",
             generator_seed=2024,
-            expected_slice=np.array([0.1710, 0.1725, 0.1738, 0.1700, 0.1700, 0.1696, 0.1698, 0.1663, 0.1592]),
+            expected_slice=np.array([0.64111, 0.63916, 0.63623, 0.63965, 0.63916, 0.63965, 0.6377, 0.64062, 0.64941]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=1,
@@ -394,12 +503,12 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S2_P768_E1_B1_M1(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f16_cuda_G0_S2_P768_E1_B1_M1(self):
+        self._test_marigold_intrinsics(
             is_fp16=True,
             device="cuda",
             generator_seed=0,
-            expected_slice=np.array([0.1085, 0.1098, 0.1110, 0.1081, 0.1085, 0.1082, 0.1085, 0.1057, 0.0996]),
+            expected_slice=np.array([0.60254, 0.60059, 0.59961, 0.60156, 0.60107, 0.60205, 0.60254, 0.60449, 0.61133]),
             num_inference_steps=2,
             processing_resolution=768,
             ensemble_size=1,
@@ -407,12 +516,12 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P512_E1_B1_M1(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f16_cuda_G0_S1_P512_E1_B1_M1(self):
+        self._test_marigold_intrinsics(
             is_fp16=True,
             device="cuda",
             generator_seed=0,
-            expected_slice=np.array([0.2683, 0.2693, 0.2698, 0.2666, 0.2632, 0.2615, 0.2656, 0.2603, 0.2573]),
+            expected_slice=np.array([0.64551, 0.64453, 0.64404, 0.64502, 0.64844, 0.65039, 0.64502, 0.65039, 0.65332]),
             num_inference_steps=1,
             processing_resolution=512,
             ensemble_size=1,
@@ -420,12 +529,12 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P768_E3_B1_M1(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f16_cuda_G0_S1_P768_E3_B1_M1(self):
+        self._test_marigold_intrinsics(
             is_fp16=True,
             device="cuda",
             generator_seed=0,
-            expected_slice=np.array([0.1200, 0.1215, 0.1237, 0.1193, 0.1197, 0.1202, 0.1196, 0.1166, 0.1109]),
+            expected_slice=np.array([0.61572, 0.61377, 0.61182, 0.61426, 0.61377, 0.61426, 0.61279, 0.61572, 0.62354]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=3,
@@ -434,12 +543,12 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P768_E4_B2_M1(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f16_cuda_G0_S1_P768_E4_B2_M1(self):
+        self._test_marigold_intrinsics(
             is_fp16=True,
             device="cuda",
             generator_seed=0,
-            expected_slice=np.array([0.1121, 0.1135, 0.1155, 0.1111, 0.1115, 0.1118, 0.1111, 0.1079, 0.1019]),
+            expected_slice=np.array([0.61914, 0.6167, 0.61475, 0.61719, 0.61719, 0.61768, 0.61572, 0.61914, 0.62695]),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=4,
@@ -448,12 +557,12 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P512_E1_B1_M0(self):
-        self._test_marigold_depth(
+    def test_marigold_intrinsics_einstein_f16_cuda_G0_S1_P512_E1_B1_M0(self):
+        self._test_marigold_intrinsics(
             is_fp16=True,
             device="cuda",
             generator_seed=0,
-            expected_slice=np.array([0.2671, 0.2690, 0.2720, 0.2659, 0.2676, 0.2739, 0.2664, 0.2686, 0.2573]),
+            expected_slice=np.array([0.65332, 0.64697, 0.64648, 0.64844, 0.64697, 0.64111, 0.64941, 0.64209, 0.65332]),
             num_inference_steps=1,
             processing_resolution=512,
             ensemble_size=1,
