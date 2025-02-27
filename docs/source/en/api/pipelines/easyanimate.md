@@ -85,4 +85,4 @@ export_to_video(video, "cat.mp4", fps=8)
 
 ## EasyAnimatePipelineOutput
 
-[[autodoc]] pipelines.hunyuan_video.pipeline_output.EasyAnimatePipelineOutput
+[[autodoc]] pipelines.easyanimate.pipeline_output.EasyAnimatePipelineOutput
