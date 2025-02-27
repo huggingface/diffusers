@@ -107,6 +107,7 @@ for library in LOADABLE_CLASSES:
 SUPPORTED_DEVICE_MAP = ["balanced"]
 
 logger = logging.get_logger(__name__)
+logger.warning("test")
 
 
 @dataclass
