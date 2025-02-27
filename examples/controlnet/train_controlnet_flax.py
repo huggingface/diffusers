@@ -460,6 +460,12 @@ def parse_args():
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Whether to trust and execute remote code for loading datasets.",
+    )
+
     args = parser.parse_args()
     args.output_dir = args.output_dir.replace("{timestamp}", time.strftime("%Y%m%d_%H%M%S"))
 
@@ -515,6 +521,7 @@ def make_train_dataset(args, tokenizer, batch_size=None):
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             streaming=args.streaming,
+            trust_remote_code=args.trust_remote_code,
         )
     else:
         if args.train_data_dir is not None:
@@ -524,8 +531,7 @@ def make_train_dataset(args, tokenizer, batch_size=None):
                 )
             else:
                 dataset = load_dataset(
-                    args.train_data_dir,
-                    cache_dir=args.cache_dir,
+                    args.train_data_dir, cache_dir=args.cache_dir, trust_remote_code=args.trust_remote_code
                 )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
