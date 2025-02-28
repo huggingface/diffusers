@@ -12,6 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # ControlNet with Stable Diffusion 3
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 StableDiffusion3ControlNetPipeline is an implementation of ControlNet for Stable Diffusion 3.
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala.

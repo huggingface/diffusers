@@ -18,7 +18,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 
-from diffusers import DiffusionPipeline, ImagePipelineOutput
+from diffusers import DiffusionPipeline, ImagePipelineOutput, SchedulerMixin, UNet2DModel
 
 
 class CustomLocalPipeline(DiffusionPipeline):
@@ -33,7 +33,7 @@ class CustomLocalPipeline(DiffusionPipeline):
             [`DDPMScheduler`], or [`DDIMScheduler`].
     """
 
-    def __init__(self, unet, scheduler):
+    def __init__(self, unet: UNet2DModel, scheduler: SchedulerMixin):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
 
