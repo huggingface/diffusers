@@ -60,7 +60,6 @@ class WanAttnProcessor2_0:
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
 
-
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -75,8 +74,8 @@ class WanAttnProcessor2_0:
         value = value.unflatten(2, (attn.heads, -1))
 
         if grid_sizes is not None and freqs is not None:
-            query = rope_apply(query, grid_sizes, freqs)
-            key = rope_apply(key, grid_sizes, freqs)
+            query = apply_rotary_emb(query, grid_sizes, freqs)
+            key = apply_rotary_emb(key, grid_sizes, freqs)
         
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
@@ -112,19 +111,6 @@ class WanAttnProcessor2_0:
         return hidden_states
 
 
-def sinusoidal_embedding_1d(dim, position):
-    # preprocess
-    assert dim % 2 == 0
-    half = dim // 2
-    position = position.type(torch.float64)
-
-    # calculation
-    sinusoid = torch.outer(
-        position, torch.pow(10000, -torch.arange(half).to(position).div(half)))
-    x = torch.cat([torch.cos(sinusoid), torch.sin(sinusoid)], dim=1)
-    return x
-
-
 @torch.cuda.amp.autocast(enabled=False)
 def rope_params(max_seq_len, dim, theta=10000):
     assert dim % 2 == 0
@@ -136,9 +122,8 @@ def rope_params(max_seq_len, dim, theta=10000):
     return freqs
 
 
-@torch.cuda.amp.autocast(enabled=False)
-def rope_apply(x, grid_sizes, freqs):
-    n, c = x.size(2), x.size(3) // 2
+def apply_rotary_emb(hidden_states: torch.Tensor, grid_sizes, freqs):
+    n, c = hidden_states.size(2), hidden_states.size(3) // 2
 
     # split freqs
     freqs = freqs.split([c - 2 * (c // 3), c // 3, c // 3], dim=1)
@@ -149,7 +134,7 @@ def rope_apply(x, grid_sizes, freqs):
         seq_len = f * h * w
 
         # precompute multipliers
-        x_i = torch.view_as_complex(x[i, :seq_len].to(torch.float64).reshape(seq_len, n, -1, 2))
+        x_i = torch.view_as_complex(hidden_states[i, :seq_len].to(torch.float64).reshape(seq_len, n, -1, 2))
         freqs_i = torch.cat([
             freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
             freqs[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
@@ -158,11 +143,11 @@ def rope_apply(x, grid_sizes, freqs):
 
         # apply rotary embedding
         x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
-        x_i = torch.cat([x_i, x[i, seq_len:]])
+        x_i = torch.cat([x_i, hidden_states[i, seq_len:]])
 
         # append to collection
         output.append(x_i)
-    return torch.stack(output).float()
+    return torch.stack(output).type_as(hidden_states)
 
 
 class WanImageEmbedding(torch.nn.Module):
@@ -203,7 +188,7 @@ class WanTimeTextImageEmbedding(nn.Module):
 
     def forward(self, timestep: torch.Tensor, encoder_hidden_states: torch.Tensor, encoder_hidden_states_image: Optional[torch.Tensor] = None):
         timestep = self.timesteps_proj(timestep)
-        with torch.amp.autocast(dtype=torch.float32):
+        with torch.amp.autocast(str(encoder_hidden_states.device), dtype=torch.float32):
             temb = self.time_embedder(timestep)
             timestep_proj = self.time_proj(self.act_fn(temb))
         assert temb.dtype == torch.float32 and timestep_proj.dtype == torch.float32
@@ -264,13 +249,13 @@ class WanTransformerBlock(nn.Module):
             processor=WanAttnProcessor2_0(),
         )
 
-        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
         self.ffn = nn.Sequential(
             nn.Linear(dim, ffn_dim), nn.GELU(approximate='tanh'),
             nn.Linear(ffn_dim, dim)
         )
-        self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
+        self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
 
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
@@ -281,25 +266,24 @@ class WanTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         grid_sizes,
         freqs,
-    ):
+    ) -> torch.Tensor:
         assert temb.dtype == torch.float32
-        with torch.cuda.amp.autocast(dtype=torch.float32):
+        with torch.amp.autocast(str(temb.device), dtype=torch.float32):
             temb = (self.scale_shift_table + temb).chunk(6, dim=1)
         assert temb[0].dtype == torch.float32
 
-        # self-attention
-        attn_hidden_states = self.norm1(hidden_states).float() * (1 + temb[1]) + temb[0]
+        # 1. Self-attention
+        attn_hidden_states = (self.norm1(hidden_states.float()) * (1 + temb[1]) + temb[0]).type_as(hidden_states)
 
         attn_hidden_states = self.attn1(
             hidden_states=attn_hidden_states,
             grid_sizes=grid_sizes,
             freqs=freqs,
         )
-        with torch.cuda.amp.autocast(dtype=torch.float32):
-            hidden_states = hidden_states + attn_hidden_states * temb[2]
+        hidden_states = (hidden_states.float() + attn_hidden_states.float() * temb[2]).type_as(hidden_states)
 
-        # cross-attention
-        attn_hidden_states = self.norm3(hidden_states)
+        # 2. Cross-attention
+        attn_hidden_states = self.norm2(hidden_states)
         attn_hidden_states = self.attn2(
             hidden_states=attn_hidden_states,
             encoder_hidden_states=encoder_hidden_states,
@@ -308,11 +292,10 @@ class WanTransformerBlock(nn.Module):
         )
         hidden_states = hidden_states + attn_hidden_states
 
-        # ffn
-        ffn_hidden_states = self.norm2(hidden_states).float() * (1 + temb[4]) + temb[3]
+        # 3. Feed-forward
+        ffn_hidden_states = (self.norm3(hidden_states).float() * (1 + temb[4]) + temb[3]).type_as(hidden_states)
         ffn_hidden_states = self.ffn(ffn_hidden_states)
-        with torch.cuda.amp.autocast(dtype=torch.float32):
-            hidden_states = hidden_states + ffn_hidden_states * temb[5]
+        hidden_states = (hidden_states.float() + ffn_hidden_states.float() * temb[5]).type_as(hidden_states)
         
         return hidden_states
 
@@ -435,31 +418,9 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
             [torch.tensor(u.shape[1:], dtype=torch.long) for u in hidden_states]
         )
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
-
-        # hidden_states = hidden_states.flatten(2).transpose(1, 2) # (b, l, c)
-        # seq_lens = torch.tensor([u.size(0) for u in hidden_states], dtype=torch.long)
-        # assert seq_lens.max() <= seq_len
-        # hidden_states = torch.cat([
-        #     torch.cat([u.unsqueeze(0), u.new_zeros(1, seq_len - u.size(0), u.size(1))],
-        #             dim=1) for u in hidden_states
-        # ])
-
-        # with torch.cuda.amp.autocast(dtype=torch.float32):
-        #     e = self.time_embedding(
-        #         sinusoidal_embedding_1d(self.freq_dim, timestep).float())
-        #     e0 = self.time_projection(e).unflatten(1, (6, -1))
-        #     assert e.dtype == torch.float32 and e0.dtype == torch.float32
-        
-        # context_lens = None
-        # encoder_hidden_states = self.text_embedding(encoder_hidden_states)
-        # if self.add_img_emb:
-        #     img_encoder_hidden_states = kwargs.get('img_encoder_hidden_states', None)
-        #     if img_encoder_hidden_states is None:
-        #         raise ValueError('`add_img_emb` is set but `img_encoder_hidden_states` is not provided.')
-        #     img_encoder_hidden_states = self.img_emb(img_encoder_hidden_states)
-        #     encoder_hidden_states = torch.concat([img_encoder_hidden_states, encoder_hidden_states], dim=1)
         
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(timestep, encoder_hidden_states, encoder_hidden_states_image)
+        timestep_proj = timestep_proj.unflatten(1, (6, -1))
         
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
@@ -486,7 +447,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
                 )
 
         # Output projection
-        with torch.amp.autocast(dtype=torch.float32):
+        with torch.amp.autocast(str(hidden_states.device), dtype=torch.float32):
             temb = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
             hidden_states = self.norm_out(hidden_states) * (1 + temb[1]) + temb[0]
             hidden_states = self.proj_out(hidden_states)

@@ -25,6 +25,12 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "head.modulation": "scale_shift_table",
     "head.head": "proj_out",
     "modulation": "scale_shift_table",
+    # Hack to swap the layer names
+    # The original model calls the norms in following order: norm1, norm3, norm2
+    # We convert it to: norm1, norm2, norm3
+    "norm2": "norm__placeholder",
+    "norm3": "norm2",
+    "norm__placeholder": "norm3",
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
