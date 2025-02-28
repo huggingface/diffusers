@@ -17,16 +17,17 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ...loaders import PeftAdapterMixin
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.attention import FeedForward
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import logging
-from ..cache_utils import CacheMixin
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
+from ...loaders import PeftAdapterMixin
+from ..cache_utils import CacheMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -123,10 +124,11 @@ class CogView4AttnProcessor:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        text_seq_length = encoder_hidden_states.size(1)
+        batch_size, text_seq_length, embed_dim = encoder_hidden_states.shape
+        batch_size, image_seq_length, embed_dim = hidden_states.shape
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         # 1. QKV projections
@@ -156,6 +158,17 @@ class CogView4AttnProcessor:
             )
 
         # 4. Attention
+        if attention_mask is not None:
+            # construct attention_mask for concated sequence
+            text_attention_mask = attention_mask.float().to(query.device)
+            attention_mask = torch.ones((batch_size, text_seq_length + image_seq_length), device=query.device)
+            attention_mask[:, :text_seq_length] = text_attention_mask
+            attention_mask = attention_mask.unsqueeze(2)
+            attention_mask_matrix = attention_mask @ attention_mask.mT
+            attention_mask_matrix = attention_mask_matrix == 1
+            attention_mask_matrix = attention_mask_matrix.unsqueeze(1)
+            attention_mask = attention_mask_matrix
+
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
@@ -203,6 +216,8 @@ class CogView4TransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> torch.Tensor:
         # 1. Timestep conditioning
         (
@@ -223,6 +238,8 @@ class CogView4TransformerBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            attention_mask=attention_mask,
+            **kwargs,
         )
         hidden_states = hidden_states + attn_hidden_states * gate_msa.unsqueeze(1)
         encoder_hidden_states = encoder_hidden_states + attn_encoder_hidden_states * c_gate_msa.unsqueeze(1)
@@ -233,8 +250,8 @@ class CogView4TransformerBlock(nn.Module):
             1 + c_scale_mlp.unsqueeze(1)
         ) + c_shift_mlp.unsqueeze(1)
 
-        ff_output = self.ff(norm_hidden_states)
-        ff_output_context = self.ff(norm_encoder_hidden_states)
+        ff_output = self.ff(norm_hidden_states, **kwargs)
+        ff_output_context = self.ff(norm_encoder_hidden_states, **kwargs)
         hidden_states = hidden_states + ff_output * gate_mlp.unsqueeze(1)
         encoder_hidden_states = encoder_hidden_states + ff_output_context * c_gate_mlp.unsqueeze(1)
 
@@ -381,6 +398,8 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
         return_dict: bool = True,
+        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         batch_size, num_channels, height, width = hidden_states.shape
 
@@ -391,6 +410,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         p = self.config.patch_size
         post_patch_height = height // p
         post_patch_width = width // p
+
         hidden_states, encoder_hidden_states = self.patch_embed(hidden_states, encoder_hidden_states)
 
         temb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
@@ -400,11 +420,11 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb
+                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_mask, **kwargs
                 )
             else:
                 hidden_states, encoder_hidden_states = block(
-                    hidden_states, encoder_hidden_states, temb, image_rotary_emb
+                    hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_mask, **kwargs
                 )
 
         # 4. Output norm & projection
