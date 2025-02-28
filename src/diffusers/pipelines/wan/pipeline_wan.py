@@ -26,7 +26,7 @@ from transformers import UMT5EncoderModel, AutoTokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLWan, WanTransformer3DModel
-from ...schedulers import UniPCMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -138,7 +138,7 @@ class WanPipeline(DiffusionPipeline):
         text_encoder: UMT5EncoderModel,
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
-        scheduler: UniPCMultistepScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
 
@@ -354,10 +354,6 @@ class WanPipeline(DiffusionPipeline):
         return self._num_timesteps
 
     @property
-    def attention_kwargs(self):
-        return self._attention_kwargs
-
-    @property
     def current_timestep(self):
         return self._current_timestep
 
@@ -385,7 +381,6 @@ class WanPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -431,10 +426,6 @@ class WanPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
-            attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
@@ -471,7 +462,6 @@ class WanPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
-        self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
 
@@ -526,11 +516,6 @@ class WanPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        *_, latent_f, latent_h, latent_w = latents.shape
-        seq_len = math.ceil((latent_h * latent_w) /
-                            (self.patch_size[1] * self.patch_size[2]) *
-                            latent_f)
-
         with (
             self.progress_bar(total=num_inference_steps) as progress_bar,
             amp.autocast('cuda', dtype=autocast_dtype, cache_enabled=False)
@@ -548,8 +533,6 @@ class WanPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
-                    seq_len=seq_len,
-                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -557,13 +540,10 @@ class WanPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=negative_prompt_embeds,
-                    seq_len=seq_len,
-                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
-                noise_pred = noise_pred_negative + guidance_scale * (
-                    noise_pred - noise_pred_negative)
+                noise_pred = noise_pred_negative + guidance_scale * (noise_pred - noise_pred_negative)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]

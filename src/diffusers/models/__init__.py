@@ -111,6 +111,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTXVideo,
             AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,
+            AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderTiny,
             ConsistencyDecoderVAE,

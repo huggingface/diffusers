@@ -444,10 +444,6 @@ class WanI2VPipeline(DiffusionPipeline):
         return self._num_timesteps
 
     @property
-    def attention_kwargs(self):
-        return self._attention_kwargs
-
-    @property
     def current_timestep(self):
         return self._current_timestep
 
@@ -475,7 +471,6 @@ class WanI2VPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -522,10 +517,6 @@ class WanI2VPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
-            attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
@@ -563,7 +554,6 @@ class WanI2VPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
-        self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
 
@@ -628,13 +618,6 @@ class WanI2VPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        *_, num_latent_frames, latent_h, latent_w = latents.shape
-        seq_len = num_latent_frames * latent_h * latent_w // (
-                self.transformer.config.patch_size[0] * \
-                self.transformer.config.patch_size[1] * \
-                self.transformer.config.patch_size[2]
-        )
-
         with (
             self.progress_bar(total=num_inference_steps) as progress_bar,
             amp.autocast('cuda', dtype=autocast_dtype, cache_enabled=False)
@@ -652,9 +635,7 @@ class WanI2VPipeline(DiffusionPipeline):
                     hidden_states=torch.concat([latent_model_input, condition], dim=1),
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
-                    img_encoder_hidden_states=image_embeds,
-                    seq_len=seq_len,
-                    attention_kwargs=attention_kwargs,
+                    encoder_hidden_states_image=image_embeds,
                     return_dict=False,
                 )[0]
 
@@ -662,9 +643,7 @@ class WanI2VPipeline(DiffusionPipeline):
                     hidden_states=torch.concat([latent_model_input, condition], dim=1),
                     timestep=timestep,
                     encoder_hidden_states=negative_prompt_embeds,
-                    img_encoder_hidden_states=image_embeds,
-                    seq_len=seq_len,
-                    attention_kwargs=attention_kwargs,
+                    encoder_hidden_states_image=image_embeds,
                     return_dict=False,
                 )[0]
 
