@@ -25,7 +25,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLWan, WanTransformer3DModel
-from ...schedulers import UniPCMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -163,7 +163,7 @@ class WanImageToVideoPipeline(DiffusionPipeline):
         image_processor: CLIPImageProcessor,
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
-        scheduler: UniPCMultistepScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
 

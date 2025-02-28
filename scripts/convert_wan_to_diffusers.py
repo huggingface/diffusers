@@ -6,9 +6,9 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import snapshot_download, hf_hub_download
 from safetensors.torch import load_file
-from transformers import UMT5EncoderModel, AutoTokenizer
+from transformers import UMT5EncoderModel, AutoTokenizer, CLIPVisionModelWithProjection, AutoProcessor
 
-from diffusers import WanTransformer3DModel, FlowMatchEulerDiscreteScheduler, WanPipeline, WanImageToVideoPipeline
+from diffusers import WanTransformer3DModel, FlowMatchEulerDiscreteScheduler, WanPipeline, WanImageToVideoPipeline, AutoencoderKLWan
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
@@ -357,7 +357,10 @@ def convert_vae():
             # Keep other keys unchanged
             new_state_dict[key] = value
     
-    return new_state_dict
+    with init_empty_weights():
+        vae = AutoencoderKLWan()
+    vae.load_state_dict(new_state_dict, strict=True, assign=True)
+    return vae
 
 
 def get_args():
@@ -388,15 +391,24 @@ if __name__ == "__main__":
     scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
 
     if "I2V" in args.model_type:
-        pipeline_cls = WanImageToVideoPipeline
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16)
+        image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        pipe = WanImageToVideoPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+            image_encoder=image_encoder,
+            image_processor=image_processor,
+        )
     else:
-        pipeline_cls = WanPipeline
-
-    pipe = pipeline_cls(
-        transformer=transformer,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-        vae=vae,
-        scheduler=scheduler,
-    )
+        pipe = WanPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+        )
+    
     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
