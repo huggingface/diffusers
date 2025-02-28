@@ -149,9 +149,8 @@ class WanTimeTextImageEmbedding(nn.Module):
     ):
         timestep = self.timesteps_proj(timestep)
 
-        # TODO: We should remove the type_as here. `_keep_modules_in_fp32` is not actually keeping time_embedder layer in fp32
-        temb = self.time_embedder(timestep.type_as(encoder_hidden_states))
-        timestep_proj = self.time_proj(self.act_fn(temb))
+        temb = self.time_embedder(timestep)
+        timestep_proj = self.time_proj(self.act_fn(temb.type_as(encoder_hidden_states)))
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)
         if encoder_hidden_states_image is not None:
