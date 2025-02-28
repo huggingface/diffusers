@@ -238,6 +238,7 @@ class WanI2VPipeline(DiffusionPipeline):
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
         return image_embeds.hidden_states[31]
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
