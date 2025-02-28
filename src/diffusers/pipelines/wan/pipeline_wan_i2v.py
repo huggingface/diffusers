@@ -51,7 +51,6 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P, Wan-AI/Wan2.1-I2V-1.3B-720P
         >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P"
-        >>> model_id = "/raid/aryan/wan-i2v-14b-480p"
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
         >>> pipe = WanImageToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
