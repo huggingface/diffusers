@@ -88,16 +88,13 @@ def remote_decode(
         processor (`VaeImageProcessor` or `VideoProcessor`, *optional*):
             Used with `return_type="pt"`, and `return_type="pil"` for Video models.
         do_scaling (`bool`, default `True`, *optional*):
-            **DEPRECATED**. When `True` scaling e.g. `latents / self.vae.config.scaling_factor` is applied remotely. If `False`, input
-            must be passed with scaling applied.
+            **DEPRECATED**. When `True` scaling e.g. `latents / self.vae.config.scaling_factor` is applied remotely. If
+            `False`, input must be passed with scaling applied.
         scaling_factor (`float`, *optional*):
-            Scaling is applied when passed e.g. `latents / self.vae.config.scaling_factor`.
-            SD v1: 0.18215
-            SD XL: 0.13025
-            Flux: 0.3611
+            Scaling is applied when passed e.g. `latents / self.vae.config.scaling_factor`. SD v1: 0.18215 SD XL:
+            0.13025 Flux: 0.3611
         shift_factor (`float`, *optional*):
-            Shift is applied when passed e.g. `latents + self.vae.config.shift_factor`.
-            Flux: 0.1159
+            Shift is applied when passed e.g. `latents + self.vae.config.shift_factor`. Flux: 0.1159
         output_type (`"mp4"` or `"pil"` or `"pt", default `"pil"):
             **Endpoint** output type. Subject to change. Report feedback on preferred type.
 
