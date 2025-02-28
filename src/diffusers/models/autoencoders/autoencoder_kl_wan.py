@@ -530,11 +530,10 @@ class WanEncoder3d(nn.Module):
         self.middle = WanMidBlock(out_dim, dropout, non_linearity, num_layers=1)
 
         # output blocks
-        self.head = nn.Sequential(
-            WanRMS_norm(out_dim, images=False),
-            self.nonlinearity,
-            WanCausalConv3d(out_dim, z_dim, 3, padding=1)
-        )
+        self.norm_out = WanRMS_norm(out_dim, images=False)
+        self.conv_out = WanCausalConv3d(out_dim, z_dim, 3, padding=1)
+        
+        self.gradient_checkpointing = False
         
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         if feat_cache is not None:
@@ -560,18 +559,19 @@ class WanEncoder3d(nn.Module):
         x = self.middle(x, feat_cache, feat_idx)
 
         ## head 
-        for layer in self.head:
-            if isinstance(layer, WanCausalConv3d) and feat_cache is not None:
-                idx = feat_idx[0]
-                cache_x = x[:, :, -CACHE_T:, :, :].clone()
-                if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
+        x = self.norm_out(x)
+        x = self.nonlinearity(x)
+        if feat_cache is not None:
+            idx = feat_idx[0]
+            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                     # cache last frame of last two chunk
-                    cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-                x = layer(x, feat_cache[idx])
-                feat_cache[idx] = cache_x
-                feat_idx[0] += 1 
-            else:
-                x = layer(x)  
+                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+            x = self.conv_out(x, feat_cache[idx])
+            feat_cache[idx] = cache_x
+            feat_idx[0] += 1 
+        else:
+            x = self.conv_out(x)
         return x
 
 
@@ -719,11 +719,10 @@ class WanDecoder3d(nn.Module):
         self.upsamples = upsamples
 
         # output blocks
-        self.head = nn.Sequential(
-            WanRMS_norm(out_dim, images=False),
-            self.nonlinearity,
-            WanCausalConv3d(out_dim, 3, 3, padding=1)
-        )
+        self.norm_out = WanRMS_norm(out_dim, images=False)
+        self.conv_out = WanCausalConv3d(out_dim, 3, 3, padding=1)
+
+        self.gradient_checkpointing = False
     
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         ## conv1
@@ -747,18 +746,19 @@ class WanDecoder3d(nn.Module):
             x = up_block(x, feat_cache, feat_idx)
 
         ## head 
-        for layer in self.head:
-            if isinstance(layer, WanCausalConv3d) and feat_cache is not None:
-                idx = feat_idx[0]
-                cache_x = x[:, :, -CACHE_T:, :, :].clone()
-                if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
-                    # cache last frame of last two chunk
-                    cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-                x = layer(x, feat_cache[idx])
-                feat_cache[idx] = cache_x
-                feat_idx[0] += 1 
-            else:
-                x = layer(x)  
+        x = self.norm_out(x)
+        x = self.nonlinearity(x)
+        if feat_cache is not None:
+            idx = feat_idx[0]
+            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
+                # cache last frame of last two chunk
+                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+            x = self.conv_out(x, feat_cache[idx])
+            feat_cache[idx] = cache_x
+            feat_idx[0] += 1 
+        else:
+            x = self.conv_out(x)
         return x
 
 
