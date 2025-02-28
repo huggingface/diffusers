@@ -23,7 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_wan"] = ["WanPipeline"]
-    _import_structure["pipeline_wan_i2v"] = ["WanI2VPipeline"]
+    _import_structure["pipeline_wan_i2v"] = ["WanImageToVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -34,7 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_wan import WanPipeline
-        from .pipeline_wan_i2v import WanI2VPipeline
+        from .pipeline_wan_i2v import WanImageToVideoPipeline
 
 else:
     import sys

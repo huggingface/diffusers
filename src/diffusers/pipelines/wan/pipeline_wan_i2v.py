@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import WanI2VPipeline, WanTransformer3DModel
+        >>> from diffusers import WanImageToVideoPipeline, WanTransformer3DModel
         >>> from transformers import CLIPVisionModel, CLIPImageProcessor, UMT5EncoderModel
         >>> from diffusers.utils import load_image, export_to_video
 
@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> text_encoder = UMT5EncoderModel.from_pretrained(model_id, subfolder="text_encoder")
         >>> transformer_i2v = WanTransformer3DModel.from_pretrained(model_id, subfolder="transformer_i2v_720p")
         >>> image_processor = CLIPImageProcessor.from_pretrained(model_id, subfolder="image_processor")
-        >>> pipe = WanI2VPipeline.from_pretrained(
+        >>> pipe = WanImageToVideoPipeline.from_pretrained(
         ...     model_id,
         ...     transformer=transformer_i2v,
         ...     text_encoder=text_encoder,
@@ -125,7 +125,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class WanI2VPipeline(DiffusionPipeline):
+class WanImageToVideoPipeline(DiffusionPipeline):
     r"""
     Pipeline for image-to-video generation using Wan.
 

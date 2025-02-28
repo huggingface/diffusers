@@ -19,7 +19,7 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel, CLIPVisionConfig, CLIPVisionModel, CLIPImageProcessor
 
-from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanI2VPipeline, WanTransformer3DModel
+from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanImageToVideoPipeline, WanTransformer3DModel
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -30,7 +30,7 @@ enable_full_determinism()
 
 
 class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = WanI2VPipeline
+    pipeline_class = WanImageToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "height", "width"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -78,7 +78,7 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             cross_attn_norm=True,
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
-            image_embedding_dim=4,
+            image_dim=4,
         )
         
         torch.manual_seed(0)

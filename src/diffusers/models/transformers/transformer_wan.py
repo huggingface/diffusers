@@ -127,7 +127,7 @@ class WanTimeTextImageEmbedding(nn.Module):
         time_freq_dim: int,
         time_proj_dim: int,
         text_embed_dim: int,
-        image_embedding_dim: Optional[int] = None,
+        image_embed_dim: Optional[int] = None,
     ):
         super().__init__()
 
@@ -138,8 +138,8 @@ class WanTimeTextImageEmbedding(nn.Module):
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
 
         self.image_embedder = None
-        if image_embedding_dim is not None:
-            self.image_embedder = WanImageEmbedding(image_embedding_dim, dim)
+        if image_embed_dim is not None:
+            self.image_embedder = WanImageEmbedding(image_embed_dim, dim)
 
     def forward(
         self,
@@ -348,7 +348,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
         cross_attn_norm: bool = True,
         qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_embedding_dim: Optional[int] = None,
+        image_dim: Optional[int] = None,
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
     ) -> None:
@@ -368,7 +368,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
             time_freq_dim=freq_dim,
             time_proj_dim=inner_dim * 6,
             text_embed_dim=text_dim,
-            image_embedding_dim=image_embedding_dim,
+            image_embed_dim=image_dim,
         )
 
         # 3. Transformer blocks
