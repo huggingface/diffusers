@@ -33,8 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_wanx import WanxPipeline
-        from .pipeline_wanx_i2v import WanxI2VPipeline
+        from .pipeline_wan import WanPipeline
+        from .pipeline_wan_i2v import WanI2VPipeline
 
 else:
     import sys

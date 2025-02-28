@@ -238,10 +238,12 @@ class WanI2VPipeline(DiffusionPipeline):
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
         return image_embeds.hidden_states[31]
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        do_classifier_free_guidance: bool = False,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -259,6 +261,8 @@ class WanI2VPipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
+            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
+                Whether to use classifier free guidance or not.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
             prompt_embeds (`torch.Tensor`, *optional*):
@@ -290,7 +294,7 @@ class WanI2VPipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
-        if negative_prompt_embeds is None:
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
@@ -368,7 +372,7 @@ class WanI2VPipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         aspect_ratio = height / width
         mod_value = self.vae_scale_factor_spatial * self.transformer.config.patch_size[1]
         height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
@@ -440,12 +444,12 @@ class WanI2VPipeline(DiffusionPipeline):
         return self._guidance_scale
 
     @property
-    def num_timesteps(self):
-        return self._num_timesteps
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
 
     @property
-    def attention_kwargs(self):
-        return self._attention_kwargs
+    def num_timesteps(self):
+        return self._num_timesteps
 
     @property
     def current_timestep(self):
@@ -472,16 +476,13 @@ class WanI2VPipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        autocast_dtype: torch.dtype = torch.bfloat16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -522,10 +523,6 @@ class WanI2VPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
-            attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
@@ -563,7 +560,6 @@ class WanI2VPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
-        self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
 
@@ -581,20 +577,22 @@ class WanI2VPipeline(DiffusionPipeline):
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
             num_videos_per_prompt=num_videos_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
-            dtype=autocast_dtype,
         )
-        # encode image embedding
+        
+        # Encode image embedding
         image_embeds = self.encode_image(image)
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
 
-        prompt_embeds = prompt_embeds.to(autocast_dtype)
-        negative_prompt_embeds = negative_prompt_embeds.to(autocast_dtype)
-        image_embeds = image_embeds.to(autocast_dtype)
+        transformer_dtype = self.transformer.dtype
+        prompt_embeds = prompt_embeds.to(transformer_dtype)
+        negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+        image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.flow_shift = flow_shift
@@ -606,6 +604,7 @@ class WanI2VPipeline(DiffusionPipeline):
             height, width = image.shape[-2:]
         else:
             width, height = image.size
+        
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
@@ -628,48 +627,32 @@ class WanI2VPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        *_, num_latent_frames, latent_h, latent_w = latents.shape
-        seq_len = num_latent_frames * latent_h * latent_w // (
-                self.transformer.config.patch_size[0] * \
-                self.transformer.config.patch_size[1] * \
-                self.transformer.config.patch_size[2]
-        )
-
-        with (
-            self.progress_bar(total=num_inference_steps) as progress_bar,
-            amp.autocast('cuda', dtype=autocast_dtype, cache_enabled=False)
-        ):
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 self._current_timestep = t
-                latent_model_input = latents
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
 
                 noise_pred = self.transformer(
-                    hidden_states=torch.concat([latent_model_input, condition], dim=1),
+                    hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
-                    img_encoder_hidden_states=image_embeds,
-                    seq_len=seq_len,
-                    attention_kwargs=attention_kwargs,
+                    encoder_hidden_states_image=image_embeds,
                     return_dict=False,
                 )[0]
 
-                noise_pred_negative = self.transformer(
-                    hidden_states=torch.concat([latent_model_input, condition], dim=1),
-                    timestep=timestep,
-                    encoder_hidden_states=negative_prompt_embeds,
-                    img_encoder_hidden_states=image_embeds,
-                    seq_len=seq_len,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
-
-                noise_pred = noise_pred_negative + guidance_scale * (
-                        noise_pred - noise_pred_negative)
+                if self.do_classifier_free_guidance:
+                    noise_uncond = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states_image=image_embeds,
+                        return_dict=False,
+                    )[0]
+                    noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
