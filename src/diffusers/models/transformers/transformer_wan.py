@@ -144,6 +144,8 @@ class WanTimeTextImageEmbedding(nn.Module):
 
     def forward(self, timestep: torch.Tensor, encoder_hidden_states: torch.Tensor, encoder_hidden_states_image: Optional[torch.Tensor] = None):
         timestep = self.timesteps_proj(timestep)
+
+        # TODO: We should remove the type_as here. `_keep_modules_in_fp32` is not actually keeping time_embedder layer in fp32
         temb = self.time_embedder(timestep.type_as(encoder_hidden_states))
         timestep_proj = self.time_proj(self.act_fn(temb))
         
@@ -251,22 +253,22 @@ class WanTransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
-        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (self.scale_shift_table + temb).chunk(6, dim=1)
+        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (self.scale_shift_table + temb.float()).chunk(6, dim=1)
 
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
-        hidden_states = hidden_states + attn_output * gate_msa
+        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
-        norm_hidden_states = self.norm2(hidden_states)
+        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
         attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
         hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
         norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(hidden_states)
         ff_output = self.ffn(norm_hidden_states)
-        hidden_states = hidden_states + ff_output * c_gate_msa
+        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
         
         return hidden_states
 
@@ -311,6 +313,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["WanTransformerBlock"]
+    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
 
     @register_to_config
     def __init__(
@@ -398,7 +401,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 5. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
-        hidden_states = (self.norm_out(hidden_states) * (1 + scale) + shift).type_as(hidden_states)
+        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1)

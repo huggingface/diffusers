@@ -158,7 +158,7 @@ class WanPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         num_videos_per_prompt: int = 1,
-        max_sequence_length: int = 226,
+        max_sequence_length: int = 257,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -203,7 +203,7 @@ class WanPipeline(DiffusionPipeline):
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 226,
+        max_sequence_length: int = 257,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -529,7 +529,7 @@ class WanPipeline(DiffusionPipeline):
 
                 self._current_timestep = t
                 latent_model_input = latents.to(transformer_dtype)
-                timestep = t.expand(latents.shape[0]).to(transformer_dtype)
+                timestep = t.expand(latents.shape[0])
 
                 noise_cond = self.transformer(
                     hidden_states=latent_model_input,

@@ -196,7 +196,7 @@ class WanI2VPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         num_videos_per_prompt: int = 1,
-        max_sequence_length: int = 226,
+        max_sequence_length: int = 257,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -247,7 +247,7 @@ class WanI2VPipeline(DiffusionPipeline):
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 226,
+        max_sequence_length: int = 257,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -372,7 +372,7 @@ class WanI2VPipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         aspect_ratio = height / width
         mod_value = self.vae_scale_factor_spatial * self.transformer.config.patch_size[1]
         height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
@@ -634,7 +634,7 @@ class WanI2VPipeline(DiffusionPipeline):
 
                 self._current_timestep = t
                 latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
-                timestep = t.expand(latents.shape[0]).to(transformer_dtype)
+                timestep = t.expand(latents.shape[0])
 
                 noise_cond = self.transformer(
                     hidden_states=latent_model_input,

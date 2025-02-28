@@ -73,7 +73,26 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
-            },
+            }
+        }
+    elif model_type == "Wan-T2V-14B":
+        config = {
+            "model_id": "StevenZhang/Wan2.1-T2V-14B-Diff",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+            }
         }
     return config
 
