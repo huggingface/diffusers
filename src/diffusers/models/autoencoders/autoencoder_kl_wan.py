@@ -835,10 +835,8 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
         """
-        # torch.save(z, "z.pt")
         self.scale = self.scale.to(z.device)
         decoded = self._decode(z, self.scale).sample
-        # torch.save(decoded, "decoded.pt")
         if not return_dict:
             return (decoded,)
 

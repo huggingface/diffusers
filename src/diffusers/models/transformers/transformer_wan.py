@@ -111,7 +111,7 @@ class WanImageEmbedding(torch.nn.Module):
 
         self.norm1 = nn.LayerNorm(in_features)
         self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
-        self.norm2 = nn.LayerNorm(out_features, elementwise_affine=False)
+        self.norm2 = nn.LayerNorm(out_features)
 
     def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
         hidden_states = self.norm1(encoder_hidden_states_image)

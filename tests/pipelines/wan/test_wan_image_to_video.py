@@ -17,7 +17,13 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoTokenizer, T5EncoderModel, CLIPVisionConfig, CLIPVisionModelWithProjection, CLIPImageProcessor
+from transformers import (
+    AutoTokenizer,
+    CLIPImageProcessor,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+    T5EncoderModel,
+)
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanImageToVideoPipeline, WanTransformer3DModel
 from diffusers.utils.testing_utils import enable_full_determinism
@@ -80,7 +86,7 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             rope_max_seq_len=32,
             image_dim=4,
         )
-        
+
         torch.manual_seed(0)
         image_encoder_config = CLIPVisionConfig(
             hidden_size=4,

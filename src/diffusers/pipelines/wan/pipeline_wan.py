@@ -44,32 +44,27 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import WanPipeline, WanTransformer3DModel
-        >>> from transformers import UMT5EncoderModel
+        >>> from diffusers import AutoencoderKLWan, WanPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> model_id = "Wan/Wan"
-        >>> text_encoder = UMT5EncoderModel.from_pretrained(model_id, subfolder="text_encoder")
-        >>> transformer = WanTransformer3DModel.from_pretrained(model_id, subfolder="transformer")
-        >>> pipe = WanPipeline.from_pretrained(model_id, transformer=transformer, text_encoder=text_encoder)
+        >>> # Available models: Wan-AI/Wan2.1-T2V-14B, Wan-AI/Wan2.1-T2V-1.3B
+        >>> model_id = "Wan-AI/Wan2.1-T2V-14B"
+        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+        >>> pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> pipe.to("cuda")
 
-        >>> device = "cuda"
-        >>> seed = 0
-        >>> generator = torch.Generator(device=device).manual_seed(seed)
-        >>> pipe.to(device)
-        >>> pipe.enable_model_cpu_offload()
+        >>> prompt = "A cat walks on the grass, realistic"
+        >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
         >>> output = pipe(
-        ...     prompt="A cat walks on the grass, realistic",
-        ...     height=720,
-        ...     width=1280,
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     height=480,
+        ...     width=832,
         ...     num_frames=81,
-        ...     num_inference_steps=50,
-        ...     flow_shift=5.0,
         ...     guidance_scale=5.0,
-        ...     generator=generator,
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=16)
+        >>> export_to_video(output, "output.mp4", fps=15)
         ```
 """
 
@@ -362,7 +357,6 @@ class WanPipeline(DiffusionPipeline):
         width: int = 1280,
         num_frames: int = 81,
         num_inference_steps: int = 50,
-        flow_shift: float = 5.0,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -482,8 +476,6 @@ class WanPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
-        self.scheduler.flow_shift = flow_shift
-        self.scheduler.config.flow_shift = flow_shift
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 

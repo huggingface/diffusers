@@ -46,51 +46,30 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import WanImageToVideoPipeline, WanTransformer3DModel
-        >>> from transformers import CLIPVisionModel, CLIPImageProcessor, UMT5EncoderModel
-        >>> from diffusers.utils import load_image, export_to_video
+        >>> from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
+        >>> from diffusers.utils import export_to_video, load_image
 
-        >>> model_id = "Wan/Wan"
-        >>> image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder")
+        >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P, Wan-AI/Wan2.1-I2V-1.3B-720P
+        >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P"
+        >>> model_id = "/raid/aryan/wan-i2v-14b-480p"
+        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+        >>> pipe = WanImageToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> pipe.to("cuda")
 
-        >>> text_encoder = UMT5EncoderModel.from_pretrained(model_id, subfolder="text_encoder")
-        >>> transformer_i2v = WanTransformer3DModel.from_pretrained(model_id, subfolder="transformer_i2v_720p")
-        >>> image_processor = CLIPImageProcessor.from_pretrained(model_id, subfolder="image_processor")
-        >>> pipe = WanImageToVideoPipeline.from_pretrained(
-        ...     model_id,
-        ...     transformer=transformer_i2v,
-        ...     text_encoder=text_encoder,
-        ...     image_encoder=image_encoder,
-        ...     image_processor=image_processor,
-        ... )
+        >>> height, width = 480, 832
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
-        ... )
-
-        >>> device = "cuda"
-        >>> seed = 0
+        ... ).resize((width, height))
         >>> prompt = (
         ...     "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
         ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
         ... )
-        >>> generator = torch.Generator(device=device).manual_seed(seed)
-        >>> pipe.to(device)
-        >>> pipe.enable_model_cpu_offload()
+        >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
-        >>> inputs = {
-        ...     "image": image,
-        ...     "prompt": prompt,
-        ...     "max_area": 720 * 1280,
-        ...     "generator": generator,
-        ...     "num_inference_steps": 50,
-        ...     "guidance_scale": 5.0,
-        ...     "num_frames": 81,
-        ...     "max_sequence_length": 512,
-        ...     "output_type": "np",
-        ...     "shift": 5.0,
-        ... }
-        >>> output = pipe(**inputs).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=16)
+        >>> output = pipe(
+        ...     image=image, prompt=prompt, negative_prompt=negative_prompt, num_frames=81, guidance_scale=5.0
+        ... ).frames[0]
+        >>> export_to_video(output, "output.mp4", fps=15)
         ```
 """
 
@@ -177,7 +156,6 @@ class WanImageToVideoPipeline(DiffusionPipeline):
             image_processor=image_processor,
         )
 
-        self.patch_size = self.transformer.patch_size
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample)
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample)
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -445,7 +423,6 @@ class WanImageToVideoPipeline(DiffusionPipeline):
         max_area: int = 720 * 1280,
         num_frames: int = 81,
         num_inference_steps: int = 50,
-        flow_shift: float = 5.0,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -571,8 +548,6 @@ class WanImageToVideoPipeline(DiffusionPipeline):
         image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
-        self.scheduler.flow_shift = flow_shift
-        self.scheduler.config.flow_shift = flow_shift
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
