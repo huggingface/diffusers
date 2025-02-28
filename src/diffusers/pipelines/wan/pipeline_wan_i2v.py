@@ -153,11 +153,7 @@ class WanI2VPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-    ]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -231,7 +227,7 @@ class WanI2VPipeline(DiffusionPipeline):
     def encode_image(self, image: PipelineImageInput):
         image = self.image_processor(images=image, return_tensors="pt").to(self.device)
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[31]
+        return image_embeds.hidden_states[-1]
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
@@ -392,7 +388,7 @@ class WanI2VPipeline(DiffusionPipeline):
         video_condition = video_condition.to(device=device, dtype=dtype)
         if isinstance(generator, list):
             latent_condition = [retrieve_latents(self.vae.encode(video_condition), g) for g in generator]
-            latents = torch.stack(latent_condition)
+            latents = latent_condition = torch.cat(latent_condition)
         else:
             latent_condition = retrieve_latents(self.vae.encode(video_condition), generator)
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
@@ -474,7 +470,7 @@ class WanI2VPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             max_area (`int`, defaults to `1280 * 720`):
-                The maximum area in pixels of the generated image. The width in pixels of the generated image.
+                The maximum area in pixels of the generated image.
             num_frames (`int`, defaults to `129`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
@@ -570,7 +566,8 @@ class WanI2VPipeline(DiffusionPipeline):
 
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
-        negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+        if negative_prompt_embeds is not None:
+            negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
         image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps

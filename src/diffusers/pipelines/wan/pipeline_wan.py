@@ -114,11 +114,7 @@ class WanPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-    ]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
