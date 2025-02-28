@@ -689,12 +689,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserPipeline,
             UniDiffuserTextDecoder,
         )
+        from .wan import WanI2VPipeline, WanPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
-        from .wan import WanPipeline, WanI2VPipeline
 
         try:
             if not is_onnx_available():

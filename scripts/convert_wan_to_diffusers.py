@@ -4,14 +4,10 @@ from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
-from transformers import AutoModel, AutoTokenizer, CLIPTextModel, CLIPTokenizer
 from huggingface_hub import snapshot_download
 from safetensors.torch import load_file
 
 from diffusers import (
-    AutoencoderKLWan,
-    FlowMatchEulerDiscreteScheduler,
-    WanPipeline,
     WanTransformer3DModel,
 )
 
@@ -73,7 +69,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
-            }
+            },
         }
     elif model_type == "Wan-T2V-14B":
         config = {
@@ -92,7 +88,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
-            }
+            },
         }
     return config
 

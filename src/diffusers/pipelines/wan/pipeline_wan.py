@@ -12,17 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import html
+from typing import Callable, Dict, List, Optional, Union
+
 import ftfy
 import regex as re
-
-import numpy as np
-import math
 import torch
-import torch.amp as amp
-from transformers import UMT5EncoderModel, AutoTokenizer
+from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLWan, WanTransformer3DModel
@@ -53,17 +49,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video
 
         >>> model_id = "Wan/Wan"
-        >>> text_encoder = UMT5EncoderModel.from_pretrained(
-        ...     model_id, subfolder='text_encoder'
-        ... )
-        >>> transformer = WanTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer"
-        ... )
-        >>> pipe = WanPipeline.from_pretrained(
-        ...     model_id, 
-        ...     transformer=transformer, 
-        ...     text_encoder=text_encoder
-        ... )
+        >>> text_encoder = UMT5EncoderModel.from_pretrained(model_id, subfolder="text_encoder")
+        >>> transformer = WanTransformer3DModel.from_pretrained(model_id, subfolder="transformer")
+        >>> pipe = WanPipeline.from_pretrained(model_id, transformer=transformer, text_encoder=text_encoder)
 
         >>> device = "cuda"
         >>> seed = 0
@@ -79,7 +67,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=50,
         ...     flow_shift=5.0,
         ...     guidance_scale=5.0,
-        ...     generator=generator
+        ...     generator=generator,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=16)
         ```
@@ -93,7 +81,7 @@ def basic_clean(text):
 
 
 def whitespace_clean(text):
-    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
@@ -184,9 +172,9 @@ class WanPipeline(DiffusionPipeline):
         prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
-        prompt_embeds = torch.stack([torch.cat([
-            u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))
-        ]) for u in prompt_embeds], dim=0)
+        prompt_embeds = torch.stack(
+            [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
+        )
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -312,9 +300,10 @@ class WanPipeline(DiffusionPipeline):
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        elif negative_prompt is not None and (not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)):
+        elif negative_prompt is not None and (
+            not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
+        ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
-
 
     def prepare_latents(
         self,
@@ -330,7 +319,7 @@ class WanPipeline(DiffusionPipeline):
     ) -> torch.Tensor:
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
-        
+
         shape = (
             batch_size,
             num_channels_latents,
@@ -446,8 +435,8 @@ class WanPipeline(DiffusionPipeline):
 
         Returns:
             [`~WanPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`WanPipelineOutput`] is returned, otherwise a `tuple` is returned
-                where the first element is a list with the generated images and the second element is a list of `bool`s
+                If `return_dict` is `True`, [`WanPipelineOutput`] is returned, otherwise a `tuple` is returned where
+                the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
 
@@ -515,7 +504,7 @@ class WanPipeline(DiffusionPipeline):
             torch.float32,
             device,
             generator,
-            latents
+            latents,
         )
 
         # 6. Denoising loop
@@ -546,7 +535,7 @@ class WanPipeline(DiffusionPipeline):
                         return_dict=False,
                     )[0]
                     noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
-                
+
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 

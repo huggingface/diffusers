@@ -12,18 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import html
-import ftfy
-import regex as re
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import PIL
+import ftfy
 import numpy as np
-import math
+import PIL
+import regex as re
 import torch
-import torch.amp as amp
-from transformers import CLIPVisionModel, UMT5EncoderModel, AutoTokenizer, CLIPImageProcessor
+from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -34,6 +31,7 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import WanPipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -53,24 +51,17 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image, export_to_video
 
         >>> model_id = "Wan/Wan"
-        >>> image_encoder = CLIPVisionModel.from_pretrained(
-        ...     model_id, subfolder='image_encoder'
-        ...)
-        >>> text_encoder = UMT5EncoderModel.from_pretrained(
-        ...     model_id, subfolder='text_encoder'
-        ... )
-        >>> transformer_i2v = WanTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder='transformer_i2v_720p'
-        ... )
-        >>> image_processor = CLIPImageProcessor.from_pretrained(
-        ...     model_id, subfolder='image_processor'
-        ... )
+        >>> image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder")
+
+        >>> text_encoder = UMT5EncoderModel.from_pretrained(model_id, subfolder="text_encoder")
+        >>> transformer_i2v = WanTransformer3DModel.from_pretrained(model_id, subfolder="transformer_i2v_720p")
+        >>> image_processor = CLIPImageProcessor.from_pretrained(model_id, subfolder="image_processor")
         >>> pipe = WanI2VPipeline.from_pretrained(
         ...     model_id,
         ...     transformer=transformer_i2v,
         ...     text_encoder=text_encoder,
         ...     image_encoder=image_encoder,
-        ...     image_processor=image_processor
+        ...     image_processor=image_processor,
         ... )
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
@@ -78,16 +69,18 @@ EXAMPLE_DOC_STRING = """
 
         >>> device = "cuda"
         >>> seed = 0
-        >>> prompt = ("An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
-        ...           "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot.")
+        >>> prompt = (
+        ...     "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
+        ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
+        ... )
         >>> generator = torch.Generator(device=device).manual_seed(seed)
         >>> pipe.to(device)
         >>> pipe.enable_model_cpu_offload()
 
         >>> inputs = {
-        ...     'image': image,
+        ...     "image": image,
         ...     "prompt": prompt,
-        ...     'max_area': 720 * 1280,
+        ...     "max_area": 720 * 1280,
         ...     "generator": generator,
         ...     "num_inference_steps": 50,
         ...     "guidance_scale": 5.0,
@@ -109,7 +102,7 @@ def basic_clean(text):
 
 
 def whitespace_clean(text):
-    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
@@ -120,7 +113,7 @@ def prompt_clean(text):
 
 
 def retrieve_latents(
-        encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -148,7 +141,9 @@ class WanI2VPipeline(DiffusionPipeline):
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
         image_encoder ([`CLIPVisionModel`]):
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModel), specifically
-            the [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large) variant.
+            the
+            [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large)
+            variant.
         transformer ([`WanTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         scheduler ([`UniPCMultistepScheduler`]):
@@ -165,14 +160,14 @@ class WanI2VPipeline(DiffusionPipeline):
     ]
 
     def __init__(
-            self,
-            tokenizer: AutoTokenizer,
-            text_encoder: UMT5EncoderModel,
-            image_encoder: CLIPVisionModel,
-            image_processor: CLIPImageProcessor,
-            transformer: WanTransformer3DModel,
-            vae: AutoencoderKLWan,
-            scheduler: UniPCMultistepScheduler,
+        self,
+        tokenizer: AutoTokenizer,
+        text_encoder: UMT5EncoderModel,
+        image_encoder: CLIPVisionModel,
+        image_processor: CLIPImageProcessor,
+        transformer: WanTransformer3DModel,
+        vae: AutoencoderKLWan,
+        scheduler: UniPCMultistepScheduler,
     ):
         super().__init__()
 
@@ -183,7 +178,7 @@ class WanI2VPipeline(DiffusionPipeline):
             image_encoder=image_encoder,
             transformer=transformer,
             scheduler=scheduler,
-            image_processor=image_processor
+            image_processor=image_processor,
         )
 
         self.patch_size = self.transformer.patch_size
@@ -222,9 +217,9 @@ class WanI2VPipeline(DiffusionPipeline):
         prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
-        prompt_embeds = torch.stack([torch.cat([
-            u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))
-        ]) for u in prompt_embeds], dim=0)
+        prompt_embeds = torch.stack(
+            [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
+        )
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -321,26 +316,20 @@ class WanI2VPipeline(DiffusionPipeline):
         return prompt_embeds, negative_prompt_embeds
 
     def check_inputs(
-            self,
-            prompt,
-            image,
-            max_area,
-            prompt_embeds=None,
-            callback_on_step_end_tensor_inputs=None,
+        self,
+        prompt,
+        image,
+        max_area,
+        prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
     ):
-        if (
-                not isinstance(image, torch.Tensor)
-                and not isinstance(image, PIL.Image.Image)
-        ):
-            raise ValueError(
-                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is"
-                f" {type(image)}"
-            )
+        if not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
+            raise ValueError("`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is" f" {type(image)}")
         if max_area < 0:
             raise ValueError(f"`max_area` has to be positive but are {max_area}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-                k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -397,21 +386,12 @@ class WanI2VPipeline(DiffusionPipeline):
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         image = self.video_processor.preprocess(image, height=height, width=width)[:, :, None]
-        video_condition = torch.cat([
-            image,
-            torch.zeros(
-                image.shape[0],
-                image.shape[1],
-                num_frames - 1,
-                height,
-                width)
-        ], dim=2)
+        video_condition = torch.cat(
+            [image, torch.zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+        )
         video_condition = video_condition.to(device=device, dtype=dtype)
         if isinstance(generator, list):
-            latent_condition = [
-                retrieve_latents(self.vae.encode(video_condition), g)
-                for g in generator
-            ]
+            latent_condition = [retrieve_latents(self.vae.encode(video_condition), g) for g in generator]
             latents = torch.stack(latent_condition)
         else:
             latent_condition = retrieve_latents(self.vae.encode(video_condition), generator)
@@ -421,7 +401,7 @@ class WanI2VPipeline(DiffusionPipeline):
             1,
             num_frames,
             int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial
+            int(width) // self.vae_scale_factor_spatial,
         )
         mask_lat_size[:, :, list(range(1, num_frames))] = 0
         first_frame_mask = mask_lat_size[:, :, 0:1]
@@ -432,7 +412,7 @@ class WanI2VPipeline(DiffusionPipeline):
             -1,
             self.vae_scale_factor_temporal,
             int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial
+            int(width) // self.vae_scale_factor_spatial,
         )
         mask_lat_size = mask_lat_size.transpose(1, 2)
         mask_lat_size = mask_lat_size.to(latent_condition.device)
@@ -494,8 +474,7 @@ class WanI2VPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             max_area (`int`, defaults to `1280 * 720`):
-                The maximum area in pixels of the generated image.
-                The width in pixels of the generated image.
+                The maximum area in pixels of the generated image. The width in pixels of the generated image.
             num_frames (`int`, defaults to `129`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
@@ -542,8 +521,8 @@ class WanI2VPipeline(DiffusionPipeline):
 
         Returns:
             [`~WanPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`WanPipelineOutput`] is returned, otherwise a `tuple` is returned
-                where the first element is a list with the generated images and the second element is a list of `bool`s
+                If `return_dict` is `True`, [`WanPipelineOutput`] is returned, otherwise a `tuple` is returned where
+                the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
 
@@ -584,7 +563,7 @@ class WanI2VPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        
+
         # Encode image embedding
         image_embeds = self.encode_image(image)
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
@@ -604,7 +583,7 @@ class WanI2VPipeline(DiffusionPipeline):
             height, width = image.shape[-2:]
         else:
             width, height = image.size
-        
+
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1

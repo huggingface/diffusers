@@ -90,13 +90,13 @@ else:
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
-            "AutoencoderKLWan",
             "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
             "AutoencoderKLHunyuanVideo",
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMochi",
             "AutoencoderKLTemporalDecoder",
+            "AutoencoderKLWan",
             "AutoencoderOobleck",
             "AutoencoderTiny",
             "CacheMixin",
@@ -438,11 +438,11 @@ else:
             "VersatileDiffusionTextToImagePipeline",
             "VideoToVideoSDPipeline",
             "VQDiffusionPipeline",
+            "WanI2VPipeline",
+            "WanPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
-            "WanPipeline",
-            "WanI2VPipeline",
         ]
     )
 
@@ -614,13 +614,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
-            AutoencoderKLWan,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLLTXVideo,
             AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,
+            AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderTiny,
             CacheMixin,
@@ -939,11 +939,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VideoToVideoSDPipeline,
             VQDiffusionPipeline,
+            WanI2VPipeline,
+            WanPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-            WanPipeline,
-            WanI2VPipeline
         )
 
     try:
