@@ -1,4 +1,3 @@
-import base64
 import io
 import json
 from typing import List, Literal, Optional, Union, cast
@@ -40,8 +39,8 @@ def check_inputs(
     return_type: Literal["mp4", "pil", "pt"] = "pil",
     image_format: Literal["png", "jpg"] = "jpg",
     partial_postprocess: bool = False,
-    input_tensor_type: Literal["base64", "binary"] = "base64",
-    output_tensor_type: Literal["base64", "binary"] = "base64",
+    input_tensor_type: Literal["binary"] = "binary",
+    output_tensor_type: Literal["binary"] = "binary",
     height: Optional[int] = None,
     width: Optional[int] = None,
 ):
@@ -74,8 +73,8 @@ def remote_decode(
     return_type: Literal["mp4", "pil", "pt"] = "pil",
     image_format: Literal["png", "jpg"] = "jpg",
     partial_postprocess: bool = False,
-    input_tensor_type: Literal["base64", "binary"] = "base64",
-    output_tensor_type: Literal["base64", "binary"] = "base64",
+    input_tensor_type: Literal["binary"] = "binary",
+    output_tensor_type: Literal["binary"] = "binary",
     height: Optional[int] = None,
     width: Optional[int] = None,
 ) -> Union[Image.Image, List[Image.Image], bytes, "torch.Tensor"]:
@@ -130,11 +129,11 @@ def remote_decode(
             Used with `output_type="pt"`. `partial_postprocess=False` tensor is `float16` or `bfloat16`, without
             denormalization. `partial_postprocess=True` tensor is `uint8`, denormalized.
 
-        input_tensor_type (`"base64"` or `"binary"`, default `"base64"`):
-            With `"base64"` `tensor` is sent to endpoint base64 encoded. `"binary"` reduces overhead and transfer.
+        input_tensor_type (`"binary"`, default `"binary"`):
+            Tensor transfer type.
 
-        output_tensor_type (`"base64"` or `"binary"`, default `"base64"`):
-            With `"base64"` `tensor` returned by endpoint is base64 encoded. `"binary"` reduces overhead and transfer.
+        output_tensor_type (`"binary"`, default `"binary"`):
+            Tensor transfer type.
 
         height (`int`, **optional**):
             Required for `"packed"` latents.
@@ -142,6 +141,22 @@ def remote_decode(
         width (`int`, **optional**):
             Required for `"packed"` latents.
     """
+    if input_tensor_type == "base64":
+        deprecate(
+            "input_tensor_type='base64'",
+            "1.0.0",
+            "input_tensor_type='base64' is deprecated. Using `binary`.",
+            standard_warn=False,
+        )
+        input_tensor_type = "binary"
+    if output_tensor_type == "base64":
+        deprecate(
+            "output_tensor_type='base64'",
+            "1.0.0",
+            "output_tensor_type='base64' is deprecated. Using `binary`.",
+            standard_warn=False,
+        )
+        output_tensor_type = "binary"
     check_inputs(
         endpoint,
         tensor,
@@ -160,6 +175,7 @@ def remote_decode(
     )
     headers = {}
     parameters = {
+        "image_format": image_format,
         "output_type": output_type,
         "partial_postprocess": partial_postprocess,
         "shape": list(tensor.shape),
@@ -177,43 +193,15 @@ def remote_decode(
         parameters["height"] = height
         parameters["width"] = width
     tensor_data = safetensors.torch._tobytes(tensor, "tensor")
-    if input_tensor_type == "base64":
-        headers["Content-Type"] = "tensor/base64"
-    elif input_tensor_type == "binary":
-        headers["Content-Type"] = "tensor/binary"
-    if output_type == "pil" and image_format == "jpg" and processor is None:
-        headers["Accept"] = "image/jpeg"
-    elif output_type == "pil" and image_format == "png" and processor is None:
-        headers["Accept"] = "image/png"
-    elif (output_tensor_type == "base64" and output_type == "pt") or (
-        output_tensor_type == "base64" and output_type == "pil" and processor is not None
-    ):
-        headers["Accept"] = "tensor/base64"
-    elif (output_tensor_type == "binary" and output_type == "pt") or (
-        output_tensor_type == "binary" and output_type == "pil" and processor is not None
-    ):
-        headers["Accept"] = "tensor/binary"
-    elif output_type == "mp4":
-        headers["Accept"] = "text/plain"
-    if input_tensor_type == "base64":
-        kwargs = {"json": {"inputs": base64.b64encode(tensor_data).decode("utf-8")}}
-    elif input_tensor_type == "binary":
-        kwargs = {"data": tensor_data}
+    kwargs = {"data": tensor_data}
     response = requests.post(endpoint, params=parameters, **kwargs, headers=headers)
     if not response.ok:
         raise RuntimeError(response.json())
     if output_type == "pt" or (output_type == "pil" and processor is not None):
-        if output_tensor_type == "base64":
-            content = response.json()
-            output_tensor = base64.b64decode(content["inputs"])
-            parameters = content["parameters"]
-            shape = parameters["shape"]
-            dtype = parameters["dtype"]
-        elif output_tensor_type == "binary":
-            output_tensor = response.content
-            parameters = response.headers
-            shape = json.loads(parameters["shape"])
-            dtype = parameters["dtype"]
+        output_tensor = response.content
+        parameters = response.headers
+        shape = json.loads(parameters["shape"])
+        dtype = parameters["dtype"]
         torch_dtype = DTYPE_MAP[dtype]
         output_tensor = torch.frombuffer(bytearray(output_tensor), dtype=torch_dtype).reshape(shape)
     if output_type == "pt":
