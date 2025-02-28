@@ -346,7 +346,7 @@
         title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
-      - local: api/models/autoencoderkl_wan
+      - local: api/models/autoencoder_kl_wan
         title: AutoencoderKLWan
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
