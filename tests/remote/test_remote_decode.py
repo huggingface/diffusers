@@ -152,3 +152,46 @@ class RemoteAutoencoderKLSDv1Tests(
     scaling_factor = 0.18215
     shift_factor = None
     processor_cls = VaeImageProcessor
+
+
+class RemoteAutoencoderKLSDXLTests(
+    RemoteAutoencoderKLMixin,
+    unittest.TestCase,
+):
+    shape = (
+        1,
+        4,
+        128,
+        128,
+    )
+    out_hw = (
+        1024,
+        1024,
+    )
+    endpoint = ""
+    dtype = torch.float16
+    scaling_factor = 0.13025
+    shift_factor = None
+    processor_cls = VaeImageProcessor
+
+
+class RemoteAutoencoderKLFluxTests(
+    RemoteAutoencoderKLMixin,
+    unittest.TestCase,
+):
+    # TODO: packed
+    shape = (
+        1,
+        16,
+        128,
+        128,
+    )
+    out_hw = (
+        1024,
+        1024,
+    )
+    endpoint = ""
+    dtype = torch.bfloat16
+    scaling_factor = 0.3611
+    shift_factor = 0.1159
+    processor_cls = VaeImageProcessor
