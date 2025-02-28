@@ -113,6 +113,25 @@ class RemoteAutoencoderKLMixin:
                 str(warning.warnings[0].message),
             )
 
+    def test_input_tensor_type_base64_deprecation(self):
+        inputs = self.get_dummy_inputs()
+        with self.assertWarns(FutureWarning) as warning:
+            _ = remote_decode(output_type="pt", input_tensor_type="base64", partial_postprocess=True, **inputs)
+            self.assertEqual(
+                str(warning.warnings[0].message),
+                "input_tensor_type='base64' is deprecated. Using `binary`.",
+                str(warning.warnings[0].message),
+            )
+
+    def test_output_tensor_type_base64_deprecation(self):
+        inputs = self.get_dummy_inputs()
+        with self.assertWarns(FutureWarning) as warning:
+            _ = remote_decode(output_type="pt", output_tensor_type="base64", partial_postprocess=True, **inputs)
+            self.assertEqual(
+                str(warning.warnings[0].message),
+                "output_tensor_type='base64' is deprecated. Using `binary`.",
+                str(warning.warnings[0].message),
+            )
 
 class RemoteAutoencoderKLSDv1Tests(
     RemoteAutoencoderKLMixin,
