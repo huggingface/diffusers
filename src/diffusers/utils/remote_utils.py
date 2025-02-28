@@ -62,6 +62,91 @@ def check_inputs(
         )
 
 
+def postprocess(
+    response: requests.Response,
+    processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
+    output_type: Literal["mp4", "pil", "pt"] = "pil",
+    return_type: Literal["mp4", "pil", "pt"] = "pil",
+    partial_postprocess: bool = False,
+):
+    if output_type == "pt" or (output_type == "pil" and processor is not None):
+        output_tensor = response.content
+        parameters = response.headers
+        shape = json.loads(parameters["shape"])
+        dtype = parameters["dtype"]
+        torch_dtype = DTYPE_MAP[dtype]
+        output_tensor = torch.frombuffer(bytearray(output_tensor), dtype=torch_dtype).reshape(shape)
+    if output_type == "pt":
+        if partial_postprocess:
+            if return_type == "pil":
+                output = [Image.fromarray(image.numpy()) for image in output_tensor]
+                if len(output) == 1:
+                    output = output[0]
+            elif return_type == "pt":
+                output = output_tensor
+        else:
+            if processor is None or return_type == "pt":
+                output = output_tensor
+            else:
+                if isinstance(processor, VideoProcessor):
+                    output = cast(
+                        List[Image.Image],
+                        processor.postprocess_video(output_tensor, output_type="pil")[0],
+                    )
+                else:
+                    output = cast(
+                        Image.Image,
+                        processor.postprocess(output_tensor, output_type="pil")[0],
+                    )
+    elif output_type == "pil" and return_type == "pil" and processor is None:
+        output = Image.open(io.BytesIO(response.content)).convert("RGB")
+    elif output_type == "pil" and processor is not None:
+        if return_type == "pil":
+            output = [
+                Image.fromarray(image)
+                for image in (output_tensor.permute(0, 2, 3, 1).float().numpy() * 255).round().astype("uint8")
+            ]
+        elif return_type == "pt":
+            output = output_tensor
+    elif output_type == "mp4" and return_type == "mp4":
+        output = response.content
+    return output
+
+
+def prepare(
+    tensor: "torch.Tensor",
+    do_scaling: bool = True,
+    scaling_factor: Optional[float] = None,
+    shift_factor: Optional[float] = None,
+    output_type: Literal["mp4", "pil", "pt"] = "pil",
+    image_format: Literal["png", "jpg"] = "jpg",
+    partial_postprocess: bool = False,
+    height: Optional[int] = None,
+    width: Optional[int] = None,
+):
+    headers = {}
+    parameters = {
+        "image_format": image_format,
+        "output_type": output_type,
+        "partial_postprocess": partial_postprocess,
+        "shape": list(tensor.shape),
+        "dtype": str(tensor.dtype).split(".")[-1],
+    }
+    if do_scaling and scaling_factor is not None:
+        parameters["scaling_factor"] = scaling_factor
+    if do_scaling and shift_factor is not None:
+        parameters["shift_factor"] = shift_factor
+    if do_scaling and scaling_factor is None:
+        parameters["do_scaling"] = do_scaling
+    elif do_scaling and scaling_factor is None and shift_factor is None:
+        parameters["do_scaling"] = do_scaling
+    if height is not None and width is not None:
+        parameters["height"] = height
+        parameters["width"] = width
+    tensor_data = safetensors.torch._tobytes(tensor, "tensor")
+    return {"data": tensor_data, "params": parameters, "headers": headers}
+
+
 def remote_decode(
     endpoint: str,
     tensor: "torch.Tensor",
@@ -79,6 +164,8 @@ def remote_decode(
     width: Optional[int] = None,
 ) -> Union[Image.Image, List[Image.Image], bytes, "torch.Tensor"]:
     """
+    Hugging Face Hybrid Inference
+
     Args:
         endpoint (`str`):
             Endpoint for Remote Decode.
@@ -140,6 +227,9 @@ def remote_decode(
 
         width (`int`, **optional**):
             Required for `"packed"` latents.
+
+    Returns:
+        output (`Image.Image` or `List[Image.Image]` or `bytes` or `torch.Tensor`).
     """
     if input_tensor_type == "base64":
         deprecate(
@@ -173,69 +263,25 @@ def remote_decode(
         height,
         width,
     )
-    headers = {}
-    parameters = {
-        "image_format": image_format,
-        "output_type": output_type,
-        "partial_postprocess": partial_postprocess,
-        "shape": list(tensor.shape),
-        "dtype": str(tensor.dtype).split(".")[-1],
-    }
-    if do_scaling and scaling_factor is not None:
-        parameters["scaling_factor"] = scaling_factor
-    if do_scaling and shift_factor is not None:
-        parameters["shift_factor"] = shift_factor
-    if do_scaling and scaling_factor is None:
-        parameters["do_scaling"] = do_scaling
-    elif do_scaling and scaling_factor is None and shift_factor is None:
-        parameters["do_scaling"] = do_scaling
-    if height is not None and width is not None:
-        parameters["height"] = height
-        parameters["width"] = width
-    tensor_data = safetensors.torch._tobytes(tensor, "tensor")
-    kwargs = {"data": tensor_data}
-    response = requests.post(endpoint, params=parameters, **kwargs, headers=headers)
+    kwargs = prepare(
+        tensor=tensor,
+        do_scaling=do_scaling,
+        scaling_factor=scaling_factor,
+        shift_factor=shift_factor,
+        output_type=output_type,
+        image_format=image_format,
+        partial_postprocess=partial_postprocess,
+        height=height,
+        width=width,
+    )
+    response = requests.post(endpoint, **kwargs)
     if not response.ok:
         raise RuntimeError(response.json())
-    if output_type == "pt" or (output_type == "pil" and processor is not None):
-        output_tensor = response.content
-        parameters = response.headers
-        shape = json.loads(parameters["shape"])
-        dtype = parameters["dtype"]
-        torch_dtype = DTYPE_MAP[dtype]
-        output_tensor = torch.frombuffer(bytearray(output_tensor), dtype=torch_dtype).reshape(shape)
-    if output_type == "pt":
-        if partial_postprocess:
-            if return_type == "pil":
-                output = [Image.fromarray(image.numpy()) for image in output_tensor]
-                if len(output) == 1:
-                    output = output[0]
-            elif return_type == "pt":
-                output = output_tensor
-        else:
-            if processor is None or return_type == "pt":
-                output = output_tensor
-            else:
-                if isinstance(processor, VideoProcessor):
-                    output = cast(
-                        List[Image.Image],
-                        processor.postprocess_video(output_tensor, output_type="pil")[0],
-                    )
-                else:
-                    output = cast(
-                        Image.Image,
-                        processor.postprocess(output_tensor, output_type="pil")[0],
-                    )
-    elif output_type == "pil" and return_type == "pil" and processor is None:
-        output = Image.open(io.BytesIO(response.content)).convert("RGB")
-    elif output_type == "pil" and processor is not None:
-        if return_type == "pil":
-            output = [
-                Image.fromarray(image)
-                for image in (output_tensor.permute(0, 2, 3, 1).float().numpy() * 255).round().astype("uint8")
-            ]
-        elif return_type == "pt":
-            output = output_tensor
-    elif output_type == "mp4" and return_type == "mp4":
-        output = response.content
+    output = postprocess(
+        response=response,
+        processor=processor,
+        output_type=output_type,
+        return_type=return_type,
+        partial_postprocess=partial_postprocess,
+    )
     return output
