@@ -35,13 +35,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 CACHE_T = 2
 
 
-def count_conv3d(model):
-    count = 0
-    for m in model.modules():
-        if isinstance(m, WanCausalConv3d): 
-            count += 1
-    return count
-
 class WanCausalConv3d(nn.Conv3d):
     r"""
     A custom 3D causal convolution layer with feature caching support.
@@ -82,6 +75,7 @@ class WanCausalConv3d(nn.Conv3d):
             0
         )
         self.padding = (0, 0, 0)
+
     def forward(self, x, cache_x=None):
         padding = list(self._padding)
         if cache_x is not None and self._padding[4] > 0:
@@ -175,6 +169,7 @@ class WanCausalConv3dYiYi(nn.Conv3d):
             x = F.pad(x, self._padding)
             return super().forward(x)
 
+
 class WanRMS_norm(nn.Module): 
     r"""
     A custom RMS normalization layer.
@@ -219,7 +214,6 @@ class WanUpsample(nn.Upsample):
     def forward(self, x):
 
         return super().forward(x.float()).type_as(x)
-
 
 
 class WanResample(nn.Module):
@@ -311,8 +305,7 @@ class WanResample(nn.Module):
                     feat_idx[0] += 1  
         return x
 
-
-    
+   
 class WanResidualBlock(nn.Module):
     r"""
     A custom residual block module.
@@ -812,11 +805,19 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
             self.temperal_upsample, dropout
         )
     def clear_cache(self):
-        self._conv_num = count_conv3d(self.decoder)
+
+        def _count_conv3d(model):
+            count = 0
+            for m in model.modules():
+                if isinstance(m, WanCausalConv3d): 
+                    count += 1
+            return count
+
+        self._conv_num = _count_conv3d(self.decoder)
         self._conv_idx = [0]
         self._feat_map = [None] * self._conv_num
         #cache encode
-        self._enc_conv_num = count_conv3d(self.encoder)  
+        self._enc_conv_num = _count_conv3d(self.encoder)  
         self._enc_conv_idx = [0]
         self._enc_feat_map = [None] * self._enc_conv_num
 
