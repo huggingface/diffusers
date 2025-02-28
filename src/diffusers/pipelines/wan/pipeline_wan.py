@@ -150,7 +150,6 @@ class WanPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-        self.patch_size = self.transformer.patch_size
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample)
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample)
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -386,7 +385,6 @@ class WanPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        autocast_dtype: torch.dtype = torch.bfloat16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -484,11 +482,11 @@ class WanPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
-            dtype=autocast_dtype,
         )
 
-        prompt_embeds = prompt_embeds.to(autocast_dtype)
-        negative_prompt_embeds = negative_prompt_embeds.to(autocast_dtype)
+        transformer_dtype = self.transformer.dtype
+        prompt_embeds = prompt_embeds.to(transformer_dtype)
+        negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.flow_shift = flow_shift
@@ -516,18 +514,14 @@ class WanPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        with (
-            self.progress_bar(total=num_inference_steps) as progress_bar,
-            amp.autocast('cuda', dtype=autocast_dtype, cache_enabled=False)
-        ):
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 self._current_timestep = t
-                latent_model_input = latents
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0])
+                latent_model_input = latents.to(transformer_dtype)
+                timestep = t.expand(latents.shape[0]).to(transformer_dtype)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,

@@ -25,6 +25,8 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "head.modulation": "scale_shift_table",
     "head.head": "proj_out",
     "modulation": "scale_shift_table",
+    "ffn.0": "ffn.net.0.proj",
+    "ffn.2": "ffn.net.2",
     # Hack to swap the layer names
     # The original model calls the norms in following order: norm1, norm3, norm2
     # We convert it to: norm1, norm2, norm3
