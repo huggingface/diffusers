@@ -86,90 +86,6 @@ class WanCausalConv3d(nn.Conv3d):
         return super().forward(x)
 
 
-# TODO: not used yet, will not affect the state dict so can be refactored in follow up PR
-class WanCausalConv3dYiYi(nn.Conv3d):
-    r"""
-    A custom 3D causal convolution layer with feature caching support.
-
-    This layer extends the standard Conv3D layer by ensuring causality in the time dimension
-    and handling feature caching for efficient inference.
-
-    Args:
-        in_channels (int): Number of channels in the input image
-        out_channels (int): Number of channels produced by the convolution
-        kernel_size (int or tuple): Size of the convolving kernel
-        stride (int or tuple, optional): Stride of the convolution. Default: 1
-        padding (int or tuple, optional): Zero-padding added to all three sides of the input. Default: 0
-    """
-    def __init__(
-        self, 
-        in_channels: int,
-        out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]],
-        stride: Union[int, Tuple[int, int, int]] = 1,
-        padding: Union[int, Tuple[int, int, int]] = 0,
-    ) -> None:
-        super().__init__(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-        )
-        
-        # Set up causal padding
-        self._padding = (
-            self.padding[2],
-            self.padding[2],
-            self.padding[1],
-            self.padding[1],
-            2 * self.padding[0],
-            0
-        )
-        self.padding = (0, 0, 0)
-    
-    def forward(self, x, feat_cache=None, feat_idx=[0]):
-        """
-        Forward pass with feature caching support.
-        
-        Args:
-            x (torch.Tensor): Input tensor
-            feat_cache (list, optional): List to store cached features
-            feat_idx (list, optional): List with a single integer indicating the current cache index
-            
-        Returns:
-            torch.Tensor: Output tensor after convolution
-        """
-        # Handle feature caching
-        if feat_cache is not None:
-            idx = feat_idx[0]
-            cache_x = x[:, :, -CACHE_T:, :, :].clone()
-            
-            # Concatenate with cached frame if available
-            if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
-                # cache last frame of last two chunk
-                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-            
-            # Apply padding and convolution with cached data
-            padding = list(self._padding)
-            if feat_cache[idx] is not None and self._padding[4] > 0 :
-                x = torch.cat([feat_cache[idx], x], dim=2)
-                padding[4] -= feat_cache[idx].shape[2]
-            
-            x = F.pad(x, padding)
-            result = super().forward(x)
-            
-            # Update cache
-            feat_cache[idx] = cache_x
-            feat_idx[0] += 1
-            
-            return result
-        else:
-            # Standard forward pass without caching
-            x = F.pad(x, self._padding)
-            return super().forward(x)
-
-
 class WanRMS_norm(nn.Module): 
     r"""
     A custom RMS normalization layer.
@@ -501,26 +417,26 @@ class WanEncoder3d(nn.Module):
         scale = 1.0
 
         # init block
-        self.conv1 = WanCausalConv3d(3, dims[0], 3, padding=1)
+        self.conv_in = WanCausalConv3d(3, dims[0], 3, padding=1)
 
         # downsample blocks
-        self.downsamples = nn.ModuleList([])
+        self.down_blocks = nn.ModuleList([])
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             # residual (+attention) blocks
             for _ in range(num_res_blocks):
-                self.downsamples.append(WanResidualBlock(in_dim, out_dim, dropout))
+                self.down_blocks.append(WanResidualBlock(in_dim, out_dim, dropout))
                 if scale in attn_scales:
-                    self.downsamples.append(WanAttentionBlock(out_dim))
+                    self.down_blocks.append(WanAttentionBlock(out_dim))
                 in_dim = out_dim
             
             # downsample block
             if i != len(dim_mult) - 1:
                 mode = 'downsample3d' if temperal_downsample[i] else 'downsample2d'
-                self.downsamples.append(WanResample(out_dim, mode=mode))
+                self.down_blocks.append(WanResample(out_dim, mode=mode))
                 scale /= 2.0
 
         # middle blocks
-        self.middle = WanMidBlock(out_dim, dropout, non_linearity, num_layers=1)
+        self.mid_block = WanMidBlock(out_dim, dropout, non_linearity, num_layers=1)
 
         # output blocks
         self.norm_out = WanRMS_norm(out_dim, images=False)
@@ -535,21 +451,21 @@ class WanEncoder3d(nn.Module):
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
                 cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-            x = self.conv1(x, feat_cache[idx])
+            x = self.conv_in(x, feat_cache[idx])
             feat_cache[idx] = cache_x
             feat_idx[0] += 1 
         else:
-            x = self.conv1(x) 
+            x = self.conv_in(x) 
 
         ## downsamples 
-        for layer in self.downsamples:
+        for layer in self.down_blocks:
             if feat_cache is not None:
                 x = layer(x, feat_cache, feat_idx)  
             else:
                 x = layer(x) 
 
         ## middle 
-        x = self.middle(x, feat_cache, feat_idx)
+        x = self.mid_block(x, feat_cache, feat_idx)
 
         ## head 
         x = self.norm_out(x)
@@ -676,14 +592,14 @@ class WanDecoder3d(nn.Module):
         scale = 1.0 / 2 ** (len(dim_mult) - 2)
 
         # init block
-        self.conv1 = WanCausalConv3d(z_dim, dims[0], 3, padding=1)
+        self.conv_in = WanCausalConv3d(z_dim, dims[0], 3, padding=1)
 
         # middle blocks
-        self.middle = WanMidBlock(dims[0], dropout, non_linearity, num_layers=1)
+        self.mid_block = WanMidBlock(dims[0], dropout, non_linearity, num_layers=1)
 
 
         # upsample blocks
-        upsamples = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             # residual (+attention) blocks
             if i > 0:
@@ -703,13 +619,11 @@ class WanDecoder3d(nn.Module):
                 upsample_mode=upsample_mode,
                 non_linearity=non_linearity,
             )
-            upsamples.append(up_block)
+            self.up_blocks.append(up_block)
             
             # Update scale for next iteration
             if upsample_mode is not None:
                 scale *= 2.0
-
-        self.upsamples = upsamples
 
         # output blocks
         self.norm_out = WanRMS_norm(out_dim, images=False)
@@ -725,17 +639,17 @@ class WanDecoder3d(nn.Module):
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
                 cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-            x = self.conv1(x, feat_cache[idx])
+            x = self.conv_in(x, feat_cache[idx])
             feat_cache[idx] = cache_x
             feat_idx[0] += 1 
         else:
-            x = self.conv1(x) 
+            x = self.conv_in(x) 
         
         ## middle 
-        x = self.middle(x, feat_cache, feat_idx)
+        x = self.mid_block(x, feat_cache, feat_idx)
 
         ## upsamples 
-        for up_block in self.upsamples:
+        for up_block in self.up_blocks:
             x = up_block(x, feat_cache, feat_idx)
 
         ## head 
@@ -796,8 +710,8 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
             base_dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales,
             self.temperal_downsample, dropout
         )
-        self.conv1 = WanCausalConv3d(z_dim * 2, z_dim * 2, 1)
-        self.conv2 = WanCausalConv3d(z_dim, z_dim, 1)
+        self.quant_conv = WanCausalConv3d(z_dim * 2, z_dim * 2, 1)
+        self.post_quant_conv = WanCausalConv3d(z_dim, z_dim, 1)
         
         self.decoder = WanDecoder3d(
             base_dim, z_dim, dim_mult, num_res_blocks, attn_scales,
@@ -834,7 +748,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
                 out_ = self.encoder(x[:,:,1+4*(i-1):1+4*i,:,:], feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx)
                 out = torch.cat([out, out_], 2)  
 
-        enc = self.conv1(out) 
+        enc = self.quant_conv(out) 
         mu, logvar = enc[:, :self.z_dim, :, :, :], enc[:, self.z_dim:, :, :, :]
         mu = (mu - self.scale[0].view(1, self.z_dim, 1, 1, 1)) * self.scale[1].view(1, self.z_dim, 1, 1, 1)
         logvar = (logvar - self.scale[0].view(1, self.z_dim, 1, 1, 1)) * self.scale[1].view(1, self.z_dim, 1, 1, 1)
@@ -870,7 +784,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
         z = z / self.scale[1].view(1, self.z_dim, 1, 1, 1) + self.scale[0].view(1, self.z_dim, 1, 1, 1)
 
         iter_ = z.shape[2]
-        x = self.conv2(z)
+        x = self.post_quant_conv(z)
         for i in range(iter_):
             self._conv_idx = [0]
             if i == 0:
