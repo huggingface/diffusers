@@ -271,7 +271,7 @@ class WanResample(nn.Module):
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         b, c, t, h, w = x.size()
         if self.mode == 'upsample3d':     
-            if feat_cache is not None:                    
+            if feat_cache is not None:
                 idx = feat_idx[0]
                 if feat_cache[idx] is None: 
                     feat_cache[idx] = 'Rep'
@@ -403,7 +403,7 @@ class WanAttentionBlock(nn.Module):
         self.proj = nn.Conv2d(dim, dim, 1)
 
     
-    def forward(self, x): 
+    def forward(self, x):
         identity = x
         batch_size, channels, time, height, width = x.size()
         
@@ -427,7 +427,7 @@ class WanAttentionBlock(nn.Module):
         # Reshape back: [(b*t), c, h, w] -> [b, c, t, h, w]
         x = x.view(batch_size, time, channels, height, width)
         x = x.permute(0, 2, 1, 3, 4)
-        
+
         return x + identity
 
 
@@ -584,7 +584,6 @@ class WanUpBlock(nn.Module):
         out_dim (int): Output dimension
         num_res_blocks (int): Number of residual blocks
         dropout (float): Dropout rate
-        use_attention (bool): Whether to use attention
         upsample_mode (str, optional): Mode for upsampling ('upsample2d' or 'upsample3d')
         non_linearity (str): Type of non-linearity to use
     """
@@ -594,7 +593,6 @@ class WanUpBlock(nn.Module):
         out_dim: int,
         num_res_blocks: int,
         dropout: float = 0.0,
-        use_attention: bool = False,
         upsample_mode: Optional[str] = None,
         non_linearity: str = "silu",
     ):
@@ -604,17 +602,13 @@ class WanUpBlock(nn.Module):
         
         # Create layers list
         resnets = []
-        attentions = []
         # Add residual blocks and attention if needed
         current_dim = in_dim
         for _ in range(num_res_blocks + 1):
             resnets.append(WanResidualBlock(current_dim, out_dim, dropout, non_linearity))
-            if use_attention:
-                attentions.append(WanAttentionBlock(out_dim))
             current_dim = out_dim
         
         self.resnets = nn.ModuleList(resnets)
-        self.attentions = nn.ModuleList(attentions)
 
         # Add upsampling layer if needed
         self.upsamplers = None
@@ -635,128 +629,21 @@ class WanUpBlock(nn.Module):
         Returns:
             torch.Tensor: Output tensor
         """
-        for resnet, attention in zip(self.resnets, self.attentions):
+        for resnet in self.resnets:
             if feat_cache is not None:
                 x = resnet(x, feat_cache, feat_idx)
             else:
                 x = resnet(x)
-            if attention is not None:
-                x = attention(x)
+
         if self.upsamplers is not None:
-            x = self.upsamplers[0](x)
+            if feat_cache is not None:
+                x = self.upsamplers[0](x, feat_cache, feat_idx)
+            else:
+                x = self.upsamplers[0](x)
         return x
 
 
 class WanDecoder3d(nn.Module):
-    r"""
-    A 3D decoder module.
-
-    Args:
-        dim (int): The base number of channels in the first layer.
-        z_dim (int): The dimensionality of the latent space.
-        dim_mult (list of int): Multipliers for the number of channels in each block.
-        num_res_blocks (int): Number of residual blocks in each block.
-        attn_scales (list of float): Scales at which to apply attention mechanisms.
-        temperal_upsample (list of bool): Whether to upsample temporally in each block.
-        dropout (float): Dropout rate for the dropout layers.
-        non_linearity (str): Type of non-linearity to use.
-    """
-    def __init__(
-        self,
-        dim=128,
-        z_dim=4,
-        dim_mult=[1, 2, 4, 4],
-        num_res_blocks=2,
-        attn_scales=[],
-        temperal_upsample=[False, True, True],
-        dropout=0.0,
-        non_linearity: str = "silu",
-    ):
-        super().__init__()
-        self.dim = dim
-        self.z_dim = z_dim
-        self.dim_mult = dim_mult
-        self.num_res_blocks = num_res_blocks
-        self.attn_scales = attn_scales
-        self.temperal_upsample = temperal_upsample
-
-        self.nonlinearity = get_activation(non_linearity)
-
-        # dimensions
-        dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
-        scale = 1.0 / 2 ** (len(dim_mult) - 2)
-
-        # init block
-        self.conv1 = WanCausalConv3d(z_dim, dims[0], 3, padding=1)
-
-        # middle blocks
-        self.middle = WanMidBlock(dims[0], dropout, non_linearity, num_layers=1)
-        # upsample blocks
-        upsamples = []
-        for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
-            # residual (+attention) blocks
-            if i > 0:
-                in_dim = in_dim //2
-            for _ in range(num_res_blocks + 1):
-                upsamples.append(WanResidualBlock(in_dim, out_dim, dropout))
-                if scale in attn_scales:
-                    upsamples.append(WanAttentionBlock(out_dim))
-                in_dim = out_dim
-            
-            # upsample block
-            if i != len(dim_mult) - 1:
-                mode = 'upsample3d' if temperal_upsample[i] else 'upsample2d'
-                upsamples.append(WanResample(out_dim, mode=mode))
-                scale *= 2.0
-        self.upsamples = nn.Sequential(*upsamples)
-
-        # output blocks
-        self.head = nn.Sequential(
-            WanRMS_norm(out_dim, images=False),
-            self.nonlinearity,
-            WanCausalConv3d(out_dim, 3, 3, padding=1)
-        )
-    
-    def forward(self, x, feat_cache=None, feat_idx=[0]):
-        ## conv1
-        if feat_cache is not None:
-            idx = feat_idx[0]
-            cache_x = x[:, :, -CACHE_T:, :, :].clone()
-            if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
-                # cache last frame of last two chunk
-                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-            x = self.conv1(x, feat_cache[idx])
-            feat_cache[idx] = cache_x
-            feat_idx[0] += 1 
-        else:
-            x = self.conv1(x) 
-        
-        x = self.middle(x, feat_cache, feat_idx)
-
-        ## upsamples 
-        for layer in self.upsamples:
-            if feat_cache is not None:
-                x = layer(x, feat_cache, feat_idx)  
-            else:
-                x = layer(x) 
-
-        ## head 
-        for layer in self.head:
-            if isinstance(layer, WanCausalConv3d) and feat_cache is not None:
-                idx = feat_idx[0]
-                cache_x = x[:, :, -CACHE_T:, :, :].clone()
-                if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
-                    # cache last frame of last two chunk
-                    cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-                x = layer(x, feat_cache[idx])
-                feat_cache[idx] = cache_x
-                feat_idx[0] += 1 
-            else:
-                x = layer(x)  
-        return x
-
-
-class WanDecoder3dYiYi(nn.Module):
     r"""
     A 3D decoder module.
 
@@ -809,8 +696,7 @@ class WanDecoder3dYiYi(nn.Module):
             if i > 0:
                 in_dim = in_dim // 2
             
-            # Determine if we need attention and upsampling
-            use_attention = scale in attn_scales
+            # Determine if we need upsampling
             upsample_mode = None
             if i != len(dim_mult) - 1:
                 upsample_mode = 'upsample3d' if temperal_upsample[i] else 'upsample2d'
@@ -821,7 +707,6 @@ class WanDecoder3dYiYi(nn.Module):
                 out_dim=out_dim,
                 num_res_blocks=num_res_blocks,
                 dropout=dropout,
-                use_attention=use_attention,
                 upsample_mode=upsample_mode,
                 non_linearity=non_linearity,
             )
