@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO: `imghdr` is deprecated in Python 3.13 🙄
+import imghdr
 import io
 import json
 from typing import List, Literal, Optional, Union, cast
@@ -115,6 +117,8 @@ def postprocess(
                     )
     elif output_type == "pil" and return_type == "pil" and processor is None:
         output = Image.open(io.BytesIO(response.content)).convert("RGB")
+        detected_format = imghdr.what(None, h=response.content)
+        output.format = detected_format
     elif output_type == "pil" and processor is not None:
         if return_type == "pil":
             output = [
