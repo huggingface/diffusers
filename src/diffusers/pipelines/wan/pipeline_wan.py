@@ -199,6 +199,7 @@ class WanPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        do_classifier_free_guidance: bool = False,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -216,6 +217,8 @@ class WanPipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
+            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
+                Whether to use classifier free guidance or not.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
             prompt_embeds (`torch.Tensor`, *optional*):
@@ -247,7 +250,7 @@ class WanPipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
-        if negative_prompt_embeds is None:
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
@@ -349,6 +352,10 @@ class WanPipeline(DiffusionPipeline):
         return self._guidance_scale
 
     @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1.0
+
+    @property
     def num_timesteps(self):
         return self._num_timesteps
 
@@ -377,7 +384,6 @@ class WanPipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         callback_on_step_end: Optional[
@@ -477,6 +483,7 @@ class WanPipeline(DiffusionPipeline):
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
             num_videos_per_prompt=num_videos_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -486,7 +493,8 @@ class WanPipeline(DiffusionPipeline):
 
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
-        negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+        if negative_prompt_embeds is not None:
+            negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.flow_shift = flow_shift
@@ -523,22 +531,22 @@ class WanPipeline(DiffusionPipeline):
                 latent_model_input = latents.to(transformer_dtype)
                 timestep = t.expand(latents.shape[0]).to(transformer_dtype)
 
-                noise_pred = self.transformer(
+                noise_cond = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     return_dict=False,
                 )[0]
 
-                noise_pred_negative = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=negative_prompt_embeds,
-                    return_dict=False,
-                )[0]
-
-                noise_pred = noise_pred_negative + guidance_scale * (noise_pred - noise_pred_negative)
-
+                if self.do_classifier_free_guidance:
+                    noise_uncond = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        return_dict=False,
+                    )[0]
+                    noise_pred = noise_uncond + guidance_scale * (noise_cond - noise_uncond)
+                
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
