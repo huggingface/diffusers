@@ -98,7 +98,7 @@ class LuminaNextDiTBlock(nn.Module):
 
         self.feed_forward = LuminaFeedForward(
             dim=dim,
-            inner_dim=4 * dim,
+            inner_dim=int(4 * 2 * dim / 3),
             multiple_of=multiple_of,
             ffn_dim_multiplier=ffn_dim_multiplier,
         )
@@ -220,6 +220,8 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             A scaling factor applied to certain parameters or layers in the model. This can be used for adjusting the
             overall scale of the model's operations.
     """
+
+    _skip_layerwise_casting_patterns = ["patch_embedder", "norm", "ffn_norm"]
 
     @register_to_config
     def __init__(

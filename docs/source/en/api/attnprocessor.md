@@ -147,3 +147,20 @@ An attention processor is a class for applying different types of attention mech
 ## XLAFlashAttnProcessor2_0
 
 [[autodoc]] models.attention_processor.XLAFlashAttnProcessor2_0
+
+## XFormersJointAttnProcessor
+
+[[autodoc]] models.attention_processor.XFormersJointAttnProcessor
+
+## IPAdapterXFormersAttnProcessor
+
+[[autodoc]] models.attention_processor.IPAdapterXFormersAttnProcessor
+
+## FluxIPAdapterJointAttnProcessor2_0
+
+[[autodoc]] models.attention_processor.FluxIPAdapterJointAttnProcessor2_0
+
+
+## XLAFluxFlashAttnProcessor2_0
+
+[[autodoc]] models.attention_processor.XLAFluxFlashAttnProcessor2_0

@@ -31,7 +31,14 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    load_image,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...models.autoencoders.vae import (
@@ -50,7 +57,6 @@ from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -61,7 +67,6 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLControlNetXSPipeline
@@ -71,6 +76,8 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     test_attention_slicing = False
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -192,7 +199,11 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    @require_torch_gpu
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
+    @require_torch_accelerator
     # Copied from test_controlnet_sdxl.py
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
@@ -202,12 +213,12 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -276,49 +287,6 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-    # Copied from test_stable_diffusion_xl.py
-    def test_stable_diffusion_xl_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward without prompt embeds
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt"] = 2 * [inputs["prompt"]]
-        inputs["num_images_per_prompt"] = 2
-
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
-
-        # forward with prompt embeds
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = 2 * [inputs.pop("prompt")]
-
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = sd_pipe.encode_prompt(prompt)
-
-        output = sd_pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-        )
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1.1e-4
-
-    # Copied from test_stable_diffusion_xl.py
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     # Copied from test_controlnetxs.py
     def test_to_dtype(self):
         components = self.get_dummy_components()
@@ -369,12 +337,12 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_canny(self):
         controlnet = ControlNetXSAdapter.from_pretrained(
@@ -383,7 +351,7 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -407,7 +375,7 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
         )
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)

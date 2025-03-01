@@ -17,10 +17,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import (
-    BaseImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    PreTrainedModel,
+    SiglipImageProcessor,
+    SiglipVisionModel,
     T5EncoderModel,
     T5TokenizerFast,
 )
@@ -178,9 +178,9 @@ class StableDiffusion3ControlNetPipeline(
             Provides additional conditioning to the `unet` during the denoising process. If you set multiple
             ControlNets as a list, the outputs from each ControlNet are added together to create one combined
             additional conditioning.
-        image_encoder (`PreTrainedModel`, *optional*):
+        image_encoder (`SiglipVisionModel`, *optional*):
             Pre-trained Vision Model for IP Adapter.
-        feature_extractor (`BaseImageProcessor`, *optional*):
+        feature_extractor (`SiglipImageProcessor`, *optional*):
             Image processor for IP Adapter.
     """
 
@@ -202,8 +202,8 @@ class StableDiffusion3ControlNetPipeline(
         controlnet: Union[
             SD3ControlNetModel, List[SD3ControlNetModel], Tuple[SD3ControlNetModel], SD3MultiControlNetModel
         ],
-        image_encoder: PreTrainedModel = None,
-        feature_extractor: BaseImageProcessor = None,
+        image_encoder: Optional[SiglipVisionModel] = None,
+        feature_extractor: Optional[SiglipImageProcessor] = None,
     ):
         super().__init__()
         if isinstance(controlnet, (list, tuple)):
@@ -404,9 +404,9 @@ class StableDiffusion3ControlNetPipeline(
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in all the text-encoders.
-            negative_prompt_2 (`str` or `List[str]`, *optional*):
+            negative_prompt_3 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_3` and
-                `text_encoder_3`. If not defined, `negative_prompt` is used in both text-encoders
+                `text_encoder_3`. If not defined, `negative_prompt` is used in all the text-encoders.
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.

@@ -56,6 +56,8 @@ class KolorsPAGPipelineFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"add_text_embeds", "add_time_ids"})
 
+    supports_dduf = False
+
     # Copied from tests.pipelines.kolors.test_kolors.KolorsPipelineFastTests.get_dummy_components
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -96,7 +98,9 @@ class KolorsPAGPipelineFastTests(
             sample_size=128,
         )
         torch.manual_seed(0)
-        text_encoder = ChatGLMModel.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
+        text_encoder = ChatGLMModel.from_pretrained(
+            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.bfloat16
+        )
         tokenizer = ChatGLMTokenizer.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
 
         components = {
@@ -250,3 +254,6 @@ class KolorsPAGPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_encode_prompt_works_in_isolation(self):
+        return super().test_encode_prompt_works_in_isolation(atol=1e-3, rtol=1e-3)

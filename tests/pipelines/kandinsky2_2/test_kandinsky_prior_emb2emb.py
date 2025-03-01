@@ -59,6 +59,8 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     @property
     def text_embedder_hidden_size(self):
         return 32

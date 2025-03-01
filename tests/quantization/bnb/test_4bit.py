@@ -20,6 +20,7 @@ import unittest
 import numpy as np
 import pytest
 import safetensors.torch
+from huggingface_hub import hf_hub_download
 
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
 from diffusers.utils import is_accelerate_version, logging
@@ -135,7 +136,7 @@ class BnB4BitBasicTests(Base4bitTests):
             bnb_4bit_compute_dtype=torch.float16,
         )
         self.model_4bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=nf4_config
+            self.model_name, subfolder="transformer", quantization_config=nf4_config, device_map=torch_device
         )
 
     def tearDown(self):
@@ -201,7 +202,7 @@ class BnB4BitBasicTests(Base4bitTests):
             bnb_4bit_compute_dtype=torch.float16,
         )
         model = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=nf4_config
+            self.model_name, subfolder="transformer", quantization_config=nf4_config, device_map=torch_device
         )
 
         for name, module in model.named_modules():
@@ -326,7 +327,7 @@ class BnB4BitBasicTests(Base4bitTests):
         with tempfile.TemporaryDirectory() as tmpdirname:
             nf4_config = BitsAndBytesConfig(load_in_4bit=True)
             model_4bit = SD3Transformer2DModel.from_pretrained(
-                self.model_name, subfolder="transformer", quantization_config=nf4_config
+                self.model_name, subfolder="transformer", quantization_config=nf4_config, device_map=torch_device
             )
             model_4bit.save_pretrained(tmpdirname)
             del model_4bit
@@ -361,7 +362,7 @@ class BnB4BitTrainingTests(Base4bitTests):
             bnb_4bit_compute_dtype=torch.float16,
         )
         self.model_4bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=nf4_config
+            self.model_name, subfolder="transformer", quantization_config=nf4_config, device_map=torch_device
         )
 
     def test_training(self):
@@ -409,7 +410,7 @@ class SlowBnb4BitTests(Base4bitTests):
             bnb_4bit_compute_dtype=torch.float16,
         )
         model_4bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=nf4_config
+            self.model_name, subfolder="transformer", quantization_config=nf4_config, device_map=torch_device
         )
         self.pipeline_4bit = DiffusionPipeline.from_pretrained(
             self.model_name, transformer=model_4bit, torch_dtype=torch.float16
@@ -471,7 +472,7 @@ class SlowBnb4BitTests(Base4bitTests):
             bnb_4bit_compute_dtype=torch.float16,
         )
         model_4bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=nf4_config
+            self.model_name, subfolder="transformer", quantization_config=nf4_config, device_map=torch_device
         )
 
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
@@ -501,6 +502,7 @@ class SlowBnb4BitTests(Base4bitTests):
             subfolder="transformer",
             quantization_config=transformer_nf4_config,
             torch_dtype=torch.float16,
+            device_map=torch_device,
         )
         text_encoder_3_nf4_config = BnbConfig(
             load_in_4bit=True,
@@ -512,6 +514,7 @@ class SlowBnb4BitTests(Base4bitTests):
             subfolder="text_encoder_3",
             quantization_config=text_encoder_3_nf4_config,
             torch_dtype=torch.float16,
+            device_map=torch_device,
         )
         # CUDA device placement works.
         pipeline_4bit = DiffusionPipeline.from_pretrained(
@@ -525,6 +528,94 @@ class SlowBnb4BitTests(Base4bitTests):
         _ = pipeline_4bit("table", max_sequence_length=20, num_inference_steps=2)
 
         del pipeline_4bit
+
+    def test_device_map(self):
+        """
+        Test if the quantized model is working properly with "auto".
+        cpu/disk offloading as well doesn't work with bnb.
+        """
+
+        def get_dummy_tensor_inputs(device=None, seed: int = 0):
+            batch_size = 1
+            num_latent_channels = 4
+            num_image_channels = 3
+            height = width = 4
+            sequence_length = 48
+            embedding_dim = 32
+
+            torch.manual_seed(seed)
+            hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(
+                device, dtype=torch.bfloat16
+            )
+            torch.manual_seed(seed)
+            encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(
+                device, dtype=torch.bfloat16
+            )
+
+            torch.manual_seed(seed)
+            pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(device, dtype=torch.bfloat16)
+
+            torch.manual_seed(seed)
+            text_ids = torch.randn((sequence_length, num_image_channels)).to(device, dtype=torch.bfloat16)
+
+            torch.manual_seed(seed)
+            image_ids = torch.randn((height * width, num_image_channels)).to(device, dtype=torch.bfloat16)
+
+            timestep = torch.tensor([1.0]).to(device, dtype=torch.bfloat16).expand(batch_size)
+
+            return {
+                "hidden_states": hidden_states,
+                "encoder_hidden_states": encoder_hidden_states,
+                "pooled_projections": pooled_prompt_embeds,
+                "txt_ids": text_ids,
+                "img_ids": image_ids,
+                "timestep": timestep,
+            }
+
+        inputs = get_dummy_tensor_inputs(torch_device)
+        expected_slice = np.array(
+            [0.47070312, 0.00390625, -0.03662109, -0.19628906, -0.53125, 0.5234375, -0.17089844, -0.59375, 0.578125]
+        )
+
+        # non sharded
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16
+        )
+        quantized_model = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/tiny-flux-pipe",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+        )
+
+        weight = quantized_model.transformer_blocks[0].ff.net[2].weight
+        self.assertTrue(isinstance(weight, bnb.nn.modules.Params4bit))
+
+        output = quantized_model(**inputs)[0]
+        output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+
+        # sharded
+
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16
+        )
+        quantized_model = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/tiny-flux-sharded",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+        )
+
+        weight = quantized_model.transformer_blocks[0].ff.net[2].weight
+        self.assertTrue(isinstance(weight, bnb.nn.modules.Params4bit))
+
+        output = quantized_model(**inputs)[0]
+        output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+
+        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
 
 @require_transformers_version_greater("4.44.0")
@@ -568,6 +659,27 @@ class SlowBnb4BitFluxTests(Base4bitTests):
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3)
 
+    def test_lora_loading(self):
+        self.pipeline_4bit.load_lora_weights(
+            hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
+        )
+        self.pipeline_4bit.set_adapters("hyper-sd", adapter_weights=0.125)
+
+        output = self.pipeline_4bit(
+            prompt=self.prompt,
+            height=256,
+            width=256,
+            max_sequence_length=64,
+            output_type="np",
+            num_inference_steps=8,
+            generator=torch.Generator().manual_seed(42),
+        ).images
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.5347, 0.5342, 0.5283, 0.5093, 0.4988, 0.5093, 0.5044, 0.5015, 0.4946])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3)
+
 
 @slow
 class BaseBnb4BitSerializationTests(Base4bitTests):
@@ -588,7 +700,10 @@ class BaseBnb4BitSerializationTests(Base4bitTests):
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
         model_0 = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=self.quantization_config
+            self.model_name,
+            subfolder="transformer",
+            quantization_config=self.quantization_config,
+            device_map=torch_device,
         )
         self.assertTrue("_pre_quantization_dtype" in model_0.config)
         with tempfile.TemporaryDirectory() as tmpdirname:

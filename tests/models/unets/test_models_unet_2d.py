@@ -383,6 +383,7 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
 
+    @unittest.skip("Test not supported.")
     def test_forward_with_norm_groups(self):
         # not required for this model
         pass
@@ -400,3 +401,15 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
     def test_effective_gradient_checkpointing(self):
         super().test_effective_gradient_checkpointing(skip={"time_proj.weight"})
+
+    @unittest.skip(
+        "To make layerwise casting work with this model, we will have to update the implementation. Due to potentially low usage, we don't support it here."
+    )
+    def test_layerwise_casting_inference(self):
+        pass
+
+    @unittest.skip(
+        "To make layerwise casting work with this model, we will have to update the implementation. Due to potentially low usage, we don't support it here."
+    )
+    def test_layerwise_casting_memory(self):
+        pass

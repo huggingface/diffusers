@@ -78,6 +78,8 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             Whether to use exponential sigmas for step sizes in the noise schedule during sampling.
         use_beta_sigmas (`bool`, defaults to False):
             Whether to use beta sigmas for step sizes in the noise schedule during sampling.
+        time_shift_type (`str`, defaults to "exponential"):
+            The type of dynamic resolution-dependent timestep shifting to apply. Either "exponential" or "linear".
     """
 
     _compatibles = []
@@ -88,7 +90,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_train_timesteps: int = 1000,
         shift: float = 1.0,
-        use_dynamic_shifting=False,
+        use_dynamic_shifting: bool = False,
         base_shift: Optional[float] = 0.5,
         max_shift: Optional[float] = 1.15,
         base_image_seq_len: Optional[int] = 256,
@@ -98,6 +100,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas: Optional[bool] = False,
         use_exponential_sigmas: Optional[bool] = False,
         use_beta_sigmas: Optional[bool] = False,
+        time_shift_type: str = "exponential",
     ):
         if self.config.use_beta_sigmas and not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
@@ -105,6 +108,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 "Only one of `config.use_beta_sigmas`, `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used."
             )
+        if time_shift_type not in {"exponential", "linear"}:
+            raise ValueError("`time_shift_type` must either be 'exponential' or 'linear'.")
+
         timesteps = np.linspace(1, num_train_timesteps, num_train_timesteps, dtype=np.float32)[::-1].copy()
         timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
 
@@ -211,7 +217,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return sigma * self.config.num_train_timesteps
 
     def time_shift(self, mu: float, sigma: float, t: torch.Tensor):
-        return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
+        if self.config.time_shift_type == "exponential":
+            return self._time_shift_exponential(mu, sigma, t)
+        elif self.config.time_shift_type == "linear":
+            return self._time_shift_linear(mu, sigma, t)
 
     def stretch_shift_to_terminal(self, t: torch.Tensor) -> torch.Tensor:
         r"""
@@ -236,54 +245,94 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: int = None,
+        num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
         sigmas: Optional[List[float]] = None,
         mu: Optional[float] = None,
+        timesteps: Optional[List[float]] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
-            num_inference_steps (`int`):
+            num_inference_steps (`int`, *optional*):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            sigmas (`List[float]`, *optional*):
+                Custom values for sigmas to be used for each diffusion step. If `None`, the sigmas are computed
+                automatically.
+            mu (`float`, *optional*):
+                Determines the amount of shifting applied to sigmas when performing resolution-dependent timestep
+                shifting.
+            timesteps (`List[float]`, *optional*):
+                Custom values for timesteps to be used for each diffusion step. If `None`, the timesteps are computed
+                automatically.
         """
         if self.config.use_dynamic_shifting and mu is None:
-            raise ValueError(" you have a pass a value for `mu` when `use_dynamic_shifting` is set to be `True`")
+            raise ValueError("`mu` must be passed when `use_dynamic_shifting` is set to be `True`")
+
+        if sigmas is not None and timesteps is not None:
+            if len(sigmas) != len(timesteps):
+                raise ValueError("`sigmas` and `timesteps` should have the same length")
+
+        if num_inference_steps is not None:
+            if (sigmas is not None and len(sigmas) != num_inference_steps) or (
+                timesteps is not None and len(timesteps) != num_inference_steps
+            ):
+                raise ValueError(
+                    "`sigmas` and `timesteps` should have the same length as num_inference_steps, if `num_inference_steps` is provided"
+                )
+        else:
+            num_inference_steps = len(sigmas) if sigmas is not None else len(timesteps)
+
+        self.num_inference_steps = num_inference_steps
+
+        # 1. Prepare default sigmas
+        is_timesteps_provided = timesteps is not None
+
+        if is_timesteps_provided:
+            timesteps = np.array(timesteps).astype(np.float32)
 
         if sigmas is None:
-            timesteps = np.linspace(
-                self._sigma_to_t(self.sigma_max), self._sigma_to_t(self.sigma_min), num_inference_steps
-            )
-
+            if timesteps is None:
+                timesteps = np.linspace(
+                    self._sigma_to_t(self.sigma_max), self._sigma_to_t(self.sigma_min), num_inference_steps
+                )
             sigmas = timesteps / self.config.num_train_timesteps
         else:
             sigmas = np.array(sigmas).astype(np.float32)
             num_inference_steps = len(sigmas)
-        self.num_inference_steps = num_inference_steps
 
+        # 2. Perform timestep shifting. Either no shifting is applied, or resolution-dependent shifting of
+        #    "exponential" or "linear" type is applied
         if self.config.use_dynamic_shifting:
             sigmas = self.time_shift(mu, 1.0, sigmas)
         else:
             sigmas = self.shift * sigmas / (1 + (self.shift - 1) * sigmas)
 
+        # 3. If required, stretch the sigmas schedule to terminate at the configured `shift_terminal` value
         if self.config.shift_terminal:
             sigmas = self.stretch_shift_to_terminal(sigmas)
 
+        # 4. If required, convert sigmas to one of karras, exponential, or beta sigma schedules
         if self.config.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
-
         elif self.config.use_exponential_sigmas:
             sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
-
         elif self.config.use_beta_sigmas:
             sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
 
+        # 5. Convert sigmas and timesteps to tensors and move to specified device
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
-        timesteps = sigmas * self.config.num_train_timesteps
+        if not is_timesteps_provided:
+            timesteps = sigmas * self.config.num_train_timesteps
+        else:
+            timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32, device=device)
 
+        # 6. Append the terminal sigma value.
+        #    If a model requires inverted sigma schedule for denoising but timesteps without inversion, the
+        #    `invert_sigmas` flag can be set to `True`. This case is only required in Mochi
         if self.config.invert_sigmas:
             sigmas = 1.0 - sigmas
             timesteps = sigmas * self.config.num_train_timesteps
@@ -291,7 +340,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 
-        self.timesteps = timesteps.to(device=device)
+        self.timesteps = timesteps
         self.sigmas = sigmas
         self._step_index = None
         self._begin_index = None
@@ -349,13 +398,14 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             return_dict (`bool`):
-                Whether or not to return a [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] or
-                tuple.
+                Whether or not to return a
+                [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or tuple.
 
         Returns:
-            [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] is
-                returned, otherwise a tuple is returned where the first element is the sample tensor.
+            [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or `tuple`:
+                If return_dict is `True`,
+                [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] is returned,
+                otherwise a tuple is returned where the first element is the sample tensor.
         """
 
         if (
@@ -366,7 +416,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 (
                     "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                    " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                    " `FlowMatchEulerDiscreteScheduler.step()` is not supported. Make sure to pass"
                     " one of the `scheduler.timesteps` as a timestep."
                 ),
             )
@@ -472,6 +522,12 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             ]
         )
         return sigmas
+
+    def _time_shift_exponential(self, mu, sigma, t):
+        return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
+
+    def _time_shift_linear(self, mu, sigma, t):
+        return mu / (mu + (1 / t - 1) ** sigma)
 
     def __len__(self):
         return self.config.num_train_timesteps

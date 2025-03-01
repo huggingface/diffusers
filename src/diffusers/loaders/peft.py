@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,10 +47,12 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "SD3Transformer2DModel": lambda model_cls, weights: weights,
     "FluxTransformer2DModel": lambda model_cls, weights: weights,
     "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
+    "ConsisIDTransformer3DModel": lambda model_cls, weights: weights,
     "MochiTransformer3DModel": lambda model_cls, weights: weights,
     "HunyuanVideoTransformer3DModel": lambda model_cls, weights: weights,
     "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
+    "Lumina2Transformer2DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -61,6 +63,9 @@ def _maybe_adjust_config(config):
     method removes the ambiguity by following what is described here:
     https://github.com/huggingface/diffusers/pull/9985#issuecomment-2493840028.
     """
+    # Track keys that have been explicitly removed to prevent re-adding them.
+    deleted_keys = set()
+
     rank_pattern = config["rank_pattern"].copy()
     target_modules = config["target_modules"]
     original_r = config["r"]
@@ -78,21 +83,22 @@ def _maybe_adjust_config(config):
         ambiguous_key = key
 
         if exact_matches and substring_matches:
-            # if ambiguous we update the rank associated with the ambiguous key (`proj_out`, for example)
+            # if ambiguous, update the rank associated with the ambiguous key (`proj_out`, for example)
             config["r"] = key_rank
-            # remove the ambiguous key from `rank_pattern` and update its rank to `r`, instead
+            # remove the ambiguous key from `rank_pattern` and record it as deleted
             del config["rank_pattern"][key]
+            deleted_keys.add(key)
+            # For substring matches, add them with the original rank only if they haven't been assigned already
             for mod in substring_matches:
-                # avoid overwriting if the module already has a specific rank
-                if mod not in config["rank_pattern"]:
+                if mod not in config["rank_pattern"] and mod not in deleted_keys:
                     config["rank_pattern"][mod] = original_r
 
-            # update the rest of the keys with the `original_r`
+            # Update the rest of the target modules with the original rank if not already set and not deleted
             for mod in target_modules:
-                if mod != ambiguous_key and mod not in config["rank_pattern"]:
+                if mod != ambiguous_key and mod not in config["rank_pattern"] and mod not in deleted_keys:
                     config["rank_pattern"][mod] = original_r
 
-    # handle alphas to deal with cases like
+    # Handle alphas to deal with cases like:
     # https://github.com/huggingface/diffusers/pull/9999#issuecomment-2516180777
     has_different_ranks = len(config["rank_pattern"]) > 1 and list(config["rank_pattern"])[0] != config["r"]
     if has_different_ranks:
@@ -185,6 +191,11 @@ class PeftAdapterMixin:
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
 
+        try:
+            from peft.utils.constants import FULLY_QUALIFIED_PATTERN_KEY_PREFIX
+        except ImportError:
+            FULLY_QUALIFIED_PATTERN_KEY_PREFIX = None
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -249,14 +260,22 @@ class PeftAdapterMixin:
                 # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
                 # Bias layers in LoRA only have a single dimension
                 if "lora_B" in key and val.ndim > 1:
-                    rank[key] = val.shape[1]
+                    # Support to handle cases where layer patterns are treated as full layer names
+                    # was added later in PEFT. So, we handle it accordingly.
+                    # TODO: when we fix the minimal PEFT version for Diffusers,
+                    # we should remove `_maybe_adjust_config()`.
+                    if FULLY_QUALIFIED_PATTERN_KEY_PREFIX:
+                        rank[f"{FULLY_QUALIFIED_PATTERN_KEY_PREFIX}{key}"] = val.shape[1]
+                    else:
+                        rank[key] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
                 alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
-            lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
+            if not FULLY_QUALIFIED_PATTERN_KEY_PREFIX:
+                lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
 
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
@@ -300,15 +319,17 @@ class PeftAdapterMixin:
             try:
                 inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
                 incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
-            except RuntimeError as e:
-                for module in self.modules():
-                    if isinstance(module, BaseTunerLayer):
-                        active_adapters = module.active_adapters
-                        for active_adapter in active_adapters:
-                            if adapter_name in active_adapter:
-                                module.delete_adapter(adapter_name)
+            except Exception as e:
+                # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
+                if hasattr(self, "peft_config"):
+                    for module in self.modules():
+                        if isinstance(module, BaseTunerLayer):
+                            active_adapters = module.active_adapters
+                            for active_adapter in active_adapters:
+                                if adapter_name in active_adapter:
+                                    module.delete_adapter(adapter_name)
 
-                self.peft_config.pop(adapter_name)
+                    self.peft_config.pop(adapter_name)
                 logger.error(f"Loading {adapter_name} was unsucessful with the following error: \n{e}")
                 raise
 

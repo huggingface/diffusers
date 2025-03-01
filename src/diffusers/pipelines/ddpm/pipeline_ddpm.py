@@ -17,6 +17,8 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
+from ...models import UNet2DModel
+from ...schedulers import DDPMScheduler
 from ...utils import is_torch_xla_available
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
@@ -47,7 +49,7 @@ class DDPMPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "unet"
 
-    def __init__(self, unet, scheduler):
+    def __init__(self, unet: UNet2DModel, scheduler: DDPMScheduler):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
 

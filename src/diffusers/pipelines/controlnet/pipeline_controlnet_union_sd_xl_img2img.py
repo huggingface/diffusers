@@ -252,12 +252,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         "feature_extractor",
         "image_encoder",
     ]
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "add_text_embeds",
-        "add_time_ids",
-    ]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "add_text_embeds", "add_time_ids", "control_image"]
 
     def __init__(
         self,
@@ -743,26 +738,6 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
             and isinstance(self.controlnet._orig_mod, ControlNetUnionModel)
         ):
             self.check_image(image, prompt, prompt_embeds)
-        else:
-            assert False
-
-        # Check `controlnet_conditioning_scale`
-        if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
-        ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-
-        elif (
-            isinstance(self.controlnet, ControlNetUnionModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetUnionModel)
-        ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-
         else:
             assert False
 
@@ -1306,6 +1281,8 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
 
         if not isinstance(control_image, list):
             control_image = [control_image]
+        else:
+            control_image = control_image.copy()
 
         if not isinstance(control_mode, list):
             control_mode = [control_mode]
@@ -1580,6 +1557,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
                     add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
+                    control_image = callback_outputs.pop("control_image", control_image)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
