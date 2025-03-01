@@ -751,7 +751,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
         self._enc_feat_map = [None] * self._enc_conv_num
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
-        self.scale = self.scale.to(x.device)
+        scale = self.scale.type_as(x)
         self.clear_cache()
         ## cache
         t = x.shape[2]
@@ -770,8 +770,8 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
 
         enc = self.quant_conv(out)
         mu, logvar = enc[:, : self.z_dim, :, :, :], enc[:, self.z_dim :, :, :, :]
-        mu = (mu - self.scale[0].view(1, self.z_dim, 1, 1, 1)) * self.scale[1].view(1, self.z_dim, 1, 1, 1)
-        logvar = (logvar - self.scale[0].view(1, self.z_dim, 1, 1, 1)) * self.scale[1].view(1, self.z_dim, 1, 1, 1)
+        mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(1, self.z_dim, 1, 1, 1)
+        logvar = (logvar - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(1, self.z_dim, 1, 1, 1)
         enc = torch.cat([mu, logvar], dim=1)
         self.clear_cache()
         return enc
@@ -801,7 +801,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
     def _decode(self, z: torch.Tensor, scale, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         self.clear_cache()
         # z: [b,c,t,h,w]
-        z = z / self.scale[1].view(1, self.z_dim, 1, 1, 1) + self.scale[0].view(1, self.z_dim, 1, 1, 1)
+        z = z / scale[1].view(1, self.z_dim, 1, 1, 1) + scale[0].view(1, self.z_dim, 1, 1, 1)
 
         iter_ = z.shape[2]
         x = self.post_quant_conv(z)
@@ -835,8 +835,8 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
         """
-        self.scale = self.scale.to(z.device)
-        decoded = self._decode(z, self.scale).sample
+        scale = self.scale.type_as(z)
+        decoded = self._decode(z, scale).sample
         if not return_dict:
             return (decoded,)
 
