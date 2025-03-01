@@ -192,7 +192,7 @@ def remote_decode(
     width: Optional[int] = None,
 ) -> Union[Image.Image, List[Image.Image], bytes, "torch.Tensor"]:
     """
-    Hugging Face Hybrid Inference
+    Hugging Face Hybrid Inference that allow running VAE decode remotely.
 
     Args:
         endpoint (`str`):
