@@ -526,7 +526,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
 
             text_input_ids = text_inputs.input_ids
             negative_prompt_attention_mask = text_inputs.attention_mask
-            if self.transformer.config.enable_text_attention_mask:
+            if self.enable_text_attention_mask:
                 # Inference: Generation of the output
                 negative_prompt_embeds = self.text_encoder(
                     input_ids=text_input_ids,
@@ -538,7 +538,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         if do_classifier_free_guidance:
-            breakpoint()
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
