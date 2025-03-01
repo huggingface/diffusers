@@ -18,11 +18,7 @@ from collections import OrderedDict
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
-from ..loaders.single_file_utils import (
-    get_keyword_types,
-    infer_diffusers_model_type,
-    load_single_file_checkpoint,
-)
+from ..loaders.single_file_utils import get_keyword_types, infer_diffusers_model_type, load_single_file_checkpoint
 from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .animatediff import AnimateDiffPipeline, AnimateDiffSDXLPipeline
@@ -40,10 +36,7 @@ from .controlnet import (
     StableDiffusionXLControlNetUnionInpaintPipeline,
     StableDiffusionXLControlNetUnionPipeline,
 )
-from .controlnet_sd3 import (
-    StableDiffusion3ControlNetInpaintingPipeline,
-    StableDiffusion3ControlNetPipeline,
-)
+from .controlnet_sd3 import StableDiffusion3ControlNetInpaintingPipeline, StableDiffusion3ControlNetPipeline
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .flux import (
     FluxControlImg2ImgPipeline,
@@ -74,10 +67,7 @@ from .kandinsky2_2 import (
     KandinskyV22Pipeline,
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
-from .latent_consistency_models import (
-    LatentConsistencyModelImg2ImgPipeline,
-    LatentConsistencyModelPipeline,
-)
+from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .lumina import LuminaText2ImgPipeline
 from .lumina2 import Lumina2Text2ImgPipeline
 from .pag import (
@@ -296,7 +286,7 @@ SINGLE_FILE_CHECKPOINT_IMAGE2IMAGE_PIPELINE_MAPPING = OrderedDict(
         ("hunyuan-video", None),
         ("inpainting", None),
         ("inpainting_v2", None),
-        ("instruct-pix2pix", StableDiffusionInstructPix2PixPipeline)
+        ("instruct-pix2pix", StableDiffusionInstructPix2PixPipeline),
         ("lumina2", None),
         ("ltx-video", None),
         ("ltx-video-0.9.1", None),
