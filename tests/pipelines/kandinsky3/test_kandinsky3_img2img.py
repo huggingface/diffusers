@@ -180,9 +180,9 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             [0.576259, 0.6132097, 0.41703486, 0.603196, 0.62062526, 0.4655338, 0.5434324, 0.5660727, 0.65433365]
         )
 
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
+            f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        )
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=1e-1)

@@ -58,9 +58,9 @@ class ControlNetModelSingleFileTests(unittest.TestCase):
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between single file loading and pretrained loading"
+            )
 
     def test_single_file_arguments(self):
         model_default = self.model_class.from_single_file(self.ckpt_path)

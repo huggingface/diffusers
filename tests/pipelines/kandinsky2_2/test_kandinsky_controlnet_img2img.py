@@ -218,12 +218,12 @@ class KandinskyV22ControlnetImg2ImgPipelineFastTests(PipelineTesterMixin, unitte
         expected_slice = np.array(
             [0.54985034, 0.55509365, 0.52561504, 0.5570494, 0.5593818, 0.5263979, 0.50285643, 0.5069846, 0.51196736]
         )
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-        assert (
-            np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
-        ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
+            f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        )
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2, (
+            f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+        )
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1.75e-3)
@@ -254,7 +254,7 @@ class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
         init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         )
         init_image = init_image.resize((512, 512))
 

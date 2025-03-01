@@ -216,9 +216,9 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
                     prediction_type=prediction_type,
                     timestep_spacing=timestep_spacing,
                 )
-                assert (
-                    torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
-                ), f"Scheduler outputs are not identical for prediction_type: {prediction_type}, timestep_spacing: {timestep_spacing}"
+                assert torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5, (
+                    f"Scheduler outputs are not identical for prediction_type: {prediction_type}, timestep_spacing: {timestep_spacing}"
+                )
 
     def test_beta_sigmas(self):
         self.check_over_configs(use_beta_sigmas=True)
