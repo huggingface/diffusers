@@ -21,7 +21,7 @@ import torch
 from transformers import AutoTokenizer, GlmModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import VaeImageProcessor
+from ...image_processor import VaeImageProcessor, PipelineImageInput
 from ...models import AutoencoderKL, CogView4Transformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import CogView4Pipeline
 
-        >>> pipe = CogView4Pipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16)
+        >>> pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B-Control", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A photo of an astronaut riding a horse on mars"
@@ -66,6 +66,7 @@ def calculate_shift(
     return mu
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -133,7 +134,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class CogView4Pipeline(DiffusionPipeline):
+class CogView4ControlPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using CogView4.
 
@@ -179,7 +180,9 @@ class CogView4Pipeline(DiffusionPipeline):
     def _get_glm_embeds(
         self,
         prompt: Union[str, List[str]] = None,
+        num_images_per_prompt: int = 1,
         max_sequence_length: int = 1024,
+        padding_type: str = "longest",
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -187,10 +190,11 @@ class CogView4Pipeline(DiffusionPipeline):
         dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt)
 
         text_inputs = self.tokenizer(
             prompt,
-            padding="longest",  # not use max length
+            padding=padding_type,
             max_length=max_sequence_length,
             truncation=True,
             add_special_tokens=True,
@@ -219,8 +223,12 @@ class CogView4Pipeline(DiffusionPipeline):
         ).hidden_states[-2]
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+        _, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.cogview4.pipeline_cogview4.CogView4Pipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -232,6 +240,7 @@ class CogView4Pipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 1024,
+        padding_type: str = "longest",
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -268,13 +277,8 @@ class CogView4Pipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-
         if prompt_embeds is None:
-            prompt_embeds = self._get_glm_embeds(prompt, max_sequence_length, device, dtype)
-
-        seq_len = prompt_embeds.size(1)
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            prompt_embeds = self._get_glm_embeds(prompt, num_images_per_prompt, max_sequence_length, padding_type,  device, dtype)
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
@@ -292,11 +296,9 @@ class CogView4Pipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds = self._get_glm_embeds(negative_prompt, max_sequence_length, device, dtype)
-
-            seq_len = negative_prompt_embeds.size(1)
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = self._get_glm_embeds(
+                negative_prompt, num_images_per_prompt, max_sequence_length, "longest", device, dtype
+            )
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -317,6 +319,40 @@ class CogView4Pipeline(DiffusionPipeline):
             )
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
+
+    def prepare_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+
+        return image
 
     def check_inputs(
         self,
@@ -394,6 +430,7 @@ class CogView4Pipeline(DiffusionPipeline):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -414,6 +451,7 @@ class CogView4Pipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 1024,
+        padding_type: str = "longest", # For downstream tasks, it can be modified to use max_length for implementation.
     ) -> Union[CogView4PipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -543,11 +581,29 @@ class CogView4Pipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
-            device=device,
+            padding_type=padding_type,
+            device=device
         )
 
         # Prepare latents
-        latent_channels = self.transformer.config.in_channels
+        latent_channels = self.transformer.config.in_channels // 2
+
+        control_image = self.prepare_image(
+            image=control_image,
+            width=width,
+            height=height,
+            batch_size=batch_size * num_images_per_prompt,
+            num_images_per_prompt=num_images_per_prompt,
+            device=device,
+            dtype=self.vae.dtype,
+        )
+        height, width = control_image.shape[-2:]
+
+        vae_shift_factor = 0
+
+        control_image = self.vae.encode(control_image).latent_dist.sample()
+        control_image = (control_image - vae_shift_factor) * self.vae.config.scaling_factor
+
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
@@ -572,6 +628,7 @@ class CogView4Pipeline(DiffusionPipeline):
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
             self.transformer.config.patch_size**2
         )
+
         timesteps = (
             np.linspace(self.scheduler.config.num_train_timesteps, 1.0, num_inference_steps)
             if timesteps is None
@@ -589,7 +646,6 @@ class CogView4Pipeline(DiffusionPipeline):
             self.scheduler, num_inference_steps, device, timesteps, sigmas, mu=mu
         )
         self._num_timesteps = len(timesteps)
-
         # Denoising loop
         transformer_dtype = self.transformer.dtype
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -598,8 +654,7 @@ class CogView4Pipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
-                latent_model_input = latents.to(transformer_dtype)
+                latent_model_input = torch.cat([latents, control_image], dim=1).to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
@@ -629,7 +684,6 @@ class CogView4Pipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
                 else:
                     noise_pred = noise_pred_cond
-
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 # call the callback, if provided
