@@ -134,6 +134,7 @@ def postprocess(
 
 def prepare(
     tensor: "torch.Tensor",
+    processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
     do_scaling: bool = True,
     scaling_factor: Optional[float] = None,
     shift_factor: Optional[float] = None,
@@ -162,6 +163,14 @@ def prepare(
     if height is not None and width is not None:
         parameters["height"] = height
         parameters["width"] = width
+    headers["Content-Type"] = "tensor/binary"
+    headers["Accept"] = "tensor/binary"
+    if output_type == "pil" and image_format == "jpg" and processor is None:
+        headers["Accept"] = "image/jpeg"
+    elif output_type == "pil" and image_format == "png" and processor is None:
+        headers["Accept"] = "image/png"
+    elif output_type == "mp4":
+        headers["Accept"] = "text/plain"
     tensor_data = safetensors.torch._tobytes(tensor, "tensor")
     return {"data": tensor_data, "params": parameters, "headers": headers}
 
@@ -291,6 +300,7 @@ def remote_decode(
     )
     kwargs = prepare(
         tensor=tensor,
+        processor=processor,
         do_scaling=do_scaling,
         scaling_factor=scaling_factor,
         shift_factor=shift_factor,
