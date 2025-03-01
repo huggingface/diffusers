@@ -16,6 +16,7 @@
 import unittest
 from typing import Tuple, Union
 
+import numpy as np
 import PIL.Image
 import torch
 
@@ -23,6 +24,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils.remote_utils import remote_decode
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    torch_all_close,
     torch_device,
 )
 from diffusers.video_processor import VideoProcessor
@@ -39,11 +41,20 @@ class RemoteAutoencoderKLMixin:
     scaling_factor: float = None
     shift_factor: float = None
     processor_cls: Union[VaeImageProcessor, VideoProcessor] = None
+    output_pil_slice: torch.Tensor = None
+    output_pt_slice: torch.Tensor = None
+    partial_postprocess_return_pt_slice: torch.Tensor = None
+    return_pt_slice: torch.Tensor = None
 
     def get_dummy_inputs(self):
         inputs = {
             "endpoint": self.endpoint,
-            "tensor": torch.randn(self.shape, device=torch_device, dtype=self.dtype),
+            "tensor": torch.randn(
+                self.shape,
+                device=torch_device,
+                dtype=self.dtype,
+                generator=torch.Generator(torch_device).manual_seed(13),
+            ),
             "scaling_factor": self.scaling_factor,
             "shift_factor": self.shift_factor,
         }
@@ -53,10 +64,16 @@ class RemoteAutoencoderKLMixin:
         inputs = self.get_dummy_inputs()
         processor = self.processor_cls()
         output = remote_decode(output_type="pt", processor=processor, **inputs)
+        assert isinstance(output, PIL.Image.Image)
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
+        output_slice = torch.from_numpy(np.array(output)[0, -3:, -3:].flatten())
+        self.assertTrue(
+            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2), f"{output_slice}"
+        )
 
+    # output is visually the same, slice is flaky?
     def test_output_type_pil(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pil", **inputs)
@@ -71,6 +88,10 @@ class RemoteAutoencoderKLMixin:
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
         self.assertEqual(output.format, "png", f"Expected image format `png`, got {output.format}")
+        output_slice = torch.from_numpy(np.array(output)[0, -3:, -3:].flatten())
+        self.assertTrue(
+            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2), f"{output_slice}"
+        )
 
     def test_output_type_pt_partial_postprocess(self):
         inputs = self.get_dummy_inputs()
@@ -78,6 +99,10 @@ class RemoteAutoencoderKLMixin:
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
+        output_slice = torch.from_numpy(np.array(output)[0, -3:, -3:].flatten())
+        self.assertTrue(
+            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1e-2), f"{output_slice}"
+        )
 
     def test_output_type_pt_return_type_pt(self):
         inputs = self.get_dummy_inputs()
@@ -89,6 +114,11 @@ class RemoteAutoencoderKLMixin:
         self.assertEqual(
             output.shape[3], self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.shape[3]}"
         )
+        output_slice = output[0, 0, -3:, -3:].flatten()
+        self.assertTrue(
+            torch_all_close(output_slice, self.return_pt_slice.to(output_slice.dtype), rtol=1e-3, atol=1e-3),
+            f"{output_slice}",
+        )
 
     def test_output_type_pt_partial_postprocess_return_type_pt(self):
         inputs = self.get_dummy_inputs()
@@ -99,6 +129,11 @@ class RemoteAutoencoderKLMixin:
         )
         self.assertEqual(
             output.shape[2], self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.shape[2]}"
+        )
+        output_slice = output[0, -3:, -3:, 0].flatten().cpu()
+        self.assertTrue(
+            torch_all_close(output_slice, self.partial_postprocess_return_pt_slice.to(output_slice.dtype), rtol=1e-2),
+            f"{output_slice}",
         )
 
     def test_do_scaling_deprecation(self):
@@ -133,6 +168,7 @@ class RemoteAutoencoderKLMixin:
                 str(warning.warnings[0].message),
             )
 
+
 class RemoteAutoencoderKLSDv1Tests(
     RemoteAutoencoderKLMixin,
     unittest.TestCase,
@@ -152,6 +188,9 @@ class RemoteAutoencoderKLSDv1Tests(
     scaling_factor = 0.18215
     shift_factor = None
     processor_cls = VaeImageProcessor
+    output_pt_slice = torch.tensor([31, 15, 11, 55, 30, 21, 66, 42, 30], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor([100, 130, 99, 133, 106, 112, 97, 100, 121], dtype=torch.uint8)
+    return_pt_slice = torch.tensor([-0.2177, 0.0217, -0.2258, 0.0412, -0.1687, -0.1232, -0.2416, -0.2130, -0.0543])
 
 
 class RemoteAutoencoderKLSDXLTests(
@@ -168,30 +207,36 @@ class RemoteAutoencoderKLSDXLTests(
         1024,
         1024,
     )
-    endpoint = ""
+    endpoint = "https://fagf07t3bwf0615i.us-east-1.aws.endpoints.huggingface.cloud/"
     dtype = torch.float16
     scaling_factor = 0.13025
     shift_factor = None
     processor_cls = VaeImageProcessor
+    output_pt_slice = torch.tensor([104, 52, 23, 114, 61, 35, 108, 87, 38], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor([77, 86, 89, 49, 60, 75, 52, 65, 78], dtype=torch.uint8)
+    return_pt_slice = torch.tensor([-0.3945, -0.3289, -0.2993, -0.6177, -0.5259, -0.4119, -0.5898, -0.4863, -0.3845])
 
 
-class RemoteAutoencoderKLFluxTests(
-    RemoteAutoencoderKLMixin,
-    unittest.TestCase,
-):
-    # TODO: packed
-    shape = (
-        1,
-        16,
-        128,
-        128,
-    )
-    out_hw = (
-        1024,
-        1024,
-    )
-    endpoint = ""
-    dtype = torch.bfloat16
-    scaling_factor = 0.3611
-    shift_factor = 0.1159
-    processor_cls = VaeImageProcessor
+# class RemoteAutoencoderKLFluxTests(
+#     RemoteAutoencoderKLMixin,
+#     unittest.TestCase,
+# ):
+#     # TODO: packed
+#     shape = (
+#         1,
+#         16,
+#         128,
+#         128,
+#     )
+#     out_hw = (
+#         1024,
+#         1024,
+#     )
+#     endpoint = "https://fnohtuwsskxgxsnn.us-east-1.aws.endpoints.huggingface.cloud/"
+#     dtype = torch.bfloat16
+#     scaling_factor = 0.3611
+#     shift_factor = 0.1159
+#     processor_cls = VaeImageProcessor
+#     output_pt_slice = torch.tensor([104,  52,  23, 114,  61,  35, 108,  87,  38], dtype=torch.uint8)
+#     partial_postprocess_return_pt_slice = torch.tensor([77, 86, 89, 49, 60, 75, 52, 65, 78], dtype=torch.uint8)
+#     return_pt_slice = torch.tensor([-0.3945, -0.3289, -0.2993, -0.6177, -0.5259, -0.4119, -0.5898, -0.4863, -0.3845])
