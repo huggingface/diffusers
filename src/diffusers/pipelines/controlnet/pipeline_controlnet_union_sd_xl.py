@@ -757,15 +757,9 @@ class StableDiffusionXLControlNetUnionPipeline(
             for images_ in image:
                 for image_ in images_:
                     self.check_image(image_, prompt, prompt_embeds)
-        else:
-            assert False
 
         # Check `controlnet_conditioning_scale`
-        # TODO Update for https://github.com/huggingface/diffusers/pull/10723
-        if isinstance(controlnet, ControlNetUnionModel):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-        elif isinstance(controlnet, MultiControlNetUnionModel):
+        if isinstance(controlnet, MultiControlNetUnionModel):
             if isinstance(controlnet_conditioning_scale, list):
                 if any(isinstance(i, list) for i in controlnet_conditioning_scale):
                     raise ValueError("A single batch of multiple conditionings is not supported at the moment.")
@@ -776,8 +770,6 @@ class StableDiffusionXLControlNetUnionPipeline(
                     "For multiple controlnets: When `controlnet_conditioning_scale` is specified as `list`, it must have"
                     " the same length as the number of controlnets"
                 )
-        else:
-            assert False
 
         if len(control_guidance_start) != len(control_guidance_end):
             raise ValueError(
@@ -808,8 +800,6 @@ class StableDiffusionXLControlNetUnionPipeline(
             for _control_mode, _controlnet in zip(control_mode, self.controlnet.nets):
                 if max(_control_mode) >= _controlnet.config.num_control_type:
                     raise ValueError(f"control_mode: must be lower than {_controlnet.config.num_control_type}.")
-        else:
-            assert False
 
         # Equal number of `image` and `control_mode` elements
         if isinstance(controlnet, ControlNetUnionModel):
@@ -823,8 +813,6 @@ class StableDiffusionXLControlNetUnionPipeline(
 
             elif sum(len(x) for x in image) != sum(len(x) for x in control_mode):
                 raise ValueError("Expected len(control_image) == len(control_mode)")
-        else:
-            assert False
 
         if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
             raise ValueError(
@@ -1201,18 +1189,6 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        # align format for control guidance
-        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
-            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
-        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
-            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
-        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
-            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetUnionModel) else 1
-            control_guidance_start, control_guidance_end = (
-                mult * [control_guidance_start],
-                mult * [control_guidance_end],
-            )
-
         if not isinstance(control_image, list):
             control_image = [control_image]
         else:
@@ -1221,8 +1197,25 @@ class StableDiffusionXLControlNetUnionPipeline(
         if not isinstance(control_mode, list):
             control_mode = [control_mode]
 
-        if isinstance(controlnet, MultiControlNetUnionModel) and isinstance(controlnet_conditioning_scale, float):
-            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+        if isinstance(controlnet, MultiControlNetUnionModel):
+            control_image = [[item] for item in control_image]
+            control_mode = [[item] for item in control_mode]
+
+        # align format for control guidance
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetUnionModel) else len(control_mode)
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
+
+        if isinstance(controlnet_conditioning_scale, float):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetUnionModel) else len(control_mode)
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * mult
 
         # 1. Check inputs
         self.check_inputs(
@@ -1357,9 +1350,6 @@ class StableDiffusionXLControlNetUnionPipeline(
             control_image = control_images
             height, width = control_image[0][0].shape[-2:]
 
-        else:
-            assert False
-
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
@@ -1397,7 +1387,7 @@ class StableDiffusionXLControlNetUnionPipeline(
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetUnionModel) else keeps)
+            controlnet_keep.append(keeps)
 
         # 7.2 Prepare added time ids & embeddings
         original_size = original_size or (height, width)
