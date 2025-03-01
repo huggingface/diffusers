@@ -1199,7 +1199,7 @@ def apply_rotary_emb(
             x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
             x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
         elif use_real_unbind_dim == -2:
-            # Used for Stable Audio
+            # Used for Stable Audio, OmniGen and CogView4
             x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
             x_rotated = torch.cat([-x_imag, x_real], dim=-1)
         else:
@@ -1787,7 +1787,7 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
     def forward(self, timestep, caption_feat, caption_mask):
         # timestep embedding:
         time_freq = self.time_proj(timestep)
-        time_embed = self.timestep_embedder(time_freq.to(dtype=self.timestep_embedder.linear_1.weight.dtype))
+        time_embed = self.timestep_embedder(time_freq.to(dtype=caption_feat.dtype))
 
         # caption condition embedding:
         caption_mask_float = caption_mask.float().unsqueeze(-1)
@@ -2582,6 +2582,11 @@ class MultiIPAdapterImageProjection(nn.Module):
     def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
         super().__init__()
         self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
+
+    @property
+    def num_ip_adapters(self) -> int:
+        """Number of IP-Adapters loaded."""
+        return len(self.image_projection_layers)
 
     def forward(self, image_embeds: List[torch.Tensor]):
         projected_image_embeds = []

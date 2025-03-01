@@ -114,6 +114,30 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
     def test_set_attn_processor_for_determinism(self):
         return
 
+    @unittest.skip(
+        "Test not supported because of 'weight_norm_fwd_first_dim_kernel' not implemented for 'Float8_e4m3fn'"
+    )
+    def test_layerwise_casting_training(self):
+        return super().test_layerwise_casting_training()
+
+    @unittest.skip(
+        "The convolution layers of AutoencoderOobleck are wrapped with torch.nn.utils.weight_norm. This causes the hook's pre_forward to not "
+        "cast the module weights to compute_dtype (as required by forward pass). As a result, forward pass errors out. To fix:\n"
+        "1. Make sure `nn::Module::to` works with `torch.nn.utils.weight_norm` wrapped convolution layer.\n"
+        "2. Unskip this test."
+    )
+    def test_layerwise_casting_inference(self):
+        pass
+
+    @unittest.skip(
+        "The convolution layers of AutoencoderOobleck are wrapped with torch.nn.utils.weight_norm. This causes the hook's pre_forward to not "
+        "cast the module weights to compute_dtype (as required by forward pass). As a result, forward pass errors out. To fix:\n"
+        "1. Make sure `nn::Module::to` works with `torch.nn.utils.weight_norm` wrapped convolution layer.\n"
+        "2. Unskip this test."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
+
 
 @slow
 class AutoencoderOobleckIntegrationTests(unittest.TestCase):

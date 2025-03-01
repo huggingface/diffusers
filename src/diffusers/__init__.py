@@ -28,6 +28,7 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "hooks": [],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
@@ -75,6 +76,13 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
+    _import_structure["hooks"].extend(
+        [
+            "HookRegistry",
+            "PyramidAttentionBroadcastConfig",
+            "apply_pyramid_attention_broadcast",
+        ]
+    )
     _import_structure["models"].extend(
         [
             "AllegroTransformer3DModel",
@@ -90,8 +98,10 @@ else:
             "AutoencoderKLTemporalDecoder",
             "AutoencoderOobleck",
             "AutoencoderTiny",
+            "CacheMixin",
             "CogVideoXTransformer3DModel",
             "CogView3PlusTransformer2DModel",
+            "CogView4Transformer2DModel",
             "ConsisIDTransformer3DModel",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
@@ -109,12 +119,14 @@ else:
             "Kandinsky3UNet",
             "LatteTransformer3DModel",
             "LTXVideoTransformer3DModel",
+            "Lumina2Transformer2DModel",
             "LuminaNextDiT2DModel",
             "MochiTransformer3DModel",
             "ModelMixin",
             "MotionAdapter",
             "MultiAdapter",
             "MultiControlNetModel",
+            "OmniGenTransformer2DModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
             "SanaTransformer2DModel",
@@ -276,6 +288,7 @@ else:
             "CogVideoXPipeline",
             "CogVideoXVideoToVideoPipeline",
             "CogView3PlusPipeline",
+            "CogView4Pipeline",
             "ConsisIDPipeline",
             "CycleDiffusionPipeline",
             "FluxControlImg2ImgPipeline",
@@ -292,6 +305,7 @@ else:
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
             "HunyuanDiTPipeline",
+            "HunyuanSkyreelsImageToVideoPipeline",
             "HunyuanVideoPipeline",
             "I2VGenXLPipeline",
             "IFImg2ImgPipeline",
@@ -328,11 +342,14 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
             "LTXImageToVideoPipeline",
             "LTXPipeline",
+            "Lumina2Text2ImgPipeline",
             "LuminaText2ImgPipeline",
             "MarigoldDepthPipeline",
+            "MarigoldIntrinsicsPipeline",
             "MarigoldNormalsPipeline",
             "MochiPipeline",
             "MusicLDMPipeline",
+            "OmniGenPipeline",
             "PaintByExamplePipeline",
             "PIAPipeline",
             "PixArtAlphaPipeline",
@@ -588,6 +605,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .hooks import HookRegistry, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -602,8 +620,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
             AutoencoderTiny,
+            CacheMixin,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
+            CogView4Transformer2DModel,
             ConsisIDTransformer3DModel,
             ConsistencyDecoderVAE,
             ControlNetModel,
@@ -621,12 +641,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3UNet,
             LatteTransformer3DModel,
             LTXVideoTransformer3DModel,
+            Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
             ModelMixin,
             MotionAdapter,
             MultiAdapter,
             MultiControlNetModel,
+            OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             SanaTransformer2DModel,
@@ -767,6 +789,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXPipeline,
             CogVideoXVideoToVideoPipeline,
             CogView3PlusPipeline,
+            CogView4Pipeline,
             ConsisIDPipeline,
             CycleDiffusionPipeline,
             FluxControlImg2ImgPipeline,
@@ -783,6 +806,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiTControlNetPipeline,
             HunyuanDiTPAGPipeline,
             HunyuanDiTPipeline,
+            HunyuanSkyreelsImageToVideoPipeline,
             HunyuanVideoPipeline,
             I2VGenXLPipeline,
             IFImg2ImgPipeline,
@@ -819,11 +843,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
             LTXImageToVideoPipeline,
             LTXPipeline,
+            Lumina2Text2ImgPipeline,
             LuminaText2ImgPipeline,
             MarigoldDepthPipeline,
+            MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
             MochiPipeline,
             MusicLDMPipeline,
+            OmniGenPipeline,
             PaintByExamplePipeline,
             PIAPipeline,
             PixArtAlphaPipeline,
@@ -840,6 +867,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableCascadeCombinedPipeline,
             StableCascadeDecoderPipeline,
             StableCascadePriorPipeline,
+            StableDiffusion3ControlNetInpaintingPipeline,
             StableDiffusion3ControlNetPipeline,
             StableDiffusion3Img2ImgPipeline,
             StableDiffusion3InpaintPipeline,

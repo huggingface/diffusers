@@ -244,6 +244,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             Whether or not to use style condition and image meta size. True for version <=1.1, False for version >= 1.2
     """
 
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm", "pooler"]
+    _supports_group_offloading = False
+
     @register_to_config
     def __init__(
         self,
@@ -277,9 +280,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             act_fn="silu_fp32",
         )
 
-        self.text_embedding_padding = nn.Parameter(
-            torch.randn(text_len + text_len_t5, cross_attention_dim, dtype=torch.float32)
-        )
+        self.text_embedding_padding = nn.Parameter(torch.randn(text_len + text_len_t5, cross_attention_dim))
 
         self.pos_embed = PatchEmbed(
             height=sample_size,
