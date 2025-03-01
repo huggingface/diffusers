@@ -3242,7 +3242,7 @@ class AttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
-        text_masks: Optional[torch.Tensor] = None,
+        text_masks: Optional[torch.Tensor] = None, # thesea modification for text prompt mask
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -5629,6 +5629,7 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         ip_hidden_states: torch.FloatTensor = None,
         temb: torch.FloatTensor = None,
+        text_masks: Optional[torch.Tensor] = None, # thesea modification for text prompt mask
     ) -> torch.FloatTensor:
         """
         Perform the attention computation, integrating image features (if provided) and timestep embeddings.
@@ -5677,33 +5678,93 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
             key = attn.norm_k(key)
 
         # `context` projections.
+        # thesea modified for text prompt mask
+        print(f'attention processor encoder_hidden_states.ndim={encoder_hidden_states.ndim}')
+        print(f'attention processor encoder_hidden_states shape={encoder_hidden_states.shape}')
         if encoder_hidden_states is not None:
-            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+            if encoder_hidden_states.ndim == 3:
+                encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+                encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+                encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
 
-            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
+                encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                    batch_size, -1, attn.heads, head_dim
+                ).transpose(1, 2)
+                encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                    batch_size, -1, attn.heads, head_dim
+                ).transpose(1, 2)
+                encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                    batch_size, -1, attn.heads, head_dim
+                ).transpose(1, 2)
 
-            if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-            if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+                if attn.norm_added_q is not None:
+                    encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+                if attn.norm_added_k is not None:
+                    encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
 
-            query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
-            key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
-            value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
+                query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
+                key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
+                value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
+            elif encoder_hidden_states.ndim == 4:
+                if not text_masks.shape[0] == encoder_hidden_states.shape[1]:
+                    raise ValueError(
+                        f"Length of text masks ({text_masks.shape[0]}) must match "
+                        f"the number of text prompts "
+                        f"({encoder_hidden_states.shape[1]})")
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
+                queries = []
+                keys = []
+                values = []
+                for index in range(encoder_hidden_states.shape[1]):
+                    encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states[:,index,:,:])
+                    encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states[:,index,:,:])
+                    encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states[:,index,:,:])
+
+                    encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                        batch_size, -1, attn.heads, head_dim
+                    ).transpose(1, 2)
+                    encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                        batch_size, -1, attn.heads, head_dim
+                    ).transpose(1, 2)
+                    encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                        batch_size, -1, attn.heads, head_dim
+                    ).transpose(1, 2)
+
+                    if attn.norm_added_q is not None:
+                        encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+                    if attn.norm_added_k is not None:
+                        encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+                    tmp_query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
+                    tmp_key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
+                    tmp_value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
+                    queries.append(tmp_query)
+                    keys.append(tmp_key)
+                    values.append(tmp_value)
+
+        # thesea modified for text prompt mask
+        if (encoder_hidden_states is not None) and (encoder_hidden_states.ndim == 4):
+            hidden_states_list = []
+            for mask, query, key, value in zip(text_masks, queries, keys, values):
+                tmp_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+                tmp_hidden_states = tmp_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                tmp_hidden_states = tmp_hidden_states.to(query.dtype) 
+
+                mask_downsample = IPAdapterMaskProcessor.downsample(
+                    mask,
+                    batch_size,
+                    tmp_hidden_states.shape[1],
+                    tmp_hidden_states.shape[2],
+                )   
+                mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+                hidden_states_list.append(tmp_hidden_states * mask_downsample)
+            
+            hidden_states_list = torch.stack(hidden_states_list)
+            hidden_states = torch.sum(hidden_states_list, dim=0, keepdim=False)
+        else:
+            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+            hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            hidden_states = hidden_states.to(query.dtype)
 
         if encoder_hidden_states is not None:
             # Split the attention outputs.

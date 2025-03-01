@@ -372,7 +372,13 @@ class SD3Transformer2DModel(
 
         hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
         temb = self.time_text_embed(timestep, pooled_projections)
-        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+        # thesea modifed for text prompt mask
+        print(f'transformer_sd3 encoder_hidden_states.shape={encoder_hidden_states.shape}')
+        if len(encoder_hidden_states.shape) == 3:
+            encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+        else:
+            for index in range(encoder_hidden_states.shape[1]):
+                encoder_hidden_states[:,index,:,:] = self.context_embedder(encoder_hidden_states[:,index,:,:])
 
         if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
             ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")

@@ -202,12 +202,32 @@ class JointTransformerBlock(nn.Module):
         else:
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
+        print(f'attention JointTransformerBlock self.context_pre_only={self.context_pre_only}')
+        print(f'attention encoder_hidden_states shape={encoder_hidden_states.shape}')
         if self.context_pre_only:
-            norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states, temb)
+            # thesea modifed for text prompt mask
+            if len(encoder_hidden_states.shape) == 3:
+                norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states, temb)
+            else:
+                norm_encoder_hidden_states = []
+                for index in range(encoder_hidden_states.shape[1]):
+                    norm_encoder_hidden_states.append(self.norm1_context(encoder_hidden_states[:,index,:,:], temb))
+                norm_encoder_hidden_states = torch.stack(norm_encoder_hidden_states, dim=1)
+
         else:
-            norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
-                encoder_hidden_states, emb=temb
-            )
+            if len(encoder_hidden_states.shape) == 3:
+                norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
+                    encoder_hidden_states, emb=temb
+                )
+            else:
+                norm_encoder_hidden_states = []
+                for index in range(encoder_hidden_states.shape[1]):
+                    tmp_norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
+                    encoder_hidden_states[:,index,:,:], emb=temb
+                    )
+                    norm_encoder_hidden_states.append(tmp_norm_encoder_hidden_states)
+                norm_encoder_hidden_states = torch.stack(norm_encoder_hidden_states, dim=1)
+
 
         # Attention.
         attn_output, context_attn_output = self.attn(
