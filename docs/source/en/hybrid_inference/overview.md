@@ -14,6 +14,9 @@ specific language governing permissions and limitations under the License.
 
 **Empowering local AI builders with Hybrid Inference**
 
+> [!TIP]
+> [Hybrid Inference](https://huggingface.co/blog/remote_vae) is an experimental feature.
+
 ---
 
 ## Why use Hybrid Inference?
@@ -23,6 +26,8 @@ Hybrid Inference offers a fast and simple way to offload local generation requir
 * **VAE Decode:** Quickly decode latents to images without comprimising quality or slowing down your workflow.
 * **VAE Encode (coming soon):** Encode images to latents for generation or training.
 * **Text Encoders (coming soon):** Compute text embeddings for prompts without comprimising quality or slowing down your workflow.
+
+Feedback can be provided [here](https://github.com/huggingface/diffusers/issues/new?template=remote-vae-pilot-feedback.yml).
 
 ---
 

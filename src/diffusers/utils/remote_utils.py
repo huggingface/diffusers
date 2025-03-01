@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: `imghdr` is deprecated in Python 3.13 🙄
-import imghdr
 import io
 import json
 from typing import List, Literal, Optional, Union, cast
@@ -43,6 +41,18 @@ if is_torch_available():
 
 
 from PIL import Image
+
+
+def detect_image_type(data: bytes) -> str:
+    if data.startswith(b"\xff\xd8"):
+        return "jpeg"
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    elif data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+        return "gif"
+    elif data.startswith(b"BM"):
+        return "bmp"
+    return "unknown"
 
 
 def check_inputs(
@@ -117,7 +127,7 @@ def postprocess(
                     )
     elif output_type == "pil" and return_type == "pil" and processor is None:
         output = Image.open(io.BytesIO(response.content)).convert("RGB")
-        detected_format = imghdr.what(None, h=response.content)
+        detected_format = detect_image_type(response.content)
         output.format = detected_format
     elif output_type == "pil" and processor is not None:
         if return_type == "pil":
@@ -207,7 +217,7 @@ def remote_decode(
             / self.vae.config.scaling_factor` is applied remotely. If `False`, input must be passed with scaling
             applied.
         scaling_factor (`float`, *optional*):
-            Scaling is applied when passed e.g. `latents / self.vae.config.scaling_factor`.
+            Scaling is applied when passed e.g. [`latents / self.vae.config.scaling_factor`](https://github.com/huggingface/diffusers/blob/7007febae5cff000d4df9059d9cf35133e8b2ca9/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L1083C37-L1083C77).
             - SD v1: 0.18215
             - SD XL: 0.13025
             - Flux: 0.3611

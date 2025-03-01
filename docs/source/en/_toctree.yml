@@ -113,10 +113,6 @@
     title: Marigold Computer Vision
   title: Specific pipeline examples
 - sections:
-  - local: hybrid_inference/overview
-    title: Overview
-  title: Hybrid Inference
-- sections:
   - local: training/overview
     title: Overview
   - local: training/create_dataset
@@ -632,3 +628,7 @@
       title: Video Processor
     title: Internal classes
   title: API
+- sections:
+  - local: hybrid_inference/overview
+    title: Overview
+  title: Hybrid Inference
