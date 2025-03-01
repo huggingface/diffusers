@@ -64,6 +64,34 @@ class RemoteAutoencoderKLMixin:
         }
         return inputs
 
+    def test_no_scaling(self):
+        inputs = self.get_dummy_inputs()
+        if inputs["scaling_factor"] is not None:
+            inputs["tensor"] = inputs["tensor"] / inputs["scaling_factor"]
+            inputs["scaling_factor"] = None
+        if inputs["shift_factor"] is not None:
+            inputs["tensor"] = inputs["tensor"] + inputs["shift_factor"]
+            inputs["shift_factor"] = None
+        processor = self.processor_cls()
+        output = remote_decode(
+            output_type="pt",
+            # required for now, will be removed in next update
+            do_scaling=False,
+            processor=processor,
+            **inputs,
+        )
+        assert isinstance(output, PIL.Image.Image)
+        output.save("test_no_scaling.png")
+        self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
+        self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
+        self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
+        output_slice = torch.from_numpy(np.array(output)[0, -3:, -3:].flatten())
+        # Increased tolerance for Flux Packed diff [1, 0, 1, 0, 0, 0, 0, 0, 0]
+        self.assertTrue(
+            torch_all_close(output_slice, self.output_pt_slice.to(output_slice.dtype), rtol=1, atol=1),
+            f"{output_slice}",
+        )
+
     def test_output_type_pt(self):
         inputs = self.get_dummy_inputs()
         processor = self.processor_cls()
