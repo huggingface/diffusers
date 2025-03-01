@@ -217,7 +217,8 @@ def remote_decode(
             / self.vae.config.scaling_factor` is applied remotely. If `False`, input must be passed with scaling
             applied.
         scaling_factor (`float`, *optional*):
-            Scaling is applied when passed e.g. [`latents / self.vae.config.scaling_factor`](https://github.com/huggingface/diffusers/blob/7007febae5cff000d4df9059d9cf35133e8b2ca9/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L1083C37-L1083C77).
+            Scaling is applied when passed e.g. [`latents /
+            self.vae.config.scaling_factor`](https://github.com/huggingface/diffusers/blob/7007febae5cff000d4df9059d9cf35133e8b2ca9/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L1083C37-L1083C77).
             - SD v1: 0.18215
             - SD XL: 0.13025
             - Flux: 0.3611
