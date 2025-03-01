@@ -168,10 +168,10 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     last_dtype = None
 
     for name, param in parameter.named_parameters():
+        last_dtype = param.dtype
         if parameter._keep_in_fp32_modules and any(m in name for m in parameter._keep_in_fp32_modules):
             continue
 
-        last_dtype = param.dtype
         if param.is_floating_point():
             return param.dtype
 
