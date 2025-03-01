@@ -157,6 +157,75 @@ pipeline(
 )
 ```
 
+## IP Adapter Cutoff
+
+IP Adapter is an image prompt adapter that can be used for diffusion models without any changes to the underlying model. We can use the IP Adapter Cutoff Callback to disable the IP Adapter after a certain number of steps. To set up the callback, you need to specify the number of denoising steps after which the callback comes into effect. You can do so by using either one of these two arguments:
+
+- `cutoff_step_ratio`: Float number with the ratio of the steps.
+- `cutoff_step_index`: Integer number with the exact number of the step.
+
+We need to download the diffusion model and load the ip_adapter for it as follows:
+
+```py
+from diffusers import AutoPipelineForText2Image
+from diffusers.utils import load_image
+import torch
+
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
+pipeline.set_ip_adapter_scale(0.6)
+```
+The setup for the callback should look something like this:
+
+```py
+
+from diffusers import AutoPipelineForText2Image
+from diffusers.callbacks import IPAdapterScaleCutoffCallback
+from diffusers.utils import load_image
+import torch
+ 
+
+pipeline = AutoPipelineForText2Image.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", 
+    torch_dtype=torch.float16
+).to("cuda")
+
+
+pipeline.load_ip_adapter(
+    "h94/IP-Adapter", 
+    subfolder="sdxl_models", 
+    weight_name="ip-adapter_sdxl.bin"
+)
+
+pipeline.set_ip_adapter_scale(0.6)
+
+
+callback = IPAdapterScaleCutoffCallback(
+    cutoff_step_ratio=None, 
+    cutoff_step_index=5
+)
+
+image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_diner.png"
+)
+
+generator = torch.Generator(device="cuda").manual_seed(2628670641)
+
+images = pipeline(
+    prompt="a tiger sitting in a chair drinking orange juice",
+    ip_adapter_image=image,
+    negative_prompt="deformed, ugly, wrong proportion, low res, bad anatomy, worst quality, low quality",
+    generator=generator,
+    num_inference_steps=50,
+    callback_on_step_end=callback,
+).images
+
+images[0].save("custom_callback_img.png")
+```
+
+without IPAdapterScaleCutoffCallback
+
+with IPAdapterScaleCutoffCallback
 ## Display image after each generation step
 
 > [!TIP]
