@@ -51,7 +51,6 @@ class EasyAnimateTransformerTests(ModelTesterMixin, unittest.TestCase):
             "timestep_cond": None,
             "encoder_hidden_states": encoder_hidden_states,
             "encoder_hidden_states_t5": None,
-            "image_rotary_emb": None,  # TODO(aryan): Create EasyAnimateRotaryPosEmbed layer
             "inpaint_latents": None,
             "control_latents": None,
         }
@@ -66,10 +65,10 @@ class EasyAnimateTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "attention_head_dim": 8,
+            "attention_head_dim": 16,
+            "num_attention_heads": 2,
             "in_channels": 4,
             "mmdit_layers": 2,
-            "num_attention_heads": 2,
             "num_layers": 2,
             "out_channels": 4,
             "patch_size": 2,
