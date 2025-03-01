@@ -22,8 +22,6 @@ from transformers import (
     BertTokenizer,
     Qwen2Tokenizer,
     Qwen2VLForConditionalGeneration,
-    T5EncoderModel,
-    T5Tokenizer,
 )
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -203,36 +201,18 @@ class EasyAnimatePipeline(DiffusionPipeline):
             A `Qwen2Tokenizer` or `BertTokenizer` to tokenize text.
         transformer ([`EasyAnimateTransformer3DModel`]):
             The EasyAnimate model designed by EasyAnimate Team.
-        text_encoder_2 (`T5EncoderModel`):
-            EasyAnimate does not use text_encoder_2 in V5.1.
-        tokenizer_2 (`T5Tokenizer`):
-            EasyAnimate does not use tokenizer_2 in V5.1.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with EasyAnimate to denoise the encoded image latents.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
-    _optional_components = [
-        "text_encoder_2",
-        "tokenizer_2",
-        "text_encoder",
-        "tokenizer",
-    ]
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-        "prompt_embeds_2",
-        "negative_prompt_embeds_2",
-    ]
+    model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
         vae: AutoencoderKLMagvit,
         text_encoder: Union[Qwen2VLForConditionalGeneration, BertModel],
         tokenizer: Union[Qwen2Tokenizer, BertTokenizer],
-        text_encoder_2: Optional[Union[T5EncoderModel, Qwen2VLForConditionalGeneration]],
-        tokenizer_2: Optional[Union[T5Tokenizer, Qwen2Tokenizer]],
         transformer: EasyAnimateTransformer3DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
@@ -241,9 +221,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
-            text_encoder_2=text_encoder_2,
             tokenizer=tokenizer,
-            tokenizer_2=tokenizer_2,
             transformer=transformer,
             scheduler=scheduler,
         )
@@ -267,9 +245,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        max_sequence_length: Optional[int] = None,
-        text_encoder_index: int = 0,
-        actual_max_sequence_length: int = 256,
+        max_sequence_length: int = 256,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -301,23 +277,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
             negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for the negative prompt. Required when `negative_prompt_embeds` is passed directly.
             max_sequence_length (`int`, *optional*): maximum sequence length to use for the prompt.
-            text_encoder_index (`int`, *optional*):
-                Index of the text encoder to use. `0` for clip and `1` for T5.
         """
-        tokenizers = [self.tokenizer, self.tokenizer_2]
-        text_encoders = [self.text_encoder, self.text_encoder_2]
-
-        tokenizer = tokenizers[text_encoder_index]
-        text_encoder = text_encoders[text_encoder_index]
-
-        if max_sequence_length is None:
-            if text_encoder_index == 0:
-                max_length = min(self.tokenizer.model_max_length, actual_max_sequence_length)
-            if text_encoder_index == 1:
-                max_length = min(self.tokenizer_2.model_max_length, actual_max_sequence_length)
-        else:
-            max_length = max_sequence_length
-
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -326,91 +286,44 @@ class EasyAnimatePipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            if type(tokenizer) in [BertTokenizer, T5Tokenizer]:
-                text_inputs = tokenizer(
-                    prompt,
-                    padding="max_length",
-                    max_length=max_length,
-                    truncation=True,
-                    return_attention_mask=True,
-                    return_tensors="pt",
-                )
-                text_input_ids = text_inputs.input_ids
-                if text_input_ids.shape[-1] > actual_max_sequence_length:
-                    reprompt = tokenizer.batch_decode(
-                        text_input_ids[:, :actual_max_sequence_length], skip_special_tokens=True
-                    )
-                    text_inputs = tokenizer(
-                        reprompt,
-                        padding="max_length",
-                        max_length=max_length,
-                        truncation=True,
-                        return_attention_mask=True,
-                        return_tensors="pt",
-                    )
-                    text_input_ids = text_inputs.input_ids
-                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-                if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                    text_input_ids, untruncated_ids
-                ):
-                    _actual_max_sequence_length = min(tokenizer.model_max_length, actual_max_sequence_length)
-                    removed_text = tokenizer.batch_decode(untruncated_ids[:, _actual_max_sequence_length - 1 : -1])
-                    logger.warning(
-                        "The following part of your input was truncated because CLIP can only handle sequences up to"
-                        f" {_actual_max_sequence_length} tokens: {removed_text}"
-                    )
-
-                prompt_attention_mask = text_inputs.attention_mask.to(device)
-
-                if self.transformer.config.enable_text_attention_mask:
-                    prompt_embeds = text_encoder(
-                        text_input_ids.to(device),
-                        attention_mask=prompt_attention_mask,
-                    )
-                else:
-                    prompt_embeds = text_encoder(text_input_ids.to(device))
-                prompt_embeds = prompt_embeds[0]
-                prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            if prompt is not None and isinstance(prompt, str):
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": prompt}],
+                    }
+                ]
             else:
-                if prompt is not None and isinstance(prompt, str):
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": prompt}],
-                        }
-                    ]
-                else:
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": _prompt}],
-                        }
-                        for _prompt in prompt
-                    ]
-                text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": _prompt}],
+                    }
+                    for _prompt in prompt
+                ]
+            text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-                text_inputs = tokenizer(
-                    text=[text],
-                    padding="max_length",
-                    max_length=max_length,
-                    truncation=True,
-                    return_attention_mask=True,
-                    padding_side="right",
-                    return_tensors="pt",
-                )
-                text_inputs = text_inputs.to(text_encoder.device)
+            text_inputs = self.tokenizer(
+                text=[text],
+                padding="max_length",
+                max_length=max_sequence_length,
+                truncation=True,
+                return_attention_mask=True,
+                padding_side="right",
+                return_tensors="pt",
+            )
+            text_inputs = text_inputs.to(self.text_encoder.device)
 
-                text_input_ids = text_inputs.input_ids
-                prompt_attention_mask = text_inputs.attention_mask
-                if self.transformer.config.enable_text_attention_mask:
-                    # Inference: Generation of the output
-                    prompt_embeds = text_encoder(
-                        input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
-                    ).hidden_states[-2]
-                else:
-                    raise ValueError("LLM needs attention_mask")
-                prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            text_input_ids = text_inputs.input_ids
+            prompt_attention_mask = text_inputs.attention_mask
+            if self.transformer.config.enable_text_attention_mask:
+                # Inference: Generation of the output
+                prompt_embeds = self.text_encoder(
+                    input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+                ).hidden_states[-2]
+            else:
+                raise ValueError("LLM needs attention_mask")
+            prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
@@ -422,100 +335,46 @@ class EasyAnimatePipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            if type(tokenizer) in [BertTokenizer, T5Tokenizer]:
-                uncond_tokens: List[str]
-                if negative_prompt is None:
-                    uncond_tokens = [""] * batch_size
-                elif prompt is not None and type(prompt) is not type(negative_prompt):
-                    raise TypeError(
-                        f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                        f" {type(prompt)}."
-                    )
-                elif isinstance(negative_prompt, str):
-                    uncond_tokens = [negative_prompt]
-                elif batch_size != len(negative_prompt):
-                    raise ValueError(
-                        f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                        f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                        " the batch size of `prompt`."
-                    )
-                else:
-                    uncond_tokens = negative_prompt
-
-                max_length = prompt_embeds.shape[1]
-                uncond_input = tokenizer(
-                    uncond_tokens,
-                    padding="max_length",
-                    max_length=max_length,
-                    truncation=True,
-                    return_tensors="pt",
-                )
-                uncond_input_ids = uncond_input.input_ids
-                if uncond_input_ids.shape[-1] > actual_max_sequence_length:
-                    reuncond_tokens = tokenizer.batch_decode(
-                        uncond_input_ids[:, :actual_max_sequence_length], skip_special_tokens=True
-                    )
-                    uncond_input = tokenizer(
-                        reuncond_tokens,
-                        padding="max_length",
-                        max_length=max_length,
-                        truncation=True,
-                        return_attention_mask=True,
-                        return_tensors="pt",
-                    )
-                    uncond_input_ids = uncond_input.input_ids
-
-                negative_prompt_attention_mask = uncond_input.attention_mask.to(device)
-                if self.transformer.config.enable_text_attention_mask:
-                    negative_prompt_embeds = text_encoder(
-                        uncond_input.input_ids.to(device),
-                        attention_mask=negative_prompt_attention_mask,
-                    )
-                else:
-                    negative_prompt_embeds = text_encoder(uncond_input.input_ids.to(device))
-                negative_prompt_embeds = negative_prompt_embeds[0]
-                negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            if negative_prompt is not None and isinstance(negative_prompt, str):
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": negative_prompt}],
+                    }
+                ]
             else:
-                if negative_prompt is not None and isinstance(negative_prompt, str):
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": negative_prompt}],
-                        }
-                    ]
-                else:
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": _negative_prompt}],
-                        }
-                        for _negative_prompt in negative_prompt
-                    ]
-                text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": _negative_prompt}],
+                    }
+                    for _negative_prompt in negative_prompt
+                ]
+            text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-                text_inputs = tokenizer(
-                    text=[text],
-                    padding="max_length",
-                    max_length=max_length,
-                    truncation=True,
-                    return_attention_mask=True,
-                    padding_side="right",
-                    return_tensors="pt",
-                )
-                text_inputs = text_inputs.to(text_encoder.device)
+            text_inputs = self.tokenizer(
+                text=[text],
+                padding="max_length",
+                max_length=max_sequence_length,
+                truncation=True,
+                return_attention_mask=True,
+                padding_side="right",
+                return_tensors="pt",
+            )
+            text_inputs = text_inputs.to(self.text_encoder.device)
 
-                text_input_ids = text_inputs.input_ids
-                negative_prompt_attention_mask = text_inputs.attention_mask
-                if self.transformer.config.enable_text_attention_mask:
-                    # Inference: Generation of the output
-                    negative_prompt_embeds = text_encoder(
-                        input_ids=text_input_ids,
-                        attention_mask=negative_prompt_attention_mask,
-                        output_hidden_states=True,
-                    ).hidden_states[-2]
-                else:
-                    raise ValueError("LLM needs attention_mask")
-                negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            text_input_ids = text_inputs.input_ids
+            negative_prompt_attention_mask = text_inputs.attention_mask
+            if self.transformer.config.enable_text_attention_mask:
+                # Inference: Generation of the output
+                negative_prompt_embeds = self.text_encoder(
+                    input_ids=text_input_ids,
+                    attention_mask=negative_prompt_attention_mask,
+                    output_hidden_states=True,
+                ).hidden_states[-2]
+            else:
+                raise ValueError("LLM needs attention_mask")
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -557,10 +416,6 @@ class EasyAnimatePipeline(DiffusionPipeline):
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
-        prompt_embeds_2=None,
-        negative_prompt_embeds_2=None,
-        prompt_attention_mask_2=None,
-        negative_prompt_attention_mask_2=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
@@ -582,18 +437,11 @@ class EasyAnimatePipeline(DiffusionPipeline):
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is None and prompt_embeds_2 is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds_2`. Cannot leave both `prompt` and `prompt_embeds_2` undefined."
-            )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if prompt_embeds is not None and prompt_attention_mask is None:
             raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
-
-        if prompt_embeds_2 is not None and prompt_attention_mask_2 is None:
-            raise ValueError("Must provide `prompt_attention_mask_2` when specifying `prompt_embeds_2`.")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -604,23 +452,12 @@ class EasyAnimatePipeline(DiffusionPipeline):
         if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
             raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
 
-        if negative_prompt_embeds_2 is not None and negative_prompt_attention_mask_2 is None:
-            raise ValueError(
-                "Must provide `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds_2`."
-            )
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
-                )
-        if prompt_embeds_2 is not None and negative_prompt_embeds_2 is not None:
-            if prompt_embeds_2.shape != negative_prompt_embeds_2.shape:
-                raise ValueError(
-                    "`prompt_embeds_2` and `negative_prompt_embeds_2` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds_2` {prompt_embeds_2.shape} != `negative_prompt_embeds_2`"
-                    f" {negative_prompt_embeds_2.shape}."
                 )
 
     def prepare_latents(
@@ -688,14 +525,10 @@ class EasyAnimatePipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
         timesteps: Optional[List[int]] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_2: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
-        prompt_attention_mask_2: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask_2: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
@@ -733,20 +566,12 @@ class EasyAnimatePipeline(DiffusionPipeline):
                 Predefined latent tensors to condition generation.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Text embeddings for the prompts. Overrides prompt string inputs for more flexibility.
-            prompt_embeds_2 (`torch.Tensor`, *optional*):
-                Secondary text embeddings to supplement or replace the initial prompt embeddings.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Embeddings for negative prompts. Overrides string inputs if defined.
-            negative_prompt_embeds_2 (`torch.Tensor`, *optional*):
-                Secondary embeddings for negative prompts, similar to `negative_prompt_embeds`.
             prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for the primary prompt embeddings.
-            prompt_attention_mask_2 (`torch.Tensor`, *optional*):
-                Attention mask for the secondary prompt embeddings.
             negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for negative prompt embeddings.
-            negative_prompt_attention_mask_2 (`torch.Tensor`, *optional*):
-                Attention mask for secondary negative prompt embeddings.
             output_type (`str`, *optional*, defaults to "latent"):
                 Format of the generated output, either as a PIL image or as a NumPy array.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -789,10 +614,6 @@ class EasyAnimatePipeline(DiffusionPipeline):
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
-            prompt_embeds_2,
-            negative_prompt_embeds_2,
-            prompt_attention_mask_2,
-            negative_prompt_attention_mask_2,
             callback_on_step_end_tensor_inputs,
         )
         self._guidance_scale = guidance_scale
@@ -810,8 +631,6 @@ class EasyAnimatePipeline(DiffusionPipeline):
         device = self._execution_device
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
-        elif self.text_encoder_2 is not None:
-            dtype = self.text_encoder_2.dtype
         else:
             dtype = self.transformer.dtype
 
@@ -832,32 +651,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
-            text_encoder_index=0,
         )
-        if self.tokenizer_2 is not None:
-            (
-                prompt_embeds_2,
-                negative_prompt_embeds_2,
-                prompt_attention_mask_2,
-                negative_prompt_attention_mask_2,
-            ) = self.encode_prompt(
-                prompt=prompt,
-                device=device,
-                dtype=dtype,
-                num_images_per_prompt=num_images_per_prompt,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
-                negative_prompt=negative_prompt,
-                prompt_embeds=prompt_embeds_2,
-                negative_prompt_embeds=negative_prompt_embeds_2,
-                prompt_attention_mask=prompt_attention_mask_2,
-                negative_prompt_attention_mask=negative_prompt_attention_mask_2,
-                text_encoder_index=1,
-            )
-        else:
-            prompt_embeds_2 = None
-            negative_prompt_embeds_2 = None
-            prompt_attention_mask_2 = None
-            negative_prompt_attention_mask_2 = None
 
         # 4. Prepare timesteps
         if isinstance(self.scheduler, FlowMatchEulerDiscreteScheduler):
@@ -887,16 +681,9 @@ class EasyAnimatePipeline(DiffusionPipeline):
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
-            if prompt_embeds_2 is not None:
-                prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
-                prompt_attention_mask_2 = torch.cat([negative_prompt_attention_mask_2, prompt_attention_mask_2])
 
-        # To latents.device
         prompt_embeds = prompt_embeds.to(device=device)
         prompt_attention_mask = prompt_attention_mask.to(device=device)
-        if prompt_embeds_2 is not None:
-            prompt_embeds_2 = prompt_embeds_2.to(device=device)
-            prompt_attention_mask_2 = prompt_attention_mask_2.to(device=device)
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -921,7 +708,6 @@ class EasyAnimatePipeline(DiffusionPipeline):
                     latent_model_input,
                     t_expand,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_hidden_states_t5=prompt_embeds_2,
                     return_dict=False,
                 )[0]
 
@@ -949,10 +735,6 @@ class EasyAnimatePipeline(DiffusionPipeline):
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-                    prompt_embeds_2 = callback_outputs.pop("prompt_embeds_2", prompt_embeds_2)
-                    negative_prompt_embeds_2 = callback_outputs.pop(
-                        "negative_prompt_embeds_2", negative_prompt_embeds_2
-                    )
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
@@ -971,6 +753,6 @@ class EasyAnimatePipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return video
+            return (video,)
 
         return EasyAnimatePipelineOutput(frames=video)

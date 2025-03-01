@@ -365,9 +365,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
-        "negative_prompt_embeds",
-        "prompt_embeds_2",
-        "negative_prompt_embeds_2",
+        "negative_prompt_embeds"
     ]
 
     def __init__(
@@ -407,6 +405,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         )
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
 
+    # Copied from diffusers.pipelines.easyanimate.pipeline_easyanimate.EasyAnimatePipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: str,
@@ -419,9 +418,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        max_sequence_length: Optional[int] = None,
-        text_encoder_index: int = 0,
-        actual_max_sequence_length: int = 256,
+        max_sequence_length: int = 256,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -464,9 +461,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
 
         if max_sequence_length is None:
             if text_encoder_index == 0:
-                max_length = min(self.tokenizer.model_max_length, actual_max_sequence_length)
+                max_length = min(self.tokenizer.model_max_length, max_sequence_length)
             if text_encoder_index == 1:
-                max_length = min(self.tokenizer_2.model_max_length, actual_max_sequence_length)
+                max_length = min(self.tokenizer_2.model_max_length, max_sequence_length)
         else:
             max_length = max_sequence_length
 
@@ -488,9 +485,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     return_tensors="pt",
                 )
                 text_input_ids = text_inputs.input_ids
-                if text_input_ids.shape[-1] > actual_max_sequence_length:
+                if text_input_ids.shape[-1] > max_sequence_length:
                     reprompt = tokenizer.batch_decode(
-                        text_input_ids[:, :actual_max_sequence_length], skip_special_tokens=True
+                        text_input_ids[:, :max_sequence_length], skip_special_tokens=True
                     )
                     text_inputs = tokenizer(
                         reprompt,
@@ -506,7 +503,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                 if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
                     text_input_ids, untruncated_ids
                 ):
-                    _actual_max_sequence_length = min(tokenizer.model_max_length, actual_max_sequence_length)
+                    _actual_max_sequence_length = min(tokenizer.model_max_length, max_sequence_length)
                     removed_text = tokenizer.batch_decode(untruncated_ids[:, _actual_max_sequence_length - 1 : -1])
                     logger.warning(
                         "The following part of your input was truncated because CLIP can only handle sequences up to"
@@ -603,9 +600,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     return_tensors="pt",
                 )
                 uncond_input_ids = uncond_input.input_ids
-                if uncond_input_ids.shape[-1] > actual_max_sequence_length:
+                if uncond_input_ids.shape[-1] > max_sequence_length:
                     reuncond_tokens = tokenizer.batch_decode(
-                        uncond_input_ids[:, :actual_max_sequence_length], skip_special_tokens=True
+                        uncond_input_ids[:, :max_sequence_length], skip_special_tokens=True
                     )
                     uncond_input = tokenizer(
                         reuncond_tokens,
@@ -709,10 +706,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
-        prompt_embeds_2=None,
-        negative_prompt_embeds_2=None,
-        prompt_attention_mask_2=None,
-        negative_prompt_attention_mask_2=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
@@ -734,18 +727,11 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is None and prompt_embeds_2 is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds_2`. Cannot leave both `prompt` and `prompt_embeds_2` undefined."
-            )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if prompt_embeds is not None and prompt_attention_mask is None:
             raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
-
-        if prompt_embeds_2 is not None and prompt_attention_mask_2 is None:
-            raise ValueError("Must provide `prompt_attention_mask_2` when specifying `prompt_embeds_2`.")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -756,23 +742,12 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
             raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
 
-        if negative_prompt_embeds_2 is not None and negative_prompt_attention_mask_2 is None:
-            raise ValueError(
-                "Must provide `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds_2`."
-            )
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
-                )
-        if prompt_embeds_2 is not None and negative_prompt_embeds_2 is not None:
-            if prompt_embeds_2.shape != negative_prompt_embeds_2.shape:
-                raise ValueError(
-                    "`prompt_embeds_2` and `negative_prompt_embeds_2` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds_2` {prompt_embeds_2.shape} != `negative_prompt_embeds_2`"
-                    f" {negative_prompt_embeds_2.shape}."
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
@@ -954,13 +929,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_2: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
-        prompt_attention_mask_2: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask_2: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
@@ -1014,22 +985,14 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, embeddings are generated from the `prompt` input argument.
-            prompt_embeds_2 (`torch.Tensor`, *optional*):
-                Secondary set of pre-generated text embeddings, useful for advanced prompt weighting.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings, aiding in fine-tuning what should not be represented in the
                 outputs. If not provided, embeddings are generated from the `negative_prompt` argument.
-            negative_prompt_embeds_2 (`torch.Tensor`, *optional*):
-                Secondary set of pre-generated negative text embeddings for further control.
             prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask guiding the focus of the model on specific parts of the prompt text. Required when using
                 `prompt_embeds`.
-            prompt_attention_mask_2 (`torch.Tensor`, *optional*):
-                Attention mask for the secondary prompt embedding.
             negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for the negative prompt, needed when `negative_prompt_embeds` are used.
-            negative_prompt_attention_mask_2 (`torch.Tensor`, *optional*):
-                Attention mask for the secondary negative prompt embedding.
             output_type (`str`, *optional*, defaults to `"latent"`):
                 The output format of the generated image. Choose between `PIL.Image` and `np.array` to define how you
                 want the results to be formatted.
@@ -1077,10 +1040,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
-            prompt_embeds_2,
-            negative_prompt_embeds_2,
-            prompt_attention_mask_2,
-            negative_prompt_attention_mask_2,
             callback_on_step_end_tensor_inputs,
         )
         self._guidance_scale = guidance_scale
@@ -1098,8 +1057,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         device = self._execution_device
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
-        elif self.text_encoder_2 is not None:
-            dtype = self.text_encoder_2.dtype
         else:
             dtype = self.transformer.dtype
 
@@ -1120,32 +1077,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
-            text_encoder_index=0,
         )
-        if self.tokenizer_2 is not None:
-            (
-                prompt_embeds_2,
-                negative_prompt_embeds_2,
-                prompt_attention_mask_2,
-                negative_prompt_attention_mask_2,
-            ) = self.encode_prompt(
-                prompt=prompt,
-                device=device,
-                dtype=dtype,
-                num_images_per_prompt=num_images_per_prompt,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
-                negative_prompt=negative_prompt,
-                prompt_embeds=prompt_embeds_2,
-                negative_prompt_embeds=negative_prompt_embeds_2,
-                prompt_attention_mask=prompt_attention_mask_2,
-                negative_prompt_attention_mask=negative_prompt_attention_mask_2,
-                text_encoder_index=1,
-            )
-        else:
-            prompt_embeds_2 = None
-            negative_prompt_embeds_2 = None
-            prompt_attention_mask_2 = None
-            negative_prompt_attention_mask_2 = None
 
         # 4. set timesteps
         if isinstance(self.scheduler, FlowMatchEulerDiscreteScheduler):
@@ -1333,16 +1265,10 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
-            if prompt_embeds_2 is not None:
-                prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
-                prompt_attention_mask_2 = torch.cat([negative_prompt_attention_mask_2, prompt_attention_mask_2])
 
         # To latents.device
         prompt_embeds = prompt_embeds.to(device=device)
         prompt_attention_mask = prompt_attention_mask.to(device=device)
-        if prompt_embeds_2 is not None:
-            prompt_embeds_2 = prompt_embeds_2.to(device=device)
-            prompt_attention_mask_2 = prompt_attention_mask_2.to(device=device)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1367,7 +1293,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     latent_model_input,
                     t_expand,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_hidden_states_t5=prompt_embeds_2,
                     inpaint_latents=inpaint_latents,
                     return_dict=False,
                 )[0]
@@ -1411,10 +1336,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-                    prompt_embeds_2 = callback_outputs.pop("prompt_embeds_2", prompt_embeds_2)
-                    negative_prompt_embeds_2 = callback_outputs.pop(
-                        "negative_prompt_embeds_2", negative_prompt_embeds_2
-                    )
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
@@ -1433,6 +1354,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return video
+            return (video,)
 
         return EasyAnimatePipelineOutput(frames=video)
