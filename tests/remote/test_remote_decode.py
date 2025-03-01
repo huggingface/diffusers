@@ -81,7 +81,6 @@ class RemoteAutoencoderKLMixin:
             **inputs,
         )
         assert isinstance(output, PIL.Image.Image)
-        output.save("test_no_scaling.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
@@ -97,7 +96,6 @@ class RemoteAutoencoderKLMixin:
         processor = self.processor_cls()
         output = remote_decode(output_type="pt", processor=processor, **inputs)
         assert isinstance(output, PIL.Image.Image)
-        output.save("test_output_type_pt.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
@@ -110,7 +108,6 @@ class RemoteAutoencoderKLMixin:
     def test_output_type_pil(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pil", **inputs)
-        output.save("test_output_type_pil.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
@@ -118,7 +115,6 @@ class RemoteAutoencoderKLMixin:
     def test_output_type_pil_image_format(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pil", image_format="png", **inputs)
-        output.save("test_output_type_pil_image_format.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
@@ -131,7 +127,6 @@ class RemoteAutoencoderKLMixin:
     def test_output_type_pt_partial_postprocess(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pt", partial_postprocess=True, **inputs)
-        output.save("test_output_type_pt_partial_postprocess.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
