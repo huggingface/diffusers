@@ -370,6 +370,11 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
+        self.enable_text_attention_mask = (
+            self.transformer.config.enable_text_attention_mask
+            if getattr(self, "transformer", None) is not None
+            else True
+        )
         self.vae_spatial_compression_ratio = (
             self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 8
         )
@@ -389,8 +394,6 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
     def encode_prompt(
         self,
         prompt: str,
-        device: torch.device,
-        dtype: torch.dtype,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
         negative_prompt: Optional[str] = None,
@@ -398,6 +401,8 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 256,
     ):
         r"""
@@ -431,6 +436,9 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                 Attention mask for the negative prompt. Required when `negative_prompt_embeds` is passed directly.
             max_sequence_length (`int`, *optional*): maximum sequence length to use for the prompt.
         """
+        dtype = dtype or self.text_encoder.dtype
+        device = device or self.text_encoder.device
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -469,7 +477,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
 
             text_input_ids = text_inputs.input_ids
             prompt_attention_mask = text_inputs.attention_mask
-            if self.transformer.config.enable_text_attention_mask:
+            if self.enable_text_attention_mask:
                 # Inference: Generation of the output
                 prompt_embeds = self.text_encoder(
                     input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
@@ -530,6 +538,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         if do_classifier_free_guidance:
+            breakpoint()
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
