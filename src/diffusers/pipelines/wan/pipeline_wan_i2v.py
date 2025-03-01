@@ -155,8 +155,8 @@ class WanImageToVideoPipeline(DiffusionPipeline):
             image_processor=image_processor,
         )
 
-        self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample)
-        self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample)
+        self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.image_processor = image_processor
 
