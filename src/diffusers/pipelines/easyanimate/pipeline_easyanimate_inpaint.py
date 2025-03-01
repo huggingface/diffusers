@@ -25,8 +25,6 @@ from transformers import (
     BertTokenizer,
     Qwen2Tokenizer,
     Qwen2VLForConditionalGeneration,
-    T5EncoderModel,
-    T5Tokenizer,
 )
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -347,34 +345,18 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             A `Qwen2Tokenizer` or `BertTokenizer` to tokenize text.
         transformer ([`EasyAnimateTransformer3DModel`]):
             The EasyAnimate model designed by EasyAnimate Team.
-        text_encoder_2 (`T5EncoderModel`):
-            EasyAnimate does not use text_encoder_2 in V5.1.
-        tokenizer_2 (`T5Tokenizer`):
-            EasyAnimate does not use tokenizer_2 in V5.1.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with EasyAnimate to denoise the encoded image latents.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
-    _optional_components = [
-        "text_encoder_2",
-        "tokenizer_2",
-        "text_encoder",
-        "tokenizer",
-    ]
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "negative_prompt_embeds"
-    ]
+    model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
         vae: AutoencoderKLMagvit,
         text_encoder: Union[Qwen2VLForConditionalGeneration, BertModel],
         tokenizer: Union[Qwen2Tokenizer, BertTokenizer],
-        text_encoder_2: Optional[Union[T5EncoderModel, Qwen2VLForConditionalGeneration]],
-        tokenizer_2: Optional[Union[T5Tokenizer, Qwen2Tokenizer]],
         transformer: EasyAnimateTransformer3DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
@@ -384,10 +366,8 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            tokenizer_2=tokenizer_2,
             transformer=transformer,
             scheduler=scheduler,
-            text_encoder_2=text_encoder_2,
         )
 
         self.vae_spatial_compression_ratio = (
@@ -450,23 +430,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Attention mask for the negative prompt. Required when `negative_prompt_embeds` is passed directly.
             max_sequence_length (`int`, *optional*): maximum sequence length to use for the prompt.
-            text_encoder_index (`int`, *optional*):
-                Index of the text encoder to use. `0` for clip and `1` for T5.
         """
-        tokenizers = [self.tokenizer, self.tokenizer_2]
-        text_encoders = [self.text_encoder, self.text_encoder_2]
-
-        tokenizer = tokenizers[text_encoder_index]
-        text_encoder = text_encoders[text_encoder_index]
-
-        if max_sequence_length is None:
-            if text_encoder_index == 0:
-                max_length = min(self.tokenizer.model_max_length, max_sequence_length)
-            if text_encoder_index == 1:
-                max_length = min(self.tokenizer_2.model_max_length, max_sequence_length)
-        else:
-            max_length = max_sequence_length
-
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -475,91 +439,44 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            if type(tokenizer) in [BertTokenizer, T5Tokenizer]:
-                text_inputs = tokenizer(
-                    prompt,
-                    padding="max_length",
-                    max_length=max_length,
-                    truncation=True,
-                    return_attention_mask=True,
-                    return_tensors="pt",
-                )
-                text_input_ids = text_inputs.input_ids
-                if text_input_ids.shape[-1] > max_sequence_length:
-                    reprompt = tokenizer.batch_decode(
-                        text_input_ids[:, :max_sequence_length], skip_special_tokens=True
-                    )
-                    text_inputs = tokenizer(
-                        reprompt,
-                        padding="max_length",
-                        max_length=max_length,
-                        truncation=True,
-                        return_attention_mask=True,
-                        return_tensors="pt",
-                    )
-                    text_input_ids = text_inputs.input_ids
-                untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-                if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                    text_input_ids, untruncated_ids
-                ):
-                    _actual_max_sequence_length = min(tokenizer.model_max_length, max_sequence_length)
-                    removed_text = tokenizer.batch_decode(untruncated_ids[:, _actual_max_sequence_length - 1 : -1])
-                    logger.warning(
-                        "The following part of your input was truncated because CLIP can only handle sequences up to"
-                        f" {_actual_max_sequence_length} tokens: {removed_text}"
-                    )
-
-                prompt_attention_mask = text_inputs.attention_mask.to(device)
-
-                if self.transformer.config.enable_text_attention_mask:
-                    prompt_embeds = text_encoder(
-                        text_input_ids.to(device),
-                        attention_mask=prompt_attention_mask,
-                    )
-                else:
-                    prompt_embeds = text_encoder(text_input_ids.to(device))
-                prompt_embeds = prompt_embeds[0]
-                prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            if prompt is not None and isinstance(prompt, str):
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": prompt}],
+                    }
+                ]
             else:
-                if prompt is not None and isinstance(prompt, str):
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": prompt}],
-                        }
-                    ]
-                else:
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": _prompt}],
-                        }
-                        for _prompt in prompt
-                    ]
-                text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": _prompt}],
+                    }
+                    for _prompt in prompt
+                ]
+            text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-                text_inputs = tokenizer(
-                    text=[text],
-                    padding="max_length",
-                    max_length=max_length,
-                    truncation=True,
-                    return_attention_mask=True,
-                    padding_side="right",
-                    return_tensors="pt",
-                )
-                text_inputs = text_inputs.to(text_encoder.device)
+            text_inputs = self.tokenizer(
+                text=[text],
+                padding="max_length",
+                max_length=max_sequence_length,
+                truncation=True,
+                return_attention_mask=True,
+                padding_side="right",
+                return_tensors="pt",
+            )
+            text_inputs = text_inputs.to(self.text_encoder.device)
 
-                text_input_ids = text_inputs.input_ids
-                prompt_attention_mask = text_inputs.attention_mask
-                if self.transformer.config.enable_text_attention_mask:
-                    # Inference: Generation of the output
-                    prompt_embeds = text_encoder(
-                        input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
-                    ).hidden_states[-2]
-                else:
-                    raise ValueError("LLM needs attention_mask")
-                prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            text_input_ids = text_inputs.input_ids
+            prompt_attention_mask = text_inputs.attention_mask
+            if self.transformer.config.enable_text_attention_mask:
+                # Inference: Generation of the output
+                prompt_embeds = self.text_encoder(
+                    input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+                ).hidden_states[-2]
+            else:
+                raise ValueError("LLM needs attention_mask")
+            prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
@@ -571,100 +488,46 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            if type(tokenizer) in [BertTokenizer, T5Tokenizer]:
-                uncond_tokens: List[str]
-                if negative_prompt is None:
-                    uncond_tokens = [""] * batch_size
-                elif prompt is not None and type(prompt) is not type(negative_prompt):
-                    raise TypeError(
-                        f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                        f" {type(prompt)}."
-                    )
-                elif isinstance(negative_prompt, str):
-                    uncond_tokens = [negative_prompt]
-                elif batch_size != len(negative_prompt):
-                    raise ValueError(
-                        f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                        f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                        " the batch size of `prompt`."
-                    )
-                else:
-                    uncond_tokens = negative_prompt
-
-                max_length = prompt_embeds.shape[1]
-                uncond_input = tokenizer(
-                    uncond_tokens,
-                    padding="max_length",
-                    max_length=max_length,
-                    truncation=True,
-                    return_tensors="pt",
-                )
-                uncond_input_ids = uncond_input.input_ids
-                if uncond_input_ids.shape[-1] > max_sequence_length:
-                    reuncond_tokens = tokenizer.batch_decode(
-                        uncond_input_ids[:, :max_sequence_length], skip_special_tokens=True
-                    )
-                    uncond_input = tokenizer(
-                        reuncond_tokens,
-                        padding="max_length",
-                        max_length=max_length,
-                        truncation=True,
-                        return_attention_mask=True,
-                        return_tensors="pt",
-                    )
-                    uncond_input_ids = uncond_input.input_ids
-
-                negative_prompt_attention_mask = uncond_input.attention_mask.to(device)
-                if self.transformer.config.enable_text_attention_mask:
-                    negative_prompt_embeds = text_encoder(
-                        uncond_input.input_ids.to(device),
-                        attention_mask=negative_prompt_attention_mask,
-                    )
-                else:
-                    negative_prompt_embeds = text_encoder(uncond_input.input_ids.to(device))
-                negative_prompt_embeds = negative_prompt_embeds[0]
-                negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            if negative_prompt is not None and isinstance(negative_prompt, str):
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": negative_prompt}],
+                    }
+                ]
             else:
-                if negative_prompt is not None and isinstance(negative_prompt, str):
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": negative_prompt}],
-                        }
-                    ]
-                else:
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": _negative_prompt}],
-                        }
-                        for _negative_prompt in negative_prompt
-                    ]
-                text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": _negative_prompt}],
+                    }
+                    for _negative_prompt in negative_prompt
+                ]
+            text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-                text_inputs = tokenizer(
-                    text=[text],
-                    padding="max_length",
-                    max_length=max_length,
-                    truncation=True,
-                    return_attention_mask=True,
-                    padding_side="right",
-                    return_tensors="pt",
-                )
-                text_inputs = text_inputs.to(text_encoder.device)
+            text_inputs = self.tokenizer(
+                text=[text],
+                padding="max_length",
+                max_length=max_sequence_length,
+                truncation=True,
+                return_attention_mask=True,
+                padding_side="right",
+                return_tensors="pt",
+            )
+            text_inputs = text_inputs.to(self.text_encoder.device)
 
-                text_input_ids = text_inputs.input_ids
-                negative_prompt_attention_mask = text_inputs.attention_mask
-                if self.transformer.config.enable_text_attention_mask:
-                    # Inference: Generation of the output
-                    negative_prompt_embeds = text_encoder(
-                        input_ids=text_input_ids,
-                        attention_mask=negative_prompt_attention_mask,
-                        output_hidden_states=True,
-                    ).hidden_states[-2]
-                else:
-                    raise ValueError("LLM needs attention_mask")
-                negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            text_input_ids = text_inputs.input_ids
+            negative_prompt_attention_mask = text_inputs.attention_mask
+            if self.transformer.config.enable_text_attention_mask:
+                # Inference: Generation of the output
+                negative_prompt_embeds = self.text_encoder(
+                    input_ids=text_input_ids,
+                    attention_mask=negative_prompt_attention_mask,
+                    output_hidden_states=True,
+                ).hidden_states[-2]
+            else:
+                raise ValueError("LLM needs attention_mask")
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
