@@ -45,6 +45,8 @@ class RemoteAutoencoderKLMixin:
     output_pt_slice: torch.Tensor = None
     partial_postprocess_return_pt_slice: torch.Tensor = None
     return_pt_slice: torch.Tensor = None
+    width: int = None
+    height: int = None
 
     def get_dummy_inputs(self):
         inputs = {
@@ -57,6 +59,8 @@ class RemoteAutoencoderKLMixin:
             ),
             "scaling_factor": self.scaling_factor,
             "shift_factor": self.shift_factor,
+            "height": self.height,
+            "width": self.width,
         }
         return inputs
 
@@ -65,6 +69,7 @@ class RemoteAutoencoderKLMixin:
         processor = self.processor_cls()
         output = remote_decode(output_type="pt", processor=processor, **inputs)
         assert isinstance(output, PIL.Image.Image)
+        output.save("test_output_type_pt.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
@@ -77,6 +82,7 @@ class RemoteAutoencoderKLMixin:
     def test_output_type_pil(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pil", **inputs)
+        output.save("test_output_type_pil.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
@@ -84,6 +90,7 @@ class RemoteAutoencoderKLMixin:
     def test_output_type_pil_image_format(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pil", image_format="png", **inputs)
+        output.save("test_output_type_pil_image_format.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
@@ -96,6 +103,7 @@ class RemoteAutoencoderKLMixin:
     def test_output_type_pt_partial_postprocess(self):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="pt", partial_postprocess=True, **inputs)
+        output.save("test_output_type_pt_partial_postprocess.png")
         self.assertTrue(isinstance(output, PIL.Image.Image), f"Expected `PIL.Image.Image` output, got {type(output)}")
         self.assertEqual(output.height, self.out_hw[0], f"Expected image height {self.out_hw[0]}, got {output.height}")
         self.assertEqual(output.width, self.out_hw[1], f"Expected image width {self.out_hw[0]}, got {output.width}")
@@ -221,7 +229,6 @@ class RemoteAutoencoderKLFluxTests(
     RemoteAutoencoderKLMixin,
     unittest.TestCase,
 ):
-    # TODO: packed
     shape = (
         1,
         16,
@@ -242,3 +249,31 @@ class RemoteAutoencoderKLFluxTests(
         [202, 203, 203, 197, 195, 193, 189, 188, 178], dtype=torch.uint8
     )
     return_pt_slice = torch.tensor([0.5820, 0.5962, 0.5898, 0.5439, 0.5327, 0.5112, 0.4797, 0.4773, 0.3984])
+
+
+class RemoteAutoencoderKLFluxPackedTests(
+    RemoteAutoencoderKLMixin,
+    unittest.TestCase,
+):
+    shape = (
+        1,
+        4096,
+        64,
+    )
+    out_hw = (
+        1024,
+        1024,
+    )
+    height = 1024
+    width = 1024
+    endpoint = "https://fnohtuwsskxgxsnn.us-east-1.aws.endpoints.huggingface.cloud/"
+    dtype = torch.bfloat16
+    scaling_factor = 0.3611
+    shift_factor = 0.1159
+    processor_cls = VaeImageProcessor
+    # slices are different due to randn on different shape. we can pack the latent instead if we want the same
+    output_pt_slice = torch.tensor([96, 116, 157, 45, 67, 104, 34, 56, 89], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor(
+        [168, 212, 202, 155, 191, 185, 150, 180, 168], dtype=torch.uint8
+    )
+    return_pt_slice = torch.tensor([0.3198, 0.6631, 0.5864, 0.2131, 0.4944, 0.4482, 0.1776, 0.4153, 0.3176])
