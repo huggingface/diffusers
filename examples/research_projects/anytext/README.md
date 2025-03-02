@@ -7,7 +7,6 @@ Project page: https://aigcdesigngroup.github.io/homepage_anytext
 Each text line that needs to be generated should be enclosed in double quotes. For any usage questions, please refer to the [paper](https://arxiv.org/abs/2311.03054).
 
 
-
 ```py
 import torch
 from diffusers import DiffusionPipeline
