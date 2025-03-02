@@ -344,7 +344,7 @@ class RemoteAutoencoderKLSDv1Tests(
         512,
         512,
     )
-    endpoint = "https://bz0b3zkoojf30bhx.us-east-1.aws.endpoints.huggingface.cloud/"
+    endpoint = "https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud/"
     dtype = torch.float16
     scaling_factor = 0.18215
     shift_factor = None
@@ -354,105 +354,105 @@ class RemoteAutoencoderKLSDv1Tests(
     return_pt_slice = torch.tensor([-0.2177, 0.0217, -0.2258, 0.0412, -0.1687, -0.1232, -0.2416, -0.2130, -0.0543])
 
 
-# class RemoteAutoencoderKLSDXLTests(
-#     RemoteAutoencoderKLMixin,
-#     unittest.TestCase,
-# ):
-#     shape = (
-#         1,
-#         4,
-#         128,
-#         128,
-#     )
-#     out_hw = (
-#         1024,
-#         1024,
-#     )
-#     endpoint = "https://fagf07t3bwf0615i.us-east-1.aws.endpoints.huggingface.cloud/"
-#     dtype = torch.float16
-#     scaling_factor = 0.13025
-#     shift_factor = None
-#     processor_cls = VaeImageProcessor
-#     output_pt_slice = torch.tensor([104, 52, 23, 114, 61, 35, 108, 87, 38], dtype=torch.uint8)
-#     partial_postprocess_return_pt_slice = torch.tensor([77, 86, 89, 49, 60, 75, 52, 65, 78], dtype=torch.uint8)
-#     return_pt_slice = torch.tensor([-0.3945, -0.3289, -0.2993, -0.6177, -0.5259, -0.4119, -0.5898, -0.4863, -0.3845])
+class RemoteAutoencoderKLSDXLTests(
+    RemoteAutoencoderKLMixin,
+    unittest.TestCase,
+):
+    shape = (
+        1,
+        4,
+        128,
+        128,
+    )
+    out_hw = (
+        1024,
+        1024,
+    )
+    endpoint = "https://x2dmsqunjd6k9prw.us-east-1.aws.endpoints.huggingface.cloud/"
+    dtype = torch.float16
+    scaling_factor = 0.13025
+    shift_factor = None
+    processor_cls = VaeImageProcessor
+    output_pt_slice = torch.tensor([104, 52, 23, 114, 61, 35, 108, 87, 38], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor([77, 86, 89, 49, 60, 75, 52, 65, 78], dtype=torch.uint8)
+    return_pt_slice = torch.tensor([-0.3945, -0.3289, -0.2993, -0.6177, -0.5259, -0.4119, -0.5898, -0.4863, -0.3845])
 
 
-# class RemoteAutoencoderKLFluxTests(
-#     RemoteAutoencoderKLMixin,
-#     unittest.TestCase,
-# ):
-#     shape = (
-#         1,
-#         16,
-#         128,
-#         128,
-#     )
-#     out_hw = (
-#         1024,
-#         1024,
-#     )
-#     endpoint = "https://fnohtuwsskxgxsnn.us-east-1.aws.endpoints.huggingface.cloud/"
-#     dtype = torch.bfloat16
-#     scaling_factor = 0.3611
-#     shift_factor = 0.1159
-#     processor_cls = VaeImageProcessor
-#     output_pt_slice = torch.tensor([110, 72, 91, 62, 35, 52, 69, 55, 69], dtype=torch.uint8)
-#     partial_postprocess_return_pt_slice = torch.tensor(
-#         [202, 203, 203, 197, 195, 193, 189, 188, 178], dtype=torch.uint8
-#     )
-#     return_pt_slice = torch.tensor([0.5820, 0.5962, 0.5898, 0.5439, 0.5327, 0.5112, 0.4797, 0.4773, 0.3984])
+class RemoteAutoencoderKLFluxTests(
+    RemoteAutoencoderKLMixin,
+    unittest.TestCase,
+):
+    shape = (
+        1,
+        16,
+        128,
+        128,
+    )
+    out_hw = (
+        1024,
+        1024,
+    )
+    endpoint = "https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud/"
+    dtype = torch.bfloat16
+    scaling_factor = 0.3611
+    shift_factor = 0.1159
+    processor_cls = VaeImageProcessor
+    output_pt_slice = torch.tensor([110, 72, 91, 62, 35, 52, 69, 55, 69], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor(
+        [202, 203, 203, 197, 195, 193, 189, 188, 178], dtype=torch.uint8
+    )
+    return_pt_slice = torch.tensor([0.5820, 0.5962, 0.5898, 0.5439, 0.5327, 0.5112, 0.4797, 0.4773, 0.3984])
 
 
-# class RemoteAutoencoderKLFluxPackedTests(
-#     RemoteAutoencoderKLMixin,
-#     unittest.TestCase,
-# ):
-#     shape = (
-#         1,
-#         4096,
-#         64,
-#     )
-#     out_hw = (
-#         1024,
-#         1024,
-#     )
-#     height = 1024
-#     width = 1024
-#     endpoint = "https://fnohtuwsskxgxsnn.us-east-1.aws.endpoints.huggingface.cloud/"
-#     dtype = torch.bfloat16
-#     scaling_factor = 0.3611
-#     shift_factor = 0.1159
-#     processor_cls = VaeImageProcessor
-#     # slices are different due to randn on different shape. we can pack the latent instead if we want the same
-#     output_pt_slice = torch.tensor([96, 116, 157, 45, 67, 104, 34, 56, 89], dtype=torch.uint8)
-#     partial_postprocess_return_pt_slice = torch.tensor(
-#         [168, 212, 202, 155, 191, 185, 150, 180, 168], dtype=torch.uint8
-#     )
-#     return_pt_slice = torch.tensor([0.3198, 0.6631, 0.5864, 0.2131, 0.4944, 0.4482, 0.1776, 0.4153, 0.3176])
+class RemoteAutoencoderKLFluxPackedTests(
+    RemoteAutoencoderKLMixin,
+    unittest.TestCase,
+):
+    shape = (
+        1,
+        4096,
+        64,
+    )
+    out_hw = (
+        1024,
+        1024,
+    )
+    height = 1024
+    width = 1024
+    endpoint = "https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud/"
+    dtype = torch.bfloat16
+    scaling_factor = 0.3611
+    shift_factor = 0.1159
+    processor_cls = VaeImageProcessor
+    # slices are different due to randn on different shape. we can pack the latent instead if we want the same
+    output_pt_slice = torch.tensor([96, 116, 157, 45, 67, 104, 34, 56, 89], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor(
+        [168, 212, 202, 155, 191, 185, 150, 180, 168], dtype=torch.uint8
+    )
+    return_pt_slice = torch.tensor([0.3198, 0.6631, 0.5864, 0.2131, 0.4944, 0.4482, 0.1776, 0.4153, 0.3176])
 
 
-# class RemoteAutoencoderKLHunyuanVideoTests(
-#     RemoteAutoencoderKLHunyuanVideoMixin,
-#     unittest.TestCase,
-# ):
-#     shape = (
-#         1,
-#         16,
-#         3,
-#         40,
-#         64,
-#     )
-#     out_hw = (
-#         320,
-#         512,
-#     )
-#     endpoint = "https://lsx2injm3ts8wbvv.us-east-1.aws.endpoints.huggingface.cloud/"
-#     dtype = torch.float16
-#     scaling_factor = 0.476986
-#     processor_cls = VideoProcessor
-#     output_pt_slice = torch.tensor([112, 92, 85, 112, 93, 85, 112, 94, 85], dtype=torch.uint8)
-#     partial_postprocess_return_pt_slice = torch.tensor(
-#         [149, 161, 168, 136, 150, 156, 129, 143, 149], dtype=torch.uint8
-#     )
-#     return_pt_slice = torch.tensor([0.1656, 0.2661, 0.3157, 0.0693, 0.1755, 0.2252, 0.0127, 0.1221, 0.1708])
+class RemoteAutoencoderKLHunyuanVideoTests(
+    RemoteAutoencoderKLHunyuanVideoMixin,
+    unittest.TestCase,
+):
+    shape = (
+        1,
+        16,
+        3,
+        40,
+        64,
+    )
+    out_hw = (
+        320,
+        512,
+    )
+    endpoint = "https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud/"
+    dtype = torch.float16
+    scaling_factor = 0.476986
+    processor_cls = VideoProcessor
+    output_pt_slice = torch.tensor([112, 92, 85, 112, 93, 85, 112, 94, 85], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor(
+        [149, 161, 168, 136, 150, 156, 129, 143, 149], dtype=torch.uint8
+    )
+    return_pt_slice = torch.tensor([0.1656, 0.2661, 0.3157, 0.0693, 0.1755, 0.2252, 0.0127, 0.1221, 0.1708])
