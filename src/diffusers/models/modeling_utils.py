@@ -1765,6 +1765,44 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 state_dict[f"{path}.to_out.0.bias"] = state_dict.pop(f"{path}.proj_attn.bias")
         return state_dict
 
+    def _enable_hook(self, name: str) -> None:
+        r"""
+        This method enables the hook with the given name on the model and all its submodules.
+
+        Args:
+            name (`str`):
+                The name of the hook to enable.
+
+        This method is not backwards compatible and may be subject to change in future versions.
+        """
+        from ..hooks.hooks import _set_hook_state
+
+        _set_hook_state(self, name, True)
+
+    def _disable_hook(self, name: str) -> None:
+        r"""
+        This method disables the hook with the given name on the model and all its submodules.
+
+        Args:
+            name (`str`):
+                The name of the hook to disable.
+
+        This method is not backwards compatible and may be subject to change in future versions.
+        """
+        from ..hooks.hooks import _set_hook_state
+
+        _set_hook_state(self, name, False)
+
+    def _remove_all_hooks(self) -> None:
+        r"""
+        This method removes all hooks from the model and all its submodules.
+
+        This method is not backwards compatible and may be subject to change in future versions.
+        """
+        from ..hooks.hooks import _remove_all_hooks
+
+        _remove_all_hooks(self)
+
 
 class LegacyModelMixin(ModelMixin):
     r"""
