@@ -27,7 +27,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 Recommendations for inference:
 - VAE in `torch.float32` for better decoding quality.
 - `num_frames` should be of the form `4 * k + 1`, for example `49` or `81`.
-- For smaller resolution videos, try lower values of `shift` (between `2.0` to `5.0`) in the [Scheduler](https://huggingface.co/docs/diffusers/main/en/api/schedulers/flow_match_euler_discrete#diffusers.FlowMatchEulerDiscreteScheduler.shift). For larger resolution images, try higher values (between `7.0` and `12.0`). The default value is `3.0` for Wan.
+- For smaller resolution videos, try lower values of `shift` (between `2.0` to `5.0`) in the [Scheduler](https://huggingface.co/docs/diffusers/main/en/api/schedulers/flow_match_euler_discrete#diffusers.FlowMatchEulerDiscreteScheduler.shift). For larger resolution videos, try higher values (between `7.0` and `12.0`). The default value is `3.0` for Wan.
 
 ### Using a custom scheduler
 
@@ -36,7 +36,7 @@ Wan can be used with many different schedulers, each with their own benefits reg
 ```python
 from diffusers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler, WanPipeline
 
-scheduler_a = FlowMatchEulerDiscreteScheduler(flow_shift=5.0)
+scheduler_a = FlowMatchEulerDiscreteScheduler(shift=5.0)
 scheduler_b = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=4.0)
 
 pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers", scheduler=<CUSTOM_SCHEDULER_HERE>)
