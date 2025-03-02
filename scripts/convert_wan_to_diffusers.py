@@ -394,7 +394,7 @@ if __name__ == "__main__":
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     scheduler = UniPCMultistepScheduler(
-        prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=1.0
+        prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=3.0
     )
 
     if "I2V" in args.model_type:
