@@ -10,7 +10,7 @@ from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjec
 
 from diffusers import (
     AutoencoderKLWan,
-    FlowMatchEulerDiscreteScheduler,
+    UniPCMultistepSchedule,
     WanImageToVideoPipeline,
     WanPipeline,
     WanTransformer3DModel,
@@ -393,7 +393,7 @@ if __name__ == "__main__":
     vae = convert_vae()
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
-    scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
+    scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=1.0)
 
     if "I2V" in args.model_type:
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
