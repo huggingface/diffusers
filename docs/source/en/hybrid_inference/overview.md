@@ -48,5 +48,5 @@ Hybrid Inference offers a fast and simple way to offload local generation requir
 
 The documentation is organized into two sections:
 
-* **Getting Started** Learn the basics of how to use Hybrid Inference.
+* **VAE Decode** Learn the basics of how to use VAE Decode with Hybrid Inference.
 * **API Reference** Dive into task-specific settings and parameters.

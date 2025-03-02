@@ -79,6 +79,8 @@
 - sections:
   - local: hybrid_inference/overview
     title: Overview
+  - local: hybrid_inference/vae_decode
+    title: VAE Decode
   title: Hybrid Inference
 - sections:
   - local: using-diffusers/cogvideox
