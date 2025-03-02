@@ -2184,18 +2184,6 @@ class AnyTextPipeline(
 
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
-            # image = self.prepare_image(
-            #     image=image,
-            #     width=width,
-            #     height=height,
-            #     batch_size=batch_size * num_images_per_prompt,
-            #     num_images_per_prompt=num_images_per_prompt,
-            #     device=device,
-            #     dtype=controlnet.dtype,
-            #     do_classifier_free_guidance=self.do_classifier_free_guidance,
-            #     guess_mode=guess_mode,
-            # )
-            # height, width = image.shape[-2:]
             guided_hint = self.auxiliary_latent_module(
                 text_info=text_info,
                 mode=mode,
@@ -2205,31 +2193,6 @@ class AnyTextPipeline(
                 np_hint=np_hint,
             )
             height, width = 512, 512
-        # elif isinstance(controlnet, MultiControlNetModel):
-        #     images = []
-
-        #     # Nested lists as ControlNet condition
-        #     if isinstance(image[0], list):
-        #         # Transpose the nested image list
-        #         image = [list(t) for t in zip(*image)]
-
-        #     for image_ in image:
-        #         image_ = self.prepare_image(
-        #             image=image_,
-        #             width=width,
-        #             height=height,
-        #             batch_size=batch_size * num_images_per_prompt,
-        #             num_images_per_prompt=num_images_per_prompt,
-        #             device=device,
-        #             dtype=controlnet.dtype,
-        #             do_classifier_free_guidance=self.do_classifier_free_guidance,
-        #             guess_mode=guess_mode,
-        #         )
-
-        #         images.append(image_)
-
-        #     image = images
-        #     height, width = image[0].shape[-2:]
         else:
             assert False
 
