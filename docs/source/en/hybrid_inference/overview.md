@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 
 > [!TIP]
-> [Hybrid Inference](https://huggingface.co/blog/remote_vae) is an experimental feature.
+> Hybrid Inference is an [experimental feature](https://huggingface.co/blog/remote_vae).
 > Feedback can be provided [here](https://github.com/huggingface/diffusers/issues/new?template=remote-vae-pilot-feedback.yml).
 
 
