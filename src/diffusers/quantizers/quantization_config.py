@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional, Union
 from packaging import version
 
 from ..utils import is_torch_available, is_torchao_available, logging
+from torchao.quantization.quant_primitives import MappingType
 
 
 if is_torch_available():
@@ -46,6 +47,11 @@ class QuantizationMethod(str, Enum):
     GGUF = "gguf"
     TORCHAO = "torchao"
 
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, MappingType):
+            return obj.name
+        return super().default(obj)
 
 @dataclass
 class QuantizationConfigMixin:
@@ -673,4 +679,4 @@ class TorchAoConfig(QuantizationConfigMixin):
         ```
         """
         config_dict = self.to_dict()
-        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
+        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True, cls=CustomJSONEncoder)}\n"
