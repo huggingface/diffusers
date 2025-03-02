@@ -10,8 +10,6 @@ For the majority of these GPUs the memory usage % dictates other models (text en
 
 <details><summary>SD v1.5</summary>
 
-<p>
-
 | GPU | Resolution | Time (seconds) | Memory (%) | Tiled Time (secs) | Tiled Memory (%) |
 | --- | --- | --- | --- | --- | --- |
 | NVIDIA GeForce RTX 4090 | 512x512 | 0.031 | 5.60% | 0.031 (0%) | 5.60% |
@@ -27,12 +25,9 @@ For the majority of these GPUs the memory usage % dictates other models (text en
 | NVIDIA GeForce RTX 3070 | 512x512 | 0.102 | 15.90% | 0.102 (0%) | 15.90% |
 | NVIDIA GeForce RTX 3070 | 1024x1024 | 0.421 | 56.30% | 0.746 (+77%) | 16.00% |
 
-</p>
 </details>
 
 <details><summary>SDXL</summary>
-
-<p>
 
 | GPU | Resolution | Time (seconds) | Memory Consumed (%) | Tiled Time (seconds) | Tiled Memory (%) |
 | --- | --- | --- | --- | --- | --- |
@@ -49,7 +44,6 @@ For the majority of these GPUs the memory usage % dictates other models (text en
 | NVIDIA GeForce RTX 3070 | 512x512 | 0.183 | 31.80% | 0.183 (0%) | 31.80% |
 | NVIDIA GeForce RTX 3070 | 1024x1024 | 0.794 | 96.40% | 0.794 (0%) | 96.40% |
 
-</p>
 </details>
 
 ## Available VAEs
@@ -83,7 +77,6 @@ from diffusers.utils.remote_utils import remote_decode
 Here, we show how to use the remote VAE on random tensors.
 
 <details><summary>Code</summary>
-<p>
 
 ```python
 image = remote_decode(
@@ -93,17 +86,15 @@ image = remote_decode(
 )
 ```
 
-</p>
 </details>
 
-<figure class="image flex flex-col items-center text-center m-0 w-full">
+<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/output.png"/>
 </figure>
 
 Usage for Flux is slightly different. Flux latents are packed so we need to send the `height` and `width`.
 
 <details><summary>Code</summary>
-<p>
 
 ```python
 image = remote_decode(
@@ -116,18 +107,16 @@ image = remote_decode(
 )
 ```
 
-</p>
 </details>
 
-<figure class="image flex flex-col items-center text-center m-0 w-full">
+<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/flux_random_latent.png"/>
 </figure>
 
 Finally, an example for HunyuanVideo.
 
 <details><summary>Code</summary>
-<p>
-    
+
 ```python
 video = remote_decode(
     endpoint="https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud/",
@@ -138,10 +127,9 @@ with open("video.mp4", "wb") as f:
     f.write(video)
 ```
 
-</p>
 </details>
 
-<figure class="image flex flex-col items-center text-center m-0 w-full">
+<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
    <video
       alt="queue.mp4"
       autoplay loop autobuffer muted playsinline
@@ -156,7 +144,6 @@ with open("video.mp4", "wb") as f:
 But we want to use the VAE on an actual pipeline to get an actual image, not random noise. The example below shows how to do it with SD v1.5. 
 
 <details><summary>Code</summary>
-<p>
 
 ```python
 from diffusers import StableDiffusionPipeline
@@ -182,17 +169,15 @@ image = remote_decode(
 image.save("test.jpg")
 ```
 
-</p>
 </details>
 
-<figure class="image flex flex-col items-center text-center m-0 w-full">
+<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/test.jpg"/>
 </figure>
 
 Here’s another example with Flux.
 
 <details><summary>Code</summary>
-<p>
 
 ```python
 from diffusers import FluxPipeline
@@ -222,17 +207,15 @@ image = remote_decode(
 image.save("test.jpg")
 ```
 
-</p>
 </details>
 
-<figure class="image flex flex-col items-center text-center m-0 w-full">
+<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/test_1.jpg"/>
 </figure>
 
 Here’s an example with HunyuanVideo.
 
 <details><summary>Code</summary>
-<p>
 
 ```python
 from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
@@ -265,10 +248,9 @@ if isinstance(video, bytes):
         f.write(video)
 ```
 
-</p>
 </details>
 
-<figure class="image flex flex-col items-center text-center m-0 w-full">
+<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
    <video
       alt="queue.mp4"
       autoplay loop autobuffer muted playsinline
@@ -284,7 +266,6 @@ One of the great benefits of using a remote VAE is that we can queue multiple ge
 
 
 <details><summary>Code</summary>
-<p>
 
 ```python
 import queue
@@ -346,11 +327,10 @@ q.put(None)
 thread.join()
 ```
 
-</p>
 </details>
 
 
-<figure class="image flex flex-col items-center text-center m-0 w-full">
+<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
    <video
       alt="queue.mp4"
       autoplay loop autobuffer muted playsinline
