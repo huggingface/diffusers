@@ -59,12 +59,12 @@ For the majority of these GPUs the memory usage % dictates other models (text en
 > [!TIP]
 > Model support can be requested [here](https://github.com/huggingface/diffusers/issues/new?template=remote-vae-pilot-feedback.yml).
 
+
 ## Code
 
-> [!NOTE]
-> We recommend installing `diffusers` from `main` to run the code.
-> Install `diffusers` from `main` to run the code.
-> `pip install git+https://github.com/huggingface/diffusers@main`
+> [!TIP]
+> Install `diffusers` from `main` to run the code: `pip install git+https://github.com/huggingface/diffusers@main`
+
 
 A helper method simplifies interacting with Hybrid Inference.
 
