@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.controlnets.controlnet_sparsectrl import SparseControlNetModel
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -136,6 +136,7 @@ class AnimateDiffSparseControlNetPipeline(
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for controlled text-to-video generation using the method described in [SparseCtrl: Adding Sparse Controls
