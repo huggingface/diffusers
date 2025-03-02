@@ -14,10 +14,12 @@ specific language governing permissions and limitations under the License.
 
 **Empowering local AI builders with Hybrid Inference**
 
-> [!TIP]
-> [Hybrid Inference](https://huggingface.co/blog/remote_vae) is an experimental feature. Feedback can be provided [here](https://github.com/huggingface/diffusers/issues/new?template=remote-vae-pilot-feedback.yml).
 
----
+> [!TIP]
+> [Hybrid Inference](https://huggingface.co/blog/remote_vae) is an experimental feature.
+> Feedback can be provided [here](https://github.com/huggingface/diffusers/issues/new?template=remote-vae-pilot-feedback.yml).
+
+
 
 ## Why use Hybrid Inference?
 
