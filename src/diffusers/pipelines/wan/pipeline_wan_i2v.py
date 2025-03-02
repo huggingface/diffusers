@@ -49,8 +49,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
 
-        >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P, Wan-AI/Wan2.1-I2V-1.3B-720P
-        >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P"
+        >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers, Wan-AI/Wan2.1-I2V-1.3B-720P-Diffusers
+        >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
         >>> pipe = WanImageToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
@@ -211,7 +211,7 @@ class WanImageToVideoPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        do_classifier_free_guidance: bool = False,
+        do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

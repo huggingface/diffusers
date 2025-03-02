@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import AutoencoderKLWan
 
-vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B", subfolder="vae", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
 ```
 
 ## AutoencoderKLWan
