@@ -15,7 +15,7 @@ specific language governing permissions and limitations under the License.
 **Empowering local AI builders with Hybrid Inference**
 
 > [!TIP]
-> [Hybrid Inference](https://huggingface.co/blog/remote_vae) is an experimental feature.
+> [Hybrid Inference](https://huggingface.co/blog/remote_vae) is an experimental feature. Feedback can be provided [here](https://github.com/huggingface/diffusers/issues/new?template=remote-vae-pilot-feedback.yml).
 
 ---
 
@@ -23,21 +23,26 @@ specific language governing permissions and limitations under the License.
 
 Hybrid Inference offers a fast and simple way to offload local generation requirements.
 
-* **VAE Decode:** Quickly decode latents to images without comprimising quality or slowing down your workflow.
-* **VAE Encode (coming soon):** Encode images to latents for generation or training.
-* **Text Encoders (coming soon):** Compute text embeddings for prompts without comprimising quality or slowing down your workflow.
-
-Feedback can be provided [here](https://github.com/huggingface/diffusers/issues/new?template=remote-vae-pilot-feedback.yml).
-
----
-
-## Key Benefits
-
 - 🚀 **Reduced Requirements:** Access powerful models without expensive hardware.
+- 💎 **Without Compromise:** Achieve the highest quality without sacrificing performance.
+- 💰 **Cost Effective:** It's free! 🤑
 - 🎯 **Diverse Use Cases:** Fully compatible with Diffusers 🧨 and the wider community.
 - 🔧 **Developer-Friendly:** Simple requests, fast responses.
 
 ---
+
+## Available Models
+
+* **VAE Decode 🖼️:** Quickly decode latent representations into high-quality images without compromising performance or workflow speed.
+* **VAE Encode 🔢 (coming soon):** Efficiently encode images into latent representations for generation and training.
+* **Text Encoders 📃 (coming soon):** Compute text embeddings for your prompts quickly and accurately, ensuring a smooth and high-quality workflow.
+
+---
+
+## Integrations
+
+* **[SD.Next](https://github.com/vladmandic/sdnext):** All-in-one UI with direct supports Hybrid Inference.
+* **[ComfyUI-HFRemoteVae](https://github.com/kijai/ComfyUI-HFRemoteVae):** ComfyUI node for Hybrid Inference.
 
 ## Contents
 

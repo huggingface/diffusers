@@ -77,6 +77,10 @@
     title: Outpainting
   title: Advanced inference
 - sections:
+  - local: hybrid_inference/overview
+    title: Overview
+  title: Hybrid Inference
+- sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
   - local: using-diffusers/consisid
@@ -628,7 +632,3 @@
       title: Video Processor
     title: Internal classes
   title: API
-- sections:
-  - local: hybrid_inference/overview
-    title: Overview
-  title: Hybrid Inference
