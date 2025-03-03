@@ -527,8 +527,9 @@ class FluxIPAdapterMixin:
                                 low_cpu_mem_usage=low_cpu_mem_usage,
                                 cache_dir=cache_dir,
                                 local_files_only=local_files_only,
+                                dtype=image_encoder_dtype
                             )
-                            .to(self.device, dtype=image_encoder_dtype)
+                            .to(self.device)
                             .eval()
                         )
                         self.register_modules(image_encoder=image_encoder)
@@ -800,14 +801,15 @@ class SD3IPAdapterMixin:
                         "low_cpu_mem_usage": low_cpu_mem_usage,
                         "cache_dir": cache_dir,
                         "local_files_only": local_files_only,
+                        "torch_dtype": self.dtype
                     }
 
                     self.register_modules(
                         feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs).to(
-                            self.device, dtype=self.dtype
+                            self.device
                         ),
                         image_encoder=SiglipVisionModel.from_pretrained(image_encoder_subfolder, **kwargs).to(
-                            self.device, dtype=self.dtype
+                            self.device
                         ),
                     )
                 else:
