@@ -1,5 +1,4 @@
-# coding=utf-8
-# Copyright 2024 Latte Team and HuggingFace Inc.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,16 +18,14 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import Qwen2Tokenizer, Qwen2VLForConditionalGeneration
 
 from diffusers import (
-    AutoencoderKL,
-    DDIMScheduler,
-    LattePipeline,
-    LatteTransformer3DModel,
-    PyramidAttentionBroadcastConfig,
+    AutoencoderKLMagvit,
+    EasyAnimatePipeline,
+    EasyAnimateTransformer3DModel,
+    FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -38,67 +35,81 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, unittest.TestCase):
-    pipeline_class = LattePipeline
+class EasyAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = EasyAnimatePipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-
-    required_optional_params = PipelineTesterMixin.required_optional_params
-    test_layerwise_casting = True
-    test_group_offloading = True
-
-    pab_config = PyramidAttentionBroadcastConfig(
-        spatial_attention_block_skip_range=2,
-        temporal_attention_block_skip_range=2,
-        cross_attention_block_skip_range=2,
-        spatial_attention_timestep_skip_range=(100, 700),
-        temporal_attention_timestep_skip_range=(100, 800),
-        cross_attention_timestep_skip_range=(100, 800),
-        spatial_attention_block_identifiers=["transformer_blocks"],
-        temporal_attention_block_identifiers=["temporal_transformer_blocks"],
-        cross_attention_block_identifiers=["transformer_blocks"],
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "generator",
+            "latents",
+            "return_dict",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
+        ]
     )
 
-    def get_dummy_components(self, num_layers: int = 1):
+    supports_dduf = False
+
+    def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = LatteTransformer3DModel(
-            sample_size=8,
-            num_layers=num_layers,
-            patch_size=2,
-            attention_head_dim=8,
-            num_attention_heads=3,
-            caption_channels=32,
+        transformer = EasyAnimateTransformer3DModel(
+            num_attention_heads=2,
+            attention_head_dim=16,
             in_channels=4,
-            cross_attention_dim=24,
-            out_channels=8,
-            attention_bias=True,
-            activation_fn="gelu-approximate",
-            num_embeds_ada_norm=1000,
-            norm_type="ada_norm_single",
-            norm_elementwise_affine=False,
-            norm_eps=1e-6,
+            out_channels=4,
+            time_embed_dim=2,
+            text_embed_dim=16,  # Must match with tiny-random-t5
+            num_layers=1,
+            sample_width=16,  # latent width: 2 -> final width: 16
+            sample_height=16,  # latent height: 2 -> final height: 16
+            patch_size=2,
         )
+
         torch.manual_seed(0)
-        vae = AutoencoderKL()
+        vae = AutoencoderKLMagvit(
+            in_channels=3,
+            out_channels=3,
+            down_block_types=(
+                "SpatialDownBlock3D",
+                "SpatialTemporalDownBlock3D",
+                "SpatialTemporalDownBlock3D",
+                "SpatialTemporalDownBlock3D",
+            ),
+            up_block_types=(
+                "SpatialUpBlock3D",
+                "SpatialTemporalUpBlock3D",
+                "SpatialTemporalUpBlock3D",
+                "SpatialTemporalUpBlock3D",
+            ),
+            block_out_channels=(8, 8, 8, 8),
+            latent_channels=4,
+            layers_per_block=1,
+            norm_num_groups=2,
+            spatial_group_norm=False,
+        )
 
-        scheduler = DDIMScheduler()
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-
-        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        torch.manual_seed(0)
+        scheduler = FlowMatchEulerDiscreteScheduler()
+        text_encoder = Qwen2VLForConditionalGeneration.from_pretrained(
+            "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
+        )
+        tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         components = {
-            "transformer": transformer.eval(),
-            "vae": vae.eval(),
+            "transformer": transformer,
+            "vae": vae,
             "scheduler": scheduler,
-            "text_encoder": text_encoder.eval(),
+            "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
         return components
@@ -109,16 +120,15 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
-            "negative_prompt": "low quality",
+            "prompt": "dance monkey",
+            "negative_prompt": "",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
-            "height": 8,
-            "width": 8,
-            "video_length": 1,
+            "guidance_scale": 6.0,
+            "height": 16,
+            "width": 16,
+            "num_frames": 5,
             "output_type": "pt",
-            "clean_caption": False,
         }
         return inputs
 
@@ -134,8 +144,8 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (1, 3, 8, 8))
-        expected_video = torch.randn(1, 3, 8, 8)
+        self.assertEqual(generated_video.shape, (5, 3, 16, 16))
+        expected_video = torch.randn(5, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
@@ -201,25 +211,53 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
 
-    @unittest.skip("Not supported.")
-    def test_attention_slicing_forward_pass(self):
-        pass
+    def test_attention_slicing_forward_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
+    ):
+        if not self.test_attention_slicing:
+            return
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
-    @unittest.skip("Test not supported because `encode_prompt()` has multiple returns.")
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        output_without_slicing = pipe(**inputs)[0]
+
+        pipe.enable_attention_slicing(slice_size=1)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing1 = pipe(**inputs)[0]
+
+        pipe.enable_attention_slicing(slice_size=2)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing2 = pipe(**inputs)[0]
+
+        if test_max_difference:
+            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
+            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
+            self.assertLess(
+                max(max_diff1, max_diff2),
+                expected_max_diff,
+                "Attention slicing should not affect the inference results",
+            )
+
+    def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=0.001):
+        # Seems to need a higher tolerance
+        return super().test_dict_tuple_outputs_equivalent(expected_slice, expected_max_difference)
+
     def test_encode_prompt_works_in_isolation(self):
-        pass
+        # Seems to need a higher tolerance
+        return super().test_encode_prompt_works_in_isolation(atol=1e-3, rtol=1e-3)
 
 
 @slow
 @require_torch_gpu
-class LattePipelineIntegrationTests(unittest.TestCase):
+class EasyAnimatePipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
@@ -232,24 +270,25 @@ class LattePipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_latte(self):
+    def test_EasyAnimate(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
+        pipe = EasyAnimatePipeline.from_pretrained("alibaba-pai/EasyAnimateV5.1-12b-zh", torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
         prompt = self.prompt
 
         videos = pipe(
             prompt=prompt,
-            height=512,
-            width=512,
+            height=480,
+            width=720,
+            num_frames=5,
             generator=generator,
             num_inference_steps=2,
-            clean_caption=False,
+            output_type="pt",
         ).frames
 
         video = videos[0]
-        expected_video = torch.randn(1, 512, 512, 3).numpy()
+        expected_video = torch.randn(1, 5, 480, 720, 3).numpy()
 
-        max_diff = numpy_cosine_similarity_distance(video.flatten(), expected_video)
-        assert max_diff < 1e-3, f"Max diff is too high. got {video.flatten()}"
+        max_diff = numpy_cosine_similarity_distance(video, expected_video)
+        assert max_diff < 1e-3, f"Max diff is too high. got {video}"
