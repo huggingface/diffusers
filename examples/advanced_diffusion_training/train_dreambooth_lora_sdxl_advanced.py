@@ -773,7 +773,7 @@ def parse_args(input_args=None):
         action="store_true",
         default=False,
         help=(
-            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -1875,7 +1875,7 @@ def main(args):
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
 
-    # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
+    # if --train_text_encoder_ti we need add_special_tokens to be True for textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
 
     if not train_dataset.custom_instance_prompts:
