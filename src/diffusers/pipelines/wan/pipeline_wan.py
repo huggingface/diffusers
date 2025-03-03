@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
 import regex as re
@@ -21,6 +21,7 @@ import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -86,7 +87,7 @@ def prompt_clean(text):
     return text
 
 
-class WanPipeline(DiffusionPipeline):
+class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using Wan.
 
@@ -347,6 +348,10 @@ class WanPipeline(DiffusionPipeline):
     def interrupt(self):
         return self._interrupt
 
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -365,6 +370,7 @@ class WanPipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -409,6 +415,10 @@ class WanPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
@@ -445,6 +455,7 @@ class WanPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
 
@@ -512,6 +523,7 @@ class WanPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
+                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -520,6 +532,7 @@ class WanPipeline(DiffusionPipeline):
                         hidden_states=latent_model_input,
                         timestep=timestep,
                         encoder_hidden_states=negative_prompt_embeds,
+                        attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
                     noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)

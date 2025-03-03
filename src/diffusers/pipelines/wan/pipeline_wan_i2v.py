@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ftfy
 import numpy as np
@@ -24,6 +24,7 @@ from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
+from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -103,7 +104,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class WanImageToVideoPipeline(DiffusionPipeline):
+class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Pipeline for image-to-video generation using Wan.
 
@@ -412,6 +413,10 @@ class WanImageToVideoPipeline(DiffusionPipeline):
     def interrupt(self):
         return self._interrupt
 
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -430,6 +435,7 @@ class WanImageToVideoPipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -474,6 +480,10 @@ class WanImageToVideoPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
@@ -511,6 +521,7 @@ class WanImageToVideoPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
 
@@ -591,6 +602,7 @@ class WanImageToVideoPipeline(DiffusionPipeline):
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_image=image_embeds,
+                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -600,6 +612,7 @@ class WanImageToVideoPipeline(DiffusionPipeline):
                         timestep=timestep,
                         encoder_hidden_states=negative_prompt_embeds,
                         encoder_hidden_states_image=image_embeds,
+                        attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
                     noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
