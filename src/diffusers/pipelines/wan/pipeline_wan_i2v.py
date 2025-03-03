@@ -16,7 +16,6 @@ import html
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ftfy
-import numpy as np
 import PIL
 import regex as re
 import torch
@@ -165,7 +164,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         prompt: Union[str, List[str]] = None,
         num_videos_per_prompt: int = 1,
-        max_sequence_length: int = 226,
+        max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -292,15 +291,18 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def check_inputs(
         self,
         prompt,
+        negative_prompt,
         image,
-        max_area,
+        height,
+        width,
         prompt_embeds=None,
+        negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
             raise ValueError("`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is" f" {type(image)}")
-        if max_area < 0:
-            raise ValueError(f"`max_area` has to be positive but are {max_area}.")
+        if height % 16 != 0 or width % 16 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -314,43 +316,43 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
                 " only forward one of the two."
             )
+        elif negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`: {negative_prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
         elif prompt is None and prompt_embeds is None:
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif negative_prompt is not None and (
+            not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
+        ):
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
     def prepare_latents(
         self,
         image: PipelineImageInput,
         batch_size: int,
-        num_channels_latents: 32,
-        height: int = 720,
-        width: int = 1280,
-        max_area: int = 720 * 1280,
+        num_channels_latents: int = 16,
+        height: int = 480,
+        width: int = 832,
         num_frames: int = 81,
-        num_latent_frames: int = 21,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        aspect_ratio = height / width
-        mod_value = self.vae_scale_factor_spatial * self.transformer.config.patch_size[1]
-        height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
 
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_latent_frames,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        latent_height = height // self.vae_scale_factor_spatial
+        latent_width = width // self.vae_scale_factor_spatial
+
+        shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -359,35 +361,25 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        image = self.video_processor.preprocess(image, height=height, width=width)[:, :, None]
+        image = image.unsqueeze(2)
         video_condition = torch.cat(
             [image, torch.zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
         )
         video_condition = video_condition.to(device=device, dtype=dtype)
+
         if isinstance(generator, list):
             latent_condition = [retrieve_latents(self.vae.encode(video_condition), g) for g in generator]
             latents = latent_condition = torch.cat(latent_condition)
         else:
             latent_condition = retrieve_latents(self.vae.encode(video_condition), generator)
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
-        mask_lat_size = torch.ones(
-            batch_size,
-            1,
-            num_frames,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
+
+        mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
         mask_lat_size[:, :, list(range(1, num_frames))] = 0
         first_frame_mask = mask_lat_size[:, :, 0:1]
         first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(
-            batch_size,
-            -1,
-            self.vae_scale_factor_temporal,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
+        mask_lat_size = mask_lat_size.view(batch_size, -1, self.vae_scale_factor_temporal, latent_height, latent_width)
         mask_lat_size = mask_lat_size.transpose(1, 2)
         mask_lat_size = mask_lat_size.to(latent_condition.device)
 
@@ -424,7 +416,8 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
-        max_area: int = 720 * 1280,
+        height: int = 480,
+        width: int = 832,
         num_frames: int = 81,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
@@ -451,9 +444,15 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            max_area (`int`, defaults to `1280 * 720`):
-                The maximum area in pixels of the generated image.
-            num_frames (`int`, defaults to `129`):
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            height (`int`, defaults to `480`):
+                The height of the generated video.
+            width (`int`, defaults to `832`):
+                The width of the generated video.
+            num_frames (`int`, defaults to `81`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -514,9 +513,12 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
+            negative_prompt,
             image,
-            max_area,
+            height,
+            width,
             prompt_embeds,
+            negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
         )
 
@@ -548,36 +550,29 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         # Encode image embedding
-        image_embeds = self.encode_image(image)
-        image_embeds = image_embeds.repeat(batch_size, 1, 1)
-
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
+
+        image_embeds = self.encode_image(image)
+        image_embeds = image_embeds.repeat(batch_size, 1, 1)
         image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        if isinstance(image, torch.Tensor):
-            height, width = image.shape[-2:]
-        else:
-            width, height = image.size
-
         # 5. Prepare latent variables
-        num_channels_latents = self.vae.config.z_dim
-        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        num_channels_latents = self.transformer.config.in_channels
+        image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
         latents, condition = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
             width,
-            max_area,
             num_frames,
-            num_latent_frames,
             torch.float32,
             device,
             generator,

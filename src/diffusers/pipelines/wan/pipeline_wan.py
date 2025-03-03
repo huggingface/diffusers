@@ -300,10 +300,10 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def prepare_latents(
         self,
         batch_size: int,
-        num_channels_latents: 16,
-        height: int = 720,
-        width: int = 1280,
-        num_latent_frames: int = 21,
+        num_channels_latents: int = 16,
+        height: int = 480,
+        width: int = 832,
+        num_frames: int = 81,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -312,6 +312,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
 
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         shape = (
             batch_size,
             num_channels_latents,
@@ -358,8 +359,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
-        height: int = 720,
-        width: int = 1280,
+        height: int = 480,
+        width: int = 832,
         num_frames: int = 81,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
@@ -384,11 +385,11 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, defaults to `720`):
+            height (`int`, defaults to `480`):
                 The height in pixels of the generated image.
-            width (`int`, defaults to `1280`):
+            width (`int`, defaults to `832`):
                 The width in pixels of the generated image.
-            num_frames (`int`, defaults to `129`):
+            num_frames (`int`, defaults to `81`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -492,14 +493,12 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
-        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
             width,
-            num_latent_frames,
+            num_frames,
             torch.float32,
             device,
             generator,
