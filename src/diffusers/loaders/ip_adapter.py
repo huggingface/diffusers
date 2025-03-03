@@ -215,7 +215,8 @@ class IPAdapterMixin:
                             low_cpu_mem_usage=low_cpu_mem_usage,
                             cache_dir=cache_dir,
                             local_files_only=local_files_only,
-                        ).to(self.device, dtype=self.dtype)
+                            torch_dtype=self.dtype,
+                        ).to(self.device)
                         self.register_modules(image_encoder=image_encoder)
                     else:
                         raise ValueError(
