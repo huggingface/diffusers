@@ -19,7 +19,7 @@ import ftfy
 import PIL
 import regex as re
 import torch
-from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
+from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModelWithProjection, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -137,7 +137,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        image_encoder: CLIPVisionModel,
+        image_encoder: CLIPVisionModelWithProjection,
         image_processor: CLIPImageProcessor,
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
@@ -345,9 +345,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
@@ -359,11 +356,14 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
 
         image = image.unsqueeze(2)
         video_condition = torch.cat(
-            [image, torch.zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+            [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
         )
         video_condition = video_condition.to(device=device, dtype=dtype)
 
@@ -564,7 +564,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels
+        num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
         latents, condition = self.prepare_latents(
             image,
