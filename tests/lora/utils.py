@@ -2137,6 +2137,10 @@ class PeftLoraLoaderMixinTests:
         self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
+    @property
+    def supports_text_encoder_lora(self):
+        return len({"text_encoder", "text_encoder_2", "text_encoder_3"}.intersection(self.pipeline_class._lora_loadable_modules)) != 0
+
     def test_layerwise_casting_inference_denoiser(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
@@ -2189,11 +2193,13 @@ class PeftLoraLoaderMixinTests:
         pipe_fp32 = initialize_pipeline(storage_dtype=None)
         pipe_fp32(**inputs, generator=torch.manual_seed(0))[0]
 
-        pipe_float8_e4m3_fp32 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
-        pipe_float8_e4m3_fp32(**inputs, generator=torch.manual_seed(0))[0]
+        # MPS doesn't support float8 yet.
+        if torch_device not in {"mps"}:
+            pipe_float8_e4m3_fp32 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
+            pipe_float8_e4m3_fp32(**inputs, generator=torch.manual_seed(0))[0]
 
-        pipe_float8_e4m3_bf16 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
-        pipe_float8_e4m3_bf16(**inputs, generator=torch.manual_seed(0))[0]
+            pipe_float8_e4m3_bf16 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+            pipe_float8_e4m3_bf16(**inputs, generator=torch.manual_seed(0))[0]
 
     @require_peft_version_greater("0.14.0")
     def test_layerwise_casting_peft_input_autocast_denoiser(self):
