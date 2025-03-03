@@ -901,7 +901,7 @@ def main(args):
             unet_ = accelerator.unwrap_model(unet)
             lora_state_dict, _ = StableDiffusionXLPipeline.lora_state_dict(input_dir)
             unet_state_dict = {
-                f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")
+                f"{k.replace('unet.', '')}": v for k, v in lora_state_dict.items() if k.startswith("unet.")
             }
             unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
             incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")

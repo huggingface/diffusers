@@ -907,12 +907,12 @@ def create_controller(
 
     # reweight
     if edit_type == "reweight":
-        assert (
-            equalizer_words is not None and equalizer_strengths is not None
-        ), "To use reweight edit, please specify equalizer_words and equalizer_strengths."
-        assert len(equalizer_words) == len(
-            equalizer_strengths
-        ), "equalizer_words and equalizer_strengths must be of same length."
+        assert equalizer_words is not None and equalizer_strengths is not None, (
+            "To use reweight edit, please specify equalizer_words and equalizer_strengths."
+        )
+        assert len(equalizer_words) == len(equalizer_strengths), (
+            "equalizer_words and equalizer_strengths must be of same length."
+        )
         equalizer = get_equalizer(prompts[1], equalizer_words, equalizer_strengths, tokenizer=tokenizer)
         return AttentionReweight(
             prompts,

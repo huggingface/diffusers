@@ -226,12 +226,12 @@ class KandinskyV22Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array([0.5712, 0.5443, 0.4725, 0.6195, 0.5184, 0.4651, 0.4473, 0.4590, 0.5016])
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-        assert (
-            np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
-        ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
+            f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        )
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2, (
+            f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+        )
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=2e-1)
@@ -259,7 +259,7 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
         init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         )
         prompt = "A red cartoon frog, 4k"
 

@@ -86,7 +86,7 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
 
 def log_validation(args, unet, accelerator, weight_dtype, epoch, is_final_validation=False):
-    logger.info(f"Running validation... \n Generating images with prompts:\n" f" {VALIDATION_PROMPTS}.")
+    logger.info(f"Running validation... \n Generating images with prompts:\n {VALIDATION_PROMPTS}.")
 
     # create pipeline
     pipeline = DiffusionPipeline.from_pretrained(

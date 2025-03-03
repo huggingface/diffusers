@@ -211,9 +211,9 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
 
     def _init_vectorized_inputs(self, norm_type):
         assert self.config.sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
-        assert (
-            self.config.num_vector_embeds is not None
-        ), "Transformer2DModel over discrete input must provide num_embed"
+        assert self.config.num_vector_embeds is not None, (
+            "Transformer2DModel over discrete input must provide num_embed"
+        )
 
         self.height = self.config.sample_size
         self.width = self.config.sample_size
