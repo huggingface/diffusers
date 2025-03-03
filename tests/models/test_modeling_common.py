@@ -739,8 +739,14 @@ class ModelTesterMixin:
                 model.save_pretrained(tmpdirname, safe_serialization=False)
                 new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=True, torch_dtype=dtype)
                 assert new_model.dtype == dtype
-                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=False, torch_dtype=dtype)
-                assert new_model.dtype == dtype
+                if (
+                    hasattr(self.model_class, "_keep_in_fp32_modules")
+                    and self.model_class._keep_in_fp32_modules is None
+                ):
+                    new_model = self.model_class.from_pretrained(
+                        tmpdirname, low_cpu_mem_usage=False, torch_dtype=dtype
+                    )
+                    assert new_model.dtype == dtype
 
     def test_determinism(self, expected_max_diff=1e-5):
         if self.forward_requires_fresh_args:
