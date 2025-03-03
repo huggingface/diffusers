@@ -148,7 +148,8 @@ class PeftAdapterMixin:
     def load_lora_adapter(
         self, pretrained_model_name_or_path_or_dict, prefix="transformer", hotswap: bool = False, **kwargs
     ):
-        r"""Loads a LoRA adapter into the underlying model.
+        r"""
+        Loads a LoRA adapter into the underlying model.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -191,14 +192,15 @@ class PeftAdapterMixin:
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap : (`bool`, *optional*)
-                Defaults to `False`. Whether to substitute an existing adapter with the newly loaded adapter in-place.
-                This means that, instead of loading an additional adapter, this will take the existing adapter weights
-                and replace them with the weights of the new adapter. This can be faster and more memory efficient.
-                However, the main advantage of hotswapping is that when the model is compiled with torch.compile,
-                loading the new adapter does not require recompilation of the model.
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter.
 
-                If the model is compiled, or if the new adapter and the old adapter have different ranks and/or LoRA
-                alphas (i.e. scaling), you need to call an additional method before loading the adapter:
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
 
                 ```py
                 pipeline = ...  # load diffusers pipeline
@@ -209,9 +211,9 @@ class PeftAdapterMixin:
                 # optionally compile the model now
                 ```
 
-                There are some limitations to this technique, which are documented here:
+                Note that hotswapping adapters of the text encoder is not yet supported. There are some further
+                limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
-
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
