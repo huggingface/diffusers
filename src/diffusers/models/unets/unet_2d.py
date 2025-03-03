@@ -240,7 +240,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 dropout=dropout,
             )
             self.up_blocks.append(up_block)
-            prev_output_channel = output_channel
 
         # out
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
