@@ -393,10 +393,10 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.easyanimate.pipeline_easyanimate.EasyAnimatePipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: str,
+        prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -447,7 +447,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            if prompt is not None and isinstance(prompt, str):
+            if isinstance(prompt, str):
                 messages = [
                     {
                         "role": "user",
@@ -462,10 +462,12 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     }
                     for _prompt in prompt
                 ]
-            text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            text = [
+                self.tokenizer.apply_chat_template([m], tokenize=False, add_generation_prompt=True) for m in messages
+            ]
 
             text_inputs = self.tokenizer(
-                text=[text],
+                text=text,
                 padding="max_length",
                 max_length=max_sequence_length,
                 truncation=True,
@@ -511,10 +513,12 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                     }
                     for _negative_prompt in negative_prompt
                 ]
-            text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            text = [
+                self.tokenizer.apply_chat_template([m], tokenize=False, add_generation_prompt=True) for m in messages
+            ]
 
             text_inputs = self.tokenizer(
-                text=[text],
+                text=text,
                 padding="max_length",
                 max_length=max_sequence_length,
                 truncation=True,

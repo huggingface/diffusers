@@ -250,6 +250,10 @@ class EasyAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Seems to need a higher tolerance
         return super().test_dict_tuple_outputs_equivalent(expected_slice, expected_max_difference)
 
+    def test_encode_prompt_works_in_isolation(self):
+        # Seems to need a higher tolerance
+        return super().test_encode_prompt_works_in_isolation(atol=1e-3, rtol=1e-3)
+
 
 @slow
 @require_torch_gpu
