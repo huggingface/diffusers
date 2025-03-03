@@ -97,6 +97,7 @@ else:
             "AutoencoderKLMagvit",
             "AutoencoderKLMochi",
             "AutoencoderKLTemporalDecoder",
+            "AutoencoderKLWan",
             "AutoencoderOobleck",
             "AutoencoderTiny",
             "CacheMixin",
@@ -150,6 +151,7 @@ else:
             "UNetSpatioTemporalConditionModel",
             "UVit2DModel",
             "VQModel",
+            "WanTransformer3DModel",
         ]
     )
     _import_structure["optimization"] = [
@@ -443,6 +445,8 @@ else:
             "VersatileDiffusionTextToImagePipeline",
             "VideoToVideoSDPipeline",
             "VQDiffusionPipeline",
+            "WanImageToVideoPipeline",
+            "WanPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
@@ -624,6 +628,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,
+            AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderTiny,
             CacheMixin,
@@ -676,6 +681,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
             VQModel,
+            WanTransformer3DModel,
         )
         from .optimization import (
             get_constant_schedule,
@@ -948,6 +954,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VideoToVideoSDPipeline,
             VQDiffusionPipeline,
+            WanImageToVideoPipeline,
+            WanPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
