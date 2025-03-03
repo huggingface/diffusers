@@ -314,6 +314,8 @@ class FromSingleFileMixin:
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive.
+            checkpoint (`dict`, *optional*):
+                The loaded state dictionary of the model.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -362,6 +364,7 @@ class FromSingleFileMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         disable_mmap = kwargs.pop("disable_mmap", False)
+        checkpoint = kwargs.pop("checkpoint", None)
 
         is_legacy_loading = False
 
@@ -386,18 +389,19 @@ class FromSingleFileMixin:
 
         from ..pipelines.pipeline_utils import _get_pipeline_class
 
-        pipeline_class = _get_pipeline_class(cls, config=None)
+        pipeline_class = _get_pipeline_class(cls, class_name=cls.__name__, config=None)
 
-        checkpoint = load_single_file_checkpoint(
-            pretrained_model_link_or_path,
-            force_download=force_download,
-            proxies=proxies,
-            token=token,
-            cache_dir=cache_dir,
-            local_files_only=local_files_only,
-            revision=revision,
-            disable_mmap=disable_mmap,
-        )
+        if checkpoint is None:
+            checkpoint = load_single_file_checkpoint(
+                pretrained_model_link_or_path,
+                force_download=force_download,
+                proxies=proxies,
+                token=token,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                revision=revision,
+                disable_mmap=disable_mmap,
+            )
 
         if config is None:
             config = fetch_diffusers_config(checkpoint)
@@ -479,6 +483,11 @@ class FromSingleFileMixin:
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
         init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict}
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
+
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+            )
 
         from diffusers import pipelines
 

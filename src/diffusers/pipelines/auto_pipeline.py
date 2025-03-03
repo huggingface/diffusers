@@ -18,8 +18,10 @@ from collections import OrderedDict
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
+from ..loaders.single_file_utils import get_keyword_types, infer_diffusers_model_type, load_single_file_checkpoint
 from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
+from .animatediff import AnimateDiffPipeline, AnimateDiffSDXLPipeline
 from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
 from .cogview4 import CogView4Pipeline
@@ -34,10 +36,7 @@ from .controlnet import (
     StableDiffusionXLControlNetUnionInpaintPipeline,
     StableDiffusionXLControlNetUnionPipeline,
 )
-from .controlnet_sd3 import (
-    StableDiffusion3ControlNetInpaintingPipeline,
-    StableDiffusion3ControlNetPipeline,
-)
+from .controlnet_sd3 import StableDiffusion3ControlNetInpaintingPipeline, StableDiffusion3ControlNetPipeline
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .flux import (
     FluxControlImg2ImgPipeline,
@@ -94,7 +93,9 @@ from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderP
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
+    StableDiffusionInstructPix2PixPipeline,
     StableDiffusionPipeline,
+    StableDiffusionUpscalePipeline,
 )
 from .stable_diffusion_3 import (
     StableDiffusion3Img2ImgPipeline,
@@ -213,6 +214,147 @@ _AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
     ]
 )
 
+SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING = OrderedDict(
+    [
+        ("animatediff_rgb", AnimateDiffPipeline),
+        ("animatediff_scribble", AnimateDiffPipeline),
+        ("animatediff_sdxl_beta", AnimateDiffSDXLPipeline),
+        ("animatediff_v1", AnimateDiffPipeline),
+        ("animatediff_v2", AnimateDiffPipeline),
+        ("animatediff_v3", AnimateDiffPipeline),
+        ("auraflow", AuraFlowPipeline),
+        ("autoencoder-dc-f128c512", None),
+        ("autoencoder-dc-f32c32", None),
+        ("autoencoder-dc-f32c32-sana", None),
+        ("autoencoder-dc-f64c128", None),
+        ("controlnet", StableDiffusionControlNetPipeline),
+        ("controlnet_xl", StableDiffusionXLControlNetPipeline),
+        ("controlnet_xl_large", StableDiffusionXLControlNetPipeline),
+        ("controlnet_xl_mid", StableDiffusionXLControlNetPipeline),
+        ("controlnet_xl_small", StableDiffusionXLControlNetPipeline),
+        ("flux-depth", FluxPipeline),
+        ("flux-dev", FluxPipeline),
+        ("flux-fill", FluxPipeline),
+        ("flux-schnell", FluxPipeline),
+        ("hunyuan-video", None),
+        ("inpainting", None),
+        ("inpainting_v2", None),
+        ("instruct-pix2pix", None),
+        ("lumina2", Lumina2Text2ImgPipeline),
+        ("ltx-video", None),
+        ("ltx-video-0.9.1", None),
+        ("mochi-1-preview", None),
+        ("playground-v2-5", StableDiffusionXLPipeline),
+        ("sd3", StableDiffusion3Pipeline),
+        ("sd35_large", StableDiffusion3Pipeline),
+        ("sd35_medium", StableDiffusion3Pipeline),
+        ("stable_cascade_stage_b", None),
+        ("stable_cascade_stage_b_lite", None),
+        ("stable_cascade_stage_c", None),
+        ("stable_cascade_stage_c_lite", None),
+        ("upscale", StableDiffusionUpscalePipeline),
+        ("v1", StableDiffusionPipeline),
+        ("v2", StableDiffusionPipeline),
+        ("xl_base", StableDiffusionXLPipeline),
+        ("xl_inpaint", None),
+        ("xl_refiner", StableDiffusionXLPipeline),
+    ]
+)
+
+SINGLE_FILE_CHECKPOINT_IMAGE2IMAGE_PIPELINE_MAPPING = OrderedDict(
+    [
+        ("animatediff_rgb", AnimateDiffPipeline),
+        ("animatediff_scribble", AnimateDiffPipeline),
+        ("animatediff_sdxl_beta", AnimateDiffSDXLPipeline),
+        ("animatediff_v1", AnimateDiffPipeline),
+        ("animatediff_v2", AnimateDiffPipeline),
+        ("animatediff_v3", AnimateDiffPipeline),
+        ("auraflow", None),
+        ("autoencoder-dc-f128c512", None),
+        ("autoencoder-dc-f32c32", None),
+        ("autoencoder-dc-f32c32-sana", None),
+        ("autoencoder-dc-f64c128", None),
+        ("controlnet", StableDiffusionControlNetImg2ImgPipeline),
+        ("controlnet_xl", StableDiffusionXLControlNetImg2ImgPipeline),
+        ("controlnet_xl_large", StableDiffusionXLControlNetImg2ImgPipeline),
+        ("controlnet_xl_mid", StableDiffusionXLControlNetImg2ImgPipeline),
+        ("controlnet_xl_small", StableDiffusionXLControlNetImg2ImgPipeline),
+        ("flux-depth", FluxImg2ImgPipeline),
+        ("flux-dev", FluxImg2ImgPipeline),
+        ("flux-fill", FluxImg2ImgPipeline),
+        ("flux-schnell", FluxImg2ImgPipeline),
+        ("hunyuan-video", None),
+        ("inpainting", None),
+        ("inpainting_v2", None),
+        ("instruct-pix2pix", StableDiffusionInstructPix2PixPipeline),
+        ("lumina2", None),
+        ("ltx-video", None),
+        ("ltx-video-0.9.1", None),
+        ("mochi-1-preview", None),
+        ("playground-v2-5", StableDiffusionXLImg2ImgPipeline),
+        ("sd3", StableDiffusion3Img2ImgPipeline),
+        ("sd35_large", StableDiffusion3Img2ImgPipeline),
+        ("sd35_medium", StableDiffusion3Img2ImgPipeline),
+        ("stable_cascade_stage_b", None),
+        ("stable_cascade_stage_b_lite", None),
+        ("stable_cascade_stage_c", None),
+        ("stable_cascade_stage_c_lite", None),
+        ("upscale", StableDiffusionUpscalePipeline),
+        ("v1", StableDiffusionImg2ImgPipeline),
+        ("v2", StableDiffusionImg2ImgPipeline),
+        ("xl_base", StableDiffusionXLImg2ImgPipeline),
+        ("xl_inpaint", None),
+        ("xl_refiner", StableDiffusionXLImg2ImgPipeline),
+    ]
+)
+
+SINGLE_FILE_CHECKPOINT_INPAINT_PIPELINE_MAPPING = OrderedDict(
+    [
+        ("animatediff_rgb", None),
+        ("animatediff_scribble", None),
+        ("animatediff_sdxl_beta", None),
+        ("animatediff_v1", None),
+        ("animatediff_v2", None),
+        ("animatediff_v3", None),
+        ("auraflow", None),
+        ("autoencoder-dc-f128c512", None),
+        ("autoencoder-dc-f32c32", None),
+        ("autoencoder-dc-f32c32-sana", None),
+        ("autoencoder-dc-f64c128", None),
+        ("controlnet", StableDiffusionControlNetInpaintPipeline),
+        ("controlnet_xl", None),
+        ("controlnet_xl_large", None),
+        ("controlnet_xl_mid", None),
+        ("controlnet_xl_small", None),
+        ("flux-depth", None),
+        ("flux-dev", None),
+        ("flux-fill", None),
+        ("flux-schnell", None),
+        ("hunyuan-video", None),
+        ("inpainting", StableDiffusionInpaintPipeline),
+        ("inpainting_v2", StableDiffusionInpaintPipeline),
+        ("instruct-pix2pix", None),
+        ("lumina2", None),
+        ("ltx-video", None),
+        ("ltx-video-0.9.1", None),
+        ("mochi-1-preview", None),
+        ("playground-v2-5", None),
+        ("sd3", None),
+        ("sd35_large", None),
+        ("sd35_medium", None),
+        ("stable_cascade_stage_b", None),
+        ("stable_cascade_stage_b_lite", None),
+        ("stable_cascade_stage_c", None),
+        ("stable_cascade_stage_c_lite", None),
+        ("upscale", StableDiffusionUpscalePipeline),
+        ("v1", None),
+        ("v2", None),
+        ("xl_base", None),
+        ("xl_inpaint", StableDiffusionXLInpaintPipeline),
+        ("xl_refiner", None),
+    ]
+)
+
 if is_sentencepiece_available():
     from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
     from .pag import KolorsPAGPipeline
@@ -261,6 +403,78 @@ def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool
 
     if throw_error_if_not_exist:
         raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
+
+
+@validate_hf_hub_args
+def auto_load_single_checkpoint(pretrained_model_or_path, pipeline_mapping, **kwargs):
+    r"""
+    Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` or `.safetensors`
+    format. The pipeline is set in evaluation mode (`model.eval()`) by default.
+
+    Parameters:
+        pretrained_model_or_path (`str` or `os.PathLike`, *optional*):
+            Can be either:
+                - A link to the `.ckpt` file (for example
+                  `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
+                - A path to a *file* containing all pipeline weights.
+        pipeline_mapping (dict):
+            A dictionary mapping model types to their corresponding pipeline classes.
+        torch_dtype (`str` or `torch.dtype`, *optional*):
+            Override the default `torch.dtype` and load the model with another dtype.
+        force_download (`bool`, *optional*, defaults to `False`):
+            Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+            cached versions if they exist.
+        cache_dir (`Union[str, os.PathLike]`, *optional*):
+            Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+            is not used.
+        proxies (`Dict[str, str]`, *optional*):
+            A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+            'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+        local_files_only (`bool`, *optional*, defaults to `False`):
+            Whether to only load local model weights and configuration files or not. If set to `True`, the model
+            won't be downloaded from the Hub.
+        token (`str` or *bool*, *optional*):
+            The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+            `diffusers-cli login` (stored in `~/.huggingface`) is used.
+        revision (`str`, *optional*, defaults to `"main"`):
+            The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+            allowed by Git.
+        original_config_file (`str`, *optional*):
+            The path to the original config file that was used to train the model. If not provided, the config file
+            will be inferred from the checkpoint file.
+        config (`str`, *optional*):
+            Can be either:
+                - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline
+                  hosted on the Hub.
+                - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
+                  component configs in Diffusers format.
+        kwargs (remaining dictionary of keyword arguments, *optional*):
+            Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
+            class). The overwritten components are passed directly to the pipelines `__init__` method. See example
+            below for more information.
+    """
+
+    # Load the checkpoint from the provided link or path
+    checkpoint = load_single_file_checkpoint(pretrained_model_or_path)
+
+    # Infer the model type from the loaded checkpoint
+    model_type = infer_diffusers_model_type(checkpoint)
+
+    # Get the corresponding pipeline class from the pipeline mapping
+    pipeline_class = pipeline_mapping.get(model_type, None)
+
+    # For tasks not supported by this pipeline
+    if pipeline_class is None:
+        raise ValueError(
+            f"{model_type} is not supported in this pipeline."
+            "For `Text2Image`, please use `AutoPipelineForText2Image.from_pretrained`, "
+            "for `Image2Image` , please use `AutoPipelineForImage2Image.from_pretrained`, "
+            "and `inpaint` is only supported in `AutoPipelineForInpainting.from_pretrained`"
+        )
+
+    else:
+        # Instantiate and return the pipeline with the loaded checkpoint and any additional kwargs
+        return pipeline_class.from_single_file(pretrained_model_or_path, checkpoint=checkpoint, **kwargs)
 
 
 class AutoPipelineForText2Image(ConfigMixin):
@@ -321,6 +535,9 @@ class AutoPipelineForText2Image(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
+                    - A link to the `.safetensors` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.safetensors"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
@@ -402,7 +619,18 @@ class AutoPipelineForText2Image(ConfigMixin):
         >>> pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt).images[0]
         ```
+        Example_2:
+        ```py
+        >>> from diffusers import AutoPipelineForText2Image
+
+        >>> pipeline = AutoPipelineForText2Image.from_pretrained(
+        ...     "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
+        ... )
         """
+
+        # Copy the kwargs to re-use during loading connected pipeline.
+        kwargs_copied = kwargs.copy()
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -419,27 +647,46 @@ class AutoPipelineForText2Image(ConfigMixin):
             "revision": revision,
         }
 
-        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-        orig_class_name = config["_class_name"]
-        if "ControlPipeline" in orig_class_name:
-            to_replace = "ControlPipeline"
-        else:
-            to_replace = "Pipeline"
+        # Get the keyword types for the provided model path
+        hf_model_status = get_keyword_types(pretrained_model_or_path)
 
-        if "controlnet" in kwargs:
-            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
-                orig_class_name = config["_class_name"].replace(to_replace, "ControlNetUnionPipeline")
+        # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
+        load_method_name = hf_model_status["loading_method"]
+
+        # Check if it is loadable.
+        if load_method_name is not None:
+            if load_method_name == "from_single_file":
+                # For single file checkpoint
+                return auto_load_single_checkpoint(
+                    pretrained_model_or_path=pretrained_model_or_path,
+                    pipeline_mapping=SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING,
+                    **kwargs_copied,
+                )
             else:
-                orig_class_name = config["_class_name"].replace(to_replace, "ControlNetPipeline")
-        if "enable_pag" in kwargs:
-            enable_pag = kwargs.pop("enable_pag")
-            if enable_pag:
-                orig_class_name = orig_class_name.replace(to_replace, "PAGPipeline")
+                config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+                orig_class_name = config["_class_name"]
+                if "ControlPipeline" in orig_class_name:
+                    to_replace = "ControlPipeline"
+                else:
+                    to_replace = "Pipeline"
 
-        text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
+                if "controlnet" in kwargs:
+                    if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                        orig_class_name = config["_class_name"].replace(to_replace, "ControlNetUnionPipeline")
+                    else:
+                        orig_class_name = config["_class_name"].replace(to_replace, "ControlNetPipeline")
+                if "enable_pag" in kwargs:
+                    enable_pag = kwargs.pop("enable_pag")
+                    if enable_pag:
+                        orig_class_name = orig_class_name.replace(to_replace, "PAGPipeline")
 
-        kwargs = {**load_config_kwargs, **kwargs}
-        return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+                text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
+
+                kwargs = {**load_config_kwargs, **kwargs}
+                return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+        else:
+            # Exception handling when loading is not possible
+            raise ValueError(f"Invalid path or URL: {pretrained_model_or_path}")
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
@@ -617,6 +864,9 @@ class AutoPipelineForImage2Image(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
+                    - A link to the `.safetensors` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.safetensors"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
@@ -698,7 +948,19 @@ class AutoPipelineForImage2Image(ConfigMixin):
         >>> pipeline = AutoPipelineForImage2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt, image).images[0]
         ```
+        Example_2:
+        ```py
+        >>> from diffusers import AutoPipelineForImage2Image
+
+        >>> pipeline = AutoPipelineForImage2Image.from_pretrained(
+        ...     "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
+        ... )
+        >>> image = pipeline(prompt, image).images[0]
         """
+
+        # Copy the kwargs to re-use during loading connected pipeline.
+        kwargs_copied = kwargs.copy()
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -715,37 +977,56 @@ class AutoPipelineForImage2Image(ConfigMixin):
             "revision": revision,
         }
 
-        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-        orig_class_name = config["_class_name"]
+        # Get the keyword types for the provided model path
+        hf_model_status = get_keyword_types(pretrained_model_or_path)
 
-        # the `orig_class_name` can be:
-        # `- *Pipeline` (for regular text-to-image checkpoint)
-        #  - `*ControlPipeline` (for Flux tools specific checkpoint)
-        # `- *Img2ImgPipeline` (for refiner checkpoint)
-        if "Img2Img" in orig_class_name:
-            to_replace = "Img2ImgPipeline"
-        elif "ControlPipeline" in orig_class_name:
-            to_replace = "ControlPipeline"
-        else:
-            to_replace = "Pipeline"
+        # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
+        load_method_name = hf_model_status["loading_method"]
 
-        if "controlnet" in kwargs:
-            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
-                orig_class_name = orig_class_name.replace(to_replace, "ControlNetUnion" + to_replace)
+        # Check if it is loadable.
+        if load_method_name is not None:
+            if load_method_name == "from_single_file":
+                # For single file checkpoint
+                return auto_load_single_checkpoint(
+                    pretrained_model_or_path=pretrained_model_or_path,
+                    pipeline_mapping=SINGLE_FILE_CHECKPOINT_IMAGE2IMAGE_PIPELINE_MAPPING,
+                    **kwargs_copied,
+                )
             else:
-                orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
-        if "enable_pag" in kwargs:
-            enable_pag = kwargs.pop("enable_pag")
-            if enable_pag:
-                orig_class_name = orig_class_name.replace(to_replace, "PAG" + to_replace)
+                config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+                orig_class_name = config["_class_name"]
 
-        if to_replace == "ControlPipeline":
-            orig_class_name = orig_class_name.replace(to_replace, "ControlImg2ImgPipeline")
+                # the `orig_class_name` can be:
+                # `- *Pipeline` (for regular text-to-image checkpoint)
+                #  - `*ControlPipeline` (for Flux tools specific checkpoint)
+                # `- *Img2ImgPipeline` (for refiner checkpoint)
+                if "Img2Img" in orig_class_name:
+                    to_replace = "Img2ImgPipeline"
+                elif "ControlPipeline" in orig_class_name:
+                    to_replace = "ControlPipeline"
+                else:
+                    to_replace = "Pipeline"
 
-        image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, orig_class_name)
+                if "controlnet" in kwargs:
+                    if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                        orig_class_name = orig_class_name.replace(to_replace, "ControlNetUnion" + to_replace)
+                    else:
+                        orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
+                if "enable_pag" in kwargs:
+                    enable_pag = kwargs.pop("enable_pag")
+                    if enable_pag:
+                        orig_class_name = orig_class_name.replace(to_replace, "PAG" + to_replace)
 
-        kwargs = {**load_config_kwargs, **kwargs}
-        return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+                if to_replace == "ControlPipeline":
+                    orig_class_name = orig_class_name.replace(to_replace, "ControlImg2ImgPipeline")
+
+                image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, orig_class_name)
+
+                kwargs = {**load_config_kwargs, **kwargs}
+                return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+        else:
+            # Exception handling when loading is not possible
+            raise ValueError(f"Invalid path or URL: {pretrained_model_or_path}")
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
@@ -928,6 +1209,9 @@ class AutoPipelineForInpainting(ConfigMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
+                    - A link to the `.safetensors` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.safetensors"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
@@ -1010,6 +1294,10 @@ class AutoPipelineForInpainting(ConfigMixin):
         >>> image = pipeline(prompt, image=init_image, mask_image=mask_image).images[0]
         ```
         """
+
+        # Copy the kwargs to re-use during loading connected pipeline.
+        kwargs_copied = kwargs.copy()
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -1025,36 +1313,54 @@ class AutoPipelineForInpainting(ConfigMixin):
             "local_files_only": local_files_only,
             "revision": revision,
         }
+        # Get the keyword types for the provided model path
+        hf_model_status = get_keyword_types(pretrained_model_or_path)
 
-        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-        orig_class_name = config["_class_name"]
+        # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
+        load_method_name = hf_model_status["loading_method"]
 
-        # The `orig_class_name`` can be:
-        # `- *InpaintPipeline` (for inpaint-specific checkpoint)
-        #  - `*ControlPipeline` (for Flux tools specific checkpoint)
-        #  - or *Pipeline (for regular text-to-image checkpoint)
-        if "Inpaint" in orig_class_name:
-            to_replace = "InpaintPipeline"
-        elif "ControlPipeline" in orig_class_name:
-            to_replace = "ControlPipeline"
-        else:
-            to_replace = "Pipeline"
-
-        if "controlnet" in kwargs:
-            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
-                orig_class_name = orig_class_name.replace(to_replace, "ControlNetUnion" + to_replace)
+        # Check if it is loadable.
+        if load_method_name is not None:
+            if load_method_name == "from_single_file":
+                # For single file checkpoint
+                return auto_load_single_checkpoint(
+                    pretrained_model_or_path=pretrained_model_or_path,
+                    pipeline_mapping=SINGLE_FILE_CHECKPOINT_INPAINT_PIPELINE_MAPPING,
+                    **kwargs_copied,
+                )
             else:
-                orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
-        if "enable_pag" in kwargs:
-            enable_pag = kwargs.pop("enable_pag")
-            if enable_pag:
-                orig_class_name = orig_class_name.replace(to_replace, "PAG" + to_replace)
-        if to_replace == "ControlPipeline":
-            orig_class_name = orig_class_name.replace(to_replace, "ControlInpaintPipeline")
-        inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
+                config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+                orig_class_name = config["_class_name"]
 
-        kwargs = {**load_config_kwargs, **kwargs}
-        return inpainting_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+                # The `orig_class_name`` can be:
+                # `- *InpaintPipeline` (for inpaint-specific checkpoint)
+                #  - `*ControlPipeline` (for Flux tools specific checkpoint)
+                #  - or *Pipeline (for regular text-to-image checkpoint)
+                if "Inpaint" in orig_class_name:
+                    to_replace = "InpaintPipeline"
+                elif "ControlPipeline" in orig_class_name:
+                    to_replace = "ControlPipeline"
+                else:
+                    to_replace = "Pipeline"
+
+                if "controlnet" in kwargs:
+                    if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                        orig_class_name = orig_class_name.replace(to_replace, "ControlNetUnion" + to_replace)
+                    else:
+                        orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
+                if "enable_pag" in kwargs:
+                    enable_pag = kwargs.pop("enable_pag")
+                    if enable_pag:
+                        orig_class_name = orig_class_name.replace(to_replace, "PAG" + to_replace)
+                if to_replace == "ControlPipeline":
+                    orig_class_name = orig_class_name.replace(to_replace, "ControlInpaintPipeline")
+                inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
+
+                kwargs = {**load_config_kwargs, **kwargs}
+                return inpainting_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+        else:
+            # Exception handling when loading is not possible
+            raise ValueError(f"Invalid path or URL: {pretrained_model_or_path}")
 
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
