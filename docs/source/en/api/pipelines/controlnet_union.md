@@ -12,6 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # ControlNetUnion
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 ControlNetUnionModel is an implementation of ControlNet for Stable Diffusion XL.
 
 The ControlNet model was introduced in [ControlNetPlus](https://github.com/xinsir6/ControlNetPlus) by xinsir6. It supports multiple conditioning inputs without increasing computation.

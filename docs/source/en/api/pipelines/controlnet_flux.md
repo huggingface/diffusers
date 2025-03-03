@@ -12,6 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # ControlNet with Flux.1
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 FluxControlNetPipeline is an implementation of ControlNet for Flux.1.
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala.
