@@ -801,14 +801,13 @@ class SD3IPAdapterMixin:
                         "low_cpu_mem_usage": low_cpu_mem_usage,
                         "cache_dir": cache_dir,
                         "local_files_only": local_files_only,
-                        "torch_dtype": self.dtype
                     }
 
                     self.register_modules(
                         feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs).to(
                             self.device
                         ),
-                        image_encoder=SiglipVisionModel.from_pretrained(image_encoder_subfolder, **kwargs).to(
+                        image_encoder=SiglipVisionModel.from_pretrained(image_encoder_subfolder, torch_dtype=self.dtype, **kwargs).to(
                             self.device
                         ),
                     )
