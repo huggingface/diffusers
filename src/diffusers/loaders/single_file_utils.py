@@ -1447,9 +1447,9 @@ def convert_open_clip_checkpoint(
     text_proj_key = prefix + "text_projection"
 
     if text_proj_key in checkpoint:
-        text_proj_dim = int(checkpoint[text_proj_key].shape[0])
-    elif hasattr(text_model.config, "projection_dim"):
-        text_proj_dim = text_model.config.projection_dim
+        text_proj_dim = int(checkpoint[text_proj_key].shape[1])
+    elif hasattr(text_model.config, "hidden_size"):
+        text_proj_dim = text_model.config.hidden_size
     else:
         text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
 
@@ -1544,14 +1544,6 @@ def create_diffusers_clip_model_from_ldm(
             clip_config = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
             config["pretrained_model_name_or_path"] = clip_config
             subfolder = ""
-
-    if is_open_clip_model(checkpoint):
-        # infer projection_dim for the text_encoder using the checkpoint.
-        # should fix SD2.X LDM checkpoint loads from CivitAI and similar.
-        # The configuration on the hub is often (or always) incorrect for these models
-        # which need projection_dim=1024 and not projection_dim=512
-        if 'cond_stage_model.model.transformer.resblocks.0.mlp.c_proj.weight' in checkpoint:
-            config['projection_dim'] = checkpoint['cond_stage_model.model.transformer.resblocks.0.mlp.c_proj.weight'].shape[0]
 
     model_config = cls.config_class.from_pretrained(**config, subfolder=subfolder, local_files_only=local_files_only)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
