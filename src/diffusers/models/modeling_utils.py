@@ -504,6 +504,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
         """
+        from ..hooks import apply_layerwise_casting
 
         user_provided_patterns = True
         if skip_modules_pattern is None:
