@@ -125,7 +125,8 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "image": image,
             "prompt": "dance monkey",
             "negative_prompt": "negative",  # TODO
-            "max_area": 1024,
+            "height": image_height,
+            "width": image_width,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
@@ -147,8 +148,8 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 32, 32))
-        expected_video = torch.randn(9, 3, 32, 32)
+        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
+        expected_video = torch.randn(9, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
