@@ -65,6 +65,7 @@ if is_torch_available():
             "AmusedLoraLoaderMixin",
             "StableDiffusionLoraLoaderMixin",
             "SD3LoraLoaderMixin",
+            "AuraFlowLoraLoaderMixin",
             "StableDiffusionXLLoraLoaderMixin",
             "LTXVideoLoraLoaderMixin",
             "LoraLoaderMixin",
@@ -101,6 +102,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             )
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
+                AuraFlowLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 FluxLoraLoaderMixin,
                 HunyuanVideoLoraLoaderMixin,
