@@ -540,6 +540,23 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
         )
         assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
 
+    def test_download_sharded_legacy_variants(self):
+        ignore_patterns = None
+        variant = "fp16"
+        filenames = [
+            f"vae/transformer/diffusion_pytorch_model.safetensors.{variant}.index.json",
+            "vae/diffusion_pytorch_model.safetensors.index.json",
+            f"vae/diffusion_pytorch_model-00002-of-00002.{variant}.safetensors",
+            "vae/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"vae/diffusion_pytorch_model-00001-of-00002.{variant}.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert all(variant in f for f in model_filenames)
+
     def test_download_onnx_models(self):
         ignore_patterns = ["*.safetensors"]
         filenames = [
