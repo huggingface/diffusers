@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
-> [!NOTE]
+> [!TIP]
 > This document has now grown outdated given the emergence of existing evaluation frameworks for diffusion models for image generation. Please check
 > out works like [HEIM](https://crfm.stanford.edu/helm/heim/latest/), [T2I-Compbench](https://arxiv.org/abs/2307.06350),
 > [GenEval](https://arxiv.org/abs/2310.11513).
