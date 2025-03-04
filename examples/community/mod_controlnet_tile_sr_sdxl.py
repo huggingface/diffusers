@@ -57,10 +57,12 @@ from diffusers.utils import (
 from diffusers.utils.import_utils import is_invisible_watermark_available
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
 
+
 if is_invisible_watermark_available():
     from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
 from diffusers.utils import is_torch_xla_available
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -75,7 +77,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        import torch        
+        import torch
         from diffusers import DiffusionPipeline, ControlNetUnionModel, AutoencoderKL, UniPCMultistepScheduler
         from diffusers.utils import load_image
         from PIL import Image
@@ -147,7 +149,7 @@ EXAMPLE_DOC_STRING = """
             width=target_width,
             original_size=(original_width, original_height),
             target_size=(target_width, target_height),
-            guidance_scale=guidance_scale,        
+            guidance_scale=guidance_scale,
             strength=float(denoising_strenght),
             tile_weighting_method=tile_weighting_method,
             max_tile_size=max_tile_size,
@@ -254,6 +256,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 class StableDiffusionXLControlNetTileSRPipeline(
     DiffusionPipeline,
@@ -384,12 +387,12 @@ class StableDiffusionXLControlNetTileSRPipeline(
             return base_overlap // 2, base_overlap
         else:  # Image is taller than wide
             return base_overlap, base_overlap * 2
-    
-    class TileWeightingMethod(Enum):
-            """Mode in which the tile weights will be generated"""
 
-            COSINE = "Cosine"
-            GAUSSIAN = "Gaussian"
+    class TileWeightingMethod(Enum):
+        """Mode in which the tile weights will be generated"""
+
+        COSINE = "Cosine"
+        GAUSSIAN = "Gaussian"
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
@@ -451,7 +454,7 @@ class StableDiffusionXLControlNetTileSRPipeline(
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
         device = device or self._execution_device
-        
+
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
@@ -674,48 +677,49 @@ class StableDiffusionXLControlNetTileSRPipeline(
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
         if num_inference_steps is None:
-            raise ValueError("`num_inference_steps` cannot be None.")        
+            raise ValueError("`num_inference_steps` cannot be None.")
         elif not isinstance(num_inference_steps, int) or num_inference_steps <= 0:
             raise ValueError(
                 f"`num_inference_steps` has to be a positive integer but is {num_inference_steps} of type"
                 f" {type(num_inference_steps)}."
             )
         if normal_tile_overlap is None:
-            raise ValueError("`normal_tile_overlap` cannot be None.")        
+            raise ValueError("`normal_tile_overlap` cannot be None.")
         elif not isinstance(normal_tile_overlap, int) or normal_tile_overlap < 64:
             raise ValueError(
                 f"`normal_tile_overlap` has to be greater than 64 but is {normal_tile_overlap} of type"
                 f" {type(normal_tile_overlap)}."
             )
         if border_tile_overlap is None:
-            raise ValueError("`border_tile_overlap` cannot be None.")        
+            raise ValueError("`border_tile_overlap` cannot be None.")
         elif not isinstance(border_tile_overlap, int) or border_tile_overlap < 128:
             raise ValueError(
                 f"`border_tile_overlap` has to be greater than 128 but is {border_tile_overlap} of type"
                 f" {type(border_tile_overlap)}."
             )
         if max_tile_size is None:
-            raise ValueError("`max_tile_size` cannot be None.")        
-        elif not isinstance(max_tile_size, int) or max_tile_size not in(1024, 1280):
+            raise ValueError("`max_tile_size` cannot be None.")
+        elif not isinstance(max_tile_size, int) or max_tile_size not in (1024, 1280):
             raise ValueError(
-                f"`max_tile_size` has to be in 1024 or 1280 but is {max_tile_size} of type"
-                f" {type(max_tile_size)}."
-            )     
+                f"`max_tile_size` has to be in 1024 or 1280 but is {max_tile_size} of type" f" {type(max_tile_size)}."
+            )
         if tile_gaussian_sigma is None:
-            raise ValueError("`tile_gaussian_sigma` cannot be None.")        
+            raise ValueError("`tile_gaussian_sigma` cannot be None.")
         elif not isinstance(tile_gaussian_sigma, float) or tile_gaussian_sigma <= 0:
             raise ValueError(
                 f"`tile_gaussian_sigma` has to be a positive float but is {tile_gaussian_sigma} of type"
                 f" {type(tile_gaussian_sigma)}."
             )
         if tile_weighting_method is None:
-            raise ValueError("`tile_weighting_method` cannot be None.")        
-        elif not isinstance(tile_weighting_method, str) or tile_weighting_method not in [t.value for t in self.TileWeightingMethod]:
+            raise ValueError("`tile_weighting_method` cannot be None.")
+        elif not isinstance(tile_weighting_method, str) or tile_weighting_method not in [
+            t.value for t in self.TileWeightingMethod
+        ]:
             raise ValueError(
                 f"`tile_weighting_method` has to be a string in ({[t.value for t in self.TileWeightingMethod]}) but is {tile_weighting_method} of type"
                 f" {type(tile_weighting_method)}."
             )
-        
+
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
@@ -1121,7 +1125,7 @@ class StableDiffusionXLControlNetTileSRPipeline(
             grid_cols = int(np.ceil((width - normal_tile_overlap) / (tile_width - normal_tile_overlap)))
 
         return grid_rows, grid_cols
-    
+
     def prepare_tiles(
         self,
         grid_rows,
@@ -1162,7 +1166,7 @@ class StableDiffusionXLControlNetTileSRPipeline(
                 - tile_row_overlaps (np.ndarray): Array of row overlaps for each tile.
                 - tile_col_overlaps (np.ndarray): Array of column overlaps for each tile.
         """
-    
+
         # Create arrays to store dynamic overlaps and weights
         tile_row_overlaps = np.full((grid_rows, grid_cols), normal_tile_overlap)
         tile_col_overlaps = np.full((grid_rows, grid_cols), normal_tile_overlap)
@@ -1451,7 +1455,7 @@ class StableDiffusionXLControlNetTileSRPipeline(
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
         negative_original_size = negative_original_size or original_size
-        negative_target_size = negative_target_size or target_size        
+        negative_target_size = negative_target_size or target_size
         control_type = [0 for _ in range(num_control_type)]
         control_type = torch.Tensor(control_type)
         self._guidance_scale = guidance_scale
@@ -1485,9 +1489,11 @@ class StableDiffusionXLControlNetTileSRPipeline(
 
         # 2 Get tile width and tile height size
         tile_width, tile_height = _adaptive_tile_size((width, height), max_tile_size=max_tile_size)
-        
-        # 2.1 Calculate the number of tiles needed 
-        grid_rows, grid_cols = self._get_num_tiles(height, width, tile_height, tile_width, normal_tile_overlap, border_tile_overlap)      
+
+        # 2.1 Calculate the number of tiles needed
+        grid_rows, grid_cols = self._get_num_tiles(
+            height, width, tile_height, tile_width, normal_tile_overlap, border_tile_overlap
+        )
 
         # 2.2 Expand prompt to number of tiles
         if not isinstance(prompt, list):
