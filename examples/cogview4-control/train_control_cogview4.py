@@ -40,9 +40,9 @@ from tqdm.auto import tqdm
 import diffusers
 from diffusers import (
     AutoencoderKL,
-    FlowMatchEulerDiscreteScheduler,
     CogView4ControlPipeline,
     CogView4Transformer2DModel,
+    FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
@@ -977,6 +977,7 @@ def main(args):
     text_encoding_pipeline = CogView4ControlPipeline.from_pretrained(
         args.pretrained_model_name_or_path, transformer=None, vae=None, torch_dtype=weight_dtype
     )
+    tokenizer = text_encoding_pipeline.tokenizer
 
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
@@ -1043,6 +1044,16 @@ def main(args):
             with accelerator.accumulate(cogview4_transformer):
                 # Convert images to latent space
                 # vae encode
+                prompts = batch["captions"]
+                attention_mask = tokenizer(
+                    prompts,
+                    padding="longest",  # not use max length
+                    max_length=args.max_sequence_length,
+                    truncation=True,
+                    add_special_tokens=True,
+                    return_tensors="pt",
+                ).attention_mask.float()
+
                 pixel_latents = encode_images(batch["pixel_values"], vae.to(accelerator.device), weight_dtype)
                 control_latents = encode_images(
                     batch["conditioning_pixel_values"], vae.to(accelerator.device), weight_dtype
@@ -1119,6 +1130,7 @@ def main(args):
                     target_size=target_size,
                     crop_coords=crops_coords_top_left,
                     return_dict=False,
+                    attention_mask=attention_mask,
                 )[0]
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
