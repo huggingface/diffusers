@@ -252,8 +252,8 @@ class CogView4RotaryPosEmbed(nn.Module):
         w_inv_freq = 1.0 / (theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w))
         h_seq = torch.arange(self.rope_axes_dim[0])
         w_seq = torch.arange(self.rope_axes_dim[1])
-        self.freqs_h = torch.nn.Buffer(torch.outer(h_seq, h_inv_freq))
-        self.freqs_w = torch.nn.Buffer(torch.outer(w_seq, w_inv_freq))
+        self.freqs_h = self.register_buffer("freqs_h", torch.outer(h_seq, h_inv_freq), persistent=False)
+        self.freqs_w = self.register_buffer("freqs_h", torch.outer(w_seq, w_inv_freq), persistent=False)
 
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, height, width = hidden_states.shape
