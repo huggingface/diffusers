@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput
-from ...loaders import IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import (
     AutoencoderKL,
     ControlNetModel,
@@ -204,6 +204,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
     StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
     AnimateDiffFreeNoiseMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for video-to-video generation with ControlNet guidance.
