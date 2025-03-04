@@ -235,7 +235,7 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
             component_legacy_variants = filter_with_regex(component_filenames, legacy_variant_file_re)
             component_legacy_variant_index_files = filter_with_regex(component_filenames, legacy_variant_index_re)
 
-        if component_variants:
+        if component_variants or component_legacy_variants:
             variant_filenames.update(
                 component_variants | component_variant_index_files
                 if component_variants
