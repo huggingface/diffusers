@@ -377,8 +377,11 @@ class SD3Transformer2DModel(
         if len(encoder_hidden_states.shape) == 3:
             encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         else:
+            encoder_hidden_states_list = []
             for index in range(encoder_hidden_states.shape[1]):
-                encoder_hidden_states[:,index,:,:] = self.context_embedder(encoder_hidden_states[:,index,:,:])
+                tmp_encoder_hidden_states = self.context_embedder(encoder_hidden_states[:,index,:,:])
+                encoder_hidden_states_list.append(tmp_encoder_hidden_states)
+            encoder_hidden_states = torch.stack(encoder_hidden_states_list, dim=1)
 
         if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
             ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
