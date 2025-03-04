@@ -76,8 +76,8 @@ if is_torch_available():
 if is_torchao_available():
     from torchao.dtypes import AffineQuantizedTensor
     from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
-    from torchao.utils import get_model_size_in_bytes
     from torchao.quantization.quant_primitives import MappingType
+    from torchao.utils import get_model_size_in_bytes
 
 
 @require_torch
