@@ -39,10 +39,11 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -268,19 +269,19 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionXLPAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", seed=0, guidance_scale=7.0):
         img_url = (
@@ -304,7 +305,7 @@ class StableDiffusionXLPAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
     def test_pag_cfg(self):
         pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
@@ -321,7 +322,7 @@ class StableDiffusionXLPAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
     def test_pag_uncond(self):
         pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device, guidance_scale=0.0)
