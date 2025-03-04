@@ -527,7 +527,7 @@ class AttentionModuleMixin:
 
 
 @maybe_allow_in_graph
-class Attention(nn.Module):
+class Attention(nn.Module, AttentionModuleMixin):
     r"""
     A cross attention layer.
 
