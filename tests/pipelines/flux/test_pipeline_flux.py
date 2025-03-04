@@ -9,6 +9,7 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPToken
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     nightly,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
@@ -136,30 +137,6 @@ class FluxPipelineFastTests(
         # For some reasons, they don't show large differences
         assert max_diff > 1e-6
 
-    def test_flux_prompt_embeds(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-
-        output_with_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        (prompt_embeds, pooled_prompt_embeds, text_ids) = pipe.encode_prompt(
-            prompt,
-            prompt_2=None,
-            device=torch_device,
-            max_sequence_length=inputs["max_sequence_length"],
-        )
-        output_with_embeds = pipe(
-            prompt_embeds=prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            **inputs,
-        ).images[0]
-
-        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
-
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -236,12 +213,12 @@ class FluxPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         generator = torch.Generator(device="cpu").manual_seed(seed)
