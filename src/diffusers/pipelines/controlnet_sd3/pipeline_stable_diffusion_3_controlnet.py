@@ -1038,7 +1038,7 @@ class StableDiffusion3ControlNetPipeline(
                     pooled_prompt_embeds,
                     negative_pooled_prompt_embeds,
                 ) = self.encode_prompt(
-                    prompt=prompt,
+                    prompt=pmt,
                     prompt_2=prompt_2,
                     prompt_3=prompt_3,
                     negative_prompt=negative_prompt,

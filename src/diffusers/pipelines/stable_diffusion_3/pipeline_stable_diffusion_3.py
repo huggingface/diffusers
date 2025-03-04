@@ -951,7 +951,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+            batch_size = 1 #len(prompt), thesea modified for text prompt mask
         else:
             batch_size = prompt_embeds.shape[0]
 
@@ -960,29 +960,69 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = self.encode_prompt(
-            prompt=prompt,
-            prompt_2=prompt_2,
-            prompt_3=prompt_3,
-            negative_prompt=negative_prompt,
-            negative_prompt_2=negative_prompt_2,
-            negative_prompt_3=negative_prompt_3,
-            do_classifier_free_guidance=self.do_classifier_free_guidance,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            device=device,
-            clip_skip=self.clip_skip,
-            num_images_per_prompt=num_images_per_prompt,
-            max_sequence_length=max_sequence_length,
-            lora_scale=lora_scale,
-        )
+
+        # 3.1 Encode input prompt
+        ## thesea modified for text prompt mask
+        prompt_embeds_list = []
+        negative_prompt_embeds_list = []
+        pooled_prompt_embeds_list = []
+        negative_pooled_prompt_embeds_list = []
+        if isinstance(prompt, list):
+            for pmt in prompt:
+                (
+                    prompt_embeds,
+                    negative_prompt_embeds,
+                    pooled_prompt_embeds,
+                    negative_pooled_prompt_embeds,
+                ) = self.encode_prompt(
+                    prompt=pmt,
+                    prompt_2=prompt_2,
+                    prompt_3=prompt_3,
+                    negative_prompt=negative_prompt,
+                    negative_prompt_2=negative_prompt_2,
+                    negative_prompt_3=negative_prompt_3,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    #prompt_embeds=prompt_embeds,
+                    #negative_prompt_embeds=negative_prompt_embeds,
+                    #pooled_prompt_embeds=pooled_prompt_embeds,
+                    #negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                    device=device,
+                    clip_skip=self.clip_skip,
+                    num_images_per_prompt=num_images_per_prompt,
+                    max_sequence_length=max_sequence_length,
+                )
+                prompt_embeds_list.append(prompt_embeds)
+                negative_prompt_embeds_list.append(negative_prompt_embeds)
+                pooled_prompt_embeds_list.append(pooled_prompt_embeds)
+                negative_pooled_prompt_embeds_list.append(negative_pooled_prompt_embeds)
+            prompt_embeds_list = torch.stack(prompt_embeds_list,dim=1)
+            negative_prompt_embeds_list = torch.stack(negative_prompt_embeds_list,dim=1)
+            pooled_prompt_embeds_list = torch.stack(pooled_prompt_embeds_list,dim=1)
+            negative_pooled_prompt_embeds_list = torch.stack(negative_pooled_prompt_embeds_list,dim=1)
+        else:
+            (
+                prompt_embeds,
+                negative_prompt_embeds,
+                pooled_prompt_embeds,
+                negative_pooled_prompt_embeds,
+            ) = self.encode_prompt(
+                prompt=prompt,
+                prompt_2=prompt_2,
+                prompt_3=prompt_3,
+                negative_prompt=negative_prompt,
+                negative_prompt_2=negative_prompt_2,
+                negative_prompt_3=negative_prompt_3,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                pooled_prompt_embeds=pooled_prompt_embeds,
+                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                device=device,
+                clip_skip=self.clip_skip,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                lora_scale=lora_scale,
+            )
 
         if self.do_classifier_free_guidance:
             if skip_guidance_layers is not None:
@@ -990,6 +1030,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 original_pooled_prompt_embeds = pooled_prompt_embeds
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+            if isinstance(prompt, list): # thesea modified for text prompt mask
+                prompt_embeds_list = torch.cat([negative_prompt_embeds_list, prompt_embeds_list], dim=0)
+                #TBD because SDXL does not use this: pooled_prompt_embeds_list = torch.cat([negative_pooled_prompt_embeds_list, pooled_prompt_embeds_list], dim=0)
+            
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
@@ -1060,7 +1104,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=prompt_embeds_list if isinstance(prompt, list) else prompt_embeds, #prompt_embeds, thesea modified for multiple text promts
                     pooled_projections=pooled_prompt_embeds,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
