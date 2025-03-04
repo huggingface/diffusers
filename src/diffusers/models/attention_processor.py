@@ -5809,6 +5809,8 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         hidden_states = attn.to_out[1](hidden_states)
 
         if encoder_hidden_states is not None:
+            print(f'attention processor hidden_states shape={hidden_states.shape}')
+            print(f'attention processor encoder_hidden_states shape={encoder_hidden_states.shape}')
             return hidden_states, encoder_hidden_states
         else:
             return hidden_states
