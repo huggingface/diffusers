@@ -3077,6 +3077,15 @@ class XFormersAttnProcessor:
             #   [batch*heads, query_tokens, key_tokens]
             # we do this explicitly because xformers doesn't broadcast the singleton dimension for us.
             _, query_tokens, _ = hidden_states.shape
+            if attention_mask.dtype == torch.bfloat16 and attention_mask.shape[-1] % 8 != 0:
+                mask_shape = attention_mask.shape
+                mask = torch.zeros(
+                    (mask_shape[0], mask_shape[1], math.ceil(mask_shape[-1] / 8) * 8),
+                    device=attention_mask.device,
+                    dtype=attention_mask.dtype
+                )
+                mask[:, :, :mask_shape[-1]] = attention_mask
+                attention_mask = mask[:, :, :mask_shape[-1]]
             attention_mask = attention_mask.expand(-1, query_tokens, -1)
 
         if attn.group_norm is not None:
