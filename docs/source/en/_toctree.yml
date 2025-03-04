@@ -77,6 +77,14 @@
     title: Outpainting
   title: Advanced inference
 - sections:
+  - local: hybrid_inference/overview
+    title: Overview
+  - local: hybrid_inference/vae_decode
+    title: VAE Decode
+  - local: hybrid_inference/api_reference
+    title: API Reference
+  title: Hybrid Inference
+- sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
   - local: using-diffusers/consisid
@@ -282,6 +290,8 @@
         title: CogView4Transformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
+      - local: api/models/easyanimate_transformer3d
+        title: EasyAnimateTransformer3DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/hunyuan_transformer2d
@@ -314,6 +324,8 @@
         title: Transformer2DModel
       - local: api/models/transformer_temporal
         title: TransformerTemporalModel
+      - local: api/models/wan_transformer_3d
+        title: WanTransformer3DModel
       title: Transformers
     - sections:
       - local: api/models/stable_cascade_unet
@@ -342,8 +354,12 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
+      - local: api/models/autoencoderkl_magvit
+        title: AutoencoderKLMagvit
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
+      - local: api/models/autoencoder_kl_wan
+        title: AutoencoderKLWan
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
       - local: api/models/autoencoder_dc
@@ -418,6 +434,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/easyanimate
+      title: EasyAnimate
     - local: api/pipelines/flux
       title: Flux
     - local: api/pipelines/control_flux_inpaint
@@ -534,6 +552,8 @@
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
+    - local: api/pipelines/wan
+      title: Wan
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines

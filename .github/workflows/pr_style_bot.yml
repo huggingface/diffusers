@@ -9,12 +9,33 @@ permissions:
   pull-requests: write
 
 jobs:
-  run-style-bot:
+  check-permissions:
     if: >
       contains(github.event.comment.body, '@bot /style') &&
       github.event.issue.pull_request != null
     runs-on: ubuntu-latest
+    outputs:
+      is_authorized: ${{ steps.check_user_permission.outputs.has_permission }}
+    steps:
+      - name: Check user permission
+        id: check_user_permission
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const comment_user = context.payload.comment.user.login;
+            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: comment_user
+            });
+            const authorized = permission.permission === 'admin';
+            console.log(`User ${comment_user} has permission level: ${permission.permission}, authorized: ${authorized} (only admins allowed)`);
+            core.setOutput('has_permission', authorized);
 
+  run-style-bot:
+    needs: check-permissions
+    if: needs.check-permissions.outputs.is_authorized == 'true'
+    runs-on: ubuntu-latest
     steps:
       - name: Extract PR details
         id: pr_info
