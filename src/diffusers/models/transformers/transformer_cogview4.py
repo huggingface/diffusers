@@ -252,20 +252,18 @@ class CogView4RotaryPosEmbed(nn.Module):
         w_inv_freq = 1.0 / (theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w))
         h_seq = torch.arange(self.rope_axes_dim[0])
         w_seq = torch.arange(self.rope_axes_dim[1])
-        self.freqs_h = torch.outer(h_seq, h_inv_freq)
-        self.freqs_w = torch.outer(w_seq, w_inv_freq)
+        self.freqs_h = torch.nn.Buffer(torch.outer(h_seq, h_inv_freq))
+        self.freqs_w = torch.nn.Buffer(torch.outer(w_seq, w_inv_freq))
 
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, height, width = hidden_states.shape
         height, width = height // self.patch_size, width // self.patch_size
 
-        h_idx = torch.arange(height)
-        w_idx = torch.arange(width)
+        h_idx = torch.arange(height, device=self.freqs_h.device)
+        w_idx = torch.arange(width, device=self.freqs_w.device)
         inner_h_idx = h_idx * self.rope_axes_dim[0] // height
         inner_w_idx = w_idx * self.rope_axes_dim[1] // width
 
-        self.freqs_h = self.freqs_h.to(hidden_states.device)
-        self.freqs_w = self.freqs_w.to(hidden_states.device)
         freqs_h = self.freqs_h[inner_h_idx]
         freqs_w = self.freqs_w[inner_w_idx]
 
