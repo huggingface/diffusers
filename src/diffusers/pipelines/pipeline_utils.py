@@ -54,6 +54,8 @@ from ..utils import (
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
     PushToHubMixin,
+    _get_detailed_type,
+    _is_valid_type,
     is_accelerate_available,
     is_accelerate_version,
     is_torch_npu_available,
@@ -78,12 +80,10 @@ from .pipeline_loading_utils import (
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
-    _get_detailed_type,
     _get_final_device_map,
     _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
-    _is_valid_type,
     _maybe_raise_error_for_incorrect_transformers,
     _maybe_raise_warning_for_inpainting,
     _resolve_custom_pipeline_and_cls,
@@ -685,7 +685,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         from_flax = kwargs.pop("from_flax", False)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
@@ -701,6 +701,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
+
+        if not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -1826,7 +1832,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
 
         original_config = dict(pipeline.config)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
 
         # derive the pipeline class to instantiate
         custom_pipeline = kwargs.pop("custom_pipeline", None)
