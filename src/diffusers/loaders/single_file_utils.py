@@ -2894,10 +2894,10 @@ def convert_sana_transformer_to_diffusers(checkpoint, **kwargs):
     
     # Caption Projection.
     checkpoint.pop("y_embedder.y_embedding")
-    converted_state_dict["caption_proj.linear_1.weight"] = checkpoint.pop("y_embedder.y_proj.fc1.weight")
-    converted_state_dict["caption_proj.linear_1.bias"] = checkpoint.pop("y_embedder.y_proj.fc1.bias")
-    converted_state_dict["caption_proj.linear_2.weight"] = checkpoint.pop("y_embedder.y_proj.fc2.weight")
-    converted_state_dict["caption_proj.linear_2.bias"] = checkpoint.pop("y_embedder.y_proj.fc2.bias")
+    converted_state_dict["caption_projection.linear_1.weight"] = checkpoint.pop("y_embedder.y_proj.fc1.weight")
+    converted_state_dict["caption_projection.linear_1.bias"] = checkpoint.pop("y_embedder.y_proj.fc1.bias")
+    converted_state_dict["caption_projection.linear_2.weight"] = checkpoint.pop("y_embedder.y_proj.fc2.weight")
+    converted_state_dict["caption_projection.linear_2.bias"] = checkpoint.pop("y_embedder.y_proj.fc2.bias")
     converted_state_dict["caption_norm.weight"] = checkpoint.pop("attention_y_norm.weight")
 
 

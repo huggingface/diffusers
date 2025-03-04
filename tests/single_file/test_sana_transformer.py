@@ -1,8 +1,6 @@
 import gc
 import unittest
 
-import torch
-
 from diffusers import (
     SanaTransformer2DModel,
 )
