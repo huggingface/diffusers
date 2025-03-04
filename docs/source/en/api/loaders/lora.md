@@ -20,6 +20,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`FluxLoraLoaderMixin`] provides similar functions for [Flux](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux).
 - [`CogVideoXLoraLoaderMixin`] provides similar functions for [CogVideoX](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogvideox).
 - [`Mochi1LoraLoaderMixin`] provides similar functions for [Mochi](https://huggingface.co/docs/diffusers/main/en/api/pipelines/mochi).
+- [`LTXVideoLoraLoaderMixin`] provides similar functions for [LTX-Video](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ltx_video).
+- [`SanaLoraLoaderMixin`] provides similar functions for [Sana](https://huggingface.co/docs/diffusers/main/en/api/pipelines/sana).
+- [`HunyuanVideoLoraLoaderMixin`] provides similar functions for [HunyuanVideo](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hunyuan_video).
+- [`Lumina2LoraLoaderMixin`] provides similar functions for [Lumina2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/lumina2).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
@@ -52,6 +56,22 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 ## Mochi1LoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.Mochi1LoraLoaderMixin
+
+## LTXVideoLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.LTXVideoLoraLoaderMixin
+
+## SanaLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.SanaLoraLoaderMixin
+
+## HunyuanVideoLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.HunyuanVideoLoraLoaderMixin
+
+## Lumina2LoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.Lumina2LoraLoaderMixin
 
 ## AmusedLoraLoaderMixin
 

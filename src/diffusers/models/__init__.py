@@ -51,6 +51,7 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
     _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
+    _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -69,6 +70,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
+    _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
@@ -122,6 +124,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DMultiControlNetModel,
             MultiControlNetModel,
+            MultiControlNetUnionModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SparseControlNetModel,
@@ -134,6 +137,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AuraFlowTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
+            CogView4Transformer2DModel,
             ConsisIDTransformer3DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,

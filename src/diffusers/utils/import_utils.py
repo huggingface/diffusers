@@ -815,7 +815,7 @@ def is_peft_version(operation: str, version: str):
         version (`str`):
             A version string
     """
-    if not _peft_version:
+    if not _peft_available:
         return False
     return compare_versions(parse(_peft_version), operation, version)
 
@@ -829,7 +829,7 @@ def is_bitsandbytes_version(operation: str, version: str):
         version (`str`):
             A version string
     """
-    if not _bitsandbytes_version:
+    if not _bitsandbytes_available:
         return False
     return compare_versions(parse(_bitsandbytes_version), operation, version)
 

@@ -154,6 +154,7 @@ else:
         "CogVideoXFunControlPipeline",
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
+    _import_structure["cogview4"] = ["CogView4Pipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["controlnet"].extend(
         [
@@ -216,7 +217,7 @@ else:
         "IFSuperResolutionPipeline",
     ]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
-    _import_structure["hunyuan_video"] = ["HunyuanVideoPipeline"]
+    _import_structure["hunyuan_video"] = ["HunyuanVideoPipeline", "HunyuanSkyreelsImageToVideoPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -499,6 +500,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXVideoToVideoPipeline,
         )
         from .cogview3 import CogView3PlusPipeline
+        from .cogview4 import CogView4Pipeline
         from .consisid import ConsisIDPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
@@ -556,7 +558,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .hunyuan_video import HunyuanVideoPipeline
+        from .hunyuan_video import HunyuanSkyreelsImageToVideoPipeline, HunyuanVideoPipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
