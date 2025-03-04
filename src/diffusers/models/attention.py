@@ -260,6 +260,8 @@ class JointTransformerBlock(nn.Module):
         if self.context_pre_only:
             encoder_hidden_states = None
         else:
+            print(f'attention encoder_hidden_states shape={encoder_hidden_states.shape}')
+            print(f'attention context_attn_output shape={context_attn_output.shape}')
             context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
             encoder_hidden_states = encoder_hidden_states + context_attn_output
 
