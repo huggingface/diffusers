@@ -47,7 +47,7 @@ class QuantizationMethod(str, Enum):
     TORCHAO = "torchao"
 
 
-if is_torchao_available:
+if is_torchao_available():
     from torchao.quantization.quant_primitives import MappingType
 
     class TorchAoJSONEncoder(json.JSONEncoder):
