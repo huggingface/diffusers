@@ -212,6 +212,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
 
 class VariantCompatibleSiblingsTest(unittest.TestCase):
     def test_only_non_variants_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         filenames = [
             f"vae/diffusion_pytorch_model.{variant}.safetensors",
@@ -222,10 +223,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "unet/diffusion_pytorch_model.safetensors",
         ]
 
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=None)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
         assert all(variant not in f for f in model_filenames)
 
     def test_only_variants_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         filenames = [
             f"vae/diffusion_pytorch_model.{variant}.safetensors",
@@ -236,10 +240,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "unet/diffusion_pytorch_model.safetensors",
         ]
 
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
         assert all(variant in f for f in model_filenames)
 
     def test_mixed_variants_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         non_variant_file = "text_encoder/model.safetensors"
         filenames = [
@@ -249,23 +256,27 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"unet/diffusion_pytorch_model.{variant}.safetensors",
             "unet/diffusion_pytorch_model.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
         assert all(variant in f if f != non_variant_file else variant not in f for f in model_filenames)
 
     def test_non_variants_in_main_dir_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         filenames = [
             f"diffusion_pytorch_model.{variant}.safetensors",
             "diffusion_pytorch_model.safetensors",
             "model.safetensors",
             f"model.{variant}.safetensors",
-            f"diffusion_pytorch_model.{variant}.safetensors",
-            "diffusion_pytorch_model.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=None)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
         assert all(variant not in f for f in model_filenames)
 
     def test_variants_in_main_dir_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         filenames = [
             f"diffusion_pytorch_model.{variant}.safetensors",
@@ -275,23 +286,76 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"diffusion_pytorch_model.{variant}.safetensors",
             "diffusion_pytorch_model.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
         assert all(variant in f for f in model_filenames)
 
     def test_mixed_variants_in_main_dir_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         non_variant_file = "model.safetensors"
         filenames = [
             f"diffusion_pytorch_model.{variant}.safetensors",
             "diffusion_pytorch_model.safetensors",
             "model.safetensors",
-            f"diffusion_pytorch_model.{variant}.safetensors",
-            "diffusion_pytorch_model.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
         assert all(variant in f if f != non_variant_file else variant not in f for f in model_filenames)
 
+    def test_sharded_variants_in_main_dir_downloaded(self):
+        ignore_patterns = ["*.bin"]
+        variant = "fp16"
+        filenames = [
+            "diffusion_pytorch_model.safetensors.index.json",
+            "diffusion_pytorch_model-00001-of-00003.safetensors",
+            "diffusion_pytorch_model-00002-of-00003.safetensors",
+            "diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"diffusion_pytorch_model.{variant}-00001-of-00002.safetensors",
+            f"diffusion_pytorch_model.{variant}-00002-of-00002.safetensors",
+            f"diffusion_pytorch_model.safetensors.index.{variant}.json",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert all(variant in f for f in model_filenames)
+
+    def test_mixed_sharded_and_variant_in_main_dir_downloaded(self):
+        ignore_patterns = ["*.bin"]
+        variant = "fp16"
+        filenames = [
+            "diffusion_pytorch_model.safetensors.index.json",
+            "diffusion_pytorch_model-00001-of-00003.safetensors",
+            "diffusion_pytorch_model-00002-of-00003.safetensors",
+            "diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"diffusion_pytorch_model.{variant}.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert all(variant in f for f in model_filenames)
+
+    def test_mixed_sharded_non_variants_in_main_dir_downloaded(self):
+        ignore_patterns = ["*.bin"]
+        variant = "fp16"
+        filenames = [
+            f"diffusion_pytorch_model.safetensors.index.{variant}.json",
+            "diffusion_pytorch_model.safetensors.index.json",
+            "diffusion_pytorch_model-00001-of-00003.safetensors",
+            "diffusion_pytorch_model-00002-of-00003.safetensors",
+            "diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"diffusion_pytorch_model.{variant}-00001-of-00002.safetensors",
+            f"diffusion_pytorch_model.{variant}-00002-of-00002.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
+        assert all(variant not in f for f in model_filenames)
+
     def test_sharded_non_variants_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         filenames = [
             f"unet/diffusion_pytorch_model.safetensors.index.{variant}.json",
@@ -302,10 +366,13 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"unet/diffusion_pytorch_model.{variant}-00001-of-00002.safetensors",
             f"unet/diffusion_pytorch_model.{variant}-00002-of-00002.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=None)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
         assert all(variant not in f for f in model_filenames)
 
     def test_sharded_variants_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         filenames = [
             f"unet/diffusion_pytorch_model.safetensors.index.{variant}.json",
@@ -316,10 +383,49 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             f"unet/diffusion_pytorch_model.{variant}-00001-of-00002.safetensors",
             f"unet/diffusion_pytorch_model.{variant}-00002-of-00002.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert all(variant in f for f in model_filenames)
+        assert model_filenames == variant_filenames
+
+    def test_single_variant_with_sharded_non_variant_downloaded(self):
+        ignore_patterns = ["*.bin"]
+        variant = "fp16"
+        filenames = [
+            "unet/diffusion_pytorch_model.safetensors.index.json",
+            "unet/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "unet/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "unet/diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"unet/diffusion_pytorch_model.{variant}.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
         assert all(variant in f for f in model_filenames)
 
+    def test_mixed_single_variant_with_sharded_non_variant_downloaded(self):
+        ignore_patterns = ["*.bin"]
+        variant = "fp16"
+        allowed_non_variant = "unet"
+        filenames = [
+            "vae/diffusion_pytorch_model.safetensors.index.json",
+            "vae/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"vae/diffusion_pytorch_model.{variant}.safetensors",
+            "unet/diffusion_pytorch_model.safetensors.index.json",
+            "unet/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "unet/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "unet/diffusion_pytorch_model-00003-of-00003.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
+
     def test_sharded_mixed_variants_downloaded(self):
+        ignore_patterns = ["*.bin"]
         variant = "fp16"
         allowed_non_variant = "unet"
         filenames = [
@@ -335,8 +441,143 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "vae/diffusion_pytorch_model-00002-of-00003.safetensors",
             "vae/diffusion_pytorch_model-00003-of-00003.safetensors",
         ]
-        model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
         assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
+
+    def test_downloading_when_no_variant_exists(self):
+        ignore_patterns = ["*.bin"]
+        variant = "fp16"
+        filenames = ["model.safetensors", "diffusion_pytorch_model.safetensors"]
+        with self.assertRaisesRegex(ValueError, "but no such modeling files are available. "):
+            model_filenames, variant_filenames = variant_compatible_siblings(
+                filenames, variant=variant, ignore_patterns=ignore_patterns
+            )
+
+    def test_downloading_use_safetensors_false(self):
+        ignore_patterns = ["*.safetensors"]
+        filenames = [
+            "text_encoder/model.bin",
+            "unet/diffusion_pytorch_model.bin",
+            "unet/diffusion_pytorch_model.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
+
+        assert all(".safetensors" not in f for f in model_filenames)
+
+    def test_non_variant_in_main_dir_with_variant_in_subfolder(self):
+        ignore_patterns = ["*.bin"]
+        variant = "fp16"
+        allowed_non_variant = "diffusion_pytorch_model.safetensors"
+        filenames = [
+            f"unet/diffusion_pytorch_model.{variant}.safetensors",
+            "diffusion_pytorch_model.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
+
+    def test_download_variants_when_component_has_no_safetensors_variant(self):
+        ignore_patterns = None
+        variant = "fp16"
+        filenames = [
+            f"unet/diffusion_pytorch_model.{variant}.bin",
+            "vae/diffusion_pytorch_model.safetensors",
+            f"vae/diffusion_pytorch_model.{variant}.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert {
+            f"unet/diffusion_pytorch_model.{variant}.bin",
+            f"vae/diffusion_pytorch_model.{variant}.safetensors",
+        } == model_filenames
+
+    def test_error_when_download_sharded_variants_when_component_has_no_safetensors_variant(self):
+        ignore_patterns = ["*.bin"]
+        variant = "fp16"
+        filenames = [
+            f"vae/diffusion_pytorch_model.bin.index.{variant}.json",
+            "vae/diffusion_pytorch_model.safetensors.index.json",
+            f"vae/diffusion_pytorch_model.{variant}-00002-of-00002.bin",
+            "vae/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00003-of-00003.safetensors",
+            "unet/diffusion_pytorch_model.safetensors.index.json",
+            "unet/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "unet/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "unet/diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"vae/diffusion_pytorch_model.{variant}-00001-of-00002.bin",
+        ]
+        with self.assertRaisesRegex(ValueError, "but no such modeling files are available. "):
+            model_filenames, variant_filenames = variant_compatible_siblings(
+                filenames, variant=variant, ignore_patterns=ignore_patterns
+            )
+
+    def test_download_sharded_variants_when_component_has_no_safetensors_variant_and_safetensors_false(self):
+        ignore_patterns = ["*.safetensors"]
+        allowed_non_variant = "unet"
+        variant = "fp16"
+        filenames = [
+            f"vae/diffusion_pytorch_model.bin.index.{variant}.json",
+            "vae/diffusion_pytorch_model.safetensors.index.json",
+            f"vae/diffusion_pytorch_model.{variant}-00002-of-00002.bin",
+            "vae/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00003-of-00003.safetensors",
+            "unet/diffusion_pytorch_model.safetensors.index.json",
+            "unet/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "unet/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "unet/diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"vae/diffusion_pytorch_model.{variant}-00001-of-00002.bin",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert all(variant in f if allowed_non_variant not in f else variant not in f for f in model_filenames)
+
+    def test_download_sharded_legacy_variants(self):
+        ignore_patterns = None
+        variant = "fp16"
+        filenames = [
+            f"vae/transformer/diffusion_pytorch_model.safetensors.{variant}.index.json",
+            "vae/diffusion_pytorch_model.safetensors.index.json",
+            f"vae/diffusion_pytorch_model-00002-of-00002.{variant}.safetensors",
+            "vae/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00002-of-00003.safetensors",
+            "vae/diffusion_pytorch_model-00003-of-00003.safetensors",
+            f"vae/diffusion_pytorch_model-00001-of-00002.{variant}.safetensors",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=variant, ignore_patterns=ignore_patterns
+        )
+        assert all(variant in f for f in model_filenames)
+
+    def test_download_onnx_models(self):
+        ignore_patterns = ["*.safetensors"]
+        filenames = [
+            "vae/model.onnx",
+            "unet/model.onnx",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
+        assert model_filenames == set(filenames)
+
+    def test_download_flax_models(self):
+        ignore_patterns = ["*.safetensors", "*.bin"]
+        filenames = [
+            "vae/diffusion_flax_model.msgpack",
+            "unet/diffusion_flax_model.msgpack",
+        ]
+        model_filenames, variant_filenames = variant_compatible_siblings(
+            filenames, variant=None, ignore_patterns=ignore_patterns
+        )
+        assert model_filenames == set(filenames)
 
 
 class ProgressBarTests(unittest.TestCase):
