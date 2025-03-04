@@ -98,7 +98,9 @@ class KolorsPAGPipelineFastTests(
             sample_size=128,
         )
         torch.manual_seed(0)
-        text_encoder = ChatGLMModel.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
+        text_encoder = ChatGLMModel.from_pretrained(
+            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.bfloat16
+        )
         tokenizer = ChatGLMTokenizer.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
 
         components = {
@@ -252,3 +254,6 @@ class KolorsPAGPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_encode_prompt_works_in_isolation(self):
+        return super().test_encode_prompt_works_in_isolation(atol=1e-3, rtol=1e-3)

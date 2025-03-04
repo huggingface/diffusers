@@ -1,0 +1,168 @@
+name: PR Style Bot
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-permissions:
+    if: >
+      contains(github.event.comment.body, '@bot /style') &&
+      github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    outputs:
+      is_authorized: ${{ steps.check_user_permission.outputs.has_permission }}
+    steps:
+      - name: Check user permission
+        id: check_user_permission
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const comment_user = context.payload.comment.user.login;
+            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: comment_user
+            });
+            const authorized = permission.permission === 'admin';
+            console.log(`User ${comment_user} has permission level: ${permission.permission}, authorized: ${authorized} (only admins allowed)`);
+            core.setOutput('has_permission', authorized);
+
+  run-style-bot:
+    needs: check-permissions
+    if: needs.check-permissions.outputs.is_authorized == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract PR details
+        id: pr_info
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            
+            // We capture both the branch ref and the "full_name" of the head repo
+            // so that we can check out the correct repository & branch (including forks).
+            core.setOutput("prNumber", prNumber);
+            core.setOutput("headRef", pr.head.ref);
+            core.setOutput("headRepoFullName", pr.head.repo.full_name);
+
+      - name: Check out PR branch
+        uses: actions/checkout@v3
+        env: 
+          HEADREPOFULLNAME: ${{ steps.pr_info.outputs.headRepoFullName }}
+          HEADREF: ${{ steps.pr_info.outputs.headRef }}
+        with:
+          # Instead of checking out the base repo, use the contributor's repo name
+          repository: ${{ env.HEADREPOFULLNAME }}
+          ref: ${{ env.HEADREF }}
+          # You may need fetch-depth: 0 for being able to push
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Debug
+        env: 
+          HEADREPOFULLNAME: ${{ steps.pr_info.outputs.headRepoFullName }}
+          HEADREF: ${{ steps.pr_info.outputs.headRef }}
+          PRNUMBER: ${{ steps.pr_info.outputs.prNumber }}
+        run: |
+          echo "PR number: $PRNUMBER"
+          echo "Head Ref: $HEADREF"
+          echo "Head Repo Full Name: $HEADREPOFULLNAME"
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+
+      - name: Install dependencies
+        run: |
+          pip install .[quality]
+
+      - name: Download necessary files from main branch of Diffusers
+        run: |
+          curl -o main_Makefile https://raw.githubusercontent.com/huggingface/diffusers/main/Makefile
+          curl -o main_setup.py https://raw.githubusercontent.com/huggingface/diffusers/refs/heads/main/setup.py
+          curl -o main_check_doc_toc.py https://raw.githubusercontent.com/huggingface/diffusers/refs/heads/main/utils/check_doc_toc.py
+        
+      - name: Compare the files and raise error if needed
+        run: |
+          diff_failed=0
+
+          if ! diff -q main_Makefile Makefile; then
+            echo "Error: The Makefile has changed. Please ensure it matches the main branch."
+            diff_failed=1
+          fi
+
+          if ! diff -q main_setup.py setup.py; then
+            echo "Error: The setup.py has changed. Please ensure it matches the main branch."
+            diff_failed=1
+          fi
+
+          if ! diff -q main_check_doc_toc.py utils/check_doc_toc.py; then
+            echo "Error: The utils/check_doc_toc.py has changed. Please ensure it matches the main branch."
+            diff_failed=1
+          fi
+
+          if [ $diff_failed -eq 1 ]; then
+            echo "❌ Error happened as we detected changes in the files that should not be changed ❌"
+            exit 1
+          fi
+
+          echo "No changes in the files. Proceeding..."
+          rm -rf main_Makefile main_setup.py main_check_doc_toc.py
+
+      - name: Run make style and make quality
+        run: |
+          make style && make quality
+
+      - name: Commit and push changes
+        id: commit_and_push
+        env: 
+          HEADREPOFULLNAME: ${{ steps.pr_info.outputs.headRepoFullName }}
+          HEADREF: ${{ steps.pr_info.outputs.headRef }}
+          PRNUMBER: ${{ steps.pr_info.outputs.prNumber }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "HEADREPOFULLNAME: $HEADREPOFULLNAME, HEADREF: $HEADREF"
+          # Configure git with the Actions bot user
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Make sure your 'origin' remote is set to the contributor's fork
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$HEADREPOFULLNAME.git"
+
+          # If there are changes after running style/quality, commit them
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Apply style fixes"
+            # Push to the original contributor's forked branch
+            git push origin HEAD:$HEADREF
+            echo "changes_pushed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes to commit."
+            echo "changes_pushed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR with workflow run link
+        if: steps.commit_and_push.outputs.changes_pushed == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const prNumber = parseInt(process.env.prNumber, 10);
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `Style fixes have been applied. [View the workflow run here](${runUrl}).`
+            });
+        env:
+          prNumber: ${{ steps.pr_info.outputs.prNumber }}
