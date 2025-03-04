@@ -117,7 +117,7 @@ CHECKPOINT_KEY_NAMES = {
     "hunyuan-video": "txt_in.individual_token_refiner.blocks.0.adaLN_modulation.1.bias",
     "instruct-pix2pix": "model.diffusion_model.input_blocks.0.0.weight",
     "lumina2": ["model.diffusion_model.cap_embedder.0.weight", "cap_embedder.0.weight"],
-    "sana": [ 
+    "sana": [
         "blocks.0.cross_attn.q_linear.weight",
         "blocks.0.cross_attn.q_linear.bias",
         "blocks.0.cross_attn.kv_linear.weight",
@@ -2877,7 +2877,7 @@ def convert_sana_transformer_to_diffusers(checkpoint, **kwargs):
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "blocks" in k))[-1] + 1  # noqa: C401
-    
+
 
     # Positional and patch embeddings.
     checkpoint.pop("pos_embed")
@@ -2891,7 +2891,7 @@ def convert_sana_transformer_to_diffusers(checkpoint, **kwargs):
     converted_state_dict["time_embed.emb.timestep_embedder.linear_2.bias"] = checkpoint.pop("t_embedder.mlp.2.bias")
     converted_state_dict["time_embed.linear.weight"] = checkpoint.pop("t_block.1.weight")
     converted_state_dict["time_embed.linear.bias"] = checkpoint.pop("t_block.1.bias")
-    
+
     # Caption Projection.
     checkpoint.pop("y_embedder.y_embedding")
     converted_state_dict["caption_projection.linear_1.weight"] = checkpoint.pop("y_embedder.y_proj.fc1.weight")
@@ -2935,7 +2935,7 @@ def convert_sana_transformer_to_diffusers(checkpoint, **kwargs):
         converted_state_dict[f"transformer_blocks.{i}.ff.conv_depth.weight"] = checkpoint.pop(f"blocks.{i}.mlp.depth_conv.conv.weight")
         converted_state_dict[f"transformer_blocks.{i}.ff.conv_depth.bias"] = checkpoint.pop(f"blocks.{i}.mlp.depth_conv.conv.bias")
         converted_state_dict[f"transformer_blocks.{i}.ff.conv_point.weight"] = checkpoint.pop(f"blocks.{i}.mlp.point_conv.conv.weight")
-    
+
     # Final layer
     converted_state_dict["proj_out.weight"] = checkpoint.pop("final_layer.linear.weight")
     converted_state_dict["proj_out.bias"] = checkpoint.pop("final_layer.linear.bias")
