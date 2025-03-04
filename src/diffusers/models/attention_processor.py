@@ -56,11 +56,13 @@ class AttentionModuleMixin:
             processor = AttnProcessorNPU()
         else:
             # set attention processor
-            # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
+            # We use the AttnProcessorSDPA by default when torch 2.x is used which uses
             # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
             # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
             processor = (
-                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
+                AttnProcessorSDPA()
+                if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
+                else AttnProcessor()
             )
         self.set_processor(processor)
 
@@ -88,12 +90,14 @@ class AttentionModuleMixin:
                 raise "flash attention pallas kernel using SPMD is supported from torch_xla version 2.4"
             else:
                 if is_flux:
-                    processor = XLAFluxFlashAttnProcessor2_0(partition_spec)
+                    processor = XLAFluxFlashAttnProcessorSDPA(partition_spec)
                 else:
-                    processor = XLAFlashAttnProcessor2_0(partition_spec)
+                    processor = XLAFlashAttnProcessorSDPA(partition_spec)
         else:
             processor = (
-                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
+                AttnProcessorSDPA()
+                if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
+                else AttnProcessor()
             )
         self.set_processor(processor)
 
@@ -112,25 +116,25 @@ class AttentionModuleMixin:
         """
         is_custom_diffusion = hasattr(self, "processor") and isinstance(
             self.processor,
-            (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor2_0),
+            (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessorSDPA),
         )
         is_added_kv_processor = hasattr(self, "processor") and isinstance(
             self.processor,
             (
                 AttnAddedKVProcessor,
-                AttnAddedKVProcessor2_0,
+                AttnAddedKVProcessorSDPA,
                 SlicedAttnAddedKVProcessor,
                 XFormersAttnAddedKVProcessor,
             ),
         )
         is_ip_adapter = hasattr(self, "processor") and isinstance(
             self.processor,
-            (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXFormersAttnProcessor),
+            (IPAdapterAttnProcessor, IPAdapterAttnProcessorSDPA, IPAdapterXFormersAttnProcessor),
         )
         is_joint_processor = hasattr(self, "processor") and isinstance(
             self.processor,
             (
-                JointAttnProcessor2_0,
+                JointAttnProcessorSDPA,
                 XFormersJointAttnProcessor,
             ),
         )
@@ -205,7 +209,7 @@ class AttentionModuleMixin:
         else:
             if is_custom_diffusion:
                 attn_processor_class = (
-                    CustomDiffusionAttnProcessor2_0
+                    CustomDiffusionAttnProcessorSDPA
                     if hasattr(F, "scaled_dot_product_attention")
                     else CustomDiffusionAttnProcessor
                 )
@@ -219,7 +223,7 @@ class AttentionModuleMixin:
                 if hasattr(self.processor, "to_k_custom_diffusion"):
                     processor.to(self.processor.to_k_custom_diffusion.weight.device)
             elif is_ip_adapter:
-                processor = IPAdapterAttnProcessor2_0(
+                processor = IPAdapterAttnProcessorSDPA(
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
                     num_tokens=self.processor.num_tokens,
@@ -232,11 +236,11 @@ class AttentionModuleMixin:
                     )
             else:
                 # set attention processor
-                # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
+                # We use the AttnProcessorSDPA by default when torch 2.x is used which uses
                 # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
                 # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
                 processor = (
-                    AttnProcessor2_0()
+                    AttnProcessorSDPA()
                     if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
                     else AttnProcessor()
                 )
@@ -262,11 +266,13 @@ class AttentionModuleMixin:
             processor = AttnAddedKVProcessor()
         else:
             # set attention processor
-            # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
+            # We use the AttnProcessorSDPA by default when torch 2.x is used which uses
             # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
             # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
             processor = (
-                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
+                AttnProcessorSDPA()
+                if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
+                else AttnProcessor()
             )
 
         self.set_processor(processor)
@@ -578,7 +584,7 @@ class Attention(nn.Module, AttentionModuleMixin):
         _from_deprecated_attn_block (`bool`, *optional*, defaults to `False`):
             Set to `True` if the attention block is loaded from a deprecated state dict.
         processor (`AttnProcessor`, *optional*, defaults to `None`):
-            The attention processor to use. If `None`, defaults to `AttnProcessor2_0` if `torch 2.x` is used and
+            The attention processor to use. If `None`, defaults to `AttnProcessorSDPA` if `torch 2.x` is used and
             `AttnProcessor` otherwise.
     """
 
@@ -776,12 +782,14 @@ class Attention(nn.Module, AttentionModuleMixin):
             self.norm_added_k = None
 
         # set attention processor
-        # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
+        # We use the AttnProcessorSDPA by default when torch 2.x is used which uses
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
         # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
         if processor is None:
             processor = (
-                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
+                AttnProcessorSDPA()
+                if hasattr(F, "scaled_dot_product_attention") and self.scale_qk
+                else AttnProcessor()
             )
         self.set_processor(processor)
 
@@ -902,7 +910,7 @@ class SanaMultiscaleLinearAttention(nn.Module):
         self.to_out = nn.Linear(inner_dim * (1 + len(kernel_sizes)), out_channels, bias=False)
         self.norm_out = get_normalization(norm_type, num_features=out_channels)
 
-        self.processor = SanaMultiscaleAttnProcessor2_0()
+        self.processor = SanaMultiscaleAttnProcessorSDPA()
 
     def apply_linear_attention(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
         value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1)  # Adds padding
@@ -929,7 +937,7 @@ class MochiAttention(nn.Module):
         self,
         query_dim: int,
         added_kv_proj_dim: int,
-        processor: "MochiAttnProcessor2_0",
+        processor: "MochiAttnProcessorSDPA",
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
@@ -995,7 +1003,7 @@ class MochiAttnProcessorSDPA:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("MochiAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("MochiAttnProcessorSDPA requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -1347,7 +1355,7 @@ class AttnAddedKVProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "AttnAddedKVProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "AttnAddedKVProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -1419,7 +1427,7 @@ class JointAttnProcessorSDPA:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("JointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("JointAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -1506,7 +1514,7 @@ class PAGJointAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "PAGJointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "PAGJointAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -1662,7 +1670,7 @@ class PAGCFGJointAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "PAGCFGJointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "PAGCFGJointAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -1826,7 +1834,7 @@ class FusedJointAttnProcessorSDPA:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("AttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -1994,7 +2002,7 @@ class AllegroAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "AllegroAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "AllegroAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -2085,7 +2093,7 @@ class AuraFlowAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
             raise ImportError(
-                "AuraFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
+                "AuraFlowAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
             )
 
     def __call__(
@@ -2178,7 +2186,7 @@ class FusedAuraFlowAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
             raise ImportError(
-                "FusedAuraFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
+                "FusedAuraFlowAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
             )
 
     def __call__(
@@ -2274,7 +2282,7 @@ class FluxAttnProcessorSDPA:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("FluxAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("FluxAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -2359,13 +2367,13 @@ class FluxAttnProcessorSDPA:
             return hidden_states
 
 
-class FluxAttnProcessor2_0_NPU:
+class FluxAttnProcessorSDPA_NPU:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "FluxAttnProcessor2_0_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0 and install torch NPU"
+                "FluxAttnProcessorSDPA_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0 and install torch NPU"
             )
 
     def __call__(
@@ -2471,7 +2479,7 @@ class FusedFluxAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "FusedFluxAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "FusedFluxAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -2560,13 +2568,13 @@ class FusedFluxAttnProcessorSDPA:
             return hidden_states
 
 
-class FusedFluxAttnProcessor2_0_NPU:
+class FusedFluxAttnProcessorSDPA_NPU:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "FluxAttnProcessor2_0_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0, and install torch NPU"
+                "FluxAttnProcessorSDPA_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0, and install torch NPU"
             )
 
     def __call__(
@@ -2671,7 +2679,7 @@ class FusedFluxAttnProcessor2_0_NPU:
             return hidden_states
 
 
-class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
+class FluxIPAdapterJointAttnProcessorSDPA(torch.nn.Module):
     """Flux Attention processor for IP-Adapter."""
 
     def __init__(
@@ -3241,7 +3249,7 @@ class AttnProcessorSDPA:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("AttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -3336,7 +3344,7 @@ class XLAFlashAttnProcessorSDPA:
     def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "XLAFlashAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
         if is_torch_xla_version("<", "2.3"):
             raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
@@ -3452,7 +3460,7 @@ class XLAFluxFlashAttnProcessorSDPA:
     def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "XLAFlashAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
         if is_torch_xla_version("<", "2.3"):
             raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
@@ -3551,7 +3559,7 @@ class MochiVaeAttnProcessorSDPA:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("AttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -3638,7 +3646,7 @@ class StableAudioAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "StableAudioAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "StableAudioAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def apply_partial_rotary_emb(
@@ -3768,7 +3776,7 @@ class HunyuanAttnProcessorSDPA:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("AttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -3868,7 +3876,7 @@ class FusedHunyuanAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "FusedHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "FusedHunyuanAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -3971,7 +3979,7 @@ class PAGHunyuanAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "PAGHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "PAGHunyuanAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -4094,7 +4102,7 @@ class PAGCFGHunyuanAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "PAGCFGHunyuanAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "PAGCFGHunyuanAttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -4216,7 +4224,7 @@ class LuminaAttnProcessorSDPA:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("AttnProcessorSDPA requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -4320,7 +4328,7 @@ class FusedAttnProcessorSDPA:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "FusedAttnProcessor2_0 requires at least PyTorch 2.0, to use it. Please upgrade PyTorch to > 2.0."
+                "FusedAttnProcessorSDPA requires at least PyTorch 2.0, to use it. Please upgrade PyTorch to > 2.0."
             )
 
     def __call__(
