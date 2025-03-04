@@ -1448,8 +1448,8 @@ def convert_open_clip_checkpoint(
 
     if text_proj_key in checkpoint:
         text_proj_dim = int(checkpoint[text_proj_key].shape[0])
-    elif hasattr(text_model.config, "projection_dim"):
-        text_proj_dim = text_model.config.projection_dim
+    elif hasattr(text_model.config, "hidden_size"):
+        text_proj_dim = text_model.config.hidden_size
     else:
         text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
 
