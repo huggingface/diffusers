@@ -400,13 +400,13 @@ class TextualInversionLoaderMixin:
         # 5. Extend tokens and embeddings for multi vector
         tokens, embeddings = self._extend_tokens_and_embeddings(tokens, embeddings, tokenizer)
 
-        # 6. Make sure all embeddings have the correct size
+        # 6. Adjust all embeddings to match the expected dimension
         expected_emb_dim = text_encoder.get_input_embeddings().weight.shape[-1]
-        if any(expected_emb_dim != emb.shape[-1] for emb in embeddings):
-            raise ValueError(
-                "Loaded embeddings are of incorrect shape. Expected each textual inversion embedding "
-                "to be of shape {input_embeddings.shape[-1]}, but are {embeddings.shape[-1]} "
-            )
+        for i, embedding in enumerate(embeddings):
+            if embedding.shape[-1] != expected_emb_dim:
+                linear = nn.Linear(embedding.shape[-1], expected_emb_dim)
+                embeddings[i] = linear(embedding)
+                logger.info(f"Changed embedding dimension from {embedding.shape[-1]} to {expected_emb_dim}")
 
         # 7. Now we can be sure that loading the embedding matrix works
         # < Unsafe code:
