@@ -182,7 +182,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "hunyuan-video": {"pretrained_model_name_or_path": "hunyuanvideo-community/HunyuanVideo"},
     "instruct-pix2pix": {"pretrained_model_name_or_path": "timbrooks/instruct-pix2pix"},
     "lumina2": {"pretrained_model_name_or_path": "Alpha-VLLM/Lumina-Image-2.0"},
-    "sana":  {"pretrained_model_name_or_path": "Efficient-Large-Model/Sana_1600M_1024px"},
+    "sana":  {"pretrained_model_name_or_path": "Efficient-Large-Model/Sana_1600M_1024px_diffusers"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -2878,6 +2878,7 @@ def convert_sana_transformer_to_diffusers(checkpoint, **kwargs):
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "blocks" in k))[-1] + 1  # noqa: C401
     
+
     # Positional and patch embeddings.
     checkpoint.pop("pos_embed")
     converted_state_dict["patch_embed.proj.weight"] = checkpoint.pop("x_embedder.proj.weight")
@@ -2892,6 +2893,7 @@ def convert_sana_transformer_to_diffusers(checkpoint, **kwargs):
     converted_state_dict["time_embed.linear.bias"] = checkpoint.pop("t_block.1.bias")
     
     # Caption Projection.
+    checkpoint.pop("y_embedder.y_embedding")
     converted_state_dict["caption_proj.linear_1.weight"] = checkpoint.pop("y_embedder.y_proj.fc1.weight")
     converted_state_dict["caption_proj.linear_1.bias"] = checkpoint.pop("y_embedder.y_proj.fc1.bias")
     converted_state_dict["caption_proj.linear_2.weight"] = checkpoint.pop("y_embedder.y_proj.fc2.weight")
