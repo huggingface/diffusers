@@ -988,7 +988,14 @@ class MochiAttention(nn.Module):
         )
 
 
-class MochiAttnProcessor2_0:
+class MochiAttnProcessor2_0(MochiAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`MochiAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `MochiAttnProcessorSDPA`"
+        deprecate("MochiAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class MochiAttnProcessorSDPA:
     """Attention processor used in Mochi."""
 
     def __init__(self):
@@ -1336,7 +1343,14 @@ class AttnAddedKVProcessor:
         return hidden_states
 
 
-class AttnAddedKVProcessor2_0:
+class AttnAddedKVProcessor2_0(AttnAddedKVProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`AttnAddedKVAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessorSDPA`"
+        deprecate("AttnAddedKVAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class AttnAddedKVProcessorSDPA:
     r"""
     Processor for performing scaled dot-product attention (enabled by default if you're using PyTorch 2.0), with extra
     learnable key and value matrices for the text encoder.
@@ -1412,7 +1426,14 @@ class AttnAddedKVProcessor2_0:
         return hidden_states
 
 
-class JointAttnProcessor2_0:
+class JointAttnProcessor2_0(JointAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`JointAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `JointAttnProcessorSDPA`"
+        deprecate("JointAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class JointAttnProcessorSDPA:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
@@ -1498,7 +1519,14 @@ class JointAttnProcessor2_0:
             return hidden_states
 
 
-class PAGJointAttnProcessor2_0:
+class PAGJointAttnProcessor2_0(PAGJointAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`PAGJointAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGJointAttnProcessorSDPA`"
+        deprecate("PAGJointAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class PAGJointAttnProcessorSDPA:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
@@ -1654,7 +1682,14 @@ class PAGJointAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class PAGCFGJointAttnProcessor2_0:
+class PAGCFGJointAttnProcessor2_0(PAGCFGJointAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`PAGCFGJointAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGJointAttnProcessorSDPA`"
+        deprecate("PAGCFGJointAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class PAGCFGJointAttnProcessorSDPA:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
@@ -1819,7 +1854,14 @@ class PAGCFGJointAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class FusedJointAttnProcessor2_0:
+class FusedJointAttnProcessor2_0(FusedJointAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`FusedJointAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedJointAttnProcessorSDPA`"
+        deprecate("FusedJointAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class FusedJointAttnProcessorSDPA:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
@@ -1983,7 +2025,14 @@ class XFormersJointAttnProcessor:
             return hidden_states
 
 
-class AllegroAttnProcessor2_0:
+class AllegroAttnProcessor2_0(AllegroAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`AllegroAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `AllegroAttnProcessorSDPA`"
+        deprecate("AllegroAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class AllegroAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the Allegro model. It applies a normalization layer and rotary embedding on the query and key vector.
@@ -2077,7 +2126,14 @@ class AllegroAttnProcessor2_0:
         return hidden_states
 
 
-class AuraFlowAttnProcessor2_0:
+class AuraFlowAttnProcessor2_0(AuraFlowAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`AuraFlowAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `AuraFlowAttnProcessorSDPA`"
+        deprecate("AuraFlowAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class AuraFlowAttnProcessorSDPA:
     """Attention processor used typically in processing Aura Flow."""
 
     def __init__(self):
@@ -2170,7 +2226,14 @@ class AuraFlowAttnProcessor2_0:
             return hidden_states
 
 
-class FusedAuraFlowAttnProcessor2_0:
+class FusedAuraFlowAttnProcessor2_0(FusedAuraFlowAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`FusedAuraFlowAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedAuraFlowAttnProcessorSDPA`"
+        deprecate("FusedAuraFlowAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class FusedAuraFlowAttnProcessorSDPA:
     """Attention processor used typically in processing Aura Flow with fused projections."""
 
     def __init__(self):
@@ -2267,7 +2330,14 @@ class FusedAuraFlowAttnProcessor2_0:
             return hidden_states
 
 
-class FluxAttnProcessor2_0:
+class FluxAttnProcessor2_0(FluxAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`FluxAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `FluxAttnProcessorSDPA`"
+        deprecate("FluxAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class FluxAttnProcessorSDPA:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
@@ -2463,7 +2533,14 @@ class FluxAttnProcessor2_0_NPU:
             return hidden_states
 
 
-class FusedFluxAttnProcessor2_0:
+class FusedFluxAttnProcessor2_0(FusedFluxAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`FusedFluxAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedFluxAttnProcessorSDPA`"
+        deprecate("FusedFluxAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class FusedFluxAttnProcessorSDPA:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
@@ -2813,7 +2890,14 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
             return hidden_states
 
 
-class CogVideoXAttnProcessor2_0:
+class CogVideoXAttnProcessor2_0(CogVideoXAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`CogVideoXAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `CogVideoXAttnProcessorSDPA`"
+        deprecate("CogVideoXAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class CogVideoXAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
     query and key vectors, but does not include spatial normalization.
@@ -2882,7 +2966,14 @@ class CogVideoXAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class FusedCogVideoXAttnProcessor2_0:
+class FusedCogVideoXAttnProcessor2_0(FusedCogVideoXAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`FusedCogVideoXAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedCogVideoXAttnProcessorSDPA`"
+        deprecate("FusedCogVideoXAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class FusedCogVideoXAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
     query and key vectors, but does not include spatial normalization.
@@ -3232,7 +3323,14 @@ class AttnProcessorNPU:
         return hidden_states
 
 
-class AttnProcessor2_0:
+class AttnProcessor2_0(AttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`AttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `AttnProcessorSDPA`"
+        deprecate("AttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class AttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     """
@@ -3326,7 +3424,14 @@ class AttnProcessor2_0:
         return hidden_states
 
 
-class XLAFlashAttnProcessor2_0:
+class XLAFlashAttnProcessor2_0(XLAFlashAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`XLAFlashAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `XLAFlashAttnProcessorSDPA`"
+        deprecate("XLAFlashAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class XLAFlashAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
     """
@@ -3442,7 +3547,14 @@ class XLAFlashAttnProcessor2_0:
         return hidden_states
 
 
-class XLAFluxFlashAttnProcessor2_0:
+class XLAFluxFlashAttnProcessor2_0(XLAFluxFlashAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`XLAFluxFlashAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `XLAFluxFlashAttnProcessorSDPA`"
+        deprecate("XLAFluxFlashAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class XLAFluxFlashAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
     """
@@ -3542,7 +3654,14 @@ class XLAFluxFlashAttnProcessor2_0:
             return hidden_states
 
 
-class MochiVaeAttnProcessor2_0:
+class MochiVaeAttnProcessor2_0(MochiVaeAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`MochiVaeAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `MochiVaeAttnProcessorSDPA`"
+        deprecate("MochiVaeAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class MochiVaeAttnProcessorSDPA:
     r"""
     Attention processor used in Mochi VAE.
     """
@@ -3627,7 +3746,14 @@ class MochiVaeAttnProcessor2_0:
         return hidden_states
 
 
-class StableAudioAttnProcessor2_0:
+class StableAudioAttnProcessor2_0(StableAudioAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`StableAudioAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `StableAudioAttnProcessorSDPA`"
+        deprecate("StableAudioAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class StableAudioAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the Stable Audio model. It applies rotary embedding on query and key vector, and allows MHA, GQA or MQA.
@@ -3758,7 +3884,14 @@ class StableAudioAttnProcessor2_0:
         return hidden_states
 
 
-class HunyuanAttnProcessor2_0:
+class HunyuanAttnProcessor2_0(HunyuanAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`HunyuanAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `HunyuanAttnProcessorSDPA`"
+        deprecate("HunyuanAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class HunyuanAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the HunyuanDiT model. It applies a s normalization layer and rotary embedding on query and key vector.
@@ -3856,7 +3989,14 @@ class HunyuanAttnProcessor2_0:
         return hidden_states
 
 
-class FusedHunyuanAttnProcessor2_0:
+class FusedHunyuanAttnProcessor2_0(FusedHunyuanAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`FusedHunyuanAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedHunyuanAttnProcessorSDPA`"
+        deprecate("FusedHunyuanAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class FusedHunyuanAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0) with fused
     projection layers. This is used in the HunyuanDiT model. It applies a s normalization layer and rotary embedding on
@@ -3959,7 +4099,14 @@ class FusedHunyuanAttnProcessor2_0:
         return hidden_states
 
 
-class PAGHunyuanAttnProcessor2_0:
+class PAGHunyuanAttnProcessor2_0(PAGHunyuanAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`PAGHunyuanAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGHunyuanAttnProcessorSDPA`"
+        deprecate("PAGHunyuanAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class PAGHunyuanAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the HunyuanDiT model. It applies a normalization layer and rotary embedding on query and key vector. This
@@ -4082,7 +4229,14 @@ class PAGHunyuanAttnProcessor2_0:
         return hidden_states
 
 
-class PAGCFGHunyuanAttnProcessor2_0:
+class PAGCFGHunyuanAttnProcessor2_0(PAGCFGHunyuanAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`PAGCFGHunyuanAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGHunyuanAttnProcessorSDPA`"
+        deprecate("PAGCFGHunyuanAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class PAGCFGHunyuanAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the HunyuanDiT model. It applies a normalization layer and rotary embedding on query and key vector. This
@@ -4206,7 +4360,14 @@ class PAGCFGHunyuanAttnProcessor2_0:
         return hidden_states
 
 
-class LuminaAttnProcessor2_0:
+class LuminaAttnProcessor2_0(LuminaAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`LuminaAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `LuminaAttnProcessorSDPA`"
+        deprecate("LuminaAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class LuminaAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
     used in the LuminaNextDiT model. It applies a s normalization layer and rotary embedding on query and key vector.
@@ -4302,7 +4463,14 @@ class LuminaAttnProcessor2_0:
         return hidden_states
 
 
-class FusedAttnProcessor2_0:
+class FusedAttnProcessor2_0(FusedAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`FusedAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedAttnProcessorSDPA`"
+        deprecate("FusedAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class FusedAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). It uses
     fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
@@ -5681,7 +5849,14 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
             return hidden_states
 
 
-class PAGIdentitySelfAttnProcessor2_0:
+class PAGIdentitySelfAttnProcessor2_0(PAGIdentitySelfAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`PAGIdentitySelfAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGIdentitySelfAttnProcessorSDPA`"
+        deprecate("PAGIdentitySelfAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class PAGIdentitySelfAttnProcessorSDPA:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     PAG reference: https://arxiv.org/abs/2403.17377
@@ -5780,7 +5955,14 @@ class PAGIdentitySelfAttnProcessor2_0:
         return hidden_states
 
 
-class PAGCFGIdentitySelfAttnProcessor2_0:
+class PAGCFGIdentitySelfAttnProcessor2_0(PAGCFGIdentitySelfAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`PAGCFGIdentitySelfAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGIdentitySelfAttnProcessorSDPA`"
+        deprecate("PAGCFGIdentitySelfAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class PAGCFGIdentitySelfAttnProcessorSDPA:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     PAG reference: https://arxiv.org/abs/2403.17377
@@ -5883,7 +6065,14 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
         return hidden_states
 
 
-class SanaMultiscaleAttnProcessor2_0:
+class SanaMultiscaleAttnProcessor2_0(SanaMultiscaleAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`SanaMultiscaleAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `SanaMultiscaleAttnProcessorSDPA`"
+        deprecate("SanaMultiscaleAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class SanaMultiscaleAttnProcessorSDPA:
     r"""
     Processor for implementing multiscale quadratic attention.
     """
@@ -5952,7 +6141,14 @@ class LoRAAttnProcessor:
         pass
 
 
-class LoRAAttnProcessor2_0:
+class LoRAAttnProcessor2_0(LoRAAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`LoRAAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `LoRAAttnProcessorSDPA`"
+        deprecate("LoRAAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class LoRAAttnProcessorSDPA:
     r"""
     Processor for implementing attention with LoRA (enabled by default if you're using PyTorch 2.0).
     """
@@ -5990,7 +6186,14 @@ class FluxSingleAttnProcessor2_0(FluxAttnProcessor2_0):
         super().__init__()
 
 
-class SanaLinearAttnProcessor2_0:
+class SanaLinearAttnProcessor2_0(SanaLinearAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`SanaLinearAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `SanaLinearAttnProcessorSDPA`"
+        deprecate("SanaLinearAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class SanaLinearAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product linear attention.
     """
@@ -6037,7 +6240,14 @@ class SanaLinearAttnProcessor2_0:
         return hidden_states
 
 
-class PAGCFGSanaLinearAttnProcessor2_0:
+class PAGCFGSanaLinearAttnProcessor2_0(PAGCFGSanaLinearAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`PAGCFGSanaLinearAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGSanaLinearAttnProcessorSDPA`"
+        deprecate("PAGCFGSanaLinearAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class PAGCFGSanaLinearAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product linear attention.
     """
@@ -6092,7 +6302,14 @@ class PAGCFGSanaLinearAttnProcessor2_0:
         return hidden_states
 
 
-class PAGIdentitySanaLinearAttnProcessor2_0:
+class PAGIdentitySanaLinearAttnProcessor2_0(PAGIdentitySanaLinearAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`PAGIdentitySanaLinearAttnAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGIdentitySanaLinearAttnProcessorSDPA`"
+        deprecate("PAGIdentitySanaLinearAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class PAGIdentitySanaLinearAttnProcessorSDPA:
     r"""
     Processor for implementing scaled dot-product linear attention.
     """
