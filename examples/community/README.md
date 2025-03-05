@@ -82,6 +82,7 @@ PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixar
 | [🪆Matryoshka Diffusion Models](https://huggingface.co/papers/2310.15111) | A diffusion process that denoises inputs at multiple resolutions jointly and uses a NestedUNet architecture where features and parameters for small scale inputs are nested within those of the large scales. See [original codebase](https://github.com/apple/ml-mdm). | [🪆Matryoshka Diffusion Models](#matryoshka-diffusion-models) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/pcuenq/mdm) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/1f54875fc7aeaabcf284ebde64820966/matryoshka_hf.ipynb) | [M. Tolga Cangöz](https://github.com/tolgacangoz) |
 | Stable Diffusion XL Attentive Eraser Pipeline |[[AAAI2025 Oral] Attentive Eraser](https://github.com/Anonym0u3/AttentiveEraser) is a novel tuning-free method that enhances object removal capabilities in pre-trained diffusion models.|[Stable Diffusion XL Attentive Eraser Pipeline](#stable-diffusion-xl-attentive-eraser-pipeline)|-|[Wenhao Sun](https://github.com/Anonym0u3) and [Benlei Cui](https://github.com/Benny079)|
 | Perturbed-Attention Guidance |StableDiffusionPAGPipeline is a modification of StableDiffusionPipeline to support Perturbed-Attention Guidance (PAG).|[Perturbed-Attention Guidance](#perturbed-attention-guidance)|[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/perturbed_attention_guidance.ipynb)|[Hyoungwon Cho](https://github.com/HyoungwonCho)|
+| CogVideoX DDIM Inversion Pipeline | Implementation of DDIM inversion and guided attention-based editing denoising process on CogVideoX. | [CogVideoX DDIM Inversion Pipeline](#cogvideox-ddim-inversion-pipeline) | - | [LittleNyima](https://github.com/LittleNyima) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -5124,3 +5125,39 @@ with torch.no_grad():
 
 In the folder examples/pixart there is also a script that can be used to train new models.
 Please check the script `train_controlnet_hf_diffusers.sh` on how to start the training.
+
+# CogVideoX DDIM Inversion Pipeline
+
+This implementation performs DDIM inversion on the video based on CogVideoX and uses guided attention to reconstruct or edit the inversion latents.
+
+## Example Usage
+
+```python
+import torch
+
+from examples.community.cogvideox_ddim_inversion import CogVideoXPipelineForDDIMInversion
+
+
+# Load pretrained pipeline
+pipeline = CogVideoXPipelineForDDIMInversion.from_pretrained(
+    "THUDM/CogVideoX1.5-5B",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+# Run DDIM inversion, and the videos will be generated in the output_path
+output = pipeline_for_inversion(
+    prompt="prompt that describes the edited video",
+    video_path="path/to/input.mp4",
+    guidance_scale=6.0,
+    num_inference_steps=50,
+    skip_frames_start=0,
+    skip_frames_end=0,
+    frame_sample_step=None,
+    max_num_frames=81,
+    width=720,
+    height=480,
+    seed=42,
+)
+pipeline.export_latents_to_video(output.inverse_latents[-1], "path/to/inverse_video.mp4", fps=8)
+pipeline.export_latents_to_video(output.recon_latents[-1], "path/to/recon_video.mp4", fps=8)
+```
