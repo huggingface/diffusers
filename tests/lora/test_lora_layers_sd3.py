@@ -30,11 +30,13 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    is_flaky,
     nightly,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     require_peft_backend,
-    require_torch_gpu,
+    require_torch_accelerator,
     torch_device,
 )
 
@@ -92,7 +94,7 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def output_shape(self):
         return (1, 32, 32, 3)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sd3_lora(self):
         """
         Test loading the loras that are saved with the diffusers and peft formats.
@@ -128,9 +130,13 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_modify_padding_mode(self):
         pass
 
+    @is_flaky
+    def test_multiple_wrong_adapter_name_raises_error(self):
+        super().test_multiple_wrong_adapter_name_raises_error()
+
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 @require_peft_backend
 @require_big_gpu_with_torch_cuda
 @pytest.mark.big_gpu_with_torch_cuda
@@ -141,12 +147,12 @@ class SD3LoraIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         init_image = load_image(

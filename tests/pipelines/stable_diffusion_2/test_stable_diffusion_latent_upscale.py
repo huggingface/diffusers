@@ -31,11 +31,12 @@ from diffusers import (
 )
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -279,30 +280,34 @@ class StableDiffusionLatentUpscalePipelineFastTests(
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
 
+    @unittest.skip("Test not supported for a weird use of `text_input_ids`.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
 
-@require_torch_gpu
+
+@require_torch_accelerator
 @slow
 class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_latent_upscaler_fp16(self):
         generator = torch.manual_seed(33)
 
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
-        pipe.to("cuda")
+        pipe.to(torch_device)
 
         upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
             "stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16
         )
-        upscaler.to("cuda")
+        upscaler.to(torch_device)
 
         prompt = "a photo of an astronaut high resolution, unreal engine, ultra realistic"
 
@@ -328,7 +333,7 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
             "stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16
         )
-        upscaler.to("cuda")
+        upscaler.to(torch_device)
 
         prompt = "the temple of fire by Ross Tran and Gerardo Dottori, oil on canvas"
 

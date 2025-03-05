@@ -73,9 +73,6 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
 
         return inputs
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
@@ -109,6 +106,10 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
     @require_transformers_version_greater("4.47.1")
     def test_save_load_dduf(self):
         super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
+
+    @unittest.skip("Functionality is tested elsewhere.")
+    def test_save_load_optional_components(self):
+        pass
 
 
 @slow

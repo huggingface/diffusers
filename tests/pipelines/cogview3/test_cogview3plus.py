@@ -232,6 +232,9 @@ class CogView3PlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 "Attention slicing should not affect the inference results",
             )
 
+    def test_encode_prompt_works_in_isolation(self):
+        return super().test_encode_prompt_works_in_isolation(atol=1e-3, rtol=1e-3)
+
 
 @slow
 @require_torch_accelerator

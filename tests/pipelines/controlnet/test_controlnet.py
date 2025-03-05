@@ -79,7 +79,7 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe.to("cuda")
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         pipe.unet.to(memory_format=torch.channels_last)
@@ -287,6 +287,13 @@ class ControlNetPipelineFastTests(
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
 
 class StableDiffusionMultiControlNetPipelineFastTests(
@@ -522,6 +529,13 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         assert image.shape == (4, 64, 64, 3)
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
@@ -706,6 +720,13 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
+
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
 
 @slow
