@@ -410,7 +410,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap : (`bool`, *optional*)
-            hotswap : (`bool`, *optional*)
                 Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
                 in-place. This means that, instead of loading an additional adapter, this will take the existing
                 adapter weights and replace them with the weights of the new adapter. This can be faster and more
