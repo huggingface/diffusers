@@ -263,14 +263,9 @@ class JointTransformerBlock(nn.Module):
             print(f'attention encoder_hidden_states shape={encoder_hidden_states.shape}')
             print(f'attention context_attn_output shape={context_attn_output.shape}')
             context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
+            encoder_hidden_states = encoder_hidden_states + context_attn_output
+            
             # thesea modified for text prompt mask
-            if len(encoder_hidden_states.shape) == 3:
-                encoder_hidden_states = encoder_hidden_states + context_attn_output
-            elif len(encoder_hidden_states.shape) == 4:
-                for index in range(encoder_hidden_states.shape[1]):
-                    #if index == encoder_hidden_states.shape[1] - 1:
-                    encoder_hidden_states[:,index,:,:] = encoder_hidden_states[:,index,:,:] + context_attn_output
-
             if len(encoder_hidden_states.shape) == 3:
                 norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
                 norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]

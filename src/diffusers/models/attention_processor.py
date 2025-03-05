@@ -1509,6 +1509,7 @@ class JointAttnProcessor2_0:
         # thesea modified for text prompt mask
         if (encoder_hidden_states is not None) and (encoder_hidden_states.ndim == 4):
             hidden_states_list = []
+            context_states_list = []
             print(f'text_masks shape={text_masks.shape}')
             for mask, query, key, value in zip(text_masks, queries, keys, values):
                 tmp_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
@@ -1524,8 +1525,9 @@ class JointAttnProcessor2_0:
                 )   
                 print(f'mask_downsample shape={mask_downsample.shape}')
                 mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
-                tmp_hidden_states[:,:residual.shape[1],:] = tmp_hidden_states[:,:residual.shape[1],:] * mask_downsample
-                hidden_states_list.append(tmp_hidden_states) 
+                #tmp_hidden_states[:,:residual.shape[1],:] = tmp_hidden_states[:,:residual.shape[1],:] * mask_downsample
+                hidden_states_list.append(tmp_hidden_states[:,:residual.shape[1],:] * mask_downsample) 
+                context_states_list.append(tmp_hidden_states[:, residual.shape[1] :])
             
             hidden_states_list = torch.stack(hidden_states_list)
             hidden_states = torch.sum(hidden_states_list, dim=0, keepdim=False)
@@ -1536,12 +1538,21 @@ class JointAttnProcessor2_0:
 
         if encoder_hidden_states is not None:
             # Split the attention outputs.
-            hidden_states, encoder_hidden_states = (
-                hidden_states[:, : residual.shape[1]],
-                hidden_states[:, residual.shape[1] :],
-            )
-            if not attn.context_pre_only:
-                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+            # thesea modified for text prompt mask
+            if encoder_hidden_states.ndim == 3:
+                hidden_states, encoder_hidden_states = (
+                    hidden_states[:, : residual.shape[1]],
+                    hidden_states[:, residual.shape[1] :],
+                )
+                if not attn.context_pre_only:
+                    encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+            elif encoder_hidden_states.ndim == 4:
+                if not attn.context_pre_only:
+                    encoder_hidden_states_list = []
+                    for index in range(encoder_hidden_states.shape[1]):
+                        tmp_encoder_hidden_states = attn.to_add_out(context_states_list[index])
+                        encoder_hidden_states_list.append(tmp_encoder_hidden_states)
+                    encoder_hidden_states = torch.stack(encoder_hidden_states_list, dim=1)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
