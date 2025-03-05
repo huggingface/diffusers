@@ -1522,6 +1522,7 @@ class JointAttnProcessor2_0:
                     tmp_hidden_states.shape[1],
                     tmp_hidden_states.shape[2],
                 )   
+                print(f'mask_downsample shape={mask_downsample.shape}')
                 mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
                 hidden_states_list.append(tmp_hidden_states * mask_downsample)
             
