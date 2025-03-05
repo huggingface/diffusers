@@ -107,14 +107,6 @@ VAE_SPECIAL_KEYS_REMAP = {
     "model.diffusion_model": remove_keys_,
 }
 
-VAE_091_SPECIAL_KEYS_REMAP = {
-    "timestep_scale_multiplier": remove_keys_,
-}
-
-VAE_095_SPECIAL_KEYS_REMAP = {
-    "timestep_scale_multiplier": remove_keys_,
-}
-
 
 def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
     state_dict = saved_dict
@@ -248,7 +240,6 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "decoder_causal": False,
         }
         VAE_KEYS_RENAME_DICT.update(VAE_091_RENAME_DICT)
-        VAE_SPECIAL_KEYS_REMAP.update(VAE_091_SPECIAL_KEYS_REMAP)
     elif version == "0.9.5":
         config = {
             "in_channels": 3,
@@ -279,7 +270,6 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "decoder_causal": False,
         }
         VAE_KEYS_RENAME_DICT.update(VAE_095_RENAME_DICT)
-        VAE_SPECIAL_KEYS_REMAP.update(VAE_095_SPECIAL_KEYS_REMAP)
     return config
 
 
