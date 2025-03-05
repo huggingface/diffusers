@@ -294,7 +294,7 @@ class JointTransformerBlock(nn.Module):
                             self.ff_context, norm_encoder_hidden_states[:,index,:,:], self._chunk_dim, self._chunk_size
                         )
                         context_ff_output.append(tmp_context_ff_output)
-                    context_ff_output.torch.stack(context_ff_output, dim=1)
+                    context_ff_output = torch.stack(context_ff_output, dim=1)
             else:
                 if len(encoder_hidden_states.shape) == 3:
                     context_ff_output = self.ff_context(norm_encoder_hidden_states)
@@ -303,7 +303,7 @@ class JointTransformerBlock(nn.Module):
                     for index in range(encoder_hidden_states.shape[1]):
                         tmp_context_ff_output = self.ff_context(norm_encoder_hidden_states[:,index,:,:])
                         context_ff_output.append(tmp_context_ff_output)
-                    context_ff_output.stack(context_ff_output, dim=1)
+                    context_ff_output = torch.stack(context_ff_output, dim=1)
 
             
             encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
