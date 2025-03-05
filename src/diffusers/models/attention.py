@@ -268,8 +268,8 @@ class JointTransformerBlock(nn.Module):
                 encoder_hidden_states = encoder_hidden_states + context_attn_output
             elif len(encoder_hidden_states.shape) == 4:
                 for index in range(encoder_hidden_states.shape[1]):
-                    if index == encoder_hidden_states.shape[1] - 1:
-                        encoder_hidden_states[:,index,:,:] = encoder_hidden_states[:,index,:,:] + context_attn_output
+                    #if index == encoder_hidden_states.shape[1] - 1:
+                    encoder_hidden_states[:,index,:,:] = encoder_hidden_states[:,index,:,:] + context_attn_output
 
             if len(encoder_hidden_states.shape) == 3:
                 norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
