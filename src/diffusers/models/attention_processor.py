@@ -1419,6 +1419,7 @@ class JointAttnProcessor2_0:
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        text_masks: Optional[torch.Tensor] = None, # thesea modification for text prompt mask
         *args,
         **kwargs,
     ) -> torch.FloatTensor:
@@ -1487,6 +1488,8 @@ class JointAttnProcessor2_0:
         hidden_states = attn.to_out[1](hidden_states)
 
         if encoder_hidden_states is not None:
+            print(f'attention processor hidden_states shape={hidden_states.shape}')
+            print(f'attention processor encoder_hidden_states shape={encoder_hidden_states.shape}')
             return hidden_states, encoder_hidden_states
         else:
             return hidden_states
