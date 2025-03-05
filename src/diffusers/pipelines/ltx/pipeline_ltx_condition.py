@@ -626,6 +626,11 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             print(f" before encode: {data.shape}, {data.dtype}, {data.device}")
 
             condition_latents = retrieve_latents(self.vae.encode(data), generator=generator)
+            print(f" after encode: {condition_latents.shape}, {condition_latents.dtype}, {condition_latents.device}")
+            print(condition_latents[0,0,:3,:5,:5])
+            condition_latents_before_normalize = torch.load("/raid/yiyi/LTX-Video/latents_before_normalize.pt")
+            print(torch.sum((condition_latents_before_normalize - condition_latents).abs()))
+            assert False
             condition_latents = self._normalize_latents(condition_latents, self.vae.latents_mean, self.vae.latents_std)
             
             print(f" after normalize: {condition_latents.shape}")
@@ -633,7 +638,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             condition_latents_loaded = torch.load("/raid/yiyi/LTX-Video/latents_normalized.pt")
             print(condition_latents_loaded.shape)
             print(condition_latents_loaded[0,0,:3,:5,:5])
-            print(torch.sum((condition_latents_loaded - condition_latents).abs()))
+            print(torch.sum((condition_latents_loaded.to(condition_latents.device) - condition_latents).abs()))
             assert False
 
             num_data_frames = data.size(2)

@@ -507,10 +507,12 @@ class LTXVideo095DownBlock3D(nn.Module):
                 hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb, generator)
             else:
                 hidden_states = resnet(hidden_states, temb, generator)
+        print(f" after resnets: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
+        print(f" after downsampler: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
 
         return hidden_states
 
@@ -841,6 +843,8 @@ class LTXVideoEncoder3d(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `LTXVideoEncoder3d` class."""
 
+        print(f" inside LTXVideoEncoder3d")
+        print(f" hidden_states: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
         p = self.patch_size
         p_t = self.patch_size_t
 
@@ -854,7 +858,9 @@ class LTXVideoEncoder3d(nn.Module):
         )
         # Thanks for driving me insane with the weird patching order :(
         hidden_states = hidden_states.permute(0, 1, 3, 7, 5, 2, 4, 6).flatten(1, 4)
+        print(f" before conv_in: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
         hidden_states = self.conv_in(hidden_states)
+        print(f" after conv_in: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for down_block in self.down_blocks:
@@ -864,17 +870,22 @@ class LTXVideoEncoder3d(nn.Module):
         else:
             for down_block in self.down_blocks:
                 hidden_states = down_block(hidden_states)
+                print(f" after down_block: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
 
             hidden_states = self.mid_block(hidden_states)
+            print(f" after mid_block: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
 
         hidden_states = self.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
+        print(f" before conv_act: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
         hidden_states = self.conv_act(hidden_states)
+        print(f" after conv_act: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
         hidden_states = self.conv_out(hidden_states)
+        print(f" after conv_out: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
 
         last_channel = hidden_states[:, -1:]
         last_channel = last_channel.repeat(1, hidden_states.size(1) - 2, 1, 1, 1)
         hidden_states = torch.cat([hidden_states, last_channel], dim=1)
-
+        print(f" output: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
         return hidden_states
 
 
