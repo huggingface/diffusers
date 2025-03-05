@@ -1446,6 +1446,7 @@ class JointAttnProcessor2_0:
 
         # `context` projections.
         if encoder_hidden_states is not None:
+            # thesea modification for text prompt mask
             if encoder_hidden_states.ndim == 3:
                 encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
                 encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
@@ -1510,22 +1511,18 @@ class JointAttnProcessor2_0:
         if (encoder_hidden_states is not None) and (encoder_hidden_states.ndim == 4):
             hidden_states_list = []
             context_states_list = []
-            print(f'text_masks shape={text_masks.shape}')
             for mask, query, key, value in zip(text_masks, queries, keys, values):
                 tmp_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
                 tmp_hidden_states = tmp_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
                 tmp_hidden_states = tmp_hidden_states.to(query.dtype) 
 
-                print(f'mask shape={mask.shape}')
                 mask_downsample = IPAdapterMaskProcessor.downsample(
                     mask,
                     batch_size,
                     residual.shape[1],
                     tmp_hidden_states.shape[2],
                 )   
-                print(f'mask_downsample shape={mask_downsample.shape}')
                 mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
-                #tmp_hidden_states[:,:residual.shape[1],:] = tmp_hidden_states[:,:residual.shape[1],:] * mask_downsample
                 hidden_states_list.append(tmp_hidden_states[:,:residual.shape[1],:] * mask_downsample) 
                 context_states_list.append(tmp_hidden_states[:, residual.shape[1] :])
             
@@ -1560,8 +1557,6 @@ class JointAttnProcessor2_0:
         hidden_states = attn.to_out[1](hidden_states)
 
         if encoder_hidden_states is not None:
-            print(f'attention processor hidden_states shape={hidden_states.shape}')
-            print(f'attention processor encoder_hidden_states shape={encoder_hidden_states.shape}')
             return hidden_states, encoder_hidden_states
         else:
             return hidden_states
@@ -5754,8 +5749,6 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
 
         # `context` projections.
         # thesea modified for text prompt mask
-        print(f'attention processor encoder_hidden_states.ndim={encoder_hidden_states.ndim}')
-        print(f'attention processor encoder_hidden_states shape={encoder_hidden_states.shape}')
         if encoder_hidden_states is not None:
             if encoder_hidden_states.ndim == 3:
                 encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
@@ -5820,6 +5813,7 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         # thesea modified for text prompt mask
         if (encoder_hidden_states is not None) and (encoder_hidden_states.ndim == 4):
             hidden_states_list = []
+            context_states_list = []
             for mask, query, key, value in zip(text_masks, queries, keys, values):
                 tmp_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
                 tmp_hidden_states = tmp_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -5828,11 +5822,12 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
                 mask_downsample = IPAdapterMaskProcessor.downsample(
                     mask,
                     batch_size,
-                    tmp_hidden_states.shape[1],
+                    residual.shape[1],
                     tmp_hidden_states.shape[2],
                 )   
                 mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
-                hidden_states_list.append(tmp_hidden_states * mask_downsample)
+                hidden_states_list.append(tmp_hidden_states[:,:residual.shape[1],:] * mask_downsample) 
+                context_states_list.append(tmp_hidden_states[:, residual.shape[1] :])
             
             hidden_states_list = torch.stack(hidden_states_list)
             hidden_states = torch.sum(hidden_states_list, dim=0, keepdim=False)
@@ -5843,13 +5838,22 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
 
         if encoder_hidden_states is not None:
             # Split the attention outputs.
-            hidden_states, encoder_hidden_states = (
-                hidden_states[:, : residual.shape[1]],
-                hidden_states[:, residual.shape[1] :],
-            )
-            if not attn.context_pre_only:
-                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
+            # thesea modified for text prompt mask
+            if encoder_hidden_states.ndim == 3:
+                hidden_states, encoder_hidden_states = (
+                    hidden_states[:, : residual.shape[1]],
+                    hidden_states[:, residual.shape[1] :],
+                )
+                if not attn.context_pre_only:
+                    encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+            elif encoder_hidden_states.ndim == 4:
+                if not attn.context_pre_only:
+                    encoder_hidden_states_list = []
+                    for index in range(encoder_hidden_states.shape[1]):
+                        tmp_encoder_hidden_states = attn.to_add_out(context_states_list[index])
+                        encoder_hidden_states_list.append(tmp_encoder_hidden_states)
+                    encoder_hidden_states = torch.stack(encoder_hidden_states_list, dim=1)
+                    
         # IP Adapter
         if self.scale != 0 and ip_hidden_states is not None:
             # Norm image features
@@ -5884,8 +5888,6 @@ class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         hidden_states = attn.to_out[1](hidden_states)
 
         if encoder_hidden_states is not None:
-            print(f'attention processor hidden_states shape={hidden_states.shape}')
-            print(f'attention processor encoder_hidden_states shape={encoder_hidden_states.shape}')
             return hidden_states, encoder_hidden_states
         else:
             return hidden_states

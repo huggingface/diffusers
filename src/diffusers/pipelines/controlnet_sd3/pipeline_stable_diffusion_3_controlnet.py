@@ -1225,7 +1225,6 @@ class StableDiffusion3ControlNetPipeline(
                     return_dict=False,
                 )[0]
 
-                print(f'pipeline prompt_embeds_list shape={prompt_embeds_list.shape}')
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,

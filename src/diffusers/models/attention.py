@@ -202,8 +202,6 @@ class JointTransformerBlock(nn.Module):
         else:
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
-        print(f'attention JointTransformerBlock self.context_pre_only={self.context_pre_only}')
-        print(f'attention encoder_hidden_states shape={encoder_hidden_states.shape}')
         if self.context_pre_only:
             # thesea modifed for text prompt mask
             if len(encoder_hidden_states.shape) == 3:
@@ -215,6 +213,7 @@ class JointTransformerBlock(nn.Module):
                 norm_encoder_hidden_states = torch.stack(norm_encoder_hidden_states, dim=1)
 
         else:
+            # thesea modifed for text prompt mask
             if len(encoder_hidden_states.shape) == 3:
                 norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
                     encoder_hidden_states, emb=temb
@@ -260,8 +259,7 @@ class JointTransformerBlock(nn.Module):
         if self.context_pre_only:
             encoder_hidden_states = None
         else:
-            print(f'attention encoder_hidden_states shape={encoder_hidden_states.shape}')
-            print(f'attention context_attn_output shape={context_attn_output.shape}')
+            # thesea modified for text prompt mask
             if len(encoder_hidden_states.shape) == 3:
                 context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
             elif len(encoder_hidden_states.shape) == 4:
@@ -284,6 +282,7 @@ class JointTransformerBlock(nn.Module):
 
             if self._chunk_size is not None:
                 # "feed_forward_chunk_size" can be used to save memory
+                # thesea modified for text prompt mask
                 if len(encoder_hidden_states.shape) == 3:
                     context_ff_output = _chunked_feed_forward(
                         self.ff_context, norm_encoder_hidden_states, self._chunk_dim, self._chunk_size
@@ -297,6 +296,7 @@ class JointTransformerBlock(nn.Module):
                         context_ff_output.append(tmp_context_ff_output)
                     context_ff_output = torch.stack(context_ff_output, dim=1)
             else:
+                # thesea modified for text prompt mask
                 if len(encoder_hidden_states.shape) == 3:
                     context_ff_output = self.ff_context(norm_encoder_hidden_states)
                 elif len(encoder_hidden_states.shape) == 4:
@@ -306,6 +306,7 @@ class JointTransformerBlock(nn.Module):
                         context_ff_output.append(tmp_context_ff_output)
                     context_ff_output = torch.stack(context_ff_output, dim=1)
 
+            # thesea modified for text prompt mask
             if len(encoder_hidden_states.shape) == 3:
                 encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
             elif len(encoder_hidden_states.shape) == 4:
