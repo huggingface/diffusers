@@ -15,7 +15,6 @@
 
 import gc
 import inspect
-import tempfile
 import unittest
 
 import numpy as np
@@ -31,15 +30,16 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, to_np
+from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin
 
 
 enable_full_determinism()
@@ -202,75 +202,9 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
 
+    @unittest.skip("Not supported.")
     def test_attention_slicing_forward_pass(self):
         pass
-
-    def test_save_load_optional_components(self):
-        if not hasattr(self.pipeline_class, "_optional_components"):
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-
-        prompt = inputs["prompt"]
-        generator = inputs["generator"]
-
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-        ) = pipe.encode_prompt(prompt)
-
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "negative_prompt": None,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "generator": generator,
-            "num_inference_steps": 2,
-            "guidance_scale": 5.0,
-            "height": 8,
-            "width": 8,
-            "video_length": 1,
-            "mask_feature": False,
-            "output_type": "pt",
-            "clean_caption": False,
-        }
-
-        # set all optional components to None
-        for optional_component in pipe._optional_components:
-            setattr(pipe, optional_component, None)
-
-        output = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, safe_serialization=False)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-
-            for component in pipe_loaded.components.values():
-                if hasattr(component, "set_default_attn_processor"):
-                    component.set_default_attn_processor()
-
-            pipe_loaded.set_progress_bar_config(disable=None)
-
-        for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
-            )
-
-        output_loaded = pipe_loaded(**inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1.0)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -285,25 +219,25 @@ class LattePipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTeste
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class LattePipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_latte(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         videos = pipe(
