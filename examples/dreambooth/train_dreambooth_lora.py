@@ -1130,7 +1130,6 @@ def main(args):
     else:
         num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
 
-
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
