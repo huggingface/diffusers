@@ -132,7 +132,7 @@ def log_validation(cogview4_transformer, args, accelerator, weight_dtype, step, 
                     control_image=validation_image,
                     num_inference_steps=50,
                     guidance_scale=args.guidance_scale,
-                    max_sequence_length=args.max_sequence_length, # For downstream task training usage, training can be performed on a batch basis.
+                    max_sequence_length=args.max_sequence_length,  # For downstream task training usage, training can be performed on a batch basis.
                     padding_type="max_length",
                     generator=generator,
                     height=args.resolution,
@@ -660,7 +660,7 @@ def prepare_train_dataset(dataset, accelerator):
         [
             transforms.Resize((args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.ToTensor(),
-            transforms.Lambda(lambda x: x * 2 - 1)
+            transforms.Lambda(lambda x: x * 2 - 1),
         ]
     )
 
@@ -1074,7 +1074,6 @@ def main(args):
                 )
 
                 # Add noise according for cogview4
-                # FIXME: The issue of variable-length training has not been resolved, here it is still extended to the longest one.
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=pixel_latents.device)
                 sigmas = noise_scheduler_copy.sigmas[indices].to(device=pixel_latents.device)
@@ -1095,12 +1094,10 @@ def main(args):
                 text_encoding_pipeline = text_encoding_pipeline.to("cuda")
 
                 with torch.no_grad():
-                    # Since the batch will be padded, max_length should be used for padding.
-                    prompt_embeds,pooled_prompt_embeds,= text_encoding_pipeline.encode_prompt(
-                    captions, "",
-                        max_sequence_length=args.max_sequence_length,
-                        padding_type="max_length"
-                    )
+                    (
+                        prompt_embeds,
+                        pooled_prompt_embeds,
+                    ) = text_encoding_pipeline.encode_prompt(captions, "")
                 original_size = (args.resolution, args.resolution)
                 original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
 
@@ -1109,8 +1106,6 @@ def main(args):
 
                 target_size = target_size.repeat(len(batch["captions"]), 1)
                 original_size = original_size.repeat(len(batch["captions"]), 1)
-
-                # TODO: Should a parameter be set here for passing? This is not present in Flux.
                 crops_coords_top_left = torch.tensor([(0, 0)], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
                 crops_coords_top_left = crops_coords_top_left.repeat(len(batch["captions"]), 1)
 
@@ -1140,7 +1135,8 @@ def main(args):
 
                 weighting = weighting.view(len(batch["captions"]), 1, 1, 1)
                 loss = torch.mean(
-                    (weighting.float() * (noise_pred_cond.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
+                    (weighting.float() * (noise_pred_cond.float() - target.float()) ** 2).reshape(target.shape[0], -1),
+                    1,
                 )
                 loss = loss.mean()
                 accelerator.backward(loss)

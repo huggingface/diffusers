@@ -157,21 +157,17 @@ class CogView4AttnProcessor:
                 key[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
             )
 
-        # 4. Attention
+        # 4. Attention and Attention Mask
         if attention_mask is not None:
-            # construct attention_mask for concated sequence
             text_attention_mask = attention_mask.float().to(query.device)
-            attention_mask = torch.ones((batch_size, text_seq_length + image_seq_length), device=query.device)
-            attention_mask[:, :text_seq_length] = text_attention_mask
-            attention_mask = attention_mask.unsqueeze(2)
-            attention_mask_matrix = attention_mask @ attention_mask.mT
-            attention_mask_matrix = attention_mask_matrix == 1
-            attention_mask_matrix = attention_mask_matrix.unsqueeze(1)
-            attention_mask = attention_mask_matrix
+            actual_text_seq_length = text_attention_mask.size(1)
+            new_attention_mask = torch.zeros((batch_size, text_seq_length + image_seq_length), device=query.device)
+            new_attention_mask[:, :actual_text_seq_length] = text_attention_mask
+            new_attention_mask = new_attention_mask.unsqueeze(2)
+            attention_mask_matrix = new_attention_mask @ new_attention_mask.transpose(1, 2)
+            attention_mask = (attention_mask_matrix > 0).unsqueeze(1).to(query.dtype)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+        hidden_states = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False)
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
 

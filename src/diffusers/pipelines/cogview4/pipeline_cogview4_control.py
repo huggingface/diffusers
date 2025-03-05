@@ -144,13 +144,11 @@ class CogView4ControlPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`T5EncoderModel`]):
-            Frozen text-encoder. CogView4 uses
-            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel); specifically the
-            [t5-v1_1-xxl](https://huggingface.co/PixArt-alpha/PixArt-alpha/tree/main/t5-v1_1-xxl) variant.
-        tokenizer (`T5Tokenizer`):
+        text_encoder ([`GLMModel`]):
+            Frozen text-encoder. CogView4 uses [glm-4-9b-hf](https://huggingface.co/THUDM/glm-4-9b-hf).
+        tokenizer (`PreTrainedTokenizer`):
             Tokenizer of class
-            [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
+            [PreTrainedTokenizer](https://huggingface.co/docs/transformers/main/en/main_classes/tokenizer#transformers.PreTrainedTokenizer).
         transformer ([`CogView4Transformer2DModel`]):
             A text conditioned `CogView4Transformer2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
@@ -182,7 +180,6 @@ class CogView4ControlPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 1024,
-        padding_type: str = "longest",
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -194,7 +191,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
 
         text_inputs = self.tokenizer(
             prompt,
-            padding=padding_type,
+            padding="longest",  # not use max length
             max_length=max_sequence_length,
             truncation=True,
             add_special_tokens=True,
@@ -240,7 +237,6 @@ class CogView4ControlPipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 1024,
-        padding_type: str = "longest",
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -278,7 +274,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
         if prompt_embeds is None:
-            prompt_embeds = self._get_glm_embeds(prompt, num_images_per_prompt, max_sequence_length, padding_type,  device, dtype)
+            prompt_embeds = self._get_glm_embeds(prompt, num_images_per_prompt, max_sequence_length, device, dtype)
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
@@ -297,7 +293,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
                 )
 
             negative_prompt_embeds = self._get_glm_embeds(
-                negative_prompt, num_images_per_prompt, max_sequence_length, "longest", device, dtype
+                negative_prompt, num_images_per_prompt, max_sequence_length, device, dtype
             )
 
         return prompt_embeds, negative_prompt_embeds
@@ -451,7 +447,6 @@ class CogView4ControlPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 1024,
-        padding_type: str = "longest", # For downstream tasks, it can be modified to use max_length for implementation.
     ) -> Union[CogView4PipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -581,8 +576,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
-            padding_type=padding_type,
-            device=device
+            device=device,
         )
 
         # Prepare latents
