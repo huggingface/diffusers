@@ -263,19 +263,51 @@ class JointTransformerBlock(nn.Module):
             print(f'attention encoder_hidden_states shape={encoder_hidden_states.shape}')
             print(f'attention context_attn_output shape={context_attn_output.shape}')
             context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
-            encoder_hidden_states = encoder_hidden_states + context_attn_output
+            # thesea modified for text prompt mask
+            if len(encoder_hidden_states.shape) == 3:
+                encoder_hidden_states = encoder_hidden_states + context_attn_output
+            elif len(encoder_hidden_states.shape) == 4:
+                for index in range(encoder_hidden_states.shape[1]):
+                    encoder_hidden_states[:,index,:,:] = encoder_hidden_states[:,index,:,:] + context_attn_output
 
-            norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
-            norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+            if len(encoder_hidden_states.shape) == 3:
+                norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
+                norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+            elif len(encoder_hidden_states.shape) == 4:
+                norm_encoder_hidden_states = []
+                for index in range(encoder_hidden_states.shape[1]):
+                    tmp_norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states[:,index,:,:])
+                    tmp_norm_encoder_hidden_states = tmp_norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+                    norm_encoder_hidden_states.append(tmp_norm_encoder_hidden_states)
+                norm_encoder_hidden_states = torch.stack(norm_encoder_hidden_states, dim=1)
+
             if self._chunk_size is not None:
                 # "feed_forward_chunk_size" can be used to save memory
-                context_ff_output = _chunked_feed_forward(
-                    self.ff_context, norm_encoder_hidden_states, self._chunk_dim, self._chunk_size
-                )
+                if len(encoder_hidden_states.shape) == 3:
+                    context_ff_output = _chunked_feed_forward(
+                        self.ff_context, norm_encoder_hidden_states, self._chunk_dim, self._chunk_size
+                    )
+                elif len(encoder_hidden_states.shape) == 4:
+                    context_ff_output = []
+                    for index in range(encoder_hidden_states.shape[1]):
+                        tmp_context_ff_output = _chunked_feed_forward(
+                            self.ff_context, norm_encoder_hidden_states[:,index,:,:], self._chunk_dim, self._chunk_size
+                        )
+                        context_ff_output.append(tmp_context_ff_output)
+                    context_ff_output.torch.stack(context_ff_output, dim=1)
             else:
-                context_ff_output = self.ff_context(norm_encoder_hidden_states)
-            encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+                if len(encoder_hidden_states.shape) == 3:
+                    context_ff_output = self.ff_context(norm_encoder_hidden_states)
+                elif len(encoder_hidden_states.shape) == 4:
+                    context_ff_output = []
+                    for index in range(encoder_hidden_states.shape[1]):
+                        tmp_context_ff_output = self.ff_context(norm_encoder_hidden_states[:,index,:,:])
+                        context_ff_output.append(tmp_context_ff_output)
+                    context_ff_output.stack(context_ff_output, dim=1)
 
+            
+            encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+            
         return encoder_hidden_states, hidden_states
 
 
