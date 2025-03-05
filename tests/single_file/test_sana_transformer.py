@@ -20,7 +20,9 @@ enable_full_determinism()
 @require_torch_accelerator
 class SanaTransformer2DModelSingleFileTests(unittest.TestCase):
     model_class = SanaTransformer2DModel
-    ckpt_path = "https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px/blob/main/checkpoints/Sana_1600M_1024px.pth"
+    ckpt_path = (
+        "https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px/blob/main/checkpoints/Sana_1600M_1024px.pth"
+    )
     alternate_keys_ckpt_paths = [
         "https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px/blob/main/checkpoints/Sana_1600M_1024px.pth"
     ]

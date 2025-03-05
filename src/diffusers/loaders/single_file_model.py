@@ -121,7 +121,7 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "SanaTransformer2DModel": {
         "checkpoint_mapping_fn": convert_sana_transformer_to_diffusers,
         "default_subfolder": "transformer",
-    }
+    },
 }
 
 
