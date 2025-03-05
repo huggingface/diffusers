@@ -601,7 +601,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                 condition_latent_frames_mask[:, :num_cond_frames] = condition.strength
             else:
                 if num_data_frames > 1:
-                    # TODO
                     (
                         latents,
                         condition_latents,
@@ -626,6 +625,8 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     )
 
                     rope_interpolation_scale = [
+                        # TODO!!! This is incorrect: the frame index needs to added AFTER multiplying the interpolation
+                        # scale with the grid.
                         (self.vae_temporal_compression_ratio + condition.frame_index) / frame_rate,
                         self.vae_spatial_compression_ratio,
                         self.vae_spatial_compression_ratio,
