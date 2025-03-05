@@ -1509,11 +1509,13 @@ class JointAttnProcessor2_0:
         # thesea modified for text prompt mask
         if (encoder_hidden_states is not None) and (encoder_hidden_states.ndim == 4):
             hidden_states_list = []
+            print(f'text_masks shape={text_masks.shape}')
             for mask, query, key, value in zip(text_masks, queries, keys, values):
                 tmp_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
                 tmp_hidden_states = tmp_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
                 tmp_hidden_states = tmp_hidden_states.to(query.dtype) 
 
+                print(f'mask shape={mask.shape}')
                 mask_downsample = IPAdapterMaskProcessor.downsample(
                     mask,
                     batch_size,
