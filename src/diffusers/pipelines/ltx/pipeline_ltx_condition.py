@@ -544,6 +544,28 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
 
         return latents, condition_latents, condition_latent_frames_mask
 
+
+    def trim_conditioning_sequence(
+        self, start_frame: int, sequence_num_frames: int, target_num_frames: int
+    ):
+        """
+        Trim a conditioning sequence to the allowed number of frames.
+
+        Args:
+            start_frame (int): The target frame number of the first frame in the sequence.
+            sequence_num_frames (int): The number of frames in the sequence.
+            target_num_frames (int): The target number of frames in the generated video.
+
+        Returns:
+            int: updated sequence length
+        """
+        scale_factor = self.vae_temporal_compression_ratio
+        num_frames = min(sequence_num_frames, target_num_frames - start_frame)
+        # Trim down to a multiple of temporal_scale_factor frames plus 1
+        num_frames = (num_frames - 1) // scale_factor * scale_factor + 1
+        return num_frames
+
+
     def prepare_latents(
         self,
         conditions: Union[LTXVideoCondition, List[LTXVideoCondition]],
@@ -579,7 +601,19 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             if condition.image is not None:
                 data = self.video_processor.preprocess(condition.image, height, width).unsqueeze(2)
             elif condition.video is not None:
-                data = self.video_processor.preprocess_video(condition.vide, height, width)
+                data = self.video_processor.preprocess_video(condition.video, height, width)
+                num_frames_input = data.size(2)
+                num_frames_output = self.trim_conditioning_sequence(condition.frame_index, num_frames_input, num_frames)
+                data = data[:, :, :num_frames_output]
+
+                print(data.shape)
+                print(data[0,0,:3,:5,:5])
+                data_loaded = torch.load("/raid/yiyi/LTX-Video/media_item.pt")
+                print(data_loaded.shape)
+                print(data_loaded[0,0,:3,:5,:5])
+                print(torch.sum((data_loaded - data).abs()))
+                print(f" dtype:{dtype}, device:{device}")
+                data = data.to(device, dtype=torch.bfloat16)
             else:
                 raise ValueError("Either `image` or `video` must be provided in the `LTXVideoCondition`.")
 
@@ -589,8 +623,19 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     f"but got {data.size(2)} frames."
                 )
 
+            print(f" before encode: {data.shape}, {data.dtype}, {data.device}")
+
             condition_latents = retrieve_latents(self.vae.encode(data), generator=generator)
             condition_latents = self._normalize_latents(condition_latents, self.vae.latents_mean, self.vae.latents_std)
+            
+            print(f" after normalize: {condition_latents.shape}")
+            print(condition_latents[0,0,:3,:5,:5])
+            condition_latents_loaded = torch.load("/raid/yiyi/LTX-Video/latents_normalized.pt")
+            print(condition_latents_loaded.shape)
+            print(condition_latents_loaded[0,0,:3,:5,:5])
+            print(torch.sum((condition_latents_loaded - condition_latents).abs()))
+            assert False
+
             num_data_frames = data.size(2)
             num_cond_frames = condition_latents.size(2)
 
