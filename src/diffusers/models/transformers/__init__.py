@@ -19,6 +19,7 @@ if is_torch_available():
     from .transformer_allegro import AllegroTransformer3DModel
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
     from .transformer_cogview4 import CogView4Transformer2DModel
+    from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .transformer_flux import FluxTransformer2DModel
     from .transformer_hunyuan_video import HunyuanVideoTransformer3DModel
     from .transformer_ltx import LTXVideoTransformer3DModel
@@ -27,3 +28,4 @@ if is_torch_available():
     from .transformer_omnigen import OmniGenTransformer2DModel
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_temporal import TransformerTemporalModel
+    from .transformer_wan import WanTransformer3DModel

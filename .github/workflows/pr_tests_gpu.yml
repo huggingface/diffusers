@@ -11,6 +11,8 @@ on:
       - "src/diffusers/loaders/lora_base.py"
       - "src/diffusers/loaders/lora_pipeline.py"
       - "src/diffusers/loaders/peft.py"
+      - "tests/pipelines/test_pipelines_common.py"
+      - "tests/models/test_modeling_common.py"
   workflow_dispatch:
 
 concurrency:
@@ -104,11 +106,18 @@ jobs:
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
-          pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
-          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -s -v -k "not Flax and not Onnx and $pattern" \
-            --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
-            tests/pipelines/${{ matrix.module }}
+          if [ "${{ matrix.module }}" = "ip_adapters" ]; then 
+              python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+              -s -v -k "not Flax and not Onnx" \
+              --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
+              tests/pipelines/${{ matrix.module }}
+          else 
+              pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
+              python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+              -s -v -k "not Flax and not Onnx and $pattern" \
+              --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
+              tests/pipelines/${{ matrix.module }}
+          fi 
 
       - name: Failure short reports
         if: ${{ failure() }}

@@ -28,9 +28,10 @@ from diffusers import (
     PixArtTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -104,84 +105,10 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
+    @unittest.skip("Not supported.")
     def test_sequential_cpu_offload_forward_pass(self):
         # TODO(PVP, Sayak) need to fix later
         return
-
-    def test_save_load_optional_components(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-
-        prompt = inputs["prompt"]
-        generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
-        output_type = inputs["output_type"]
-
-        (
-            prompt_embeds,
-            prompt_attention_mask,
-            negative_prompt_embeds,
-            negative_prompt_attention_mask,
-        ) = pipe.encode_prompt(prompt)
-
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "prompt_attention_mask": prompt_attention_mask,
-            "negative_prompt": None,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "negative_prompt_attention_mask": negative_prompt_attention_mask,
-            "generator": generator,
-            "num_inference_steps": num_inference_steps,
-            "output_type": output_type,
-            "use_resolution_binning": False,
-        }
-
-        # set all optional components to None
-        for optional_component in pipe._optional_components:
-            setattr(pipe, optional_component, None)
-
-        output = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
-
-        for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
-            )
-
-        inputs = self.get_dummy_inputs(torch_device)
-
-        generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
-        output_type = inputs["output_type"]
-
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "prompt_attention_mask": prompt_attention_mask,
-            "negative_prompt": None,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "negative_prompt_attention_mask": negative_prompt_attention_mask,
-            "generator": generator,
-            "num_inference_steps": num_inference_steps,
-            "output_type": output_type,
-            "use_resolution_binning": False,
-        }
-
-        output_loaded = pipe_loaded(**inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-4)
 
     def test_inference(self):
         device = "cpu"
@@ -328,7 +255,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     ckpt_id_1024 = "PixArt-alpha/PixArt-XL-2-1024-MS"
     ckpt_id_512 = "PixArt-alpha/PixArt-XL-2-512x512"
@@ -337,18 +264,18 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_pixart_1024(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
@@ -363,7 +290,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
 
@@ -379,7 +306,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
         height, width = 1024, 768
@@ -413,7 +340,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
         height, width = 512, 768
