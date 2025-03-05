@@ -223,17 +223,23 @@ class LTXVideoDownsampler3d(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = torch.cat([hidden_states[:, :, : self.stride[0] - 1], hidden_states], dim=2)
+
+        residual = (
+            hidden_states.unflatten(4, (-1, self.stride[2]))
+            .unflatten(3, (-1, self.stride[1]))
+            .unflatten(2, (-1, self.stride[0]))
+        )
+        residual = residual.permute(0, 1, 3, 5, 7, 2, 4, 6).flatten(1, 4)
+        residual = residual.unflatten(1, (-1, self.group_size))
+        residual = residual.mean(dim=2)
+
+        hidden_states = self.conv(hidden_states)
         hidden_states = (
             hidden_states.unflatten(4, (-1, self.stride[2]))
             .unflatten(3, (-1, self.stride[1]))
             .unflatten(2, (-1, self.stride[0]))
         )
         hidden_states = hidden_states.permute(0, 1, 3, 5, 7, 2, 4, 6).flatten(1, 4)
-
-        residual = hidden_states
-        hidden_states = hidden_states.unflatten(1, (-1, self.group_size))
-        hidden_states = hidden_states.mean(dim=2)
-        hidden_states = self.conv(hidden_states)
         hidden_states = hidden_states + residual
 
         return hidden_states
