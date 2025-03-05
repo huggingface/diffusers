@@ -134,12 +134,16 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
 def convert_transformer(
     ckpt_path: str,
     dtype: torch.dtype,
+    version: str = "0.9.0",
 ):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(load_file(ckpt_path))
+    config = {}
+    if version == "0.9.5":
+        config["_use_causal_rope_fix"] = True
     with init_empty_weights():
-        transformer = LTXVideoTransformer3DModel()
+        transformer = LTXVideoTransformer3DModel(**config)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
