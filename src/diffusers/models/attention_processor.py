@@ -1519,12 +1519,12 @@ class JointAttnProcessor2_0:
                 mask_downsample = IPAdapterMaskProcessor.downsample(
                     mask,
                     batch_size,
-                    tmp_hidden_states.shape[1],
+                    residual.shape[1],
                     tmp_hidden_states.shape[2],
                 )   
                 print(f'mask_downsample shape={mask_downsample.shape}')
                 mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
-                hidden_states_list.append(tmp_hidden_states * mask_downsample)
+                hidden_states_list.append(tmp_hidden_states[:,:residual.shape[1],:] * mask_downsample) 
             
             hidden_states_list = torch.stack(hidden_states_list)
             hidden_states = torch.sum(hidden_states_list, dim=0, keepdim=False)
