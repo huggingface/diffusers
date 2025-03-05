@@ -5056,7 +5056,14 @@ class IPAdapterAttnProcessor(nn.Module):
         return hidden_states
 
 
-class IPAdapterAttnProcessor2_0(torch.nn.Module):
+class IPAdapterAttnProcessor2_0(IPAdapterAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs) -> None:
+        deprecation_message = "`IPAdapterAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `IPAdapterAttnProcessorSDPA`"
+        deprecate("IPAdapterAttnProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class IPAdapterAttnProcessorSDPA(torch.nn.Module):
     r"""
     Attention processor for IP-Adapter for PyTorch 2.0.
 
