@@ -76,6 +76,7 @@ if is_torch_available():
 if is_torchao_available():
     from torchao.dtypes import AffineQuantizedTensor
     from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
+    from torchao.quantization.quant_primitives import MappingType
     from torchao.utils import get_model_size_in_bytes
 
 
@@ -117,6 +118,19 @@ class TorchAoConfigTest(unittest.TestCase):
             "quant_type": "int4_weight_only",
             "quant_type_kwargs": {
                 "group_size": 8
+            }
+        }""".replace(" ", "").replace("\n", "")
+        quantization_repr = repr(quantization_config).replace(" ", "").replace("\n", "")
+        self.assertEqual(quantization_repr, expected_repr)
+
+        quantization_config = TorchAoConfig("int4dq", group_size=64, act_mapping_type=MappingType.SYMMETRIC)
+        expected_repr = """TorchAoConfig {
+            "modules_to_not_convert": null,
+            "quant_method": "torchao",
+            "quant_type": "int4dq",
+            "quant_type_kwargs": {
+                "act_mapping_type": "SYMMETRIC",
+                "group_size": 64
             }
         }""".replace(" ", "").replace("\n", "")
         quantization_repr = repr(quantization_config).replace(" ", "").replace("\n", "")

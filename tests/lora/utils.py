@@ -1594,11 +1594,17 @@ class PeftLoraLoaderMixinTests:
                     ].weight += float("inf")
                 else:
                     named_modules = [name for name, _ in pipe.transformer.named_modules()]
+                    tower_name = (
+                        "transformer_blocks"
+                        if any(name == "transformer_blocks" for name in named_modules)
+                        else "blocks"
+                    )
+                    transformer_tower = getattr(pipe.transformer, tower_name)
                     has_attn1 = any("attn1" in name for name in named_modules)
                     if has_attn1:
-                        pipe.transformer.transformer_blocks[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
+                        transformer_tower[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
                     else:
-                        pipe.transformer.transformer_blocks[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
+                        transformer_tower[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
 
             # with `safe_fusing=True` we should see an Error
             with self.assertRaises(ValueError):
