@@ -26,6 +26,7 @@ from transformers import (
 )
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...loaders import HunyuanVideoLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -75,15 +76,20 @@ EXAMPLE_DOC_STRING = """
 
 DEFAULT_PROMPT_TEMPLATE = {
     "template": (
-        "<|start_header_id|>system<|end_header_id|>\n\nDescribe the video by detailing the following aspects: "
+        "<|start_header_id|>system<|end_header_id|>\n\n<image>\nDescribe the video by detailing the following aspects according to the reference image: "
         "1. The main content and theme of the video."
         "2. The color, shape, size, texture, quantity, text, and spatial relationships of the objects."
         "3. Actions, events, behaviors temporal relationships, physical movement changes of the objects."
         "4. background environment, light, style and atmosphere."
-        "5. camera angles, movements, and transitions used in the video:<|eot_id|>"
+        "5. camera angles, movements, and transitions used in the video:<|eot_id|>\n\n"
         "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n\n"
     ),
-    "crop_start": 95,
+    "crop_start": 103,
+    "image_emb_start": 5,
+    "image_emb_end": 581,
+    "image_emb_len": 576,
+    "double_return_token_id": 271,
 }
 
 
@@ -147,6 +153,20 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     r"""
     Pipeline for image-to-video generation using HunyuanVideo.
@@ -197,6 +217,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             scheduler=scheduler,
             text_encoder_2=text_encoder_2,
             tokenizer_2=tokenizer_2,
+            image_processor=image_processor,
         )
 
         self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
@@ -205,6 +226,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
     def _get_llama_prompt_embeds(
         self,
+        image: torch.Tensor,
         prompt: Union[str, List[str]],
         prompt_template: Dict[str, Any],
         num_videos_per_prompt: int = 1,
@@ -212,6 +234,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 256,
         num_hidden_layers_to_skip: int = 2,
+        image_embed_interleave: int = 2,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -232,8 +255,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 return_attention_mask=False,
             )
             crop_start = prompt_template_input["input_ids"].shape[-1]
-            # Remove <|eot_id|> token and placeholder {}
-            crop_start -= 2
+            # Remove <|start_header_id|>, <|end_header_id|>, assistant, <|eot_id|>, and placeholder {}
+            crop_start -= 5
 
         max_sequence_length += crop_start
         text_inputs = self.tokenizer(
@@ -249,16 +272,84 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         text_input_ids = text_inputs.input_ids.to(device=device)
         prompt_attention_mask = text_inputs.attention_mask.to(device=device)
 
+        image_embeds = self.image_processor(image, return_tensors="pt").pixel_values.to(device)
+
         prompt_embeds = self.text_encoder(
             input_ids=text_input_ids,
             attention_mask=prompt_attention_mask,
+            pixel_values=image_embeds,
             output_hidden_states=True,
         ).hidden_states[-(num_hidden_layers_to_skip + 1)]
         prompt_embeds = prompt_embeds.to(dtype=dtype)
 
+        image_emb_len = prompt_template.get("image_emb_len", 576)
+        image_emb_start = prompt_template.get("image_emb_start", 5)
+        image_emb_end = prompt_template.get("image_emb_end", 581)
+        double_return_token_id = prompt_template.get("double_return_token_id", 271)
+
         if crop_start is not None and crop_start > 0:
-            prompt_embeds = prompt_embeds[:, crop_start:]
-            prompt_attention_mask = prompt_attention_mask[:, crop_start:]
+            text_crop_start = crop_start - 1 + image_emb_len
+            batch_indices, last_double_return_token_indices = torch.where(text_input_ids == double_return_token_id)
+
+            if last_double_return_token_indices.shape[0] == 3:
+                # in case the prompt is too long
+                last_double_return_token_indices = torch.cat(
+                    (last_double_return_token_indices, torch.tensor([text_input_ids.shape[-1]]))
+                )
+                batch_indices = torch.cat((batch_indices, torch.tensor([0])))
+
+            last_double_return_token_indices = last_double_return_token_indices.reshape(text_input_ids.shape[0], -1)[
+                :, -1
+            ]
+            batch_indices = batch_indices.reshape(text_input_ids.shape[0], -1)[:, -1]
+            assistant_crop_start = last_double_return_token_indices - 1 + image_emb_len - 4
+            assistant_crop_end = last_double_return_token_indices - 1 + image_emb_len
+            attention_mask_assistant_crop_start = last_double_return_token_indices - 4
+            attention_mask_assistant_crop_end = last_double_return_token_indices
+
+            prompt_embed_list = []
+            prompt_attention_mask_list = []
+            image_embed_list = []
+            image_attention_mask_list = []
+
+            for i in range(text_input_ids.shape[0]):
+                prompt_embed_list.append(
+                    torch.cat(
+                        [
+                            prompt_embeds[i, text_crop_start : assistant_crop_start[i].item()],
+                            prompt_embeds[i, assistant_crop_end[i].item() :],
+                        ]
+                    )
+                )
+                prompt_attention_mask_list.append(
+                    torch.cat(
+                        [
+                            prompt_attention_mask[i, crop_start : attention_mask_assistant_crop_start[i].item()],
+                            prompt_attention_mask[i, attention_mask_assistant_crop_end[i].item() :],
+                        ]
+                    )
+                )
+                image_embed_list.append(prompt_embeds[i, image_emb_start:image_emb_end])
+                image_attention_mask_list.append(
+                    torch.ones(image_embed_list[-1].shape[0]).to(prompt_embeds.device).to(prompt_attention_mask.dtype)
+                )
+
+            prompt_embed_list = torch.stack(prompt_embed_list)
+            prompt_attention_mask_list = torch.stack(prompt_attention_mask_list)
+            image_embed_list = torch.stack(image_embed_list)
+            image_attention_mask_list = torch.stack(image_attention_mask_list)
+
+            if image_embed_interleave < 6:
+                image_embed_list = image_embed_list[:, ::image_embed_interleave, :]
+                image_attention_mask_list = image_attention_mask_list[:, ::image_embed_interleave]
+
+            assert (
+                prompt_embed_list.shape[0] == prompt_attention_mask_list.shape[0]
+                and image_embed_list.shape[0] == image_attention_mask_list.shape[0]
+            )
+
+            prompt_embeds = torch.cat([image_embed_list, prompt_embed_list], dim=1)
+            prompt_attention_mask = torch.cat([image_attention_mask_list, prompt_attention_mask_list], dim=1)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -310,6 +401,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
     def encode_prompt(
         self,
+        image: torch.Tensor,
         prompt: Union[str, List[str]],
         prompt_2: Union[str, List[str]] = None,
         prompt_template: Dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
@@ -323,6 +415,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
     ):
         if prompt_embeds is None:
             prompt_embeds, prompt_attention_mask = self._get_llama_prompt_embeds(
+                image,
                 prompt,
                 prompt_template,
                 num_videos_per_prompt,
@@ -393,6 +486,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
     def prepare_latents(
         self,
+        image: torch.Tensor,
         batch_size: int,
         num_channels_latents: int = 32,
         height: int = 720,
@@ -403,24 +497,36 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-
-        shape = (
-            batch_size,
-            num_channels_latents,
-            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        return latents
+        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        latent_height, latent_width = height // self.vae_scale_factor_spatial, width // self.vae_scale_factor_spatial
+        shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
+
+        image = image.unsqueeze(2)  # [B, C, 1, H, W]
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
+            ]
+        else:
+            image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
+
+        image_latents = torch.cat(image_latents, dim=0).to(dtype) * self.vae_scaling_factor
+        image_latents = image_latents.repeat(1, 1, num_latent_frames, 1, 1)
+
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
+
+        t = torch.tensor([0.999]).to(device=device)
+        latents = latents * t + image_latents * (1 - t)
+
+        return latents, image_latents
 
     def enable_vae_slicing(self):
         r"""
@@ -475,6 +581,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         prompt_2: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
@@ -632,9 +739,30 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # 3. Encode input prompt
+        # 3. Prepare latent variables
+        vae_dtype = self.vae.dtype
+        image = self.video_processor.preprocess(image, height, width).to(device, vae_dtype)
+        num_channels_latents = (self.transformer.config.in_channels - 1) // 2
+        latents, image_latents = self.prepare_latents(
+            image,
+            batch_size * num_videos_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            num_frames,
+            torch.float32,
+            device,
+            generator,
+            latents,
+        )
+        image_latents[:, :, 1:] = 0
+        mask = image_latents.new_ones(image_latents.shape[0], 1, *image_latents.shape[2:])
+        mask[:, :, 1:] = 0
+
+        # 4. Encode input prompt
         transformer_dtype = self.transformer.dtype
         prompt_embeds, pooled_prompt_embeds, prompt_attention_mask = self.encode_prompt(
+            image=image,
             prompt=prompt,
             prompt_2=prompt_2,
             prompt_template=prompt_template,
@@ -651,6 +779,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
         if do_true_cfg:
             negative_prompt_embeds, negative_pooled_prompt_embeds, negative_prompt_attention_mask = self.encode_prompt(
+                image=torch.full_like(image, fill_value=-1),
                 prompt=negative_prompt,
                 prompt_2=negative_prompt_2,
                 prompt_template=prompt_template,
@@ -669,23 +798,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
 
-        # 5. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels
-        latents = self.prepare_latents(
-            batch_size * num_videos_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            num_frames,
-            torch.float32,
-            device,
-            generator,
-            latents,
-        )
-
-        # 6. Prepare guidance condition
-        guidance = torch.tensor([guidance_scale] * latents.shape[0], dtype=transformer_dtype, device=device) * 1000.0
-
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -696,7 +808,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     continue
 
                 self._current_timestep = t
-                latent_model_input = latents.to(transformer_dtype)
+                latent_model_input = torch.cat([latents, image_latents, mask], dim=1)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
@@ -706,7 +818,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
                     pooled_projections=pooled_prompt_embeds,
-                    guidance=guidance,
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -718,7 +829,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                         encoder_hidden_states=negative_prompt_embeds,
                         encoder_attention_mask=negative_prompt_attention_mask,
                         pooled_projections=negative_pooled_prompt_embeds,
-                        guidance=guidance,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
