@@ -58,6 +58,11 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "A young girl stands calmly in the foreground, looking directly at the camera, as a house fire rages in the background. Flames engulf the structure, with smoke billowing into the air. Firefighters in protective gear rush to the scene, a fire truck labeled '38' visible behind them. The girl's neutral expression contrasts sharply with the chaos of the fire, creating a poignant and emotionally charged scene."
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
+        >>> # Configure STG mode options
+        >>> stg_applied_layers_idx = [19]  # Layer indices from 0 to 41
+        >>> stg_scale = 1.0
+        >>> do_rescaling = False
+
         >>> video = pipe(
         ...     image=image,
         ...     prompt=prompt,
@@ -66,6 +71,9 @@ EXAMPLE_DOC_STRING = """
         ...     height=480,
         ...     num_frames=161,
         ...     num_inference_steps=50,
+        ...     stg_applied_layers_idx=stg_applied_layers_idx,
+        ...     stg_scale=stg_scale,
+        ...     do_rescaling=do_rescaling,
         ... ).frames[0]
         >>> export_to_video(video, "output.mp4", fps=24)
         ```
