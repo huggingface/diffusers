@@ -3,11 +3,19 @@ from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
-from transformers import AutoModel, AutoTokenizer, CLIPTextModel, CLIPTokenizer, LlavaForConditionalGeneration
+from transformers import (
+    AutoModel,
+    AutoTokenizer,
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    LlavaForConditionalGeneration,
+)
 
 from diffusers import (
     AutoencoderKLHunyuanVideo,
     FlowMatchEulerDiscreteScheduler,
+    HunyuanVideoImageToVideoPipeline,
     HunyuanVideoPipeline,
     HunyuanVideoTransformer3DModel,
 )
@@ -153,7 +161,7 @@ TRANSFORMER_CONFIGS = {
         "rope_theta": 256.0,
         "rope_axes_dim": (16, 56, 56),
     },
-    "HYVideo-T/2": {
+    "HYVideo-T/2-I2V": {
         "in_channels": 16 * 2 + 1,
         "out_channels": 16,
         "num_attention_heads": 24,
@@ -286,23 +294,39 @@ if __name__ == "__main__":
     if args.save_pipeline:
         if args.transformer_type == "HYVideo-T/2-cfgdistill":
             text_encoder = AutoModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.float16)
+            tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, padding_side="right")
+            text_encoder_2 = CLIPTextModel.from_pretrained(args.text_encoder_2_path, torch_dtype=torch.float16)
+            tokenizer_2 = CLIPTokenizer.from_pretrained(args.text_encoder_2_path)
+            scheduler = FlowMatchEulerDiscreteScheduler(shift=args.flow_shift)
+
+            pipe = HunyuanVideoPipeline(
+                transformer=transformer,
+                vae=vae,
+                text_encoder=text_encoder,
+                tokenizer=tokenizer,
+                text_encoder_2=text_encoder_2,
+                tokenizer_2=tokenizer_2,
+                scheduler=scheduler,
+            )
+            pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
         else:
             text_encoder = LlavaForConditionalGeneration.from_pretrained(
                 args.text_encoder_path, torch_dtype=torch.float16
             )
+            tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, padding_side="right")
+            text_encoder_2 = CLIPTextModel.from_pretrained(args.text_encoder_2_path, torch_dtype=torch.float16)
+            tokenizer_2 = CLIPTokenizer.from_pretrained(args.text_encoder_2_path)
+            scheduler = FlowMatchEulerDiscreteScheduler(shift=args.flow_shift)
+            image_processor = CLIPImageProcessor.from_pretrained(args.text_encoder_2_path)
 
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, padding_side="right")
-        text_encoder_2 = CLIPTextModel.from_pretrained(args.text_encoder_2_path, torch_dtype=torch.float16)
-        tokenizer_2 = CLIPTokenizer.from_pretrained(args.text_encoder_2_path)
-        scheduler = FlowMatchEulerDiscreteScheduler(shift=args.flow_shift)
-
-        pipe = HunyuanVideoPipeline(
-            transformer=transformer,
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            text_encoder_2=text_encoder_2,
-            tokenizer_2=tokenizer_2,
-            scheduler=scheduler,
-        )
-        pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+            pipe = HunyuanVideoImageToVideoPipeline(
+                transformer=transformer,
+                vae=vae,
+                text_encoder=text_encoder,
+                tokenizer=tokenizer,
+                text_encoder_2=text_encoder_2,
+                tokenizer_2=tokenizer_2,
+                scheduler=scheduler,
+                image_processor=image_processor,
+            )
+            pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
