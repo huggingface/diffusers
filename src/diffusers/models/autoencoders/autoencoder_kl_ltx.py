@@ -507,7 +507,7 @@ class LTXVideo095DownBlock3D(nn.Module):
                 hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb, generator)
             else:
                 hidden_states = resnet(hidden_states, temb, generator)
-        print(f" after resnets: {hidden_states.shape}, {hidden_states[0,0,:3,:3,:3]}")
+
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -1116,6 +1116,8 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         scaling_factor: float = 1.0,
         encoder_causal: bool = True,
         decoder_causal: bool = False,
+        spatial_compression_ratio: int = None,
+        temporal_compression_ratio: int = None,
     ) -> None:
         super().__init__()
 
@@ -1153,8 +1155,9 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.register_buffer("latents_mean", latents_mean, persistent=True)
         self.register_buffer("latents_std", latents_std, persistent=True)
 
-        self.spatial_compression_ratio = patch_size * 2 ** sum(spatio_temporal_scaling)
-        self.temporal_compression_ratio = patch_size_t * 2 ** sum(spatio_temporal_scaling)
+        
+        self.spatial_compression_ratio = patch_size * 2 ** sum(spatio_temporal_scaling) if spatial_compression_ratio is None else spatial_compression_ratio
+        self.temporal_compression_ratio = patch_size_t * 2 ** sum(spatio_temporal_scaling) if temporal_compression_ratio is None else temporal_compression_ratio
 
         # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
         # to perform decoding of a single video latent at a time.
