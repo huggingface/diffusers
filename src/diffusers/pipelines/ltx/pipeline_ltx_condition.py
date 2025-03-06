@@ -657,7 +657,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
 
                     rope_interpolation_scale = (
                         rope_interpolation_scale * 
-                        torch.tensor([self.vae_temporal_compression_ratio, self.vae_spatial_compression_ratio, self.vae_spatial_compression_ratio], device=latent_coords.device)[None, :, None]
+                        torch.tensor([self.vae_temporal_compression_ratio, self.vae_spatial_compression_ratio, self.vae_spatial_compression_ratio], device=rope_interpolation_scale.device)[None, :, None]
                     )
                     rope_interpolation_scale[:, 0] = (rope_interpolation_scale[:, 0] + 1 - self.vae_temporal_compression_ratio).clamp(min=0)               
                     rope_interpolation_scale[:, 0] += condition.frame_index
@@ -675,16 +675,15 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         latents, rope_interpolation_scale = self._pack_latents(
             latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size, device
         )
+        conditioning_mask = condition_latent_frames_mask.gather(
+            1, rope_interpolation_scale[:, 0]
+        )
 
         rope_interpolation_scale = (
             rope_interpolation_scale
-            * torch.tensor([self.vae_temporal_compression_ratio, self.vae_spatial_compression_ratio, self.vae_spatial_compression_ratio], device=latent_coords.device)[None, :, None]
+            * torch.tensor([self.vae_temporal_compression_ratio, self.vae_spatial_compression_ratio, self.vae_spatial_compression_ratio], device=rope_interpolation_scale.device)[None, :, None]
         )
         rope_interpolation_scale[:, 0] = (rope_interpolation_scale[:, 0] + 1 - self.vae_temporal_compression_ratio).clamp(min=0)
-
-        conditioning_mask = condition_latent_frames_mask.gather(
-            1, latent_coords[:, 0]
-        )
 
         if len(extra_conditioning_latents) > 0:
             latents = torch.cat([*extra_conditioning_latents, latents], dim=1)
