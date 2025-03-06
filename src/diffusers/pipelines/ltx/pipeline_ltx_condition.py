@@ -513,10 +513,10 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         frame_index: int,
         strength: float,
         num_prefix_latent_frames: int = 2,
-        prefix_latents_mode: str = "soft",
+        prefix_latents_mode: str = "concat",
         prefix_soft_conditioning_strength: float = 0.15,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        num_latent_frames = latents.size(2)
+        num_latent_frames = condition_latents.size(2)
 
         if num_latent_frames < num_prefix_latent_frames:
             raise ValueError(
@@ -602,7 +602,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         extra_conditioning_num_latents = (
             0  # Number of extra conditioning latents added (should be removed before decoding)
         )
-        condition_latent_frames_mask = torch.zeros((batch_size, num_latent_frames), device=device, dtype=dtype)
+        condition_latent_frames_mask = torch.zeros((batch_size, num_latent_frames), device=device, dtype=torch.float32)
 
         for condition in conditions:
             if condition.image is not None:
@@ -632,7 +632,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     latents[:, :, :num_cond_frames], condition_latents, condition.strength
                 )
                 condition_latent_frames_mask[:, :num_cond_frames] = condition.strength
-            # YiYi TODO: code path not tested
+
             else:
                 if num_data_frames > 1:
                     (
@@ -651,47 +651,41 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     noise = randn_tensor(condition_latents.shape, generator=generator, device=device, dtype=dtype)
                     condition_latents = torch.lerp(noise, condition_latents, condition.strength)
                     c_nlf = condition_latents.shape[2]
-                    condition_latents, condition_latent_coords = self._pack_latents(
+                    condition_latents, rope_interpolation_scale = self._pack_latents(
                         condition_latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size, device
                     )
+
+                    rope_interpolation_scale = (
+                        rope_interpolation_scale * 
+                        torch.tensor([self.vae_temporal_compression_ratio, self.vae_spatial_compression_ratio, self.vae_spatial_compression_ratio], device=latent_coords.device)[None, :, None]
+                    )
+                    rope_interpolation_scale[:, 0] = (rope_interpolation_scale[:, 0] + 1 - self.vae_temporal_compression_ratio).clamp(min=0)               
+                    rope_interpolation_scale[:, 0] += condition.frame_index
+
                     conditioning_mask = torch.full(
                         condition_latents.shape[:2], condition.strength, device=device, dtype=dtype
                     )
 
-                    rope_interpolation_scale = [
-                        # TODO!!! This is incorrect: the frame index needs to added AFTER multiplying the interpolation
-                        # scale with the grid.
-                        (self.vae_temporal_compression_ratio + condition.frame_index) / frame_rate,
-                        self.vae_spatial_compression_ratio,
-                        self.vae_spatial_compression_ratio,
-                    ]
-                    rope_interpolation_scale = (
-                        torch.tensor(rope_interpolation_scale, device=device, dtype=dtype)
-                        .view(-1, 1, 1, 1, 1)
-                        .repeat(1, 1, c_nlf, latent_height, latent_width)
-                    )
                     extra_conditioning_num_latents += condition_latents.size(1)
 
                     extra_conditioning_latents.append(condition_latents)
                     extra_conditioning_rope_interpolation_scales.append(rope_interpolation_scale)
                     extra_conditioning_mask.append(conditioning_mask)
 
-        latents, latent_coords = self._pack_latents(
+        latents, rope_interpolation_scale = self._pack_latents(
             latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size, device
         )
-        pixel_coords = (
-            latent_coords
+
+        rope_interpolation_scale = (
+            rope_interpolation_scale
             * torch.tensor([self.vae_temporal_compression_ratio, self.vae_spatial_compression_ratio, self.vae_spatial_compression_ratio], device=latent_coords.device)[None, :, None]
         )
-        pixel_coords[:, 0] = (pixel_coords[:, 0] + 1 - self.vae_temporal_compression_ratio).clamp(min=0)
-
-        rope_interpolation_scale = pixel_coords
+        rope_interpolation_scale[:, 0] = (rope_interpolation_scale[:, 0] + 1 - self.vae_temporal_compression_ratio).clamp(min=0)
 
         conditioning_mask = condition_latent_frames_mask.gather(
             1, latent_coords[:, 0]
         )
 
-        # YiYi TODO: code path not tested
         if len(extra_conditioning_latents) > 0:
             latents = torch.cat([*extra_conditioning_latents, latents], dim=1)
             rope_interpolation_scale = torch.cat(
