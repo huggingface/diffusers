@@ -338,7 +338,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             image_embed_list = torch.stack(image_embed_list)
             image_attention_mask_list = torch.stack(image_attention_mask_list)
 
-            if image_embed_interleave < 6:
+            if 0 < image_embed_interleave < 6:
                 image_embed_list = image_embed_list[:, ::image_embed_interleave, :]
                 image_attention_mask_list = image_attention_mask_list[:, ::image_embed_interleave]
 
@@ -846,8 +846,9 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
             video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
+            video = video[:, :, 4:, :, :]
         else:
-            video = latents
+            video = latents[:, :, 1:, :, :]
 
         # Offload all models
         self.maybe_free_model_hooks()
