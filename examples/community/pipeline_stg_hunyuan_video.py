@@ -56,12 +56,20 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 
+        >>> # Configure STG mode options
+        >>> stg_applied_layers_idx = [2]  # Layer indices from 0 to 41
+        >>> stg_scale = 1.0
+        >>> do_rescaling = False
+
         >>> output = pipe(
-        ...     prompt="A cat walks on the grass, realistic",
+        ...     prompt="A wolf howling at the moon, with the moon subtly resembling a giant clock face, realistic style.",
         ...     height=320,
         ...     width=512,
         ...     num_frames=61,
         ...     num_inference_steps=30,
+        ...     stg_applied_layers_idx=stg_applied_layers_idx,
+        ...     stg_scale=stg_scale,
+        ...     do_rescaling=do_rescaling,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=15)
         ```
