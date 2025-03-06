@@ -1906,6 +1906,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
             for name, module in transformer.named_modules():
                 if isinstance(module, torch.nn.Linear) and name in module_names:
+                    module_weight = module.weight.data
                     module_bias = module.bias.data if module.bias is not None else None
                     bias = module_bias is not None
 
@@ -1919,6 +1920,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                             in_features,
                             out_features,
                             bias=bias,
+                            dtype=module_weight.dtype,
                         )
 
                     tmp_state_dict = {"weight": current_param_weight}
@@ -2021,12 +2023,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     parent_module = transformer.get_submodule(parent_module_name)
 
                     with torch.device("meta"):
-                        expanded_module = torch.nn.Linear(in_features, out_features, bias=bias)
+                        expanded_module = torch.nn.Linear(
+                            in_features, out_features, bias=bias, dtype=module_weight.dtype
+                        )
                     # Only weights are expanded and biases are not. This is because only the input dimensions
                     # are changed while the output dimensions remain the same. The shape of the weight tensor
                     # is (out_features, in_features), while the shape of bias tensor is (out_features,), which
                     # explains the reason why only weights are expanded.
-                    new_weight = torch.zeros_like(expanded_module.weight.data)
+                    new_weight = torch.zeros_like(
+                        expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
+                    )
                     slices = tuple(slice(0, dim) for dim in module_weight_shape)
                     new_weight[slices] = module_weight
                     tmp_state_dict = {"weight": new_weight}
