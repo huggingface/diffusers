@@ -254,8 +254,12 @@ class CogView4RotaryPosEmbed(nn.Module):
         height, width = height // self.patch_size, width // self.patch_size
 
         dim_h, dim_w = self.dim // 2, self.dim // 2
-        h_inv_freq = 1.0 / (self.theta ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: (dim_h // 2)].float() / dim_h))
-        w_inv_freq = 1.0 / (self.theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w))
+        h_inv_freq = 1.0 / (
+            self.theta ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: (dim_h // 2)].float() / dim_h)
+        )
+        w_inv_freq = 1.0 / (
+            self.theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w)
+        )
         h_seq = torch.arange(self.rope_axes_dim[0])
         w_seq = torch.arange(self.rope_axes_dim[1])
         freqs_h = torch.outer(h_seq, h_inv_freq)
