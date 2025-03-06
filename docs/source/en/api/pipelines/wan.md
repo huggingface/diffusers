@@ -60,8 +60,6 @@ transformer = WanTransformer3DModel.from_single_file(ckpt_path, torch_dtype=torc
 
 pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers", transformer=transformer)
 ```
-```
-```
 
 ## WanPipeline
 
