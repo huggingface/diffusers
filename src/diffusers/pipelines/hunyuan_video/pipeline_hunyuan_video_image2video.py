@@ -69,15 +69,7 @@ EXAMPLE_DOC_STRING = """
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/guitar-man.png"
         ... )
 
-        >>> output = pipe(
-        ...     image=image,
-        ...     height=720,
-        ...     width=1280,
-        ...     num_frames=129,
-        ...     prompt=prompt,
-        ...     true_cfg_scale=1.0,
-        ...     guidance_scale=1.0,
-        ... ).frames[0]
+        >>> output = pipe(image=image, prompt=prompt).frames[0]
         >>> export_to_video(output, "output.mp4", fps=15)
         ```
 """
@@ -587,7 +579,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         num_inference_steps: int = 50,
         sigmas: List[float] = None,
         true_cfg_scale: float = 1.0,
-        guidance_scale: float = 6.0,
+        guidance_scale: float = 1.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -639,7 +631,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 will be used.
             true_cfg_scale (`float`, *optional*, defaults to 1.0):
                 When > 1.0 and a provided `negative_prompt`, enables true classifier-free guidance.
-            guidance_scale (`float`, defaults to `6.0`):
+            guidance_scale (`float`, defaults to `1.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
