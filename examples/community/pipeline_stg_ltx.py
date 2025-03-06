@@ -51,8 +51,13 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = LTXPipeline.from_pretrained("Lightricks/LTX-Video", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = "A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage"
+        >>> prompt = "A woman with light skin, wearing a blue jacket and a black hat with a veil, looks down and to her right, then back up as she speaks; she has brown hair styled in an updo, light brown eyebrows, and is wearing a white collared shirt under her jacket; the camera remains stationary on her face as she speaks; the background is out of focus, but shows trees and people in period clothing; the scene is captured in real-life footage."
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
+
+        >>> # Configure STG mode options
+        >>> stg_applied_layers_idx = [19]  # Layer indices from 0 to 41
+        >>> stg_scale = 1.0
+        >>> do_rescaling = False
 
         >>> video = pipe(
         ...     prompt=prompt,
@@ -61,6 +66,9 @@ EXAMPLE_DOC_STRING = """
         ...     height=480,
         ...     num_frames=161,
         ...     num_inference_steps=50,
+        ...     stg_applied_layers_idx=stg_applied_layers_idx,
+        ...     stg_scale=stg_scale,
+        ...     do_rescaling=do_rescaling,
         ... ).frames[0]
         >>> export_to_video(video, "output.mp4", fps=24)
         ```
