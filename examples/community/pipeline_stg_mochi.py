@@ -56,12 +56,23 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()
         >>> pipe.enable_vae_tiling()
-        >>> prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
-        >>> frames = pipe(prompt, num_inference_steps=28, guidance_scale=3.5).frames[0]
+        >>> prompt = "A close-up of a beautiful woman's face with colored powder exploding around her, creating an abstract splash of vibrant hues, realistic style."
+        
+        >>> # Configure STG mode options
+        >>> stg_applied_layers_idx = [34]  # Layer indices from 0 to 41
+        >>> stg_scale = 1.0
+        >>> do_rescaling = False
+        
+        >>> frames = pipe(prompt, 
+        ...     prompt=prompt,
+        ...     num_inference_steps=28, 
+        ...     guidance_scale=3.5,
+        ...     stg_applied_layers_idx=stg_applied_layers_idx,
+        ...     stg_scale=stg_scale,
+        ...     do_rescaling=do_rescaling).frames[0]
         >>> export_to_video(frames, "mochi.mp4")
         ```
 """
-
 
 def forward_with_stg(
         self,
