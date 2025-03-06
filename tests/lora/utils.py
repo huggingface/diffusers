@@ -2224,7 +2224,7 @@ class PeftLoraLoaderMixinTests:
             apply_layerwise_casting,
         )
 
-        storage_dtype = torch.float8_e4m3fn
+        storage_dtype = torch.float8_e4m3fn if not torch_device == "mps" else torch.bfloat16
         compute_dtype = torch.float32
 
         def check_module(denoiser):
