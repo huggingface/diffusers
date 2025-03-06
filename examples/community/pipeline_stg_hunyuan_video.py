@@ -58,7 +58,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Configure STG mode options
         >>> stg_applied_layers_idx = [2]  # Layer indices from 0 to 41
-        >>> stg_scale = 1.0
+        >>> stg_scale = 1.0 # Set 0.0 for CFG
         >>> do_rescaling = False
 
         >>> output = pipe(
