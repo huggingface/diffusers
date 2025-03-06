@@ -397,6 +397,7 @@ def load_single_file_checkpoint(
 
     else:
         repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
+        user_agent = {"file_type": "single_file", "framework": "pytorch"}
         pretrained_model_link_or_path = _get_model_file(
             repo_id,
             weights_name=weights_name,
@@ -406,6 +407,7 @@ def load_single_file_checkpoint(
             local_files_only=local_files_only,
             token=token,
             revision=revision,
+            user_agent=user_agent,
         )
 
     checkpoint = load_state_dict(pretrained_model_link_or_path, disable_mmap=disable_mmap)
