@@ -661,8 +661,20 @@ class LoraBaseMixin:
         adapter_names: Union[List[str], str],
         adapter_weights: Optional[Union[float, Dict, List[float], List[Dict]]] = None,
     ):
-        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+        if isinstance(adapter_weights, dict):
+            components_passed = set(adapter_weights.keys())
+            lora_components = set(self._lora_loadable_modules)
 
+            invalid_components = sorted(components_passed - lora_components)
+            if invalid_components:
+                logger.warning(
+                    f"The following components in `adapter_weights` are not part of the pipeline: {invalid_components}. "
+                    f"Available components that are LoRA-compatible: {self._lora_loadable_modules}. So, weights belonging "
+                    "to the invalid components will be removed and ignored."
+                )
+                adapter_weights = {k: v for k, v in adapter_weights.items() if k not in invalid_components}
+
+        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
         adapter_weights = copy.deepcopy(adapter_weights)
 
         # Expand weights into a list, one entry per adapter
@@ -697,12 +709,6 @@ class LoraBaseMixin:
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
                     component_adapter_weights = weights.pop(component, None)
-
-                    if component_adapter_weights is not None and not hasattr(self, component):
-                        logger.warning(
-                            f"Lora weight dict contains {component} weights but will be ignored because pipeline does not have {component}."
-                        )
-
                     if component_adapter_weights is not None and component not in invert_list_adapters[adapter_name]:
                         logger.warning(
                             (

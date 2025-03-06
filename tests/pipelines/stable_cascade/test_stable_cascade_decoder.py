@@ -24,11 +24,12 @@ from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     load_numpy,
     load_pt,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -208,45 +209,6 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def test_float16_inference(self):
         super().test_float16_inference()
 
-    def test_stable_cascade_decoder_prompt_embeds(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = StableCascadeDecoderPipeline(**components)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image_embeddings = inputs["image_embeddings"]
-        prompt = "A photograph of a shiba inu, wearing a hat"
-        (
-            prompt_embeds,
-            prompt_embeds_pooled,
-            negative_prompt_embeds,
-            negative_prompt_embeds_pooled,
-        ) = pipe.encode_prompt(device, 1, 1, False, prompt=prompt)
-        generator = torch.Generator(device=device)
-
-        decoder_output_prompt = pipe(
-            image_embeddings=image_embeddings,
-            prompt=prompt,
-            num_inference_steps=1,
-            output_type="np",
-            generator=generator.manual_seed(0),
-        )
-        decoder_output_prompt_embeds = pipe(
-            image_embeddings=image_embeddings,
-            prompt=None,
-            prompt_embeds=prompt_embeds,
-            prompt_embeds_pooled=prompt_embeds_pooled,
-            negative_prompt_embeds=negative_prompt_embeds,
-            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
-            num_inference_steps=1,
-            output_type="np",
-            generator=generator.manual_seed(0),
-        )
-
-        assert np.abs(decoder_output_prompt.images - decoder_output_prompt_embeds.images).max() < 1e-5
-
     def test_stable_cascade_decoder_single_prompt_multiple_image_embeddings(self):
         device = "cpu"
         components = self.get_dummy_components()
@@ -307,27 +269,35 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             batch_size * prior_num_images_per_prompt * decoder_num_images_per_prompt
         )
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "batch_size": 1,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_cascade_decoder(self):
         pipe = StableCascadeDecoderPipeline.from_pretrained(
             "stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.bfloat16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."

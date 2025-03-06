@@ -91,7 +91,7 @@ class RePaintPipeline(DiffusionPipeline):
     scheduler: RePaintScheduler
     model_cpu_offload_seq = "unet"
 
-    def __init__(self, unet, scheduler):
+    def __init__(self, unet: UNet2DModel, scheduler: RePaintScheduler):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
 

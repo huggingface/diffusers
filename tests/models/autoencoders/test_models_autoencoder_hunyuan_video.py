@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers import AutoencoderKLHunyuanVideo
+from diffusers.models.autoencoders.autoencoder_kl_hunyuan_video import prepare_causal_attention_mask
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
@@ -182,3 +183,28 @@ class AutoencoderKLHunyuanVideoTests(ModelTesterMixin, UNetTesterMixin, unittest
     @unittest.skip("Unsupported test.")
     def test_outputs_equivalence(self):
         pass
+
+    def test_prepare_causal_attention_mask(self):
+        def prepare_causal_attention_mask_orig(
+            num_frames: int, height_width: int, dtype: torch.dtype, device: torch.device, batch_size: int = None
+        ) -> torch.Tensor:
+            seq_len = num_frames * height_width
+            mask = torch.full((seq_len, seq_len), float("-inf"), dtype=dtype, device=device)
+            for i in range(seq_len):
+                i_frame = i // height_width
+                mask[i, : (i_frame + 1) * height_width] = 0
+            if batch_size is not None:
+                mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
+            return mask
+
+        # test with some odd shapes
+        original_mask = prepare_causal_attention_mask_orig(
+            num_frames=31, height_width=111, dtype=torch.float32, device=torch_device
+        )
+        new_mask = prepare_causal_attention_mask(
+            num_frames=31, height_width=111, dtype=torch.float32, device=torch_device
+        )
+        self.assertTrue(
+            torch.allclose(original_mask, new_mask),
+            "Causal attention mask should be the same",
+        )

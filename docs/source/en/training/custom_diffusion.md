@@ -339,7 +339,10 @@ import torch
 from huggingface_hub.repocard import RepoCard
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("sayakpaul/custom-diffusion-cat-wooden-pot", torch_dtype=torch.float16).to("cuda")
+pipeline = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16,
+).to("cuda")
+model_id = "sayakpaul/custom-diffusion-cat-wooden-pot"
 pipeline.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipeline.load_textual_inversion(model_id, weight_name="<new1>.bin")
 pipeline.load_textual_inversion(model_id, weight_name="<new2>.bin")
