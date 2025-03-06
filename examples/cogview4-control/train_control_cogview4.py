@@ -132,8 +132,6 @@ def log_validation(cogview4_transformer, args, accelerator, weight_dtype, step, 
                     control_image=validation_image,
                     num_inference_steps=50,
                     guidance_scale=args.guidance_scale,
-                    max_sequence_length=args.max_sequence_length,  # For downstream task training usage, training can be performed on a batch basis.
-                    padding_type="max_length",
                     generator=generator,
                     height=args.resolution,
                     width=args.resolution,
