@@ -18,6 +18,7 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
+from ..quantizers.bitsandbytes import dequantize_bnb_weight
 from ..utils import (
     USE_PEFT_BACKEND,
     deprecate,
@@ -1905,7 +1906,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
             for name, module in transformer.named_modules():
                 if isinstance(module, torch.nn.Linear) and name in module_names:
-                    module_weight = module.weight.data
                     module_bias = module.bias.data if module.bias is not None else None
                     bias = module_bias is not None
 
@@ -1919,7 +1919,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                             in_features,
                             out_features,
                             bias=bias,
-                            dtype=module_weight.dtype,
                         )
 
                     tmp_state_dict = {"weight": current_param_weight}
@@ -1970,7 +1969,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         is_peft_loaded = getattr(transformer, "peft_config", None) is not None
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
-                module_weight = module.weight.data
+                module_weight = (
+                    dequantize_bnb_weight(module.weight, state=module.weight.quant_state).data
+                    if module.weight.__class__.__name__ == "Params4bit"
+                    else module.weight.data
+                )
                 module_bias = module.bias.data if module.bias is not None else None
                 bias = module_bias is not None
 
@@ -1994,7 +1997,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
                 # TODO (sayakpaul): We still need to consider if the module we're expanding is
                 # quantized and handle it accordingly if that is the case.
-                module_out_features, module_in_features = module_weight.shape
+                module_out_features, module_in_features = module_weight_shape
                 debug_message = ""
                 if in_features > module_in_features:
                     debug_message += (
@@ -2018,17 +2021,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     parent_module = transformer.get_submodule(parent_module_name)
 
                     with torch.device("meta"):
-                        expanded_module = torch.nn.Linear(
-                            in_features, out_features, bias=bias, dtype=module_weight.dtype
-                        )
+                        expanded_module = torch.nn.Linear(in_features, out_features, bias=bias)
                     # Only weights are expanded and biases are not. This is because only the input dimensions
                     # are changed while the output dimensions remain the same. The shape of the weight tensor
                     # is (out_features, in_features), while the shape of bias tensor is (out_features,), which
                     # explains the reason why only weights are expanded.
-                    new_weight = torch.zeros_like(
-                        expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
-                    )
-                    slices = tuple(slice(0, dim) for dim in module_weight.shape)
+                    new_weight = torch.zeros_like(expanded_module.weight.data)
+                    slices = tuple(slice(0, dim) for dim in module_weight_shape)
                     new_weight[slices] = module_weight
                     tmp_state_dict = {"weight": new_weight}
                     if module_bias is not None:
