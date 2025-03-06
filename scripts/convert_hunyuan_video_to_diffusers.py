@@ -317,7 +317,7 @@ if __name__ == "__main__":
             text_encoder_2 = CLIPTextModel.from_pretrained(args.text_encoder_2_path, torch_dtype=torch.float16)
             tokenizer_2 = CLIPTokenizer.from_pretrained(args.text_encoder_2_path)
             scheduler = FlowMatchEulerDiscreteScheduler(shift=args.flow_shift)
-            image_processor = CLIPImageProcessor.from_pretrained(args.text_encoder_2_path)
+            image_processor = CLIPImageProcessor.from_pretrained(args.text_encoder_path)
 
             pipe = HunyuanVideoImageToVideoPipeline(
                 transformer=transformer,

@@ -16,6 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import PIL.Image
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -26,7 +27,6 @@ from transformers import (
 )
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PipelineImageInput
 from ...loaders import HunyuanVideoLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -220,6 +220,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             image_processor=image_processor,
         )
 
+        self.vae_scaling_factor = self.vae.config.scaling_factor if getattr(self, "vae", None) else 0.476986
         self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -240,8 +241,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
-
         prompt = [prompt_template["template"].format(p) for p in prompt]
 
         crop_start = prompt_template.get("crop_start", None)
@@ -351,13 +350,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             prompt_embeds = torch.cat([image_embed_list, prompt_embed_list], dim=1)
             prompt_attention_mask = torch.cat([image_attention_mask_list, prompt_attention_mask_list], dim=1)
 
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
-        prompt_attention_mask = prompt_attention_mask.repeat(1, num_videos_per_prompt)
-        prompt_attention_mask = prompt_attention_mask.view(batch_size * num_videos_per_prompt, seq_len)
-
         return prompt_embeds, prompt_attention_mask
 
     def _get_clip_prompt_embeds(
@@ -372,7 +364,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         dtype = dtype or self.text_encoder_2.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
 
         text_inputs = self.tokenizer_2(
             prompt,
@@ -392,11 +383,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             )
 
         prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False).pooler_output
-
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt)
-        prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, -1)
-
         return prompt_embeds
 
     def encode_prompt(
@@ -581,7 +567,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: PipelineImageInput,
+        image: PIL.Image.Image,
         prompt: Union[str, List[str]] = None,
         prompt_2: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
@@ -741,10 +727,10 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
         # 3. Prepare latent variables
         vae_dtype = self.vae.dtype
-        image = self.video_processor.preprocess(image, height, width).to(device, vae_dtype)
+        image_tensor = self.video_processor.preprocess(image, height, width).to(device, vae_dtype)
         num_channels_latents = (self.transformer.config.in_channels - 1) // 2
         latents, image_latents = self.prepare_latents(
-            image,
+            image_tensor,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
@@ -778,8 +764,9 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         pooled_prompt_embeds = pooled_prompt_embeds.to(transformer_dtype)
 
         if do_true_cfg:
+            black_image = PIL.Image.new("RGB", (width, height), 0)
             negative_prompt_embeds, negative_pooled_prompt_embeds, negative_prompt_attention_mask = self.encode_prompt(
-                image=torch.full_like(image, fill_value=-1),
+                image=black_image,
                 prompt=negative_prompt,
                 prompt_2=negative_prompt_2,
                 prompt_template=prompt_template,
@@ -808,7 +795,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     continue
 
                 self._current_timestep = t
-                latent_model_input = torch.cat([latents, image_latents, mask], dim=1)
+                latent_model_input = torch.cat([latents, image_latents, mask], dim=1).to(transformer_dtype)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
