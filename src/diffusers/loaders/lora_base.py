@@ -358,6 +358,20 @@ def _load_lora_into_text_encoder(
             # convert state dict
             text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
 
+            if any("position_embedding" in k for k in text_encoder_lora_state_dict):
+                # TODO: this copying is a big shot in the dark.
+                # https://huggingface.co/sayakpaul/different-lora-from-civitai/tree/main?show_file_info=RM_Artistify_v1.0M.safetensors
+                # only has LoRA keys for the position embedding but not the LoRA embedding keys.
+                text_encoder_lora_state_dict[
+                    "text_model.embeddings.position_embedding.lora_embedding_A.weight"
+                ] = text_encoder_lora_state_dict["text_model.embeddings.position_embedding.lora_A.weight"].clone()
+                text_encoder_lora_state_dict[
+                    "text_model.embeddings.position_embedding.lora_embedding_B.weight"
+                ] = text_encoder_lora_state_dict["text_model.embeddings.position_embedding.lora_B.weight"].clone()
+                rank["text_model.embeddings.position_embedding.lora_B.weight"] = text_encoder_lora_state_dict[
+                    "text_model.embeddings.position_embedding.lora_B.weight"
+                ].shape[1]
+
             for name, _ in text_encoder_attn_modules(text_encoder):
                 for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
                     rank_key = f"{name}.{module}.lora_B.weight"
