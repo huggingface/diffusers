@@ -51,23 +51,32 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import HunyuanVideoImageToVideoPipeline, HunyuanVideoTransformer3DModel
+        >>> from diffusers.utils import load_image, export_to_video
 
-        >>> model_id = "hunyuanvideo-community/HunyuanVideo"
+        >>> model_id = "hunyuanvideo-community/HunyuanVideo-I2V"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
         ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
         ... )
-        >>> pipe = HunyuanVideoPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.float16)
+        >>> pipe = HunyuanVideoImageToVideoPipeline.from_pretrained(
+        ...     model_id, transformer=transformer, torch_dtype=torch.float16
+        ... )
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 
+        >>> prompt = "A man with short gray hair plays a red electric guitar."
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/guitar-man.png"
+        ... )
+
         >>> output = pipe(
-        ...     prompt="A cat walks on the grass, realistic",
-        ...     height=320,
-        ...     width=512,
-        ...     num_frames=61,
-        ...     num_inference_steps=30,
+        ...     image=image,
+        ...     height=720,
+        ...     width=1280,
+        ...     num_frames=129,
+        ...     prompt=prompt,
+        ...     true_cfg_scale=1.0,
+        ...     guidance_scale=1.0,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=15)
         ```
