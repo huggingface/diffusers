@@ -641,9 +641,9 @@ class PeftLoraLoaderMixinTests:
             # Verify `StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
             text_lora_config = LoraConfig(
                 r=4,
-                rank_pattern={"q_proj": 1, "k_proj": 2, "v_proj": 3},
+                rank_pattern={self.text_encoder_target_modules[i]: i + 1 for i in range(3)},
                 lora_alpha=4,
-                target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+                target_modules=self.text_encoder_target_modules,
                 init_lora_weights=False,
                 use_dora=False,
             )
