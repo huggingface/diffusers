@@ -20,7 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import FeedForward
 from ..attention_processor import Attention
@@ -288,7 +288,7 @@ class WanTransformerBlock(nn.Module):
         return hidden_states
 
 
-class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A Transformer model for video-like data used in the Wan model.
 
