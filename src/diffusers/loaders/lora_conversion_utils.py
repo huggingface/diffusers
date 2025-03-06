@@ -654,6 +654,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
 
                 _convert(k, diffusers_key, state_dict, new_state_dict)
 
+        remaining_all_unet = False
         if state_dict:
             remaining_all_unet = all(k.startswith("lora_unet_") for k in state_dict)
         if remaining_all_unet:
