@@ -341,8 +341,7 @@ def _get_alpha_name(lora_name_alpha, diffusers_name, alpha):
 
 
 # The utilities under `_convert_kohya_flux_lora_to_diffusers()`
-# are taken from https://github.com/kohya-ss/sd-scripts/blob/a61cf73a5cb5209c3f4d1a3688dd276a4dfd1ecb/networks/convert_flux_lora.py
-# All credits go to `kohya-ss`.
+# are adapted from https://github.com/kohya-ss/sd-scripts/blob/a61cf73a5cb5209c3f4d1a3688dd276a4dfd1ecb/networks/convert_flux_lora.py
 def _convert_kohya_flux_lora_to_diffusers(state_dict):
     def _convert_to_ai_toolkit(sds_sd, ait_sd, sds_key, ait_key):
         if sds_key + ".lora_down.weight" not in sds_sd:
@@ -753,8 +752,8 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
     )
 
     # ComfyUI.
-    state_dict = {k.replace("diffusion_model.", "lora_unet."): v for k, v in state_dict.items()}
-    state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te."): v for k, v in state_dict.items()}
+    state_dict = {k.replace("diffusion_model.", "lora_unet_"): v for k, v in state_dict.items()}
+    state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te_"): v for k, v in state_dict.items()}
     has_t5xxl = any(k.startswith("text_encoders.t5xxl.transformer.") for k in state_dict)
     if has_t5xxl:
         logger.info(
@@ -763,7 +762,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         )
         state_dict = {k: v for k, v in state_dict.items() if not k.startswith("text_encoders.t5xxl.transformer.")}
 
-    any_diffb_keys = any("diff_b" in k and k.startswith(("lora_unet.", "lora_te.")) for k in state_dict)
+    any_diffb_keys = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
     if any_diffb_keys:
         logger.info(
             "`diff_b` keys found in the state dict which are currently unsupported. "
@@ -788,12 +787,12 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
     state_dict = {
         _custom_replace(k, limit_substrings): v
         for k, v in state_dict.items()
-        if k.startswith(("lora_unet.", "lora_te."))
+        if k.startswith(("lora_unet_", "lora_te_"))
     }
 
     if any("text_projection" in k for k in state_dict):
         logger.info(
-            "`text_projection` keys found in the state_dict which are unexpected. "
+            "`text_projection` keys found in the `state_dict` which are unexpected. "
             "So, we will filter out those keys. Open an issue if this is a problem - "
             "https://github.com/huggingface/diffusers/issues/new."
         )
