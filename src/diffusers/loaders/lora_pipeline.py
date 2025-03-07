@@ -1974,10 +1974,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         is_peft_loaded = getattr(transformer, "peft_config", None) is not None
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
-                is_quantized = module.weight.__class__.__name__ == "Params4bit"
-                if is_quantized and not is_bitsandbytes_available():
-                    raise ValueError("Install `bitsandbytes` to load quantized checkpoints.")
-                elif is_quantized:
+                is_bnb_4bit_quantized = module.weight.__class__.__name__ == "Params4bit"
+                if is_bnb_4bit_quantized and not is_bitsandbytes_available():
+                    raise ValueError("The checkpoint seems to have been quantized with `bitsandbytes` (4bits). Install `bitsandbytes` to load quantized checkpoints.")
+                elif is_bnb_4bit_quantized:
                     module_weight = dequantize_bnb_weight(module.weight, state=module.weight.quant_state).data
                 else:
                     module_weight = module.weight.data

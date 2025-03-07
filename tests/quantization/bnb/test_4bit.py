@@ -682,7 +682,7 @@ class SlowBnb4BitFluxTests(Base4bitTests):
 
 
 @require_transformers_version_greater("4.44.0")
-class SlowBnb4BitFluxWithLoraTests(Base4bitTests):
+class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
     def setUp(self) -> None:
         gc.collect()
         torch.cuda.empty_cache()
