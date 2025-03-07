@@ -143,13 +143,11 @@ class CogView4Pipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`T5EncoderModel`]):
-            Frozen text-encoder. CogView4 uses
-            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel); specifically the
-            [t5-v1_1-xxl](https://huggingface.co/PixArt-alpha/PixArt-alpha/tree/main/t5-v1_1-xxl) variant.
-        tokenizer (`T5Tokenizer`):
+        text_encoder ([`GLMModel`]):
+            Frozen text-encoder. CogView4 uses [glm-4-9b-hf](https://huggingface.co/THUDM/glm-4-9b-hf).
+        tokenizer (`PreTrainedTokenizer`):
             Tokenizer of class
-            [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
+            [PreTrainedTokenizer](https://huggingface.co/docs/transformers/main/en/main_classes/tokenizer#transformers.PreTrainedTokenizer).
         transformer ([`CogView4Transformer2DModel`]):
             A text conditioned `CogView4Transformer2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
@@ -215,7 +213,7 @@ class CogView4Pipeline(DiffusionPipeline):
             )
             text_input_ids = torch.cat([pad_ids, text_input_ids], dim=1)
         prompt_embeds = self.text_encoder(
-            text_input_ids.to(self.text_encoder.model.device), output_hidden_states=True
+            text_input_ids.to(self.text_encoder.device), output_hidden_states=True
         ).hidden_states[-2]
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -362,10 +360,16 @@ class CogView4Pipeline(DiffusionPipeline):
             )
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
+            if prompt_embeds.shape[0] != negative_prompt_embeds.shape[0]:
                 raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same batch size when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} and `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+            if prompt_embeds.shape[-1] != negative_prompt_embeds.shape[-1]:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same dimension when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} and `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
 

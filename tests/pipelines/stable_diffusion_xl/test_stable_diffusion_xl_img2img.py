@@ -42,7 +42,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -293,7 +293,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -302,12 +302,12 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -596,7 +596,7 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -605,12 +605,12 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
