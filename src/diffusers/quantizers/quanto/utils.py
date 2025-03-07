@@ -49,7 +49,7 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
         logger.warning(
             f"{model.__class__.__name__} does not appear to have any `nn.Linear` modules. Quantization will not be applied."
             " Please check your model architecture, or submit an issue on Github if you think this is a bug."
-            " https://github.com/huggingface/diffusers"
+            " https://github.com/huggingface/diffusers/issues/new"
         )
 
     # We need to freeze the pre_quantized model in order for the loaded state_dict and model state dict
