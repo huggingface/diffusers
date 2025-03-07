@@ -50,10 +50,10 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import MochiPipeline
         >>> from diffusers.utils import export_to_video
+        >>> from examples.community.pipeline_stg_mochi import MochiSTGPipeline
 
-        >>> pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.bfloat16)
+        >>> pipe = MochiSTGPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()
         >>> pipe.enable_vae_tiling()
         >>> prompt = "A close-up of a beautiful woman's face with colored powder exploding around her, creating an abstract splash of vibrant hues, realistic style."
@@ -63,7 +63,7 @@ EXAMPLE_DOC_STRING = """
         >>> stg_scale = 1.0 # Set 0.0 for CFG
         >>> do_rescaling = False
         
-        >>> frames = pipe(prompt, 
+        >>> frames = pipe(
         ...     prompt=prompt,
         ...     num_inference_steps=28, 
         ...     guidance_scale=3.5,
@@ -174,11 +174,11 @@ def retrieve_timesteps(
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
-        raise Value_orgError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom value")
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom value")
     if timesteps is not None:
         accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
-            raise Value_orgError(
+            raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
                 f" timestep schedules. Please check whether you are using the correct scheduler."
             )
@@ -188,7 +188,7 @@ def retrieve_timesteps(
     elif sigmas is not None:
         accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accept_sigmas:
-            raise Value_orgError(
+            raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
                 f" sigmas schedules. Please check whether you are using the correct scheduler."
             )
@@ -384,7 +384,7 @@ class MochiSTGPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                     f" {type(prompt)}."
                 )
             elif batch_size != len(negative_prompt):
-                raise Value_orgError(
+                raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
                     f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
                     " the batch size of `prompt`."
@@ -412,42 +412,42 @@ class MochiSTGPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         negative_prompt_attention_mask=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise Value_orgError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
-            raise Value_orgError(
+            raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
-            raise Value_orgError(
+            raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
                 " only forward one of the two."
             )
         elif prompt is None and prompt_embeds is None:
-            raise Value_orgError(
+            raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise Value_orgError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if prompt_embeds is not None and prompt_attention_mask is None:
-            raise Value_orgError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
+            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
 
         if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
-            raise Value_orgError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
+            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise Value_orgError(
+                raise ValueError(
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
             if prompt_attention_mask.shape != negative_prompt_attention_mask.shape:
-                raise Value_orgError(
+                raise ValueError(
                     "`prompt_attention_mask` and `negative_prompt_attention_mask` must have the same shape when passed directly, but"
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
@@ -503,7 +503,7 @@ class MochiSTGPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
         if isinstance(generator, list) and len(generator) != batch_size:
-            raise Value_orgError(
+            raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )

@@ -47,27 +47,28 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import CogVideoXPipeline
         >>> from diffusers.utils import export_to_video
+        >>> from examples.community.pipeline_stg_cogvideox import CogVideoXSTGPipeline
 
         >>> # Models: "THUDM/CogVideoX-2b" or "THUDM/CogVideoX-5b"
-        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16).to("cuda")
+        >>> pipe = CogVideoXSTGPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.float16).to("cuda")
         >>> prompt = (
         ...     "A father and son building a treehouse together, their hands covered in sawdust and smiles on their faces, realistic style."
         ... )
-        
+        >>> pipe.transformer.to(memory_format=torch.channels_last)
+
         >>> # Configure STG mode options
         >>> stg_applied_layers_idx = [11]  # Layer indices from 0 to 41
         >>> stg_scale = 1.0  # Set to 0.0 for CFG
         >>> do_rescaling = False
-        
+
         >>> # Generate video frames with STG parameters
         >>> frames = pipe(
         ...     prompt=prompt,
         ...     stg_applied_layers_idx=stg_applied_layers_idx,
         ...     stg_scale=stg_scale,
         ...     do_rescaling=do_rescaling,
-        ... ).frames[0]
+        >>> ).frames[0]
         >>> export_to_video(frames, "output.mp4", fps=8)
         ```
 """
