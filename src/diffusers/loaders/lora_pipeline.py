@@ -4590,7 +4590,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The keys can either be indexed directly
                 into the unet or prefixed with an additional `unet` which can be used to distinguish between text
                 encoder lora layers.
-            transformer (`WanTransformer3DModel`):
+            transformer (`CogView4Transformer2DModel`):
                 The Transformer model to load the LoRA layers into.
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
