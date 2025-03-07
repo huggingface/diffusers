@@ -1210,6 +1210,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.save_lora_weights with unet->transformer
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
@@ -1272,6 +1273,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
         components: List[str] = ["transformer", "text_encoder", "text_encoder_2"],
@@ -1315,6 +1317,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.unfuse_lora with unet->transformer
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
         Reverses the effect of
@@ -2530,6 +2533,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -2833,6 +2837,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -2876,6 +2881,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
@@ -3136,6 +3142,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -3179,6 +3186,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
@@ -3439,6 +3447,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -3482,6 +3491,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
@@ -3745,6 +3755,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -3788,6 +3799,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
