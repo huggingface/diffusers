@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import types
 import inspect
+import types
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -23,12 +23,12 @@ from transformers import CLIPTextModel, CLIPTokenizer, LlamaModel, LlamaTokenize
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.loaders import HunyuanVideoLoraLoaderMixin
 from diffusers.models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
+from diffusers.pipelines.hunyuan_video.pipeline_output import HunyuanVideoPipelineOutput
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.hunyuan_video.pipeline_output import HunyuanVideoPipelineOutput
 
 
 if is_torch_xla_available():
@@ -90,56 +90,56 @@ DEFAULT_PROMPT_TEMPLATE = {
 
 
 def forward_with_stg(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        return hidden_states, encoder_hidden_states
-    
-    
+    self,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    return hidden_states, encoder_hidden_states
+
+
 def forward_without_stg(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # 1. Input normalization
-        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
-        norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
-            encoder_hidden_states, emb=temb
-        )
+    self,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    # 1. Input normalization
+    norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+    norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
+        encoder_hidden_states, emb=temb
+    )
 
-        # 2. Joint attention
-        attn_output, context_attn_output = self.attn(
-            hidden_states=norm_hidden_states,
-            encoder_hidden_states=norm_encoder_hidden_states,
-            attention_mask=attention_mask,
-            image_rotary_emb=freqs_cis,
-        )
+    # 2. Joint attention
+    attn_output, context_attn_output = self.attn(
+        hidden_states=norm_hidden_states,
+        encoder_hidden_states=norm_encoder_hidden_states,
+        attention_mask=attention_mask,
+        image_rotary_emb=freqs_cis,
+    )
 
-        # 3. Modulation and residual connection
-        hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
-        encoder_hidden_states = encoder_hidden_states + context_attn_output * c_gate_msa.unsqueeze(1)
+    # 3. Modulation and residual connection
+    hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
+    encoder_hidden_states = encoder_hidden_states + context_attn_output * c_gate_msa.unsqueeze(1)
 
-        norm_hidden_states = self.norm2(hidden_states)
-        norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
+    norm_hidden_states = self.norm2(hidden_states)
+    norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
 
-        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+    norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+    norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
 
-        # 4. Feed-forward
-        ff_output = self.ff(norm_hidden_states)
-        context_ff_output = self.ff_context(norm_encoder_hidden_states)
+    # 4. Feed-forward
+    ff_output = self.ff(norm_hidden_states)
+    context_ff_output = self.ff_context(norm_encoder_hidden_states)
 
-        hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output
-        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+    hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output
+    encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
 
-        return hidden_states, encoder_hidden_states
+    return hidden_states, encoder_hidden_states
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -508,7 +508,7 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
     @property
     def guidance_scale(self):
         return self._guidance_scale
-    
+
     @property
     def do_spatio_temporal_guidance(self):
         return self._stg_scale > 0.0
@@ -724,7 +724,9 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
                 if self.do_spatio_temporal_guidance:
                     for i in stg_applied_layers_idx:
-                        self.transformer.transformer_blocks[i].forward = types.MethodType(forward_without_stg, self.transformer.transformer_blocks[i])
+                        self.transformer.transformer_blocks[i].forward = types.MethodType(
+                            forward_without_stg, self.transformer.transformer_blocks[i]
+                        )
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -739,7 +741,9 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
                 if self.do_spatio_temporal_guidance:
                     for i in stg_applied_layers_idx:
-                        self.transformer.transformer_blocks[i].forward = types.MethodType(forward_with_stg, self.transformer.transformer_blocks[i])
+                        self.transformer.transformer_blocks[i].forward = types.MethodType(
+                            forward_with_stg, self.transformer.transformer_blocks[i]
+                        )
 
                     noise_pred_perturb = self.transformer(
                         hidden_states=latent_model_input,

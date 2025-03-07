@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import types
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+import types
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -23,6 +23,8 @@ from transformers import T5EncoderModel, T5TokenizerFast
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.loaders import Mochi1LoraLoaderMixin
 from diffusers.models import AutoencoderKLMochi, MochiTransformer3DModel
+from diffusers.pipelines.mochi.pipeline_output import MochiPipelineOutput
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     is_torch_xla_available,
@@ -31,9 +33,6 @@ from diffusers.utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.mochi.pipeline_output import MochiPipelineOutput
-
 
 
 if is_torch_xla_available():
@@ -57,15 +56,15 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.enable_model_cpu_offload()
         >>> pipe.enable_vae_tiling()
         >>> prompt = "A close-up of a beautiful woman's face with colored powder exploding around her, creating an abstract splash of vibrant hues, realistic style."
-        
+
         >>> # Configure STG mode options
         >>> stg_applied_layers_idx = [34]  # Layer indices from 0 to 41
         >>> stg_scale = 1.0 # Set 0.0 for CFG
         >>> do_rescaling = False
-        
+
         >>> frames = pipe(
         ...     prompt=prompt,
-        ...     num_inference_steps=28, 
+        ...     num_inference_steps=28,
         ...     guidance_scale=3.5,
         ...     stg_applied_layers_idx=stg_applied_layers_idx,
         ...     stg_scale=stg_scale,
@@ -74,54 +73,55 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 def forward_with_stg(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
-        encoder_attention_mask: torch.Tensor,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    self,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    encoder_attention_mask: torch.Tensor,
+    image_rotary_emb: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    hidden_states_ptb = hidden_states[2:]
+    encoder_hidden_states_ptb = encoder_hidden_states[2:]
+    norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
-        hidden_states_ptb = hidden_states[2:]
-        encoder_hidden_states_ptb = encoder_hidden_states[2:]
-        norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
+    if not self.context_pre_only:
+        norm_encoder_hidden_states, enc_gate_msa, enc_scale_mlp, enc_gate_mlp = self.norm1_context(
+            encoder_hidden_states, temb
+        )
+    else:
+        norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states, temb)
 
-        if not self.context_pre_only:
-            norm_encoder_hidden_states, enc_gate_msa, enc_scale_mlp, enc_gate_mlp = self.norm1_context(
-                encoder_hidden_states, temb
-            )
-        else:
-            norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states, temb)
+    attn_hidden_states, context_attn_hidden_states = self.attn1(
+        hidden_states=norm_hidden_states,
+        encoder_hidden_states=norm_encoder_hidden_states,
+        image_rotary_emb=image_rotary_emb,
+        attention_mask=encoder_attention_mask,
+    )
 
-        attn_hidden_states, context_attn_hidden_states = self.attn1(
-            hidden_states=norm_hidden_states,
-            encoder_hidden_states=norm_encoder_hidden_states,
-            image_rotary_emb=image_rotary_emb,
-            attention_mask=encoder_attention_mask,
+    hidden_states = hidden_states + self.norm2(attn_hidden_states, torch.tanh(gate_msa).unsqueeze(1))
+    norm_hidden_states = self.norm3(hidden_states, (1 + scale_mlp.unsqueeze(1).to(torch.float32)))
+    ff_output = self.ff(norm_hidden_states)
+    hidden_states = hidden_states + self.norm4(ff_output, torch.tanh(gate_mlp).unsqueeze(1))
+
+    if not self.context_pre_only:
+        encoder_hidden_states = encoder_hidden_states + self.norm2_context(
+            context_attn_hidden_states, torch.tanh(enc_gate_msa).unsqueeze(1)
+        )
+        norm_encoder_hidden_states = self.norm3_context(
+            encoder_hidden_states, (1 + enc_scale_mlp.unsqueeze(1).to(torch.float32))
+        )
+        context_ff_output = self.ff_context(norm_encoder_hidden_states)
+        encoder_hidden_states = encoder_hidden_states + self.norm4_context(
+            context_ff_output, torch.tanh(enc_gate_mlp).unsqueeze(1)
         )
 
-        hidden_states = hidden_states + self.norm2(attn_hidden_states, torch.tanh(gate_msa).unsqueeze(1))
-        norm_hidden_states = self.norm3(hidden_states, (1 + scale_mlp.unsqueeze(1).to(torch.float32)))
-        ff_output = self.ff(norm_hidden_states)
-        hidden_states = hidden_states + self.norm4(ff_output, torch.tanh(gate_mlp).unsqueeze(1))
-        
-        if not self.context_pre_only:
-            encoder_hidden_states = encoder_hidden_states + self.norm2_context(
-                context_attn_hidden_states, torch.tanh(enc_gate_msa).unsqueeze(1)
-            )
-            norm_encoder_hidden_states = self.norm3_context(
-                encoder_hidden_states, (1 + enc_scale_mlp.unsqueeze(1).to(torch.float32))
-            )
-            context_ff_output = self.ff_context(norm_encoder_hidden_states)
-            encoder_hidden_states = encoder_hidden_states + self.norm4_context(
-                context_ff_output, torch.tanh(enc_gate_mlp).unsqueeze(1)
-            )
+        hidden_states[2:] = hidden_states_ptb
+        encoder_hidden_states[2:] = encoder_hidden_states_ptb
 
-            hidden_states[2:] = hidden_states_ptb
-            encoder_hidden_states[2:] = encoder_hidden_states_ptb
+    return hidden_states, encoder_hidden_states
 
-        return hidden_states, encoder_hidden_states
 
 # from: https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
 def linear_quadratic_schedule(num_steps, threshold_noise, linear_steps=None):
@@ -519,7 +519,7 @@ class MochiSTGPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1.0
-    
+
     @property
     def do_spatio_temporal_guidance(self):
         return self._stg_scale > 0.0
@@ -666,10 +666,12 @@ class MochiSTGPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
-        
+
         if self.do_spatio_temporal_guidance:
             for i in stg_applied_layers_idx:
-                self.transformer.transformer_blocks[i].forward = types.MethodType(forward_with_stg, self.transformer.transformer_blocks[i])
+                self.transformer.transformer_blocks[i].forward = types.MethodType(
+                    forward_with_stg, self.transformer.transformer_blocks[i]
+                )
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -717,7 +719,9 @@ class MochiSTGPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
         elif self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds, prompt_embeds], dim=0)
-            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask, prompt_attention_mask], dim=0)
+            prompt_attention_mask = torch.cat(
+                [negative_prompt_attention_mask, prompt_attention_mask, prompt_attention_mask], dim=0
+            )
 
         # 5. Prepare timestep
         # from https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
@@ -769,9 +773,12 @@ class MochiSTGPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                 elif self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
                     noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond) \
+                    noise_pred = (
+                        noise_pred_uncond
+                        + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                         + self._stg_scale * (noise_pred_text - noise_pred_perturb)
-                        
+                    )
+
                 if do_rescaling:
                     rescaling_scale = 0.7
                     factor = noise_pred_text.std() / noise_pred.std()

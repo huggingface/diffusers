@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import types
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+import types
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -25,12 +25,12 @@ from diffusers.image_processor import PipelineImageInput
 from diffusers.loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from diffusers.models.autoencoders import AutoencoderKLLTXVideo
 from diffusers.models.transformers import LTXVideoTransformer3DModel
+from diffusers.pipelines.ltx.pipeline_output import LTXPipelineOutput
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.ltx.pipeline_output import LTXPipelineOutput
 
 
 if is_torch_xla_available():
@@ -81,48 +81,47 @@ EXAMPLE_DOC_STRING = """
 
 
 def forward_with_stg(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-    
-        hidden_states_ptb = hidden_states[2:]
-        encoder_hidden_states_ptb = encoder_hidden_states[2:]
-    
-        batch_size = hidden_states.size(0)
-        norm_hidden_states = self.norm1(hidden_states)
+    self,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    encoder_attention_mask: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    hidden_states_ptb = hidden_states[2:]
+    encoder_hidden_states_ptb = encoder_hidden_states[2:]
 
-        num_ada_params = self.scale_shift_table.shape[0]
-        ada_values = self.scale_shift_table[None, None] + temb.reshape(batch_size, temb.size(1), num_ada_params, -1)
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
-        norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
+    batch_size = hidden_states.size(0)
+    norm_hidden_states = self.norm1(hidden_states)
 
-        attn_hidden_states = self.attn1(
-            hidden_states=norm_hidden_states,
-            encoder_hidden_states=None,
-            image_rotary_emb=image_rotary_emb,
-        )
-        hidden_states = hidden_states + attn_hidden_states * gate_msa
+    num_ada_params = self.scale_shift_table.shape[0]
+    ada_values = self.scale_shift_table[None, None] + temb.reshape(batch_size, temb.size(1), num_ada_params, -1)
+    shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
+    norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
 
-        attn_hidden_states = self.attn2(
-            hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            image_rotary_emb=None,
-            attention_mask=encoder_attention_mask,
-        )
-        hidden_states = hidden_states + attn_hidden_states
-        norm_hidden_states = self.norm2(hidden_states) * (1 + scale_mlp) + shift_mlp
+    attn_hidden_states = self.attn1(
+        hidden_states=norm_hidden_states,
+        encoder_hidden_states=None,
+        image_rotary_emb=image_rotary_emb,
+    )
+    hidden_states = hidden_states + attn_hidden_states * gate_msa
 
-        ff_output = self.ff(norm_hidden_states)
-        hidden_states = hidden_states + ff_output * gate_mlp
+    attn_hidden_states = self.attn2(
+        hidden_states,
+        encoder_hidden_states=encoder_hidden_states,
+        image_rotary_emb=None,
+        attention_mask=encoder_attention_mask,
+    )
+    hidden_states = hidden_states + attn_hidden_states
+    norm_hidden_states = self.norm2(hidden_states) * (1 + scale_mlp) + shift_mlp
 
-        hidden_states[2:] = hidden_states_ptb
-        encoder_hidden_states[2:] = encoder_hidden_states_ptb
-    
-        return hidden_states
+    ff_output = self.ff(norm_hidden_states)
+    hidden_states = hidden_states + ff_output * gate_mlp
+
+    hidden_states[2:] = hidden_states_ptb
+    encoder_hidden_states[2:] = encoder_hidden_states_ptb
+
+    return hidden_states
 
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
@@ -597,7 +596,7 @@ class LTXImageToVideoSTGPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVide
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1.0
-    
+
     @property
     def do_spatio_temporal_guidance(self):
         return self._stg_scale > 0.0
@@ -746,10 +745,12 @@ class LTXImageToVideoSTGPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVide
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._interrupt = False
-        
+
         if self.do_spatio_temporal_guidance:
             for i in stg_applied_layers_idx:
-                self.transformer.transformer_blocks[i].forward = types.MethodType(forward_with_stg, self.transformer.transformer_blocks[i])
+                self.transformer.transformer_blocks[i].forward = types.MethodType(
+                    forward_with_stg, self.transformer.transformer_blocks[i]
+                )
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -784,7 +785,9 @@ class LTXImageToVideoSTGPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVide
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
         elif self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds, prompt_embeds], dim=0)
-            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask, prompt_attention_mask], dim=0)
+            prompt_attention_mask = torch.cat(
+                [negative_prompt_attention_mask, prompt_attention_mask, prompt_attention_mask], dim=0
+            )
 
         # 4. Prepare latent variables
         if latents is None:
@@ -854,7 +857,7 @@ class LTXImageToVideoSTGPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVide
                     latent_model_input = torch.cat([latents] * 3)
                 else:
                     latent_model_input = latents
-                    
+
                 latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -881,10 +884,13 @@ class LTXImageToVideoSTGPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVide
                     timestep, _ = timestep.chunk(2)
                 elif self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
                     noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond) \
+                    noise_pred = (
+                        noise_pred_uncond
+                        + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                         + self._stg_scale * (noise_pred_text - noise_pred_perturb)
+                    )
                     timestep, _, _ = timestep.chunk(3)
-                    
+
                 if do_rescaling:
                     rescaling_scale = 0.7
                     factor = noise_pred_text.std() / noise_pred.std()
