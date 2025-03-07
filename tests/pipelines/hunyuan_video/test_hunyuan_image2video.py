@@ -152,14 +152,14 @@ class HunyuanVideoImageToVideoPipelineFastTests(
 
         torch.manual_seed(0)
         image_processor = CLIPImageProcessor(
-            crop_size=224,
+            crop_size=336,
             do_center_crop=True,
             do_normalize=True,
             do_resize=True,
             image_mean=[0.48145466, 0.4578275, 0.40821073],
             image_std=[0.26862954, 0.26130258, 0.27577711],
             resample=3,
-            size=224,
+            size=336,
         )
 
         components = {
@@ -213,8 +213,9 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
+        # NOTE: The expected video has 4 lesser frames because they are dropped in the pipeline
+        self.assertEqual(generated_video.shape, (5, 3, 16, 16))
+        expected_video = torch.randn(5, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 

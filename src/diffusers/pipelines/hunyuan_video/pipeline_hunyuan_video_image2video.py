@@ -846,8 +846,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
             video = self.vae.decode(latents, return_dict=False)[0]
-            video = self.video_processor.postprocess_video(video, output_type=output_type)
             video = video[:, :, 4:, :, :]
+            video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents[:, :, 1:, :, :]
 
