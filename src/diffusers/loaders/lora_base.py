@@ -344,6 +344,10 @@ def _load_lora_into_text_encoder(
 
     # Safe prefix to check with.
     if any(text_encoder_name in key for key in keys):
+        # adapter_name
+        if adapter_name is None:
+            adapter_name = get_adapter_name(text_encoder)
+
         # Load the layers corresponding to text encoder and make necessary adjustments.
         text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".")[0] == prefix]
         text_encoder_lora_state_dict = {
@@ -357,20 +361,6 @@ def _load_lora_into_text_encoder(
 
             # convert state dict
             text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
-
-            if any("position_embedding" in k for k in text_encoder_lora_state_dict):
-                # TODO: this copying is a big shot in the dark.
-                # https://huggingface.co/sayakpaul/different-lora-from-civitai/tree/main?show_file_info=RM_Artistify_v1.0M.safetensors
-                # only has LoRA keys for the position embedding but not the LoRA embedding keys.
-                text_encoder_lora_state_dict[
-                    "text_model.embeddings.position_embedding.lora_embedding_A.weight"
-                ] = text_encoder_lora_state_dict["text_model.embeddings.position_embedding.lora_A.weight"].clone()
-                text_encoder_lora_state_dict[
-                    "text_model.embeddings.position_embedding.lora_embedding_B.weight"
-                ] = text_encoder_lora_state_dict["text_model.embeddings.position_embedding.lora_B.weight"].clone()
-                rank["text_model.embeddings.position_embedding.lora_B.weight"] = text_encoder_lora_state_dict[
-                    "text_model.embeddings.position_embedding.lora_B.weight"
-                ].shape[1]
 
             for name, _ in text_encoder_attn_modules(text_encoder):
                 for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
@@ -413,10 +403,6 @@ def _load_lora_into_text_encoder(
                         lora_config_kwargs.pop("lora_bias")
 
             lora_config = LoraConfig(**lora_config_kwargs)
-
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(text_encoder)
 
             is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
 
