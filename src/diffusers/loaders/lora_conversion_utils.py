@@ -306,9 +306,7 @@ def _convert_text_encoder_lora_key(key, lora_name):
         key_to_replace = "lora_te2_"
 
     diffusers_name = key.replace(key_to_replace, "").replace("_", ".")
-
     diffusers_name = diffusers_name.replace("text.model", "text_model")
-    diffusers_name = diffusers_name.replace("position.embedding", "position_embedding")
     diffusers_name = diffusers_name.replace("self.attn", "self_attn")
     diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
     diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
