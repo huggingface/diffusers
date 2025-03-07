@@ -241,7 +241,7 @@ extras["torch"] = deps_list("torch", "accelerate")
 
 extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
 extras["gguf"] = deps_list("gguf", "accelerate")
-extras["quanto"] = deps_list("optimum_quanto", "accelerate")
+extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 
 if os.name == "nt":  # windows
