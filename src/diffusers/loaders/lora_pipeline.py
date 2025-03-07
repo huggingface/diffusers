@@ -843,11 +843,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
-                "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers` or `text_encoder_2_lora_layers`."
+                "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers`, `text_encoder_2_lora_layers`."
             )
 
         if unet_lora_layers:
-            state_dict.update(cls.pack_weights(unet_lora_layers, "unet"))
+            state_dict.update(cls.pack_weights(unet_lora_layers, cls.unet_name))
 
         if text_encoder_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_lora_layers, "text_encoder"))
@@ -2533,7 +2533,6 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
