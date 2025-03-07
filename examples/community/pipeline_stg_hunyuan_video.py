@@ -60,7 +60,6 @@ EXAMPLE_DOC_STRING = """
         >>> # Configure STG mode options
         >>> stg_applied_layers_idx = [2]  # Layer indices from 0 to 41
         >>> stg_scale = 1.0 # Set 0.0 for CFG
-        >>> do_rescaling = False
 
         >>> output = pipe(
         ...     prompt="A wolf howling at the moon, with the moon subtly resembling a giant clock face, realistic style.",
@@ -70,7 +69,6 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=30,
         ...     stg_applied_layers_idx=stg_applied_layers_idx,
         ...     stg_scale=stg_scale,
-        ...     do_rescaling=do_rescaling,
         >>> ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=15)
         ```
@@ -560,7 +558,6 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
         max_sequence_length: int = 256,
         stg_applied_layers_idx: Optional[List[int]] = [2],
         stg_scale: Optional[float] = 0.0,
-        do_rescaling: Optional[bool] = False,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -755,12 +752,6 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                         return_dict=False,
                     )[0]
                     noise_pred = noise_pred + self._stg_scale * (noise_pred - noise_pred_perturb)
-                    
-                if do_rescaling:
-                    rescaling_scale = 0.7
-                    factor = noise_pred_text.std() / noise_pred.std()
-                    factor = rescaling_scale * factor + (1 - rescaling_scale)
-                    noise_pred = noise_pred * factor
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
