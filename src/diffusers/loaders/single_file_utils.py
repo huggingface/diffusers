@@ -2898,12 +2898,26 @@ def convert_lumina2_to_diffusers(checkpoint, **kwargs):
 def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
 
+    keys = list(checkpoint.keys())
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
     TRANSFORMER_KEYS_RENAME_DICT = {
         "time_embedding.0": "condition_embedder.time_embedder.linear_1",
         "time_embedding.2": "condition_embedder.time_embedder.linear_2",
         "text_embedding.0": "condition_embedder.text_embedder.linear_1",
         "text_embedding.2": "condition_embedder.text_embedder.linear_2",
         "time_projection.1": "condition_embedder.time_proj",
+        "cross_attn": "attn2",
+        "self_attn": "attn1",
+        ".o.": ".to_out.0.",
+        ".q.": ".to_q.",
+        ".k.": ".to_k.",
+        ".v.": ".to_v.",
+        ".k_img.": ".add_k_proj.",
+        ".v_img.": ".add_v_proj.",
+        ".norm_k_img.": ".norm_added_k.",
         "head.modulation": "scale_shift_table",
         "head.head": "proj_out",
         "modulation": "scale_shift_table",
