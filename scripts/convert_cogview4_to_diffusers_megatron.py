@@ -25,7 +25,7 @@ import argparse
 
 import torch
 from tqdm import tqdm
-from transformers import GlmForCausalLM, PreTrainedTokenizerFast
+from transformers import GlmModel, PreTrainedTokenizerFast
 
 from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
@@ -189,14 +189,8 @@ def convert_megatron_transformer_checkpoint_to_diffusers(
         block_prefix = f"transformer_blocks.{i}."
 
         # AdaLayerNorm
-        new_state_dict[block_prefix + "norm1.linear.weight"] = swap_scale_shift(
-            mega[f"decoder.layers.{i}.adaln.weight"], dim=0
-        )
-        new_state_dict[block_prefix + "norm1.linear.bias"] = swap_scale_shift(
-            mega[f"decoder.layers.{i}.adaln.bias"], dim=0
-        )
-
-        # QKV
+        new_state_dict[block_prefix + "norm1.linear.weight"] = mega[f"decoder.layers.{i}.adaln.weight"]
+        new_state_dict[block_prefix + "norm1.linear.bias"] = mega[f"decoder.layers.{i}.adaln.bias"]
         qkv_weight = mega[f"decoder.layers.{i}.self_attention.linear_qkv.weight"]
         qkv_bias = mega[f"decoder.layers.{i}.self_attention.linear_qkv.bias"]
 
@@ -221,7 +215,7 @@ def convert_megatron_transformer_checkpoint_to_diffusers(
         # Attention Output
         new_state_dict[block_prefix + "attn1.to_out.0.weight"] = mega[
             f"decoder.layers.{i}.self_attention.linear_proj.weight"
-        ].T
+        ]
         new_state_dict[block_prefix + "attn1.to_out.0.bias"] = mega[
             f"decoder.layers.{i}.self_attention.linear_proj.bias"
         ]
@@ -317,6 +311,7 @@ def main(args):
             "norm_num_groups": 32,
             "sample_size": 1024,
             "scaling_factor": 1.0,
+            "shift_factor": 0.0,
             "force_upcast": True,
             "use_quant_conv": False,
             "use_post_quant_conv": False,
@@ -331,7 +326,7 @@ def main(args):
     # Load the text encoder and tokenizer
     text_encoder_id = "THUDM/glm-4-9b-hf"
     tokenizer = PreTrainedTokenizerFast.from_pretrained(text_encoder_id)
-    text_encoder = GlmForCausalLM.from_pretrained(
+    text_encoder = GlmModel.from_pretrained(
         text_encoder_id,
         cache_dir=args.text_encoder_cache_dir,
         torch_dtype=torch.bfloat16 if args.dtype == "bf16" else torch.float32,

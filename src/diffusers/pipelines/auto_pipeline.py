@@ -22,7 +22,7 @@ from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
-from .cogview4 import CogView4Pipeline
+from .cogview4 import CogView4Pipeline, CogView4ControlPipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -145,6 +145,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("lumina2", Lumina2Text2ImgPipeline),
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
+        ("cogview4-control", CogView4ControlPipeline),
     ]
 )
 
