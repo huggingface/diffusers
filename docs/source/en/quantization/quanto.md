@@ -85,8 +85,12 @@ from diffusers import FluxTransformer2DModel, QuantoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
 quantization_config = QuantoConfig(weights_dtype="float8")
-transformer = FluxTransformer2DModel.from_pretrained(model_id, quantization_config=quantization_config, torch_dtype=torch.bfloat16)
-
+transformer = FluxTransformer2DModel.from_pretrained(
+      model_id,
+      subfolder="transformer",
+      quantization_config=quantization_config,
+      torch_dtype=torch.bfloat16,
+)
 # save quantized model to reuse
 transformer.save_pretrained("<your quantized model save path>")
 
