@@ -18,11 +18,11 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..quantizers.bitsandbytes import dequantize_bnb_weight
 from ..utils import (
     USE_PEFT_BACKEND,
     deprecate,
     get_submodule_by_name,
+    is_bitsandbytes_available,
     is_peft_available,
     is_peft_version,
     is_torch_version,
@@ -47,6 +47,9 @@ from .lora_conversion_utils import (
     _maybe_map_sgm_blocks_to_diffusers,
 )
 
+
+if is_bitsandbytes_available():
+    from ..quantizers.bitsandbytes import dequantize_bnb_weight
 
 _LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
 if is_torch_version(">=", "1.9.0"):
@@ -1971,11 +1974,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         is_peft_loaded = getattr(transformer, "peft_config", None) is not None
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
-                module_weight = (
-                    dequantize_bnb_weight(module.weight, state=module.weight.quant_state).data
-                    if module.weight.__class__.__name__ == "Params4bit"
-                    else module.weight.data
-                )
+                is_quantized = module.weight.__class__.__name__ == "Params4bit"
+                if is_quantized and not is_bitsandbytes_available():
+                    raise ValueError("Install `bitsandbytes` to load quantized checkpoints.")
+                elif is_quantized:
+                    module_weight = dequantize_bnb_weight(module.weight, state=module.weight.quant_state).data
+                else:
+                    module_weight = module.weight.data
                 module_bias = module.bias.data if module.bias is not None else None
                 bias = module_bias is not None
 
@@ -1997,8 +2002,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 if tuple(module_weight_shape) == (out_features, in_features):
                     continue
 
-                # TODO (sayakpaul): We still need to consider if the module we're expanding is
-                # quantized and handle it accordingly if that is the case.
                 module_out_features, module_in_features = module_weight_shape
                 debug_message = ""
                 if in_features > module_in_features:
