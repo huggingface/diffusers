@@ -1214,7 +1214,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, torch.nn.Module] = None,
+        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         is_main_process: bool = True,
@@ -1263,7 +1263,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         if text_encoder_2_lora_layers:
             state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
-        # Save the model
         cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
@@ -1331,7 +1330,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
@@ -3185,7 +3184,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
         Reverses the effect of
