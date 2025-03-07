@@ -12,20 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.attention import FeedForward
-from ...models.attention_processor import Attention
-from ...models.modeling_utils import ModelMixin
-from ...models.normalization import AdaLayerNormContinuous
-from ...utils import logging
+from ...loaders import PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ..attention import FeedForward
+from ..attention_processor import Attention
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
+from ..normalization import AdaLayerNormContinuous
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -288,7 +289,7 @@ class CogView4RotaryPosEmbed(nn.Module):
         return (freqs.cos(), freqs.sin())
 
 
-class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
+class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     r"""
     Args:
         patch_size (`int`, defaults to `2`):
@@ -383,8 +384,24 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         original_size: torch.Tensor,
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         batch_size, num_channels, height, width = hidden_states.shape
 
         # 1. RoPE
@@ -418,6 +435,10 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin):
         # 5. Unpatchify
         hidden_states = hidden_states.reshape(batch_size, post_patch_height, post_patch_width, -1, p, p)
         output = hidden_states.permute(0, 3, 1, 4, 2, 5).flatten(4, 5).flatten(2, 3)
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)
