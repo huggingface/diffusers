@@ -45,6 +45,22 @@ pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers", scheduler
 pipe.scheduler = <CUSTOM_SCHEDULER_HERE>
 ```
 
+### Using single file loading with Wan
+
+The `WanTransformer3DModel` and `AutoencoderKLWan` models support loading checkpoints in their original format via the `from_single_file` loading 
+method. 
+
+
+```python
+import torch
+from diffusers import WanPipeline, WanTransformer3DModel
+
+ckpt_path = "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors"
+transformer = WanTransformer3DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
+
+pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers", transformer=transformer)
+```
+
 ## WanPipeline
 
 [[autodoc]] WanPipeline
