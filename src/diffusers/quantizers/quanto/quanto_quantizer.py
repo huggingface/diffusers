@@ -168,10 +168,6 @@ class QuantoQuantizer(DiffusersQuantizer):
     def _process_model_after_weight_loading(self, model, **kwargs):
         return model
 
-    def _dequantize(self, model):
-        logger.warning("Dequantizing the full model is currently not supported with the Quanto backend")
-        return
-
     @property
     def is_trainable(self):
         return True
