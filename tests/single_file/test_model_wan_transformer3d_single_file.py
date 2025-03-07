@@ -66,7 +66,7 @@ class WanTransformer3DModelText2VideoSingleFileTest(unittest.TestCase):
 @require_torch_accelerator
 class WanTransformer3DModelImage2VideoSingleFileTest(unittest.TestCase):
     model_class = WanTransformer3DModel
-    ckpt_path = "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_i2v_720p_14B_fp8_e4m3fn.safetensors"
+    ckpt_path = "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors"
     repo_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
     torch_dtype = torch.float8_e4m3fn
 
