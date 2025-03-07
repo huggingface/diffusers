@@ -19,7 +19,7 @@ import ftfy
 import PIL
 import regex as re
 import torch
-from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -49,11 +49,11 @@ EXAMPLE_DOC_STRING = """
         >>> import numpy as np
         >>> from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
-        >>> from transformers import CLIPVisionModelWithProjection
+        >>> from transformers import CLIPVisionModel
 
         >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers, Wan-AI/Wan2.1-I2V-14B-720P-Diffusers
         >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
-        >>> image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+        >>> image_encoder = CLIPVisionModel.from_pretrained(
         ...     model_id, subfolder="image_encoder", torch_dtype=torch.float32
         ... )
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
@@ -171,7 +171,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        image_encoder: CLIPVisionModelWithProjection,
+        image_encoder: CLIPVisionModel,
         image_processor: CLIPImageProcessor,
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
