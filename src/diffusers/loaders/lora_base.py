@@ -344,10 +344,6 @@ def _load_lora_into_text_encoder(
 
     # Safe prefix to check with.
     if any(text_encoder_name in key for key in keys):
-        # adapter_name
-        if adapter_name is None:
-            adapter_name = get_adapter_name(text_encoder)
-
         # Load the layers corresponding to text encoder and make necessary adjustments.
         text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".")[0] == prefix]
         text_encoder_lora_state_dict = {
@@ -403,6 +399,10 @@ def _load_lora_into_text_encoder(
                         lora_config_kwargs.pop("lora_bias")
 
             lora_config = LoraConfig(**lora_config_kwargs)
+
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(text_encoder)
 
             is_model_cpu_offload, is_sequential_cpu_offload = _func_optionally_disable_offloading(_pipeline)
 
