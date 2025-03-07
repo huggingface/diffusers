@@ -48,6 +48,16 @@ class QuantizationMethod(str, Enum):
     QUANTO = "quanto"
 
 
+if is_torchao_available():
+    from torchao.quantization.quant_primitives import MappingType
+
+    class TorchAoJSONEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, MappingType):
+                return obj.name
+            return super().default(obj)
+
+
 @dataclass
 class QuantizationConfigMixin:
     """
@@ -674,7 +684,9 @@ class TorchAoConfig(QuantizationConfigMixin):
         ```
         """
         config_dict = self.to_dict()
-        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
+        return (
+            f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True, cls=TorchAoJSONEncoder)}\n"
+        )
 
 
 @dataclass
