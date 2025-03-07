@@ -1948,6 +1948,50 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs()
             _ = pipe(**inputs)[0]
 
+    def test_logs_info_when_no_lora_keys_found(self):
+        scheduler_cls = self.scheduler_classes[0]
+        # Skip text encoder check for now as that is handled with `transformers`.
+        components, _, _ = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
+        logger = logging.get_logger("diffusers.loaders.peft")
+        logger.setLevel(logging.INFO)
+
+        with CaptureLogger(logger) as cap_logger:
+            pipe.load_lora_weights(no_op_state_dict)
+        out_after_lora_attempt = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        denoiser = getattr(pipe, "unet") if self.unet_kwargs is not None else getattr(pipe, "transformer")
+        self.assertTrue(cap_logger.out.startswith(f"No LoRA keys associated to {denoiser.__class__.__name__}"))
+        self.assertTrue(np.allclose(original_out, out_after_lora_attempt, atol=1e-5, rtol=1e-5))
+
+        # test only for text encoder
+        for lora_module in self.pipeline_class._lora_loadable_modules:
+            if "text_encoder" in lora_module:
+                text_encoder = getattr(pipe, lora_module)
+                if lora_module == "text_encoder":
+                    prefix = "text_encoder"
+                elif lora_module == "text_encoder_2":
+                    prefix = "text_encoder_2"
+
+                logger = logging.get_logger("diffusers.loaders.lora_base")
+                logger.setLevel(logging.INFO)
+
+                with CaptureLogger(logger) as cap_logger:
+                    self.pipeline_class.load_lora_into_text_encoder(
+                        no_op_state_dict, network_alphas=None, text_encoder=text_encoder, prefix=prefix
+                    )
+
+                self.assertTrue(
+                    cap_logger.out.startswith(f"No LoRA keys associated to {text_encoder.__class__.__name__}")
+                )
+
     def test_set_adapters_match_attention_kwargs(self):
         """Test to check if outputs after `set_adapters()` and attention kwargs match."""
         call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
