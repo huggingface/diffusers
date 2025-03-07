@@ -880,6 +880,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         adapter_name=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -905,6 +906,29 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter.
+
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+
+                ```py
+                pipeline = ...  # load diffusers pipeline
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
+                ```
+
+                Note that hotswapping adapters of the text encoder is not yet supported. There are some further
+                limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -916,6 +940,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
         )
 
     @classmethod
@@ -1155,7 +1180,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         return state_dict
 
     def load_lora_weights(
-        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        adapter_name=None,
+        hotswap: bool = False,
+        **kwargs,
     ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
@@ -1178,6 +1207,26 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter. If the new
+                adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need to call an
+                additional method before loading the adapter:
+                ```py
+                pipeline = ...  # load diffusers pipeline
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
+                ```
+                Note that hotswapping adapters of the text encoder is not yet supported. There are some further
+                limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
@@ -1224,6 +1273,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
             )
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
@@ -1237,6 +1287,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
             )
 
     @classmethod
@@ -1287,6 +1338,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         adapter_name=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1312,6 +1364,29 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter.
+
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+
+                ```py
+                pipeline = ...  # load diffusers pipeline
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
+                ```
+
+                Note that hotswapping adapters of the text encoder is not yet supported. There are some further
+                limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -1323,6 +1398,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
         )
 
     @classmethod
@@ -1600,7 +1676,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             return state_dict
 
     def load_lora_weights(
-        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        adapter_name=None,
+        hotswap: bool = False,
+        **kwargs,
     ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
@@ -1625,6 +1705,26 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 `Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter. If the new
+                adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need to call an
+                additional method before loading the adapter:
+                ```py
+                pipeline = ...  # load diffusers pipeline
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
+                ```
+                Note that hotswapping adapters of the text encoder is not yet supported. There are some further
+                limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1706,6 +1806,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
             )
 
     @classmethod
@@ -1817,6 +1918,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         adapter_name=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1842,6 +1944,29 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter.
+
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+
+                ```py
+                pipeline = ...  # load diffusers pipeline
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
+                ```
+
+                Note that hotswapping adapters of the text encoder is not yet supported. There are some further
+                limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -1853,6 +1978,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
         )
 
     @classmethod
@@ -2312,6 +2438,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         adapter_name=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -2337,6 +2464,29 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter.
+
+                If the new adapter and the old adapter have different ranks and/or LoRA alphas (i.e. scaling), you need
+                to call an additional method before loading the adapter:
+
+                ```py
+                pipeline = ...  # load diffusers pipeline
+                max_rank = ...  # the highest rank among all LoRAs that you want to load
+                # call *before* compiling and loading the LoRA adapter
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+                pipeline.load_lora_weights(file_name)
+                # optionally compile the model now
+                ```
+
+                Note that hotswapping adapters of the text encoder is not yet supported. There are some further
+                limitations to this technique, which are documented here:
+                https://huggingface.co/docs/peft/main/en/package_reference/hotswap
         """
         _load_lora_into_text_encoder(
             state_dict=state_dict,
@@ -2348,6 +2498,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name=adapter_name,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
         )
 
     @classmethod
