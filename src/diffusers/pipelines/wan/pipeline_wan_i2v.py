@@ -19,7 +19,7 @@ import ftfy
 import PIL
 import regex as re
 import torch
-from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -46,19 +46,31 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
+        >>> import numpy as np
         >>> from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
+        >>> from transformers import CLIPVisionModel
 
-        >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers, Wan-AI/Wan2.1-I2V-1.3B-720P-Diffusers
+        >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers, Wan-AI/Wan2.1-I2V-14B-720P-Diffusers
         >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
+        >>> image_encoder = CLIPVisionModel.from_pretrained(
+        ...     model_id, subfolder="image_encoder", torch_dtype=torch.float32
+        ... )
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = WanImageToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> pipe = WanImageToVideoPipeline.from_pretrained(
+        ...     model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
 
-        >>> height, width = 480, 832
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
-        ... ).resize((width, height))
+        ... )
+        >>> max_area = 480 * 832
+        >>> aspect_ratio = image.height / image.width
+        >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+        >>> height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+        >>> width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+        >>> image = image.resize((width, height))
         >>> prompt = (
         ...     "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
         ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
@@ -66,9 +78,15 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
         >>> output = pipe(
-        ...     image=image, prompt=prompt, negative_prompt=negative_prompt, num_frames=81, guidance_scale=5.0
+        ...     image=image,
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     height=height,
+        ...     width=width,
+        ...     num_frames=81,
+        ...     guidance_scale=5.0,
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=15)
+        >>> export_to_video(output, "output.mp4", fps=16)
         ```
 """
 
@@ -137,7 +155,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        image_encoder: CLIPVisionModelWithProjection,
+        image_encoder: CLIPVisionModel,
         image_processor: CLIPImageProcessor,
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
@@ -204,7 +222,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def encode_image(self, image: PipelineImageInput):
         image = self.image_processor(images=image, return_tensors="pt").to(self.device)
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-1]
+        return image_embeds.hidden_states[-2]
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
@@ -373,6 +391,17 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             latent_condition = retrieve_latents(self.vae.encode(video_condition), generator)
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
+
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            latents.device, latents.dtype
+        )
+
+        latent_condition = (latent_condition - latents_mean) * latents_std
 
         mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
         mask_lat_size[:, :, list(range(1, num_frames))] = 0
@@ -636,6 +665,15 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype)
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                latents.device, latents.dtype
+            )
+            latents = latents / latents_std + latents_mean
             video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
