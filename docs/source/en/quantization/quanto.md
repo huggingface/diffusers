@@ -26,7 +26,7 @@ In order to use the Quanto backend, you will first need to install `optimum-quan
 pip install optimum-quanto accelerate
 ```
 
-Now you can quantize a model by passing the `QuantoConfig` object to the `from_pretrained()` method. Although the Quanto library does allow quantizing `nn.Conv2d` and `nn.LayerNorm` modules, currently, Diffusers only supports quantizing the `nn.Linear` layers in a model. The following snippet demonstrates how to apply `float8` quantization with Quanto.   
+Now you can quantize a model by passing the `QuantoConfig` object to the `from_pretrained()` method. Although the Quanto library does allow quantizing `nn.Conv2d` and `nn.LayerNorm` modules, currently, Diffusers only supports quantizing the weights in the `nn.Linear` layers of a model. The following snippet demonstrates how to apply `float8` quantization with Quanto.   
 
 ```python
 import torch
@@ -61,6 +61,8 @@ transformer = FluxTransformer2DModel.from_pretrained(model_id, quantization_conf
 
 ## Using `from_single_file` with the Quanto Backend
 
+`QuantoConfig` is compatible with `~FromOriginalModelMixin.from_single_file`. 
+
 ```python
 import torch
 from diffusers import FluxTransformer2DModel, QuantoConfig
@@ -72,7 +74,10 @@ transformer = FluxTransformer2DModel.from_single_file(ckpt_path, quantization_co
 
 ## Saving Quantized models
 
-Diffusers supports serializing and saving Quanto models using the `save_pretrained` method.
+Diffusers supports serializing Quanto models using the `~ModelMixin.save_pretrained` method.
+
+The serialization and loading requirements are different for models quantized directly with the Quanto library and models quantized
+with Diffusers using Quanto as the backend. It is currently not possible to load models quantized directly with Quanto into Diffusers using `~ModelMixin.from_pretrained`
 
 ```python
 import torch
@@ -114,7 +119,7 @@ pipe = FluxPipeline.from_pretrained(
 )
 pipe.to("cuda")
 images = pipe("A cat holding a sign that says hello").images[0]
-images.save("flux-quanto.png")
+images.save("flux-quanto-compile.png")
 ```
 
 ## Supported Quantization Types
@@ -126,6 +131,4 @@ images.save("flux-quanto.png")
 - int4
 - int2
 
-### Activations
-- float8
-- int8
+

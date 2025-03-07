@@ -324,26 +324,12 @@ class FluxTransformerFloat8WeightsTest(FluxTransformerQuantoMixin, unittest.Test
         return {"weights_dtype": "float8"}
 
 
-class FluxTransformerFloat8WeightsAndActivationTest(FluxTransformerQuantoMixin, unittest.TestCase):
-    expected_memory_reduction = 0.3
-
-    def get_dummy_init_kwargs(self):
-        return {"weights_dtype": "float8", "activations_dtype": "float8"}
-
-
 class FluxTransformerInt8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_reduction = 0.3
     _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):
         return {"weights_dtype": "int8"}
-
-
-class FluxTransformerInt8WeightsAndActivationTest(FluxTransformerQuantoMixin, unittest.TestCase):
-    expected_memory_reduction = 0.3
-
-    def get_dummy_init_kwargs(self):
-        return {"weights_dtype": "int8", "activations_dtype": "int8"}
 
 
 class FluxTransformerInt4WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):

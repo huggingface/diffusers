@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch.nn as nn
 
 from ...utils import is_accelerate_available, logging
@@ -17,9 +15,6 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
 
     def _get_weight_type(dtype: str):
         return {"float8": qfloat8, "int8": qint8, "int4": qint4, "int2": qint2}[dtype]
-
-    def _get_activation_type(dtype: Optional[str]):
-        return {None: None, "float8": qfloat8, "int8": qint8}[dtype]
 
     def _replace_layers(model, quantization_config, modules_to_not_convert):
         has_children = list(model.children())
@@ -40,7 +35,6 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
                         bias=module.bias is not None,
                         dtype=module.weight.dtype,
                         weights=_get_weight_type(quantization_config.weights_dtype),
-                        activations=_get_activation_type(quantization_config.activations_dtype),
                     )
                     model._modules[name] = qlinear
                     model._modules[name].source_cls = type(module)
@@ -58,7 +52,7 @@ def _replace_with_quanto_layers(model, quantization_config, modules_to_not_conve
             " https://github.com/huggingface/diffusers"
         )
 
-    # We need to freeze the pre_quantized model in order for the loaded state dict and model_state dict
+    # We need to freeze the pre_quantized model in order for the loaded state_dict and model state dict
     # to match when trying to load weights with load_model_dict_into_meta
     if pre_quantized:
         freeze(model)

@@ -60,7 +60,7 @@ class QuantoQuantizer(DiffusersQuantizer):
         device_map = kwargs.get("device_map", None)
         if isinstance(device_map, dict) and len(device_map.keys()) > 1:
             raise ValueError(
-                "`device_map` for multi-GPU inference or CPU/disk offload is currently not supported with the Quanto backend"
+                "`device_map` for multi-GPU inference or CPU/disk offload is currently not supported with Diffusers and the Quanto backend"
             )
 
     def check_if_quantized_param(
