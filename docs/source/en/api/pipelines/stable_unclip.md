@@ -12,6 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # Stable unCLIP
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 Stable unCLIP checkpoints are finetuned from [Stable Diffusion 2.1](./stable_diffusion/stable_diffusion_2) checkpoints to condition on CLIP image embeddings.
 Stable unCLIP still conditions on text embeddings. Given the two separate conditionings, stable unCLIP can be used
 for text guided image variation. When combined with an unCLIP prior, it can also be used for full text to image generation.

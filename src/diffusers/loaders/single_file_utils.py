@@ -397,6 +397,7 @@ def load_single_file_checkpoint(
 
     else:
         repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
+        user_agent = {"file_type": "single_file", "framework": "pytorch"}
         pretrained_model_link_or_path = _get_model_file(
             repo_id,
             weights_name=weights_name,
@@ -406,6 +407,7 @@ def load_single_file_checkpoint(
             local_files_only=local_files_only,
             token=token,
             revision=revision,
+            user_agent=user_agent,
         )
 
     checkpoint = load_state_dict(pretrained_model_link_or_path, disable_mmap=disable_mmap)
@@ -1448,8 +1450,8 @@ def convert_open_clip_checkpoint(
 
     if text_proj_key in checkpoint:
         text_proj_dim = int(checkpoint[text_proj_key].shape[0])
-    elif hasattr(text_model.config, "projection_dim"):
-        text_proj_dim = text_model.config.projection_dim
+    elif hasattr(text_model.config, "hidden_size"):
+        text_proj_dim = text_model.config.hidden_size
     else:
         text_proj_dim = LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
 
