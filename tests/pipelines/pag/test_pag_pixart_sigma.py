@@ -343,3 +343,7 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertTrue(hasattr(pipe, "components"))
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
+
+    @unittest.skip("Test is already covered through encode_prompt isolation.")
+    def test_save_load_optional_components(self):
+        pass

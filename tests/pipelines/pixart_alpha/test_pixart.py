@@ -144,6 +144,10 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    @unittest.skip("Test is already covered through encode_prompt isolation.")
+    def test_save_load_optional_components(self):
+        pass
+
     def test_inference_with_embeddings_and_multiple_images(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
