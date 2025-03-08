@@ -30,6 +30,7 @@ from ..embeddings import (
     CombinedTimestepGuidanceTextProjEmbeddings,
     CombinedTimestepTextProjEmbeddings,
     get_1d_rotary_pos_embed,
+    get_1d_rotary_pos_embed_riflex,
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -351,6 +352,38 @@ class HunyuanVideoRotaryPosEmbed(nn.Module):
         freqs_sin = torch.cat([f[1] for f in freqs], dim=1)  # (W * H * T, D / 2)
         return freqs_cos, freqs_sin
 
+class HunyuanVideoRotaryPosEmbedRifleX(HunyuanVideoRotaryPosEmbed):
+    def __init__(self, k: int=4, L_test:int=66, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.k = k
+        self.L_test = L_test
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        rope_sizes = [num_frames // self.patch_size_t, height // self.patch_size, width // self.patch_size]
+
+        axes_grids = []
+        for i in range(3):
+            grid = torch.arange(0, rope_sizes[i], device=hidden_states.device, dtype=torch.float32)
+            axes_grids.append(grid)
+        grid = torch.meshgrid(*axes_grids, indexing="ij")  # [W, H, T]
+        grid = torch.stack(grid, dim=0)  # [3, W, H, T]
+
+        freqs = []
+        for i in range(3):
+            # === RIFLEx modification start ===
+            # apply RIFLEx for time dimension
+            if i == 0:
+                freq = get_1d_rotary_pos_embed_riflex(self.rope_dim[i], grid[i].reshape(-1), self.theta, use_real=True, k=self.k, L_test=self.L_test)
+            # === RIFLEx modification end ===
+            else:
+                freq = get_1d_rotary_pos_embed(self.rope_dim[i], grid[i].reshape(-1), self.theta, use_real=True)
+            freqs.append(freq)
+
+        freqs_cos = torch.cat([f[0] for f in freqs], dim=1)  # (W * H * T, D / 2)
+        freqs_sin = torch.cat([f[1] for f in freqs], dim=1)  # (W * H * T, D / 2)
+        return freqs_cos, freqs_sin
+    
 
 class HunyuanVideoSingleTransformerBlock(nn.Module):
     def __init__(
@@ -581,11 +614,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         self.context_embedder = HunyuanVideoTokenRefiner(
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
-
-        if guidance_embeds:
-            self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, pooled_projection_dim)
-        else:
-            self.time_text_embed = CombinedTimestepTextProjEmbeddings(inner_dim, pooled_projection_dim)
+        self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, pooled_projection_dim)
 
         # 2. RoPE
         self.rope = HunyuanVideoRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
@@ -712,11 +741,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
-        if self.config.guidance_embeds:
-            temb = self.time_text_embed(timestep, guidance, pooled_projections)
-        else:
-            temb = self.time_text_embed(timestep, pooled_projections)
-
+        temb = self.time_text_embed(timestep, guidance, pooled_projections)
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)
 
