@@ -200,7 +200,8 @@ Special VAE used for training: {vae_path}.
         "diffusers",
         "diffusers-training",
         lora,
-        "template:sd-lorastable-diffusion",
+        "template:sd-lora",
+        "stable-diffusion",
         "stable-diffusion-diffusers",
     ]
     model_card = populate_model_card(model_card, tags=tags)
