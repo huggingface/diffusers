@@ -37,6 +37,7 @@ from .single_file_utils import (
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
+    convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     convert_wan_transformer_to_diffusers,
@@ -117,6 +118,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "Lumina2Transformer2DModel": {
         "checkpoint_mapping_fn": convert_lumina2_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "SanaTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_sana_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "WanTransformer3DModel": {
