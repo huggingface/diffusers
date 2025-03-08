@@ -21,6 +21,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, LlamaConf
 
 from diffusers import (
     AutoencoderKLHunyuanVideo,
+    FasterCacheConfig,
     FlowMatchEulerDiscreteScheduler,
     HunyuanVideoPipeline,
     HunyuanVideoTransformer3DModel,
@@ -30,13 +31,20 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, to_np
+from ..test_pipelines_common import (
+    FasterCacheTesterMixin,
+    PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    to_np,
+)
 
 
 enable_full_determinism()
 
 
-class HunyuanVideoPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, unittest.TestCase):
+class HunyuanVideoPipelineFastTests(
+    PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase
+):
     pipeline_class = HunyuanVideoPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
@@ -55,6 +63,14 @@ class HunyuanVideoPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadca
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
+
+    faster_cache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
+        is_guidance_distilled=True,
+    )
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
