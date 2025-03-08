@@ -269,7 +269,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
     if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
