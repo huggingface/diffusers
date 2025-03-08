@@ -455,7 +455,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["unet", "text_encoder"], **kwargs):
@@ -476,7 +476,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
@@ -904,7 +904,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["unet", "text_encoder", "text_encoder_2"], **kwargs):
@@ -925,7 +925,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class SD3LoraLoaderMixin(LoraBaseMixin):
@@ -1312,7 +1312,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder", "text_encoder_2"], **kwargs):
@@ -1333,7 +1333,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class FluxLoraLoaderMixin(LoraBaseMixin):
@@ -1847,7 +1847,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             )
 
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
@@ -1868,7 +1868,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if hasattr(transformer, "_transformer_norm_layers") and transformer._transformer_norm_layers:
             transformer.load_state_dict(transformer._transformer_norm_layers, strict=False)
 
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
     # We override this here account for `_transformer_norm_layers` and `_overwritten_params`.
     def unload_lora_weights(self, reset_to_overwritten_params=False):
@@ -2570,7 +2570,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
@@ -2588,7 +2588,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class Mochi1LoraLoaderMixin(LoraBaseMixin):
@@ -2873,7 +2873,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
@@ -2891,7 +2891,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class LTXVideoLoraLoaderMixin(LoraBaseMixin):
@@ -3176,7 +3176,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
@@ -3194,7 +3194,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class SanaLoraLoaderMixin(LoraBaseMixin):
@@ -3479,7 +3479,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
@@ -3497,7 +3497,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
@@ -3785,7 +3785,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
@@ -3803,7 +3803,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class Lumina2LoraLoaderMixin(LoraBaseMixin):
@@ -4093,7 +4093,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
@@ -4112,7 +4112,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class WanLoraLoaderMixin(LoraBaseMixin):
@@ -4398,7 +4398,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
@@ -4417,7 +4417,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class LoraLoaderMixin(StableDiffusionLoraLoaderMixin):
