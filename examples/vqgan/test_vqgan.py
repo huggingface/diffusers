@@ -177,7 +177,7 @@ class TextToImage(ExamplesTestsAccelerate):
                 --model_config_name_or_path {vqmodel_config_path}
                 --discriminator_config_name_or_path {discriminator_config_path}
                 --checkpointing_steps=1
-                --resume_from_checkpoint={os.path.join(tmpdir, 'checkpoint-4')}
+                --resume_from_checkpoint={os.path.join(tmpdir, "checkpoint-4")}
                 --output_dir {tmpdir}
                 --seed=0
                 """.split()
@@ -262,7 +262,7 @@ class TextToImage(ExamplesTestsAccelerate):
                 --model_config_name_or_path {vqmodel_config_path}
                 --discriminator_config_name_or_path {discriminator_config_path}
                 --checkpointing_steps=1
-                --resume_from_checkpoint={os.path.join(tmpdir, 'checkpoint-4')}
+                --resume_from_checkpoint={os.path.join(tmpdir, "checkpoint-4")}
                 --output_dir {tmpdir}
                 --use_ema
                 --seed=0
@@ -377,7 +377,7 @@ class TextToImage(ExamplesTestsAccelerate):
                 --discriminator_config_name_or_path {discriminator_config_path}
                 --output_dir {tmpdir}
                 --checkpointing_steps=2
-                --resume_from_checkpoint={os.path.join(tmpdir, 'checkpoint-4')}
+                --resume_from_checkpoint={os.path.join(tmpdir, "checkpoint-4")}
                 --checkpoints_total_limit=2
                 --seed=0
                 """.split()

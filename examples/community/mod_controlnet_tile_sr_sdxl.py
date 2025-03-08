@@ -701,7 +701,7 @@ class StableDiffusionXLControlNetTileSRPipeline(
             raise ValueError("`max_tile_size` cannot be None.")
         elif not isinstance(max_tile_size, int) or max_tile_size not in (1024, 1280):
             raise ValueError(
-                f"`max_tile_size` has to be in 1024 or 1280 but is {max_tile_size} of type" f" {type(max_tile_size)}."
+                f"`max_tile_size` has to be in 1024 or 1280 but is {max_tile_size} of type {type(max_tile_size)}."
             )
         if tile_gaussian_sigma is None:
             raise ValueError("`tile_gaussian_sigma` cannot be None.")

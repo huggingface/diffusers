@@ -65,9 +65,9 @@ class ImageProcessorTest(unittest.TestCase):
             )
             out_np = self.to_np(out)
             in_np = (input_np * 255).round() if output_type == "pil" else input_np
-            assert (
-                np.abs(in_np - out_np).max() < 1e-6
-            ), f"decoded output does not match input for output_type {output_type}"
+            assert np.abs(in_np - out_np).max() < 1e-6, (
+                f"decoded output does not match input for output_type {output_type}"
+            )
 
     def test_vae_image_processor_np(self):
         image_processor = VaeImageProcessor(do_resize=False, do_normalize=True)
@@ -78,9 +78,9 @@ class ImageProcessorTest(unittest.TestCase):
 
             out_np = self.to_np(out)
             in_np = (input_np * 255).round() if output_type == "pil" else input_np
-            assert (
-                np.abs(in_np - out_np).max() < 1e-6
-            ), f"decoded output does not match input for output_type {output_type}"
+            assert np.abs(in_np - out_np).max() < 1e-6, (
+                f"decoded output does not match input for output_type {output_type}"
+            )
 
     def test_vae_image_processor_pil(self):
         image_processor = VaeImageProcessor(do_resize=False, do_normalize=True)
@@ -93,9 +93,9 @@ class ImageProcessorTest(unittest.TestCase):
             for i, o in zip(input_pil, out):
                 in_np = np.array(i)
                 out_np = self.to_np(out) if output_type == "pil" else (self.to_np(out) * 255).round()
-                assert (
-                    np.abs(in_np - out_np).max() < 1e-6
-                ), f"decoded output does not match input for output_type {output_type}"
+                assert np.abs(in_np - out_np).max() < 1e-6, (
+                    f"decoded output does not match input for output_type {output_type}"
+                )
 
     def test_preprocess_input_3d(self):
         image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
@@ -293,9 +293,9 @@ class ImageProcessorTest(unittest.TestCase):
         scale = 2
         out_pt = image_processor.resize(image=input_pt, height=h // scale, width=w // scale)
         exp_pt_shape = (b, c, h // scale, w // scale)
-        assert (
-            out_pt.shape == exp_pt_shape
-        ), f"resized image output shape '{out_pt.shape}' didn't match expected shape '{exp_pt_shape}'."
+        assert out_pt.shape == exp_pt_shape, (
+            f"resized image output shape '{out_pt.shape}' didn't match expected shape '{exp_pt_shape}'."
+        )
 
     def test_vae_image_processor_resize_np(self):
         image_processor = VaeImageProcessor(do_resize=True, vae_scale_factor=1)
@@ -305,6 +305,6 @@ class ImageProcessorTest(unittest.TestCase):
         input_np = self.to_np(input_pt)
         out_np = image_processor.resize(image=input_np, height=h // scale, width=w // scale)
         exp_np_shape = (b, h // scale, w // scale, c)
-        assert (
-            out_np.shape == exp_np_shape
-        ), f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
+        assert out_np.shape == exp_np_shape, (
+            f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
+        )
