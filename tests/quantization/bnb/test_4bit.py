@@ -681,6 +681,44 @@ class SlowBnb4BitFluxTests(Base4bitTests):
         self.assertTrue(max_diff < 1e-3)
 
 
+@require_transformers_version_greater("4.44.0")
+class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
+    def setUp(self) -> None:
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        self.pipeline_4bit = DiffusionPipeline.from_pretrained(
+            "eramth/flux-4bit",
+            torch_dtype=torch.float16,
+        )
+        self.pipeline_4bit.enable_model_cpu_offload()
+
+    def tearDown(self):
+        del self.pipeline_4bit
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_lora_loading(self):
+        self.pipeline_4bit.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
+
+        output = self.pipeline_4bit(
+            prompt=self.prompt,
+            height=256,
+            width=256,
+            max_sequence_length=64,
+            output_type="np",
+            num_inference_steps=8,
+            generator=torch.Generator().manual_seed(42),
+        ).images
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        # TODO: update slice
+        expected_slice = np.array([0.5347, 0.5342, 0.5283, 0.5093, 0.4988, 0.5093, 0.5044, 0.5015, 0.4946])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3, msg=f"{out_slice=} != {expected_slice=}")
+
+
 @slow
 class BaseBnb4BitSerializationTests(Base4bitTests):
     def tearDown(self):
