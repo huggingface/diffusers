@@ -39,6 +39,8 @@ from ..utils import (
     deprecate,
     is_accelerate_available,
     is_gguf_available,
+    is_torchao_available,
+    is_torchao_version,
     is_torch_available,
     is_torch_version,
     logging,
@@ -54,10 +56,40 @@ _CLASS_REMAPPING_DICT = {
     }
 }
 
-
 if is_accelerate_available():
     from accelerate import infer_auto_device_map
     from accelerate.utils import get_balanced_memory, get_max_memory, offload_weight, set_module_tensor_to_device
+
+
+def _update_torch_safe_globals():
+    safe_globals = [
+        (torch.uint1, "torch.uint1"),
+        (torch.uint2, "torch.uint2"),
+        (torch.uint3, "torch.uint3"),
+        (torch.uint4, "torch.uint4"),
+        (torch.uint5, "torch.uint5"),
+        (torch.uint6, "torch.uint6"),
+        (torch.uint7, "torch.uint7"),
+    ]
+    try:
+        from torchao.dtypes.uintx.uintx_layout import UintxTensor, UintxAQTTensorImpl
+        from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
+        from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
+        from torchao.dtypes import NF4Tensor
+
+        safe_globals.extend([UintxTensor, UInt4Tensor, UintxAQTTensorImpl, Float8AQTTensorImpl, NF4Tensor])
+
+    except (ImportError, ModuleNotFoundError, NotImplementedError) as e:
+        logger.warning(
+            "Unable to import `torchao` Tensor objects. This may affect loading checkpoints serialized with `torchao`"
+        )
+
+    finally:
+        torch.serialization.add_safe_globals(safe_globals=safe_globals)
+
+
+if is_torchao_available() and is_torch_version(">=", "2.6") and is_torchao_version(">=", "0.7.0"):
+    _update_torch_safe_globals()
 
 
 # Adapted from `transformers` (see modeling_utils.py)
