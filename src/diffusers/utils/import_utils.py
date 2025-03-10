@@ -365,6 +365,15 @@ if _is_torchao_available:
         _is_torchao_available = False
 
 
+_is_optimum_quanto_available = importlib.util.find_spec("optimum") is not None
+if _is_optimum_quanto_available:
+    try:
+        _optimum_quanto_version = importlib_metadata.version("optimum_quanto")
+        logger.debug(f"Successfully import optimum-quanto version {_optimum_quanto_version}")
+    except importlib_metadata.PackageNotFoundError:
+        _is_optimum_quanto_available = False
+
+
 def is_torch_available():
     return _torch_available
 
@@ -491,6 +500,10 @@ def is_gguf_available():
 
 def is_torchao_available():
     return _is_torchao_available
+
+
+def is_optimum_quanto_available():
+    return _is_optimum_quanto_available
 
 
 # docstyle-ignore
@@ -636,6 +649,11 @@ TORCHAO_IMPORT_ERROR = """
 torchao`
 """
 
+QUANTO_IMPORT_ERROR = """
+{0} requires the optimum-quanto library but it was not found in your environment. You can install it with pip: `pip
+install optimum-quanto`
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -663,6 +681,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("imageio", (is_imageio_available, IMAGEIO_IMPORT_ERROR)),
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
+        ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
     ]
 )
 
@@ -862,6 +881,21 @@ def is_k_diffusion_version(operation: str, version: str):
     if not _k_diffusion_available:
         return False
     return compare_versions(parse(_k_diffusion_version), operation, version)
+
+
+def is_optimum_quanto_version(operation: str, version: str):
+    """
+    Compares the current Accelerate version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _is_optimum_quanto_available:
+        return False
+    return compare_versions(parse(_optimum_quanto_version), operation, version)
 
 
 def get_objects_from_module(module):
