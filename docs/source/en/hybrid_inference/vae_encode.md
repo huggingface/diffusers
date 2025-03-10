@@ -6,7 +6,7 @@ VAE encode is used for training, image-to-image and image-to-video - turning int
 
 These tables demonstrate the VRAM requirements for VAE encode with SD v1 and SD XL on different GPUs.
 
-For the majority of these GPUs the memory usage % dictates other models (text encoders, UNet/Transformer) must be offloaded, or tiled decoding has to be used which increases time taken and impacts quality.
+For the majority of these GPUs the memory usage % dictates other models (text encoders, UNet/Transformer) must be offloaded, or tiled encoding has to be used which increases time taken and impacts quality.
 
 <details><summary>SD v1.5</summary>
 
@@ -28,9 +28,9 @@ TODO
 
 |   | **Endpoint** | **Model** |
 |:-:|:-----------:|:--------:|
-| **Stable Diffusion v1** | [https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud](https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud) | [`stabilityai/sd-vae-ft-mse`](https://hf.co/stabilityai/sd-vae-ft-mse) |
-| **Stable Diffusion XL** | [https://x2dmsqunjd6k9prw.us-east-1.aws.endpoints.huggingface.cloud](https://x2dmsqunjd6k9prw.us-east-1.aws.endpoints.huggingface.cloud) | [`madebyollin/sdxl-vae-fp16-fix`](https://hf.co/madebyollin/sdxl-vae-fp16-fix) |
-| **Flux** | [https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud](https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud) | [`black-forest-labs/FLUX.1-schnell`](https://hf.co/black-forest-labs/FLUX.1-schnell) |
+| **Stable Diffusion v1** | [https://qc6479g0aac6qwy9.us-east-1.aws.endpoints.huggingface.cloud](https://qc6479g0aac6qwy9.us-east-1.aws.endpoints.huggingface.cloud) | [`stabilityai/sd-vae-ft-mse`](https://hf.co/stabilityai/sd-vae-ft-mse) |
+| **Stable Diffusion XL** | [https://xjqqhmyn62rog84g.us-east-1.aws.endpoints.huggingface.cloud](https://xjqqhmyn62rog84g.us-east-1.aws.endpoints.huggingface.cloud) | [`madebyollin/sdxl-vae-fp16-fix`](https://hf.co/madebyollin/sdxl-vae-fp16-fix) |
+| **Flux** | [https://ptccx55jz97f9zgo.us-east-1.aws.endpoints.huggingface.cloud](https://ptccx55jz97f9zgo.us-east-1.aws.endpoints.huggingface.cloud) | [`black-forest-labs/FLUX.1-schnell`](https://hf.co/black-forest-labs/FLUX.1-schnell) |
 
 
 > [!TIP]
@@ -51,34 +51,29 @@ from diffusers.utils.remote_utils import remote_encode
 
 ### Basic example
 
-Here, we show how to use the remote VAE on random tensors.
-
-<details><summary>Code</summary>
-
-```python
-image = remote_decode(
-    endpoint="https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud/",
-    tensor=torch.randn([1, 4, 64, 64], dtype=torch.float16),
-    scaling_factor=0.18215,
-)
-```
-
-</details>
+Let's encode an image, then decode it to demonstrate.
 
 <figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
-<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/output.png"/>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"/>
 </figure>
-
-Usage for Flux is slightly different. Flux latents are packed so we need to send the `height` and `width`.
 
 <details><summary>Code</summary>
 
 ```python
-image = remote_decode(
+from diffusers.utils import load_image
+from diffusers.utils.remote_utils import remote_decode
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg?download=true")
+
+latent = remote_encode(
+    endpoint="https://ptccx55jz97f9zgo.us-east-1.aws.endpoints.huggingface.cloud/",
+    scaling_factor=0.3611,
+    shift_factor=0.1159,
+)
+
+decoded = remote_decode(
     endpoint="https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud/",
-    tensor=torch.randn([1, 4096, 64], dtype=torch.float16),
-    height=1024,
-    width=1024,
+    tensor=latent,
     scaling_factor=0.3611,
     shift_factor=0.1159,
 )
@@ -87,233 +82,60 @@ image = remote_decode(
 </details>
 
 <figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
-<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/flux_random_latent.png"/>
-</figure>
-
-Finally, an example for HunyuanVideo.
-
-<details><summary>Code</summary>
-
-```python
-video = remote_decode(
-    endpoint="https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud/",
-    tensor=torch.randn([1, 16, 3, 40, 64], dtype=torch.float16),
-    output_type="mp4",
-)
-with open("video.mp4", "wb") as f:
-    f.write(video)
-```
-
-</details>
-
-<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
-   <video
-      alt="queue.mp4"
-      autoplay loop autobuffer muted playsinline
-    >
-    <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/video_1.mp4" type="video/mp4">
-  </video>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/decoded.png"/>
 </figure>
 
 
 ### Generation
 
-But we want to use the VAE on an actual pipeline to get an actual image, not random noise. The example below shows how to do it with SD v1.5. 
+Now let's look at a generation example, we'll encode the image, generate then remotely decode too!
 
 <details><summary>Code</summary>
 
 ```python
-from diffusers import StableDiffusionPipeline
+import torch
+from diffusers import StableDiffusionImg2ImgPipeline
+from diffusers.utils import load_image
+from diffusers.utils.remote_utils import remote_decode, remote_encode
 
-pipe = StableDiffusionPipeline.from_pretrained(
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     variant="fp16",
     vae=None,
 ).to("cuda")
 
-prompt = "Strawberry ice cream, in a stylish modern glass, coconut, splashing milk cream and honey, in a gradient purple background, fluid motion, dynamic movement, cinematic lighting, Mysterious"
+init_image = load_image(
+    "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+)
+init_image = init_image.resize((768, 512))
 
+init_latent = remote_encode(
+    endpoint="https://qc6479g0aac6qwy9.us-east-1.aws.endpoints.huggingface.cloud/",
+    image=init_image,
+    scaling_factor=0.18215,
+)
+
+prompt = "A fantasy landscape, trending on artstation"
 latent = pipe(
     prompt=prompt,
+    image=init_latent,
+    strength=0.75,
     output_type="latent",
 ).images
+
 image = remote_decode(
     endpoint="https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud/",
     tensor=latent,
     scaling_factor=0.18215,
 )
-image.save("test.jpg")
+image.save("fantasy_landscape.jpg")
 ```
 
 </details>
 
 <figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
-<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/test.jpg"/>
-</figure>
-
-Here’s another example with Flux.
-
-<details><summary>Code</summary>
-
-```python
-from diffusers import FluxPipeline
-
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell",
-    torch_dtype=torch.bfloat16,
-    vae=None,
-).to("cuda")
-
-prompt = "Strawberry ice cream, in a stylish modern glass, coconut, splashing milk cream and honey, in a gradient purple background, fluid motion, dynamic movement, cinematic lighting, Mysterious"
-
-latent = pipe(
-    prompt=prompt,
-    guidance_scale=0.0,
-    num_inference_steps=4,
-    output_type="latent",
-).images
-image = remote_decode(
-    endpoint="https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud/",
-    tensor=latent,
-    height=1024,
-    width=1024,
-    scaling_factor=0.3611,
-    shift_factor=0.1159,
-)
-image.save("test.jpg")
-```
-
-</details>
-
-<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
-<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/test_1.jpg"/>
-</figure>
-
-Here’s an example with HunyuanVideo.
-
-<details><summary>Code</summary>
-
-```python
-from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
-
-model_id = "hunyuanvideo-community/HunyuanVideo"
-transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-    model_id, subfolder="transformer", torch_dtype=torch.bfloat16
-)
-pipe = HunyuanVideoPipeline.from_pretrained(
-    model_id, transformer=transformer, vae=None, torch_dtype=torch.float16
-).to("cuda")
-
-latent = pipe(
-    prompt="A cat walks on the grass, realistic",
-    height=320,
-    width=512,
-    num_frames=61,
-    num_inference_steps=30,
-    output_type="latent",
-).frames
-
-video = remote_decode(
-    endpoint="https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud/",
-    tensor=latent,
-    output_type="mp4",
-)
-
-if isinstance(video, bytes):
-    with open("video.mp4", "wb") as f:
-        f.write(video)
-```
-
-</details>
-
-<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
-   <video
-      alt="queue.mp4"
-      autoplay loop autobuffer muted playsinline
-    >
-    <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/video.mp4" type="video/mp4">
-  </video>
-</figure>
-
-
-### Queueing
-
-One of the great benefits of using a remote VAE is that we can queue multiple generation requests. While the current latent is being processed for decoding, we can already queue another one. This helps improve concurrency. 
-
-
-<details><summary>Code</summary>
-
-```python
-import queue
-import threading
-from IPython.display import display
-from diffusers import StableDiffusionPipeline
-
-def decode_worker(q: queue.Queue):
-    while True:
-        item = q.get()
-        if item is None:
-            break
-        image = remote_decode(
-            endpoint="https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud/",
-            tensor=item,
-            scaling_factor=0.18215,
-        )
-        display(image)
-        q.task_done()
-
-q = queue.Queue()
-thread = threading.Thread(target=decode_worker, args=(q,), daemon=True)
-thread.start()
-
-def decode(latent: torch.Tensor):
-    q.put(latent)
-
-prompts = [
-    "Blueberry ice cream, in a stylish modern glass , ice cubes, nuts, mint leaves, splashing milk cream, in a gradient purple background, fluid motion, dynamic movement, cinematic lighting, Mysterious",
-    "Lemonade in a glass, mint leaves, in an aqua and white background, flowers, ice cubes, halo, fluid motion, dynamic movement, soft lighting, digital painting, rule of thirds composition, Art by Greg rutkowski, Coby whitmore",
-    "Comic book art, beautiful, vintage, pastel neon colors, extremely detailed pupils, delicate features, light on face, slight smile, Artgerm, Mary Blair, Edmund Dulac, long dark locks, bangs, glowing, fashionable style, fairytale ambience, hot pink.",
-    "Masterpiece, vanilla cone ice cream garnished with chocolate syrup, crushed nuts, choco flakes, in a brown background, gold, cinematic lighting, Art by WLOP",
-    "A bowl of milk, falling cornflakes, berries, blueberries, in a white background, soft lighting, intricate details, rule of thirds, octane render, volumetric lighting",
-    "Cold Coffee with cream, crushed almonds, in a glass, choco flakes, ice cubes, wet, in a wooden background, cinematic lighting, hyper realistic painting, art by Carne Griffiths, octane render, volumetric lighting, fluid motion, dynamic movement, muted colors,",
-]
-
-pipe = StableDiffusionPipeline.from_pretrained(
-    "Lykon/dreamshaper-8",
-    torch_dtype=torch.float16,
-    vae=None,
-).to("cuda")
-
-pipe.unet = pipe.unet.to(memory_format=torch.channels_last)
-pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-
-_ = pipe(
-    prompt=prompts[0],
-    output_type="latent",
-)
-
-for prompt in prompts:
-    latent = pipe(
-        prompt=prompt,
-        output_type="latent",
-    ).images
-    decode(latent)
-
-q.put(None)
-thread.join()
-```
-
-</details>
-
-
-<figure class="image flex flex-col items-center justify-center text-center m-0 w-full">
-   <video
-      alt="queue.mp4"
-      autoplay loop autobuffer muted playsinline
-    >
-    <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/queue.mp4" type="video/mp4">
-  </video>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/remote_vae/fantasy_landscape.png"/>
 </figure>
 
 ## Integrations
