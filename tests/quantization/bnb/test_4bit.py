@@ -75,6 +75,8 @@ class Base4bitTests(unittest.TestCase):
     # This was obtained on audace so the number might slightly change
     expected_rel_difference = 3.69
 
+    expected_memory_saving_ratio = 0.8
+
     prompt = "a beautiful sunset amidst the mountains."
     num_inference_steps = 10
     seed = 0
@@ -119,8 +121,10 @@ class BnB4BitBasicTests(Base4bitTests):
         )
 
     def tearDown(self):
-        del self.model_fp16
-        del self.model_4bit
+        if hasattr(self, "model_fp16"):
+            del self.model_fp16
+        if hasattr(self, "model_4bit"):
+            del self.model_4bit
 
         gc.collect()
         torch.cuda.empty_cache()
@@ -158,6 +162,32 @@ class BnB4BitBasicTests(Base4bitTests):
         self.assertAlmostEqual(mem_fp16 / mem_4bit, self.expected_rel_difference, delta=1e-2)
         linear = get_some_linear_layer(self.model_4bit)
         self.assertTrue(linear.weight.__class__ == bnb.nn.Params4bit)
+
+    def test_model_memory_usage(self):
+        # Delete to not let anything interfere.
+        del self.model_4bit, self.model_fp16
+
+        # Re-instantiate.
+        inputs = self.get_dummy_inputs()
+        inputs = {
+            k: v.to(device=torch_device, dtype=torch.float16) for k, v in inputs.items() if not isinstance(v, bool)
+        }
+        model_fp16 = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", torch_dtype=torch.float16
+        ).to(torch_device)
+        unquantized_model_memory = get_memory_consumption_stat(model_fp16, inputs)
+        del model_fp16
+
+        nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        model_4bit = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", quantization_config=nf4_config, torch_dtype=torch.float16
+        )
+        quantized_model_memory = get_memory_consumption_stat(model_4bit, inputs)
+        assert unquantized_model_memory / quantized_model_memory >= self.expected_memory_saving_ratio
 
     def test_original_dtype(self):
         r"""
@@ -328,29 +358,6 @@ class BnB4BitBasicTests(Base4bitTests):
                 _ = SD3Transformer2DModel.from_pretrained(tmpdirname)
 
             assert key_to_target in str(err_context.exception)
-
-    def test_model_memory_usage(self):
-        # Delete to not let anything interfere.
-        del self.model_4bit, self.model_fp16
-        
-        # Re-instantiate.
-        inputs = self.get_dummy_inputs()
-        model_fp16 = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", torch_dtype=torch.float16
-        )
-        unquantized_model_memory = get_memory_consumption_stat(model_fp16, inputs)
-        nf4_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
-        )
-        model_4bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=nf4_config, device_map=torch_device
-        )
-        quantized_model_memory = get_memory_consumption_stat(model_4bit, inputs)
-        print(f"{unquantized_model_memory=}, {quantized_model_memory=}")
-        assert (1.0 - (unquantized_model_memory / quantized_model_memory)) >= 100.
-
 
 
 class BnB4BitTrainingTests(Base4bitTests):

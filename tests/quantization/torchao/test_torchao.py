@@ -483,16 +483,21 @@ class TorchAoTest(unittest.TestCase):
             # there is additional overhead of scales and zero points
             self.assertTrue(total_bf16 < total_int4wo)
 
-    def test_memory_usage(self):
+    def test_model_memory_usage(self):
         model_id = "hf-internal-testing/tiny-flux-pipe"
-        inputs = self.get_dummy_inputs()
+        expected_memory_saving_ratio = 2.0
+
+        inputs = self.get_dummy_tensor_inputs(device=torch_device)
+
         transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
+        transformer_bf16.to(torch_device)
         unquantized_model_memory = get_memory_consumption_stat(transformer_bf16, inputs)
+        del transformer_bf16
 
         transformer_int8wo = self.get_dummy_components(TorchAoConfig("int8wo"), model_id=model_id)["transformer"]
+        transformer_int8wo.to(torch_device)
         quantized_model_memory = get_memory_consumption_stat(transformer_int8wo, inputs)
-        print(f"{unquantized_model_memory=}, {quantized_model_memory=}")
-        assert (1.0 - (unquantized_model_memory / quantized_model_memory)) >= 100.
+        assert unquantized_model_memory / quantized_model_memory >= expected_memory_saving_ratio
 
     def test_wrong_config(self):
         with self.assertRaises(ValueError):

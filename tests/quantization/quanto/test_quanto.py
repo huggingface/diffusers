@@ -19,7 +19,7 @@ if is_optimum_quanto_available():
 
 if is_torch_available():
     import torch
-    
+
     from ..utils import LoRALayer, get_memory_consumption_stat
 
 
@@ -64,15 +64,20 @@ class QuantoBaseTesterMixin:
                 assert isinstance(module, QLinear)
 
     def test_quanto_memory_usage(self):
-        unquantized_model = self.model_cls.from_pretrained(self.model_id, torch_dtype=self.torch_dtype)
         inputs = self.get_dummy_inputs()
+        inputs = {
+            k: v.to(device=torch_device, dtype=torch.bfloat16) for k, v in inputs.items() if not isinstance(v, bool)
+        }
+
+        unquantized_model = self.model_cls.from_pretrained(self.model_id, torch_dtype=self.torch_dtype)
+        unquantized_model.to(torch_device)
         unquantized_model_memory = get_memory_consumption_stat(unquantized_model, inputs)
 
         quantized_model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
+        quantized_model.to(torch_device)
         quantized_model_memory = get_memory_consumption_stat(quantized_model, inputs)
 
-        print(f"{unquantized_model_memory=}, {quantized_model_memory=}")
-        assert (1.0 - (unquantized_model_memory / quantized_model_memory)) >= self.expected_memory_reduction
+        assert unquantized_model_memory / quantized_model_memory >= self.expected_memory_reduction
 
     def test_keep_modules_in_fp32(self):
         r"""
@@ -292,14 +297,14 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
 
 
 class FluxTransformerFloat8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
-    expected_memory_reduction = 0.3
+    expected_memory_reduction = 0.6
 
     def get_dummy_init_kwargs(self):
         return {"weights_dtype": "float8"}
 
 
 class FluxTransformerInt8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
-    expected_memory_reduction = 0.3
+    expected_memory_reduction = 0.6
     _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):

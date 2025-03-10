@@ -26,8 +26,7 @@ if is_torch_available():
 
         def forward(self, input, *args, **kwargs):
             return self.module(input, *args, **kwargs) + self.adapter(input)
-        
-    
+
     @torch.no_grad()
     @torch.inference_mode()
     def get_memory_consumption_stat(model, inputs):
