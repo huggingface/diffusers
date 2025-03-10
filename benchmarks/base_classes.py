@@ -4,6 +4,7 @@ import sys
 import torch
 
 from diffusers import (
+    AutoencoderKL,
     AutoPipelineForImage2Image,
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
@@ -15,7 +16,6 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     T2IAdapter,
     WuerstchenCombinedPipeline,
-    AutoencoderKL,
 )
 from diffusers.utils import load_image
 
@@ -31,8 +31,8 @@ from utils import (  # noqa: E402
     flush,
     generate_csv_dict,
     generate_csv_dict_model,
-    write_to_csv,
     write_list_to_csv,
+    write_to_csv,
 )
 
 
@@ -359,11 +359,7 @@ class BaseBenchmarkTestCase:
 
     def get_result_filepath(self, suffix):
         name = (
-            self.model_class_name
-            + "_"
-            + self.pretrained_model_name_or_path.replace("/", "_")
-            + "_"
-            + f"{suffix}.csv"
+            self.model_class_name + "_" + self.pretrained_model_name_or_path.replace("/", "_") + "_" + f"{suffix}.csv"
         )
         filepath = os.path.join(BASE_PATH, name)
         return filepath
@@ -375,7 +371,9 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
     def __init__(self, pretrained_model_name_or_path, dtype, tiling, **kwargs):
         super().__init__()
         self.dtype = getattr(torch, dtype)
-        model = self.model_class.from_pretrained(pretrained_model_name_or_path, torch_dtype=self.dtype, **kwargs).eval()
+        model = self.model_class.from_pretrained(
+            pretrained_model_name_or_path, torch_dtype=self.dtype, **kwargs
+        ).eval()
         model = model.to("cuda")
         self.tiling = False
         if tiling:
@@ -389,13 +387,15 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
     def run_decode(self, model, tensor):
         _ = model.decode(tensor)
 
-    @torch.no_grad
+    @torch.no_grad()
     def _test_decode(self, **kwargs):
         batch = kwargs.get("batch")
         height = kwargs.get("height")
         width = kwargs.get("width")
 
-        tensor = torch.randn((batch, self.model.config.latent_channels, height, width), dtype=self.dtype, device="cuda")
+        tensor = torch.randn(
+            (batch, self.model.config.latent_channels, height, width), dtype=self.dtype, device="cuda"
+        )
 
         try:
             time = benchmark_fn(self.run_decode, self.model, tensor)
@@ -406,7 +406,10 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
 
         benchmark_info = BenchmarkInfo(time=time, memory=memory)
         csv_dict = generate_csv_dict_model(
-            model_cls=self.model_class_name, ckpt=self.pretrained_model_name_or_path, benchmark_info=benchmark_info, **kwargs,
+            model_cls=self.model_class_name,
+            ckpt=self.pretrained_model_name_or_path,
+            benchmark_info=benchmark_info,
+            **kwargs,
         )
         print(f"{self.model_class_name} decode - shape: {list(tensor.shape)}, time: {time}, memory: {memory}")
         return csv_dict
@@ -416,15 +419,92 @@ class AutoencoderKLBenchmark(BaseBenchmarkTestCase):
 
         batches = (1,)
         # heights = (32, 64, 128, 256,)
-        widths = (32, 64, 128, 256,)
+        widths = (
+            32,
+            64,
+            128,
+            256,
+        )
         for batch in batches:
             # for height in heights:
-                for width in widths:
-                    benchmark_info = self._test_decode(batch=batch, height=width, width=width)
-                    benchmark_infos.append(benchmark_info)
+            for width in widths:
+                benchmark_info = self._test_decode(batch=batch, height=width, width=width)
+                benchmark_infos.append(benchmark_info)
 
         suffix = "decode"
         if self.tiling:
             suffix = "tiled_decode"
+        filepath = self.get_result_filepath(suffix)
+        write_list_to_csv(filepath, benchmark_infos)
+
+
+class AutoencoderKLEncodeBenchmark(BaseBenchmarkTestCase):
+    model_class = AutoencoderKL
+
+    def __init__(self, pretrained_model_name_or_path, dtype, tiling, **kwargs):
+        super().__init__()
+        self.dtype = getattr(torch, dtype)
+        model = self.model_class.from_pretrained(
+            pretrained_model_name_or_path, torch_dtype=self.dtype, **kwargs
+        ).eval()
+        model = model.to("cuda")
+        self.tiling = False
+        if tiling:
+            model.enable_tiling()
+            self.tiling = True
+        self.model = model
+        self.model_class_name = str(self.model.__class__.__name__)
+        self.pretrained_model_name_or_path = pretrained_model_name_or_path
+
+    @torch.no_grad()
+    def run_encode(self, model, tensor):
+        _ = model.encode(tensor)
+
+    @torch.no_grad()
+    def _test_encode(self, **kwargs):
+        batch = kwargs.get("batch")
+        height = kwargs.get("height")
+        width = kwargs.get("width")
+
+        tensor = torch.randn(
+            (batch, self.model.config.latent_channels, height, width), dtype=self.dtype, device="cuda"
+        )
+
+        try:
+            time = benchmark_fn(self.run_encode, self.model, tensor)
+            memory = bytes_to_giga_bytes(torch.cuda.max_memory_reserved())
+        except torch.OutOfMemoryError:
+            time = "OOM"
+            memory = "OOM"
+
+        benchmark_info = BenchmarkInfo(time=time, memory=memory)
+        csv_dict = generate_csv_dict_model(
+            model_cls=self.model_class_name,
+            ckpt=self.pretrained_model_name_or_path,
+            benchmark_info=benchmark_info,
+            **kwargs,
+        )
+        print(f"{self.model_class_name} encode - shape: {list(tensor.shape)}, time: {time}, memory: {memory}")
+        return csv_dict
+
+    def test_encode(self):
+        benchmark_infos = []
+
+        batches = (1,)
+        widths = (
+            256,
+            512,
+            1024,
+            2048,
+        )
+        for batch in batches:
+            # for height in heights:
+            for width in widths:
+                benchmark_info = self._test_encode(batch=batch, height=width, width=width)
+                benchmark_infos.append(benchmark_info)
+
+        suffix = "encode"
+        if self.tiling:
+            suffix = "tiled_encode"
         filepath = self.get_result_filepath(suffix)
         write_list_to_csv(filepath, benchmark_infos)

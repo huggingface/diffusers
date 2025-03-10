@@ -79,7 +79,10 @@ def generate_csv_dict(
 
 
 def generate_csv_dict_model(
-    model_cls: str, ckpt: str, benchmark_info: BenchmarkInfo, **kwargs,
+    model_cls: str,
+    ckpt: str,
+    benchmark_info: BenchmarkInfo,
+    **kwargs,
 ) -> Dict[str, Union[str, bool, float]]:
     """Packs benchmarking data into a dictionary for latter serialization."""
     data_dict = {
@@ -93,6 +96,7 @@ def generate_csv_dict_model(
         **kwargs,
     }
     return data_dict
+
 
 def write_to_csv(file_name: str, data_dict: Dict[str, Union[str, bool, float]]):
     """Serializes a dictionary into a CSV file."""

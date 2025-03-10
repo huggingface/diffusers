@@ -3,7 +3,7 @@ import sys
 
 
 sys.path.append(".")
-from base_classes import AutoencoderKLBenchmark  # noqa: E402
+from base_classes import AutoencoderKLEncodeBenchmark  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -26,10 +26,10 @@ if __name__ == "__main__":
     parser.add_argument("--tiling", action="store_true")
     args = parser.parse_args()
 
-    benchmark = AutoencoderKLBenchmark(
+    benchmark = AutoencoderKLEncodeBenchmark(
         pretrained_model_name_or_path=args.pretrained_model_name_or_path,
         dtype=args.dtype,
         tiling=args.tiling,
         subfolder=args.subfolder,
     )
-    benchmark.test_decode()
+    benchmark.test_encode()
