@@ -41,8 +41,6 @@ from ..utils import (
     is_gguf_available,
     is_torch_available,
     is_torch_version,
-    is_torchao_available,
-    is_torchao_version,
     logging,
 )
 

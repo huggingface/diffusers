@@ -23,7 +23,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from packaging import version
 
-from ...utils import get_module_from_name, is_torch_available, is_torch_version, is_torchao_available, logging
+from ...utils import (
+    get_module_from_name,
+    is_torch_available,
+    is_torch_version,
+    is_torchao_available,
+    is_torchao_version,
+    logging,
+)
 from ..base import DiffusersQuantizer
 
 
