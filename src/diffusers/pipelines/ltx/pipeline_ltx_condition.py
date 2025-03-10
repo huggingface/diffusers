@@ -475,6 +475,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             torch.arange(0, num_frames, patch_size_t, device=device),
             torch.arange(0, height, patch_size, device=device),
             torch.arange(0, width, patch_size, device=device),
+            indexing="ij",
         )
         latent_sample_coords = torch.stack(latent_sample_coords, dim=0)
         latent_coords = latent_sample_coords.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
