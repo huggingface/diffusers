@@ -702,6 +702,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
+        quantization_config = kwargs.pop("quantization_config", None)
 
         if not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
@@ -874,6 +875,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         }
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
+        # TODO: add checking for quantization_config `mapping` i.e., if the modules specified there actually exist.
+        #########################
+
         # remove `null` components
         def load_module(name, value):
             if value[0] is None:
@@ -973,6 +977,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     use_safetensors=use_safetensors,
                     dduf_entries=dduf_entries,
                     provider_options=provider_options,
+                    quantization_config=quantization_config,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -1610,7 +1615,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 expected_modules.add(name)
                 optional_parameters.remove(name)
 
-        return expected_modules, optional_parameters
+        return sorted(expected_modules), sorted(optional_parameters)
 
     @classmethod
     def _get_signature_types(cls):
@@ -1652,10 +1657,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             k: getattr(self, k) for k in self.config.keys() if not k.startswith("_") and k not in optional_parameters
         }
 
-        if set(components.keys()) != expected_modules:
+        actual = sorted(set(components.keys()))
+        expected = sorted(expected_modules)
+        if actual != expected:
             raise ValueError(
                 f"{self} has been incorrectly initialized or {self.__class__} is incorrectly implemented. Expected"
-                f" {expected_modules} to be defined, but {components.keys()} are defined."
+                f" {expected} to be defined, but {actual} are defined."
             )
 
         return components
