@@ -413,6 +413,10 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_sequential_offload_forward_pass_twice(self):
         pass
 
+    @unittest.skip("Test not supported because `rotary_embed_dim` doesn't have any sensible default.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @nightly
 @require_torch_gpu

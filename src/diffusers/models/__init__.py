@@ -33,8 +33,10 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
     _import_structure["autoencoders.autoencoder_kl_hunyuan_video"] = ["AutoencoderKLHunyuanVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
+    _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
+    _import_structure["autoencoders.autoencoder_kl_wan"] = ["AutoencoderKLWan"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
@@ -51,6 +53,7 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
     _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
+    _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -69,12 +72,17 @@ if is_torch_available():
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
+    _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
+    _import_structure["transformers.transformer_easyanimate"] = ["EasyAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
+    _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
+    _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
+    _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
@@ -103,8 +111,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLCogVideoX,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLLTXVideo,
+            AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,
+            AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
@@ -120,6 +130,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DMultiControlNetModel,
             MultiControlNetModel,
+            MultiControlNetUnionModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SparseControlNetModel,
@@ -132,16 +143,20 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AuraFlowTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
+            CogView4Transformer2DModel,
             ConsisIDTransformer3DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,
+            EasyAnimateTransformer3DModel,
             FluxTransformer2DModel,
             HunyuanDiT2DModel,
             HunyuanVideoTransformer3DModel,
             LatteTransformer3DModel,
             LTXVideoTransformer3DModel,
+            Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
+            OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             SanaTransformer2DModel,
@@ -150,6 +165,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
+            WanTransformer3DModel,
         )
         from .unets import (
             I2VGenXLUNet,

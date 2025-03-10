@@ -16,6 +16,11 @@ specific language governing permissions and limitations under the License.
     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
+> [!TIP]
+> This document has now grown outdated given the emergence of existing evaluation frameworks for diffusion models for image generation. Please check
+> out works like [HEIM](https://crfm.stanford.edu/helm/heim/latest/), [T2I-Compbench](https://arxiv.org/abs/2307.06350),
+> [GenEval](https://arxiv.org/abs/2310.11513).
+
 Evaluation of generative models like [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) is subjective in nature. But as practitioners and researchers, we often have to make careful choices amongst many different possibilities. So, when working with different generative models (like GANs, Diffusion, etc.), how do we choose one over the other?
 
 Qualitative evaluation of such models can be error-prone and might incorrectly influence a decision.
