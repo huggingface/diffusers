@@ -217,7 +217,6 @@ class CosmosPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline.encode_prompt with 256->512
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -593,16 +592,17 @@ class CosmosPipeline(DiffusionPipeline):
         if not output_type == "latent":
             if self.vae.config.latents_mean is not None:
                 latents_mean, latents_std = self.vae.config.latents_mean, self.vae.config.latents_std
-                latents_mean = torch.tensor(latents_mean).view(1, self.vae.config.latent_channels, -1, 1, 1)[
-                    :, :, : latents.size(2)
-                ]
-                latents_std = torch.tensor(latents_std).view(1, self.vae.config.latent_channels, -1, 1, 1)[
-                    :, :, : latents.size(2)
-                ]
-                latents = (
-                    latents * self.vae.config.latent_std / self.scheduler.config.sigma_data
-                    + self.vae.config.latent_mean
+                latents_mean = (
+                    torch.tensor(latents_mean)
+                    .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : latents.size(2)]
+                    .to(latents)
                 )
+                latents_std = (
+                    torch.tensor(latents_std)
+                    .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : latents.size(2)]
+                    .to(latents)
+                )
+                latents = latents * latents_std / self.scheduler.config.sigma_data + latents_mean
             else:
                 latents = latents / self.scheduler.config.sigma_data
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
