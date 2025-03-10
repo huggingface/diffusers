@@ -27,8 +27,8 @@ from ...utils import (
     get_module_from_name,
     is_torch_available,
     is_torch_version,
-    is_torchao_available,
     is_torchao_version,
+    is_torchao_available,
     logging,
 )
 from ..base import DiffusersQuantizer
