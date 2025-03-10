@@ -861,7 +861,7 @@ def is_torchao_version(operation: str, version: str):
     """
     if not _is_torchao_available:
         return False
-    return compare_versions(parse(is_torch_version), operation, version)
+    return compare_versions(parse(_torchao_version), operation, version)
 
 
 def is_k_diffusion_version(operation: str, version: str):
