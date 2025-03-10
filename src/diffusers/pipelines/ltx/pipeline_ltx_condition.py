@@ -94,6 +94,31 @@ class LTXVideoCondition:
     strength: float = 1.0
 
 
+# from LTX-Video/ltx_video/schedulers/rf.py
+def linear_quadratic_schedule(num_steps, threshold_noise=0.025, linear_steps=None):
+    if linear_steps is None:
+        linear_steps = num_steps // 2
+    if num_steps < 2:
+        return torch.tensor([1.0])
+    linear_sigma_schedule = [
+        i * threshold_noise / linear_steps for i in range(linear_steps)
+    ]
+    threshold_noise_step_diff = linear_steps - threshold_noise * num_steps
+    quadratic_steps = num_steps - linear_steps
+    quadratic_coef = threshold_noise_step_diff / (linear_steps * quadratic_steps**2)
+    linear_coef = threshold_noise / linear_steps - 2 * threshold_noise_step_diff / (
+        quadratic_steps**2
+    )
+    const = quadratic_coef * (linear_steps**2)
+    quadratic_sigma_schedule = [
+        quadratic_coef * (i**2) + linear_coef * i + const
+        for i in range(linear_steps, num_steps)
+    ]
+    sigma_schedule = linear_sigma_schedule + quadratic_sigma_schedule + [1.0]
+    sigma_schedule = [1.0 - x for x in sigma_schedule]
+    return torch.tensor(sigma_schedule[:-1])
+
+
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
@@ -285,7 +310,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device))[0]
+        prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)[0]
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -436,6 +461,37 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     f" {negative_prompt_attention_mask.shape}."
                 )
 
+
+    @staticmethod
+    # adapted from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
+    def _prepare_video_ids(latents: torch.Tensor, scale_factor: int = 32, scale_factor_t: int = 8, patch_size: int = 1, patch_size_t: int = 1, frame_index: int = 0, device: torch.device = None, return_unscaled_coords: bool = False) -> torch.Tensor:
+        # Unpacked latents of shape are [B, C, F, H, W] are patched into tokens of shape [B, C, F // p_t, p_t, H // p, p, W // p, p].
+        # The patch dimensions are then permuted and collapsed into the channel dimension of shape:
+        # [B, F // p_t * H // p * W // p, C * p_t * p * p] (an ndim=3 tensor).
+        # dim=0 is the batch size, dim=1 is the effective video sequence length, dim=2 is the effective number of input features
+        batch_size, num_channels, num_frames, height, width = latents.shape
+
+        latent_sample_coords = torch.meshgrid(
+            torch.arange(0, num_frames, patch_size_t, device=device),
+            torch.arange(0, height, patch_size, device=device),
+            torch.arange(0, width, patch_size, device=device),
+        )
+        latent_sample_coords = torch.stack(latent_sample_coords, dim=0)
+        latent_coords = latent_sample_coords.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+        latent_coords = latent_coords.reshape(batch_size, -1, num_frames * height * width)
+
+        scaled_latent_coords = (
+            latent_coords * 
+            torch.tensor([scale_factor_t, scale_factor, scale_factor], device=latent_coords.device)[None, :, None]
+        )
+        scaled_latent_coords[:, 0] = (scaled_latent_coords[:, 0] + 1 - scale_factor_t).clamp(min=0)  
+        scaled_latent_coords[:, 0] += frame_index
+
+        if return_unscaled_coords:
+            return latent_coords, scaled_latent_coords
+        else:
+            return scaled_latent_coords
+    
     @staticmethod
     # adapted from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
     def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1, device: torch.device = None) -> torch.Tensor:
@@ -448,15 +504,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         post_patch_height = height // patch_size
         post_patch_width = width // patch_size
 
-        latent_sample_coords = torch.meshgrid(
-            torch.arange(0, num_frames, patch_size_t, device=device),
-            torch.arange(0, height, patch_size, device=device),
-            torch.arange(0, width, patch_size, device=device),
-        )
-        latent_sample_coords = torch.stack(latent_sample_coords, dim=0)
-        latent_coords = latent_sample_coords.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
-        latent_coords = latent_coords.reshape(batch_size, -1, num_frames * height * width)
-
         latents = latents.reshape(
             batch_size,
             -1,
@@ -468,7 +515,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             patch_size,
         )
         latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
-        return latents, latent_coords
+        return latents
 
     @staticmethod
     # Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._unpack_latents
@@ -505,54 +552,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         latents = latents * latents_std / scaling_factor + latents_mean
         return latents
 
-    def _prepare_non_first_frame_conditioning(
-        self,
-        latents: torch.Tensor,
-        condition_latents: torch.Tensor,
-        condition_latent_frames_mask: torch.Tensor,
-        frame_index: int,
-        strength: float,
-        num_prefix_latent_frames: int = 2,
-        prefix_latents_mode: str = "concat",
-        prefix_soft_conditioning_strength: float = 0.15,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        num_latent_frames = condition_latents.size(2)
-
-        if num_latent_frames < num_prefix_latent_frames:
-            raise ValueError(
-                f"Number of latent frames must be at least {num_prefix_latent_frames} but got {num_latent_frames}."
-            )
-        if frame_index % self.vae_temporal_compression_ratio != 0:
-            raise ValueError(
-                f"Frame index must be divisible by {self.vae_temporal_compression_ratio} but got {frame_index}."
-            )
-
-        if num_latent_frames > num_prefix_latent_frames:
-            start_frame = frame_index // self.vae_temporal_compression_ratio + num_prefix_latent_frames
-            end_frame = start_frame + num_latent_frames - num_prefix_latent_frames
-            latents[:, :, start_frame:end_frame] = torch.lerp(
-                latents[:, :, start_frame:end_frame], condition_latents[:, :, num_prefix_latent_frames:], strength
-            )
-            condition_latent_frames_mask[:, start_frame:end_frame] = strength
-
-        if prefix_latents_mode == "soft":
-            if num_prefix_latent_frames > 1:
-                start_frame = frame_index // self.vae_temporal_compression_ratio + 1
-                end_frame = start_frame + num_prefix_latent_frames - 1
-                strength = min(prefix_soft_conditioning_strength, strength)
-                latents[:, :, start_frame:end_frame] = torch.lerp(
-                    latents[:, :, start_frame:end_frame], condition_latents[:, :, 1:num_prefix_latent_frames], strength
-                )
-                condition_latent_frames_mask[:, start_frame:end_frame] = strength
-            condition_latents = None
-        elif prefix_latents_mode == "drop":
-            condition_latents = None
-        elif prefix_latents_mode == "concat":
-            condition_latents = condition_latents[:, :, :num_prefix_latent_frames]
-        else:
-            raise ValueError(f"Invalid prefix_latents_mode: {prefix_latents_mode}")
-
-        return latents, condition_latents, condition_latent_frames_mask
 
     def trim_conditioning_sequence(
         self, start_frame: int, sequence_num_frames: int, target_num_frames: int
@@ -573,21 +572,48 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         return num_frames
 
 
+    @staticmethod
+    def add_noise_to_image_conditioning_latents(
+        t: float,
+        init_latents: torch.Tensor,
+        latents: torch.Tensor,
+        noise_scale: float,
+        conditioning_mask: torch.Tensor,
+        generator,
+        eps=1e-6,
+    ):
+        """
+        Add timestep-dependent noise to the hard-conditioning latents.
+        This helps with motion continuity, especially when conditioned on a single frame.
+        """
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        noise = randn_tensor(
+            latents.shape,
+            generator=generator,
+            device=latents.device,
+            dtype=latents.dtype,
+        )
+        # Add noise only to hard-conditioning latents (conditioning_mask = 1.0)
+        need_to_noise = (conditioning_mask > 1.0 - eps).unsqueeze(-1)
+        noised_latents = init_latents + noise_scale * noise * (t**2)
+        latents = torch.where(need_to_noise, noised_latents, latents)
+        return latents
+
     def prepare_latents(
         self,
-        conditions: Union[LTXVideoCondition, List[LTXVideoCondition]],
+        conditions: List[torch.Tensor],
+        condition_strength: List[float],
+        condition_frame_index: List[int],
         batch_size: int = 1,
         num_channels_latents: int = 128,
         height: int = 512,
         width: int = 704,
         num_frames: int = 161,
-        frame_rate: int = 25,
+        num_prefix_latent_frames: int = 2,
         generator: Optional[torch.Generator] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> None:
-        if not isinstance(conditions, list):
-            conditions = [conditions]
 
         num_latent_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
         latent_height = height // self.vae_spatial_compression_ratio
@@ -595,104 +621,73 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
 
         shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        # latents = torch.load("/raid/yiyi/LTX-Video/init_latents.pt").to(device, dtype=dtype)
 
-        extra_conditioning_latents = []
-        extra_conditioning_rope_interpolation_scales = []
-        extra_conditioning_mask = []
-        extra_conditioning_num_latents = (
-            0  # Number of extra conditioning latents added (should be removed before decoding)
-        )
         condition_latent_frames_mask = torch.zeros((batch_size, num_latent_frames), device=device, dtype=torch.float32)
-
-        for condition in conditions:
-            if condition.image is not None:
-                data = self.video_processor.preprocess(condition.image, height, width).unsqueeze(2)
-            elif condition.video is not None:
-                data = self.video_processor.preprocess_video(condition.video, height, width)
-                num_frames_input = data.size(2)
-                num_frames_output = self.trim_conditioning_sequence(condition.frame_index, num_frames_input, num_frames)
-                data = data[:, :, :num_frames_output]
-                data = data.to(device, dtype=dtype)
-            else:
-                raise ValueError("Either `image` or `video` must be provided in the `LTXVideoCondition`.")
-
-            if data.size(2) % self.vae_temporal_compression_ratio != 1:
-                raise ValueError(
-                    f"Number of frames in the video must be of the form (k * {self.vae_temporal_compression_ratio} + 1) "
-                    f"but got {data.size(2)} frames."
-                )
-
+        
+        extra_conditioning_latents = []
+        extra_conditioning_video_ids = []
+        extra_conditioning_mask = []
+        extra_conditioning_num_latents = 0
+        for data, strength, frame_index in zip(conditions, condition_strength, condition_frame_index):
             condition_latents = retrieve_latents(self.vae.encode(data), generator=generator)
+            # condition_latents = torch.load("/raid/yiyi/LTX-Video/latents_before_normalize.pt").to(device, dtype=dtype)
             condition_latents = self._normalize_latents(condition_latents, self.vae.latents_mean, self.vae.latents_std)
+            
             num_data_frames = data.size(2)
             num_cond_frames = condition_latents.size(2)
 
-            if condition.frame_index == 0:
+            if frame_index == 0:
                 latents[:, :, :num_cond_frames] = torch.lerp(
-                    latents[:, :, :num_cond_frames], condition_latents, condition.strength
+                    latents[:, :, :num_cond_frames], condition_latents, strength
                 )
-                condition_latent_frames_mask[:, :num_cond_frames] = condition.strength
+                condition_latent_frames_mask[:, :num_cond_frames] = strength
 
             else:
                 if num_data_frames > 1:
-                    (
-                        latents,
-                        condition_latents,
-                        condition_latent_frames_mask,
-                    ) = self._prepare_non_first_frame_conditioning(
-                        latents,
-                        condition_latents,
-                        condition_latent_frames_mask,
-                        condition.frame_index,
-                        condition.strength,
-                    )
+                    if num_cond_frames < num_prefix_latent_frames:
+                        raise ValueError(
+                            f"Number of latent frames must be at least {num_prefix_latent_frames} but got {num_data_frames}."
+                        )
 
-                if condition_latents is not None:
-                    noise = randn_tensor(condition_latents.shape, generator=generator, device=device, dtype=dtype)
-                    condition_latents = torch.lerp(noise, condition_latents, condition.strength)
-                    c_nlf = condition_latents.shape[2]
-                    condition_latents, rope_interpolation_scale = self._pack_latents(
-                        condition_latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size, device
-                    )
+                    if num_cond_frames > num_prefix_latent_frames:
+                        start_frame = frame_index // self.vae_temporal_compression_ratio + num_prefix_latent_frames
+                        end_frame = start_frame + num_cond_frames - num_prefix_latent_frames
+                        latents[:, :, start_frame:end_frame] = torch.lerp(
+                            latents[:, :, start_frame:end_frame], condition_latents[:, :, num_prefix_latent_frames:], strength
+                        )
+                        condition_latent_frames_mask[:, start_frame:end_frame] = strength
+                        condition_latents = condition_latents[:, :, :num_prefix_latent_frames]
 
-                    rope_interpolation_scale = (
-                        rope_interpolation_scale * 
-                        torch.tensor([self.vae_temporal_compression_ratio, self.vae_spatial_compression_ratio, self.vae_spatial_compression_ratio], device=rope_interpolation_scale.device)[None, :, None]
-                    )
-                    rope_interpolation_scale[:, 0] = (rope_interpolation_scale[:, 0] + 1 - self.vae_temporal_compression_ratio).clamp(min=0)               
-                    rope_interpolation_scale[:, 0] += condition.frame_index
 
-                    conditioning_mask = torch.full(
-                        condition_latents.shape[:2], condition.strength, device=device, dtype=dtype
-                    )
+                noise = randn_tensor(condition_latents.shape, generator=generator, device=device, dtype=dtype)
+                # noise = torch.load("/raid/yiyi/LTX-Video/noise.pt").to(device, dtype=dtype)
+                condition_latents = torch.lerp(noise, condition_latents, strength)
 
-                    extra_conditioning_num_latents += condition_latents.size(1)
-
-                    extra_conditioning_latents.append(condition_latents)
-                    extra_conditioning_rope_interpolation_scales.append(rope_interpolation_scale)
-                    extra_conditioning_mask.append(conditioning_mask)
-
-        latents, rope_interpolation_scale = self._pack_latents(
-            latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size, device
-        )
+                condition_video_ids = self._prepare_video_ids(condition_latents, scale_factor=self.vae_spatial_compression_ratio, scale_factor_t=self.vae_temporal_compression_ratio,  patch_size=self.transformer_spatial_patch_size, patch_size_t=self.transformer_temporal_patch_size, frame_index=frame_index, device=device)
+                condition_latents = self._pack_latents(condition_latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size, device)
+                condition_conditioning_mask = torch.full(condition_latents.shape[:2], strength, device=device, dtype=dtype)
+                
+                
+                extra_conditioning_latents.append(condition_latents)
+                extra_conditioning_video_ids.append(condition_video_ids)
+                extra_conditioning_mask.append(condition_conditioning_mask)
+                extra_conditioning_num_latents += condition_latents.size(1)
+        
+        video_ids, video_ids_scaled = self._prepare_video_ids(latents, scale_factor_t = self.vae_temporal_compression_ratio, scale_factor = self.vae_spatial_compression_ratio, patch_size_t = self.transformer_temporal_patch_size, patch_size = self.transformer_spatial_patch_size, device=device, return_unscaled_coords=True)
+        latents = self._pack_latents(latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size, device)
         conditioning_mask = condition_latent_frames_mask.gather(
-            1, rope_interpolation_scale[:, 0]
+            1, video_ids[:, 0]
         )
-
-        rope_interpolation_scale = (
-            rope_interpolation_scale
-            * torch.tensor([self.vae_temporal_compression_ratio, self.vae_spatial_compression_ratio, self.vae_spatial_compression_ratio], device=rope_interpolation_scale.device)[None, :, None]
-        )
-        rope_interpolation_scale[:, 0] = (rope_interpolation_scale[:, 0] + 1 - self.vae_temporal_compression_ratio).clamp(min=0)
+        
 
         if len(extra_conditioning_latents) > 0:
             latents = torch.cat([*extra_conditioning_latents, latents], dim=1)
-            rope_interpolation_scale = torch.cat(
-                [*extra_conditioning_rope_interpolation_scales, rope_interpolation_scale], dim=2
-            )
+            video_ids = torch.cat([*extra_conditioning_video_ids, video_ids_scaled], dim=2)
             conditioning_mask = torch.cat([*extra_conditioning_mask, conditioning_mask], dim=1)
 
-        return latents, conditioning_mask, rope_interpolation_scale, extra_conditioning_num_latents
+        return latents, conditioning_mask, video_ids, extra_conditioning_num_latents
+
 
     @property
     def guidance_scale(self):
@@ -743,7 +738,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: int = 128,
+        max_sequence_length: int = 256,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -878,45 +873,65 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
+        vae_dtype = self.vae.dtype
+        
+        conditioning_tensors = []
+        conditioning_strengths = []
+        conditioning_start_frames = []
+
+        for condition in conditions:
+            if condition.image is not None:
+                condition_tensor = self.video_processor.preprocess(condition.image, height, width).unsqueeze(2)
+            elif condition.video is not None:
+                condition_tensor = self.video_processor.preprocess_video(condition.video, height, width)
+                num_frames_input = condition_tensor.size(2)
+                num_frames_output = self.trim_conditioning_sequence(condition.frame_index, num_frames_input, num_frames)
+                condition_tensor = condition_tensor[:, :, :num_frames_output]
+                condition_tensor = condition_tensor.to(device, dtype=vae_dtype)
+            else:
+                raise ValueError("Either `image` or `video` must be provided in the `LTXVideoCondition`.")
+
+            if condition_tensor.size(2) % self.vae_temporal_compression_ratio != 1:
+                raise ValueError(
+                    f"Number of frames in the video must be of the form (k * {self.vae_temporal_compression_ratio} + 1) "
+                    f"but got {condition_tensor.size(2)} frames."
+                )
+            conditioning_tensors.append(condition_tensor)
+            conditioning_strengths.append(condition.strength)
+            conditioning_start_frames.append(condition.frame_index)
+
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
-        latents, conditioning_mask, rope_interpolation_scale, extra_conditioning_num_latents = self.prepare_latents(
-            conditions,
-            batch_size * num_videos_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            num_frames,
-            frame_rate,
-            generator,
-            device,
-            prompt_embeds.dtype,
+        latents, conditioning_mask, video_coords, extra_conditioning_num_latents = self.prepare_latents(
+            conditioning_tensors,
+            conditioning_strengths,
+            conditioning_start_frames,
+            batch_size=batch_size * num_videos_per_prompt,
+            num_channels_latents=num_channels_latents,
+            height=height,
+            width=width,
+            num_frames=num_frames,
+            generator=generator,
+            device=device,
+            dtype=prompt_embeds.dtype,
         )
         init_latents = latents.clone()
 
         if self.do_classifier_free_guidance:
-            conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
+            video_coords = torch.cat([video_coords, video_coords], dim=0)
+
 
         # 5. Prepare timesteps
         latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
         latent_height = height // self.vae_spatial_compression_ratio
         latent_width = width // self.vae_spatial_compression_ratio
-        video_sequence_length = latent_num_frames * latent_height * latent_width
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        mu = calculate_shift(
-            video_sequence_length,
-            self.scheduler.config.get("base_image_seq_len", 256),
-            self.scheduler.config.get("max_image_seq_len", 4096),
-            self.scheduler.config.get("base_shift", 0.5),
-            self.scheduler.config.get("max_shift", 1.15),
-        )
+        sigmas = linear_quadratic_schedule(num_inference_steps)
+        timesteps = sigmas * 1000
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
             device,
-            timesteps,
-            sigmas=sigmas,
-            mu=mu,
+            timesteps=timesteps,
         )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
@@ -928,62 +943,45 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     continue
 
                 if image_cond_noise_scale > 0:
-                    latents = latents
-                    # TODO(aryan): implement this
+                    # Add timestep-dependent noise to the hard-conditioning latents
+                    # This helps with motion continuity, especially when conditioned on a single frame
+                    latents = self.add_noise_to_image_conditioning_latents(
+                        t/1000.0,
+                        init_latents,
+                        latents.float(),
+                        image_cond_noise_scale,
+                        conditioning_mask,
+                        generator,
+                    )
+
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                conditioning_mask_model_input = torch.cat([conditioning_mask, conditioning_mask]) if self.do_classifier_free_guidance else conditioning_mask
                 latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0])
-                timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask)
+                timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1)
+                timestep = torch.min(timestep, (1 - conditioning_mask_model_input) * 1000.0)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     encoder_attention_mask=prompt_attention_mask,
-                    num_frames=latent_num_frames,
-                    height=latent_height,
-                    width=latent_width,
-                    frame_rate=frame_rate,
-                    rope_interpolation_scale=rope_interpolation_scale,
+                    video_coords=video_coords,
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
-                noise_pred = noise_pred.float()
-
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                     timestep, _ = timestep.chunk(2)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                noise_pred = self._unpack_latents(
-                    noise_pred,
-                    latent_num_frames,
-                    latent_height,
-                    latent_width,
-                    self.transformer_spatial_patch_size,
-                    self.transformer_temporal_patch_size,
-                )
-                latents = self._unpack_latents(
-                    latents,
-                    latent_num_frames,
-                    latent_height,
-                    latent_width,
-                    self.transformer_spatial_patch_size,
-                    self.transformer_temporal_patch_size,
-                )
+                denoised_latents = self.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
+                t_eps = 1e-6
+                tokens_to_denoise_mask = (t/1000 - t_eps < (1.0 - conditioning_mask)).unsqueeze(-1)
+                latents = torch.where(tokens_to_denoise_mask, denoised_latents, latents)
 
-                noise_pred = noise_pred[:, :, 1:]
-                noise_latents = latents[:, :, 1:]
-                pred_latents = self.scheduler.step(noise_pred, t, noise_latents, return_dict=False)[0]
-
-                latents = torch.cat([latents[:, :, :1], pred_latents], dim=2)
-                latents, _ = self._pack_latents(
-                    latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size, device
-                )
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -1001,10 +999,8 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        if output_type == "latent":
-            video = latents
-        else:
-            latents = self._unpack_latents(
+        latents = latents[:, extra_conditioning_num_latents:]
+        latents = self._unpack_latents(
                 latents,
                 latent_num_frames,
                 latent_height,
@@ -1012,6 +1008,10 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                 self.transformer_spatial_patch_size,
                 self.transformer_temporal_patch_size,
             )
+        
+        if output_type == "latent":
+            video = latents
+        else:
             latents = self._denormalize_latents(
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )

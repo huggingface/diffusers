@@ -421,22 +421,35 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 ),
             )
 
+        use_per_token_timesteps = isinstance(timestep, torch.Tensor) and timestep.ndim == 2
         if self.step_index is None:
-            self._init_step_index(timestep)
+            if not use_per_token_timesteps:
+                self._init_step_index(timestep)
 
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
 
-        sigma = self.sigmas[self.step_index]
-        sigma_next = self.sigmas[self.step_index + 1]
+        if use_per_token_timesteps:
+            t_eps = 1e-6
+            per_token_sigmas = timestep/self.config.num_train_timesteps
 
-        prev_sample = sample + (sigma_next - sigma) * model_output
-
+            sigmas = self.sigmas[:, None, None]
+            lower_mask = sigmas < per_token_sigmas[None] - t_eps
+            lower_sigmas = lower_mask * sigmas
+            lower_sigmas, _ = lower_sigmas.max(dim=0)
+            dt = (per_token_sigmas - lower_sigmas)[..., None]
+        else:
+            sigma = self.sigmas[self.step_index]
+            sigma_next = self.sigmas[self.step_index + 1]
+            dt = sigma_next - sigma
+        
+        prev_sample = sample + dt * model_output
         # Cast sample back to model compatible dtype
         prev_sample = prev_sample.to(model_output.dtype)
 
         # upon completion increase step index by one
-        self._step_index += 1
+        if not use_per_token_timesteps:
+            self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
