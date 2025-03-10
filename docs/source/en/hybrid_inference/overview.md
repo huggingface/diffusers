@@ -46,6 +46,11 @@ Hybrid Inference offers a fast and simple way to offload local generation requir
 * **[SD.Next](https://github.com/vladmandic/sdnext):** All-in-one UI with direct supports Hybrid Inference.
 * **[ComfyUI-HFRemoteVae](https://github.com/kijai/ComfyUI-HFRemoteVae):** ComfyUI node for Hybrid Inference.
 
+## Changelog
+
+- March 10 2025: Added VAE encode
+- March 2 2025: Initial release.
+
 ## Contents
 
 The documentation is organized into three sections:
