@@ -217,8 +217,17 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["easyanimate"] = [
+        "EasyAnimatePipeline",
+        "EasyAnimateInpaintPipeline",
+        "EasyAnimateControlPipeline",
+    ]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
-    _import_structure["hunyuan_video"] = ["HunyuanVideoPipeline"]
+    _import_structure["hunyuan_video"] = [
+        "HunyuanVideoPipeline",
+        "HunyuanSkyreelsImageToVideoPipeline",
+        "HunyuanVideoImageToVideoPipeline",
+    ]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -262,6 +271,7 @@ else:
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
+            "MarigoldIntrinsicsPipeline",
             "MarigoldNormalsPipeline",
         ]
     )
@@ -347,6 +357,7 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
+    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -546,6 +557,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .easyanimate import (
+            EasyAnimateControlPipeline,
+            EasyAnimateInpaintPipeline,
+            EasyAnimatePipeline,
+        )
         from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
@@ -560,7 +576,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .hunyuan_video import HunyuanVideoPipeline
+        from .hunyuan_video import (
+            HunyuanSkyreelsImageToVideoPipeline,
+            HunyuanVideoImageToVideoPipeline,
+            HunyuanVideoPipeline,
+        )
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
@@ -605,6 +625,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .lumina2 import Lumina2Text2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
+            MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
@@ -690,6 +711,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserPipeline,
             UniDiffuserTextDecoder,
         )
+        from .wan import WanImageToVideoPipeline, WanPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,

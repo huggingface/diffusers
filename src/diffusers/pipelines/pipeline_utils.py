@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import enum
 import fnmatch
 import importlib
 import inspect
@@ -55,6 +54,8 @@ from ..utils import (
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
     PushToHubMixin,
+    _get_detailed_type,
+    _is_valid_type,
     is_accelerate_available,
     is_accelerate_version,
     is_torch_npu_available,
@@ -88,6 +89,7 @@ from .pipeline_loading_utils import (
     _resolve_custom_pipeline_and_cls,
     _unwrap_model,
     _update_init_kwargs_with_connected_pipeline,
+    filter_model_files,
     load_sub_model,
     maybe_raise_or_warn,
     variant_compatible_siblings,
@@ -324,7 +326,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 create_pr=create_pr,
             )
 
-    def to(self, *args, **kwargs):
+    def to(self, *args, **kwargs) -> Self:
         r"""
         Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
         arguments of `self.to(*args, **kwargs).`
@@ -684,7 +686,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         from_flax = kwargs.pop("from_flax", False)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
@@ -693,13 +695,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
-        offload_state_dict = kwargs.pop("offload_state_dict", False)
+        offload_state_dict = kwargs.pop("offload_state_dict", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         dduf_file = kwargs.pop("dduf_file", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
+
+        if not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -876,26 +884,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
-        for key in init_dict.keys():
-            if key not in passed_class_obj:
-                continue
-            if "scheduler" in key:
-                continue
-
-            class_obj = passed_class_obj[key]
-            _expected_class_types = []
-            for expected_type in expected_types[key]:
-                if isinstance(expected_type, enum.EnumMeta):
-                    _expected_class_types.extend(expected_type.__members__.keys())
-                else:
-                    _expected_class_types.append(expected_type.__name__)
-
-            _is_valid_type = class_obj.__class__.__name__ in _expected_class_types
-            if not _is_valid_type:
-                logger.warning(
-                    f"Expected types for {key}: {_expected_class_types}, got {class_obj.__class__.__name__}."
-                )
-
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
             raise NotImplementedError(
@@ -1015,10 +1003,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
 
-        # 10. Instantiate the pipeline
+        # 10. Type checking init arguments
+        for kw, arg in init_kwargs.items():
+            # Too complex to validate with type annotation alone
+            if "scheduler" in kw:
+                continue
+            # Many tokenizer annotations don't include its "Fast" variant, so skip this
+            # e.g T5Tokenizer but not T5TokenizerFast
+            elif "tokenizer" in kw:
+                continue
+            elif (
+                arg is not None  # Skip if None
+                and not expected_types[kw] == (inspect.Signature.empty,)  # Skip if no type annotations
+                and not _is_valid_type(arg, expected_types[kw])  # Check type
+            ):
+                logger.warning(f"Expected types for {kw}: {expected_types[kw]}, got {_get_detailed_type(arg)}.")
+
+        # 11. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
 
-        # 11. Save where the model was instantiated from
+        # 12. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         if device_map is not None:
             setattr(model, "hf_device_map", final_device_map)
@@ -1384,10 +1388,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 revision=revision,
             )
 
-        allow_pickle = False
-        if use_safetensors is None:
-            use_safetensors = True
-            allow_pickle = True
+        allow_pickle = True if (use_safetensors is None or use_safetensors is False) else False
+        use_safetensors = use_safetensors if use_safetensors is not None else True
 
         allow_patterns = None
         ignore_patterns = None
@@ -1402,6 +1404,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
         if not local_files_only:
+            config_file = hf_hub_download(
+                pretrained_model_name,
+                cls.config_name,
+                cache_dir=cache_dir,
+                revision=revision,
+                proxies=proxies,
+                force_download=force_download,
+                token=token,
+            )
+            config_dict = cls._dict_from_json_file(config_file)
+            ignore_filenames = config_dict.pop("_ignore_files", [])
+
             filenames = {sibling.rfilename for sibling in info.siblings}
             if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
                 warn_msg = (
@@ -1416,58 +1430,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 )
                 logger.warning(warn_msg)
 
-            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
-
-            config_file = hf_hub_download(
-                pretrained_model_name,
-                cls.config_name,
-                cache_dir=cache_dir,
-                revision=revision,
-                proxies=proxies,
-                force_download=force_download,
-                token=token,
-            )
-
-            config_dict = cls._dict_from_json_file(config_file)
-            ignore_filenames = config_dict.pop("_ignore_files", [])
-
-            # remove ignored filenames
-            model_filenames = set(model_filenames) - set(ignore_filenames)
-            variant_filenames = set(variant_filenames) - set(ignore_filenames)
-
+            filenames = set(filenames) - set(ignore_filenames)
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
             ) >= version.parse("0.22.0"):
-                warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, model_filenames)
+                warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, filenames)
 
             custom_components, folder_names = _get_custom_components_and_folders(
-                pretrained_model_name, config_dict, filenames, variant_filenames, variant
+                pretrained_model_name, config_dict, filenames, variant
             )
-            model_folder_names = {os.path.split(f)[0] for f in model_filenames if os.path.split(f)[0] in folder_names}
-
             custom_class_name = None
             if custom_pipeline is None and isinstance(config_dict["_class_name"], (list, tuple)):
                 custom_pipeline = config_dict["_class_name"][0]
                 custom_class_name = config_dict["_class_name"][1]
-
-            # all filenames compatible with variant will be added
-            allow_patterns = list(model_filenames)
-
-            # allow all patterns from non-model folders
-            # this enables downloading schedulers, tokenizers, ...
-            allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
-            # add custom component files
-            allow_patterns += [f"{k}/{f}.py" for k, f in custom_components.items()]
-            # add custom pipeline file
-            allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
-            # also allow downloading config.json files with the model
-            allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
-            allow_patterns += [
-                SCHEDULER_CONFIG_NAME,
-                CONFIG_NAME,
-                cls.config_name,
-                CUSTOM_PIPELINE_FILE_NAME,
-            ]
 
             load_pipe_from_hub = custom_pipeline is not None and f"{custom_pipeline}.py" in filenames
             load_components_from_hub = len(custom_components) > 0
@@ -1501,12 +1476,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
 
+            # retrieve the names of the folders containing model weights
+            model_folder_names = {
+                os.path.split(f)[0] for f in filter_model_files(filenames) if os.path.split(f)[0] in folder_names
+            }
             # retrieve all patterns that should not be downloaded and error out when needed
             ignore_patterns = _get_ignore_patterns(
                 passed_components,
                 model_folder_names,
-                model_filenames,
-                variant_filenames,
+                filenames,
                 use_safetensors,
                 from_flax,
                 allow_pickle,
@@ -1514,6 +1492,29 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 pipeline_class._is_onnx,
                 variant,
             )
+
+            model_filenames, variant_filenames = variant_compatible_siblings(
+                filenames, variant=variant, ignore_patterns=ignore_patterns
+            )
+
+            # all filenames compatible with variant will be added
+            allow_patterns = list(model_filenames)
+
+            # allow all patterns from non-model folders
+            # this enables downloading schedulers, tokenizers, ...
+            allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
+            # add custom component files
+            allow_patterns += [f"{k}/{f}.py" for k, f in custom_components.items()]
+            # add custom pipeline file
+            allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
+            # also allow downloading config.json files with the model
+            allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
+            allow_patterns += [
+                SCHEDULER_CONFIG_NAME,
+                CONFIG_NAME,
+                cls.config_name,
+                CUSTOM_PIPELINE_FILE_NAME,
+            ]
 
             # Don't download any objects that are passed
             allow_patterns = [
@@ -1827,7 +1828,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
 
         original_config = dict(pipeline.config)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
 
         # derive the pipeline class to instantiate
         custom_pipeline = kwargs.pop("custom_pipeline", None)

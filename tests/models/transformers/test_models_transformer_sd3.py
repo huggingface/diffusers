@@ -33,6 +33,7 @@ enable_full_determinism()
 class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = SD3Transformer2DModel
     main_input_name = "hidden_states"
+    model_split_percents = [0.8, 0.8, 0.9]
 
     @property
     def dummy_input(self):
@@ -67,7 +68,7 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 32,
             "patch_size": 1,
             "in_channels": 4,
-            "num_layers": 1,
+            "num_layers": 4,
             "attention_head_dim": 8,
             "num_attention_heads": 4,
             "caption_projection_dim": 32,
@@ -107,6 +108,7 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
 class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = SD3Transformer2DModel
     main_input_name = "hidden_states"
+    model_split_percents = [0.8, 0.8, 0.9]
 
     @property
     def dummy_input(self):
@@ -141,7 +143,7 @@ class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 32,
             "patch_size": 1,
             "in_channels": 4,
-            "num_layers": 2,
+            "num_layers": 4,
             "attention_head_dim": 8,
             "num_attention_heads": 4,
             "caption_projection_dim": 32,

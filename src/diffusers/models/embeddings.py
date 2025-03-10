@@ -2583,6 +2583,11 @@ class MultiIPAdapterImageProjection(nn.Module):
         super().__init__()
         self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
 
+    @property
+    def num_ip_adapters(self) -> int:
+        """Number of IP-Adapters loaded."""
+        return len(self.image_projection_layers)
+
     def forward(self, image_embeds: List[torch.Tensor]):
         projected_image_embeds = []
 
