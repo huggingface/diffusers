@@ -19,7 +19,7 @@ import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...models import CosmosTransformer3DModel
+from ...models import AutoencoderKLCosmos, CosmosTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -52,13 +52,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> prompt = "A sleek, humanoid robot stands in a vast warehouse filled with neatly stacked cardboard boxes on industrial shelves. The robot's metallic body gleams under the bright, even lighting, highlighting its futuristic design and intricate joints. A glowing blue light emanates from its chest, adding a touch of advanced technology. The background is dominated by rows of boxes, suggesting a highly organized storage system. The floor is lined with wooden pallets, enhancing the industrial setting. The camera remains static, capturing the robot's poised stance amidst the orderly environment, with a shallow depth of field that keeps the focus on the robot while subtly blurring the background for a cinematic effect."
 
-        >>> output = pipe(
-        ...     prompt=prompt,
-        ...     height=704,
-        ...     width=1280,
-        ...     num_frames=121,
-        ...     num_inference_steps=30,
-        ... ).frames[0]
+        >>> output = pipe(prompt=prompt).frames[0]
         >>> export_to_video(output, "output.mp4", fps=30)
         ```
 """
@@ -155,7 +149,7 @@ class CosmosPipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
         transformer: CosmosTransformer3DModel,
-        vae,  # TODO(aryan)
+        vae: AutoencoderKLCosmos,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
@@ -168,8 +162,10 @@ class CosmosPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 8
-        self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
+        self.vae_scale_factor_temporal = (
+            self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 8
+        )
+        self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     def _get_t5_prompt_embeds(
@@ -394,7 +390,7 @@ class CosmosPipeline(DiffusionPipeline):
         height: int = 704,
         width: int = 1280,
         num_frames: int = 121,
-        num_inference_steps: int = 35,
+        num_inference_steps: int = 36,
         guidance_scale: float = 7.0,
         fps: int = 30,
         num_videos_per_prompt: Optional[int] = 1,

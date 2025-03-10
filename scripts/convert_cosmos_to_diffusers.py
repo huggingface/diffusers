@@ -7,7 +7,7 @@ from accelerate import init_empty_weights
 from huggingface_hub import snapshot_download
 from transformers import T5EncoderModel, T5TokenizerFast
 
-from diffusers import AutoencoderKLCosmos, CosmosTransformer3DModel, EDMEulerScheduler
+from diffusers import AutoencoderKLCosmos, CosmosPipeline, CosmosTransformer3DModel, EDMEulerScheduler
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -195,8 +195,8 @@ def convert_vae(vae_type: str):
     config = VAE_CONFIGS[vae_type]["diffusers_config"]
     config.update(
         {
-            "latents_mean": mean_std[0],
-            "latents_std": mean_std[1],
+            "latents_mean": mean_std[0].detach().cpu().numpy().tolist(),
+            "latents_std": mean_std[1].detach().cpu().numpy().tolist(),
         }
     )
     vae = AutoencoderKLCosmos(**config)
@@ -223,8 +223,8 @@ def get_args():
         "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
     parser.add_argument("--vae_type", type=str, default=None, choices=list(VAE_CONFIGS.keys()), help="Type of VAE")
-    parser.add_argument("--text_encoder_path", type=str, default=None, help="Path or HF id to original T5 checkpoint")
-    parser.add_argument("--tokenizer_path", type=str, default=None, help="Path or HF id to original T5 tokenizer")
+    parser.add_argument("--text_encoder_path", type=str, default="google-t5/t5-11b")
+    parser.add_argument("--tokenizer_path", type=str, default="google-t5/t5-11b")
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the transformer in.")
@@ -249,7 +249,6 @@ if __name__ == "__main__":
         assert args.vae_type is not None
         assert args.text_encoder_path is not None
         assert args.tokenizer_path is not None
-        assert args.text_encoder_2_path is not None
 
     if args.transformer_ckpt_path is not None:
         transformer = convert_transformer(args.transformer_ckpt_path)
@@ -278,20 +277,11 @@ if __name__ == "__main__":
             final_sigmas_type="sigma_min",
         )
 
-    # if args.save_pipeline:
-    #     text_encoder = AutoModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.float16)
-    #     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, padding_side="right")
-    #     text_encoder_2 = CLIPTextModel.from_pretrained(args.text_encoder_2_path, torch_dtype=torch.float16)
-    #     tokenizer_2 = CLIPTokenizer.from_pretrained(args.text_encoder_2_path)
-    #     scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
-
-    #     pipe = CosmosPipeline(
-    #         transformer=transformer,
-    #         vae=vae,
-    #         text_encoder=text_encoder,
-    #         tokenizer=tokenizer,
-    #         text_encoder_2=text_encoder_2,
-    #         tokenizer_2=tokenizer_2,
-    #         scheduler=scheduler,
-    #     )
-    #     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+        pipe = CosmosPipeline(
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            transformer=transformer,
+            vae=vae,
+            scheduler=scheduler,
+        )
+        pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
