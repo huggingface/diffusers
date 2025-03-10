@@ -39,10 +39,10 @@ from ..utils import (
     deprecate,
     is_accelerate_available,
     is_gguf_available,
-    is_torchao_available,
-    is_torchao_version,
     is_torch_available,
     is_torch_version,
+    is_torchao_available,
+    is_torchao_version,
     logging,
 )
 
@@ -72,16 +72,16 @@ def _update_torch_safe_globals():
         (torch.uint7, "torch.uint7"),
     ]
     try:
-        from torchao.dtypes.uintx.uintx_layout import UintxTensor, UintxAQTTensorImpl
-        from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
-        from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
         from torchao.dtypes import NF4Tensor
+        from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
+        from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
+        from torchao.dtypes.uintx.uintx_layout import UintxAQTTensorImpl, UintxTensor
 
         safe_globals.extend([UintxTensor, UInt4Tensor, UintxAQTTensorImpl, Float8AQTTensorImpl, NF4Tensor])
 
     except (ImportError, ModuleNotFoundError) as e:
         logger.warning(
-            f"Unable to import `torchao` Tensor objects. This may affect loading checkpoints serialized with `torchao`"
+            "Unable to import `torchao` Tensor objects. This may affect loading checkpoints serialized with `torchao`"
         )
         logger.debug(e)
 
