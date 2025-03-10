@@ -34,7 +34,12 @@ from diffusers import FluxTransformer2DModel, QuantoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
 quantization_config = QuantoConfig(weights_dtype="float8")
-transformer = FluxTransformer2DModel.from_pretrained(model_id, quantization_config=quantization_config, torch_dtype=torch.bfloat16)
+transformer = FluxTransformer2DModel.from_pretrained(
+      model_id,
+      subfolder="transformer",
+      quantization_config=quantization_config,
+      torch_dtype=torch.bfloat16,
+)
 
 pipe = FluxPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch_dtype)
 pipe.to("cuda")
