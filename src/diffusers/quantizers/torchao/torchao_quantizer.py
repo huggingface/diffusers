@@ -97,7 +97,7 @@ def _update_torch_safe_globals():
         torch.serialization.add_safe_globals(safe_globals=safe_globals)
 
 
-if is_torch_version(">=", "2.6") and is_torchao_available() and is_torchao_version(">=", "0.7.0"):
+if is_torch_version(">=", "2.6.0") and is_torchao_available() and is_torchao_version(">=", "0.7.0"):
     _update_torch_safe_globals()
 
 
