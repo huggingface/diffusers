@@ -13,13 +13,15 @@
 # limitations under the License.
 
 import sys
+import tempfile
 import unittest
 
+import numpy as np
 import torch
-from transformers import AutoTokenizer, GlmConfig, GlmModel
+from transformers import AutoTokenizer, GlmModel
 
 from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps, torch_device
 
 
 sys.path.append(".")
@@ -30,14 +32,9 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 class TokenizerWrapper:
     @staticmethod
     def from_pretrained(*args, **kwargs):
-        return AutoTokenizer.from_pretrained("THUDM/glm-4-9b-chat", trust_remote_code=True)
-
-
-class TextEncoderWrapper:
-    @staticmethod
-    def from_pretrained(*args, **kwargs):
-        config = GlmConfig(hidden_size=32, intermediate_size=8, num_hidden_layers=2, num_attention_heads=4, head_dim=8)
-        return GlmModel(config)
+        return AutoTokenizer.from_pretrained(
+            "hf-internal-testing/tiny-random-cogview4", subfolder="tokenizer", trust_remote_code=True
+        )
 
 
 @require_peft_backend
@@ -70,8 +67,16 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "sample_size": 128,
     }
     vae_cls = AutoencoderKL
-    tokenizer_cls, tokenizer_id = TokenizerWrapper, "THUDM/glm-4-9b-chat"
-    text_encoder_cls, text_encoder_id = TextEncoderWrapper, "hf-internal-testing/tiny-random-GlmForCausalLM"
+    tokenizer_cls, tokenizer_id, tokenizer_subfolder = (
+        TokenizerWrapper,
+        "hf-internal-testing/tiny-random-cogview4",
+        "tokenizer",
+    )
+    text_encoder_cls, text_encoder_id, text_encoder_subfolder = (
+        GlmModel,
+        "hf-internal-testing/tiny-random-cogview4",
+        "text_encoder",
+    )
 
     @property
     def output_shape(self):
@@ -107,11 +112,34 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
 
-    @unittest.skip(
-        "Needs additional debugging. OSError: Incorrect path_or_model_id: ''. Please provide either the path to a local folder or the repo_id of a model on the Hub."
-    )
     def test_simple_inference_save_pretrained(self):
-        pass
+        """
+        Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
+        """
+        for scheduler_cls in self.scheduler_classes:
+            components, _, _ = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertTrue(output_no_lora.shape == self.output_shape)
+
+            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                pipe.save_pretrained(tmpdirname)
+
+                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
+                pipe_from_pretrained.to(torch_device)
+
+            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
+
+            self.assertTrue(
+                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
+                "Loading from saved checkpoints should give same results.",
+            )
 
     @unittest.skip("Not supported in CogView4.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
