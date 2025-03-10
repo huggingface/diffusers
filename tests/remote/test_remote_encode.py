@@ -13,17 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import unittest
 
 import PIL.Image
 import torch
 
 from diffusers.utils import load_image
 from diffusers.utils.remote_utils import (
+    DECODE_ENDPOINT_FLUX,
+    DECODE_ENDPOINT_SD_V1,
+    DECODE_ENDPOINT_SD_XL,
+    ENCODE_ENDPOINT_FLUX,
+    ENCODE_ENDPOINT_SD_V1,
+    ENCODE_ENDPOINT_SD_XL,
     remote_decode,
     remote_encode,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    slow,
 )
 
 
@@ -71,40 +79,40 @@ class RemoteAutoencoderKLEncodeMixin:
         # TODO: how to test this? encode->decode is lossy. expected slice of encoded latent?
 
 
-# class RemoteAutoencoderKLSDv1Tests(
-#     RemoteAutoencoderKLEncodeMixin,
-#     unittest.TestCase,
-# ):
-#     channels = 4
-#     endpoint = ENCODE_ENDPOINT_SD_V1
-#     decode_endpoint = DECODE_ENDPOINT_SD_V1
-#     dtype = torch.float16
-#     scaling_factor = 0.18215
-#     shift_factor = None
+class RemoteAutoencoderKLSDv1Tests(
+    RemoteAutoencoderKLEncodeMixin,
+    unittest.TestCase,
+):
+    channels = 4
+    endpoint = ENCODE_ENDPOINT_SD_V1
+    decode_endpoint = DECODE_ENDPOINT_SD_V1
+    dtype = torch.float16
+    scaling_factor = 0.18215
+    shift_factor = None
 
 
-# class RemoteAutoencoderKLSDXLTests(
-#     RemoteAutoencoderKLEncodeMixin,
-#     unittest.TestCase,
-# ):
-#     channels = 4
-#     endpoint = ENCODE_ENDPOINT_SD_XL
-#     decode_endpoint = DECODE_ENDPOINT_SD_XL
-#     dtype = torch.float16
-#     scaling_factor = 0.13025
-#     shift_factor = None
+class RemoteAutoencoderKLSDXLTests(
+    RemoteAutoencoderKLEncodeMixin,
+    unittest.TestCase,
+):
+    channels = 4
+    endpoint = ENCODE_ENDPOINT_SD_XL
+    decode_endpoint = DECODE_ENDPOINT_SD_XL
+    dtype = torch.float16
+    scaling_factor = 0.13025
+    shift_factor = None
 
 
-# class RemoteAutoencoderKLFluxTests(
-#     RemoteAutoencoderKLEncodeMixin,
-#     unittest.TestCase,
-# ):
-#     channels = 16
-#     endpoint = DECODE_ENDPOINT_FLUX
-#     decode_endpoint = ENCODE_ENDPOINT_FLUX
-#     dtype = torch.bfloat16
-#     scaling_factor = 0.3611
-#     shift_factor = 0.1159
+class RemoteAutoencoderKLFluxTests(
+    RemoteAutoencoderKLEncodeMixin,
+    unittest.TestCase,
+):
+    channels = 16
+    endpoint = ENCODE_ENDPOINT_FLUX
+    decode_endpoint = DECODE_ENDPOINT_FLUX
+    dtype = torch.bfloat16
+    scaling_factor = 0.3611
+    shift_factor = 0.1159
 
 
 class RemoteAutoencoderKLEncodeSlowTestMixin:
@@ -177,38 +185,38 @@ class RemoteAutoencoderKLEncodeSlowTestMixin:
                 decoded.save(f"test_multi_res_{height}_{width}.png")
 
 
-# @slow
-# class RemoteAutoencoderKLSDv1SlowTests(
-#     RemoteAutoencoderKLEncodeSlowTestMixin,
-#     unittest.TestCase,
-# ):
-#     endpoint = ENCODE_ENDPOINT_SD_V1
-#     decode_endpoint = DECODE_ENDPOINT_SD_V1
-#     dtype = torch.float16
-#     scaling_factor = 0.18215
-#     shift_factor = None
+@slow
+class RemoteAutoencoderKLSDv1SlowTests(
+    RemoteAutoencoderKLEncodeSlowTestMixin,
+    unittest.TestCase,
+):
+    endpoint = ENCODE_ENDPOINT_SD_V1
+    decode_endpoint = DECODE_ENDPOINT_SD_V1
+    dtype = torch.float16
+    scaling_factor = 0.18215
+    shift_factor = None
 
 
-# @slow
-# class RemoteAutoencoderKLSDXLSlowTests(
-#     RemoteAutoencoderKLEncodeSlowTestMixin,
-#     unittest.TestCase,
-# ):
-#     endpoint = ENCODE_ENDPOINT_SD_XL
-#     decode_endpoint = DECODE_ENDPOINT_SD_XL
-#     dtype = torch.float16
-#     scaling_factor = 0.13025
-#     shift_factor = None
+@slow
+class RemoteAutoencoderKLSDXLSlowTests(
+    RemoteAutoencoderKLEncodeSlowTestMixin,
+    unittest.TestCase,
+):
+    endpoint = ENCODE_ENDPOINT_SD_XL
+    decode_endpoint = DECODE_ENDPOINT_SD_XL
+    dtype = torch.float16
+    scaling_factor = 0.13025
+    shift_factor = None
 
 
-# @slow
-# class RemoteAutoencoderKLFluxSlowTests(
-#     RemoteAutoencoderKLEncodeSlowTestMixin,
-#     unittest.TestCase,
-# ):
-#     channels = 16
-#     endpoint = ENCODE_ENDPOINT_FLUX
-#     decode_endpoint = DECODE_ENDPOINT_FLUX
-#     dtype = torch.bfloat16
-#     scaling_factor = 0.3611
-#     shift_factor = 0.1159
+@slow
+class RemoteAutoencoderKLFluxSlowTests(
+    RemoteAutoencoderKLEncodeSlowTestMixin,
+    unittest.TestCase,
+):
+    channels = 16
+    endpoint = ENCODE_ENDPOINT_FLUX
+    decode_endpoint = DECODE_ENDPOINT_FLUX
+    dtype = torch.bfloat16
+    scaling_factor = 0.3611
+    shift_factor = 0.1159
