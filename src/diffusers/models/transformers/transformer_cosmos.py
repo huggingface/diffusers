@@ -287,15 +287,22 @@ class CosmosRotaryPosEmbed(nn.Module):
     def forward(self, hidden_states: torch.Tensor, fps: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         pe_size = [num_frames // self.patch_size[0], height // self.patch_size[1], width // self.patch_size[2]]
+        device = hidden_states.device
 
         h_theta = 10000.0 * self.h_ntk_factor
         w_theta = 10000.0 * self.w_ntk_factor
         t_theta = 10000.0 * self.t_ntk_factor
 
-        seq = torch.arange(max(self.max_size), dtype=torch.float32)
-        dim_h_range = torch.arange(0, self.dim_h, 2, dtype=torch.float32)[: (self.dim_h // 2)] / self.dim_h
-        dim_w_range = torch.arange(0, self.dim_w, 2, dtype=torch.float32)[: (self.dim_w // 2)] / self.dim_w
-        dim_t_range = torch.arange(0, self.dim_t, 2, dtype=torch.float32)[: (self.dim_t // 2)] / self.dim_t
+        seq = torch.arange(max(self.max_size), device=device, dtype=torch.float32)
+        dim_h_range = (
+            torch.arange(0, self.dim_h, 2, device=device, dtype=torch.float32)[: (self.dim_h // 2)] / self.dim_h
+        )
+        dim_w_range = (
+            torch.arange(0, self.dim_w, 2, device=device, dtype=torch.float32)[: (self.dim_w // 2)] / self.dim_w
+        )
+        dim_t_range = (
+            torch.arange(0, self.dim_t, 2, device=device, dtype=torch.float32)[: (self.dim_t // 2)] / self.dim_t
+        )
         h_spatial_freqs = 1.0 / (h_theta**dim_h_range)
         w_spatial_freqs = 1.0 / (w_theta**dim_w_range)
         temporal_freqs = 1.0 / (t_theta**dim_t_range)
@@ -388,6 +395,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embed", "final_layer", "norm"]
     _no_split_modules = ["CosmosTransformerBlock"]
+    _keep_in_fp32_modules = ["learnable_pos_embed"]
 
     @register_to_config
     def __init__(

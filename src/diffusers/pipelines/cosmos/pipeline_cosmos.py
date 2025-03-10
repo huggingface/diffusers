@@ -20,7 +20,7 @@ from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLCosmos, CosmosTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import EDMEulerScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -150,7 +150,7 @@ class CosmosPipeline(DiffusionPipeline):
         tokenizer: T5TokenizerFast,
         transformer: CosmosTransformer3DModel,
         vae: AutoencoderKLCosmos,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: EDMEulerScheduler,
     ):
         super().__init__()
 
@@ -327,7 +327,6 @@ class CosmosPipeline(DiffusionPipeline):
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        # TODO(aryan): not sure if we should use init_noise_sigma here, because the original code simply multiplies with sigmas_max
         return latents * self.scheduler.config.sigma_max
 
     def check_inputs(
@@ -560,13 +559,8 @@ class CosmosPipeline(DiffusionPipeline):
                 )[0]
 
                 if self.do_classifier_free_guidance:
-                    # TODO(aryan): The original codebase seems to be doing it differently ======
-                    # cond_x0 = self.denoise(noise_x, sigma, condition).x0
-                    # uncond_x0 = self.denoise(noise_x, sigma, uncondition).x0
-                    # raw_x0 = cond_x0 + guidance * (cond_x0 - uncond_x0)
-                    # ==========================================================================
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_text + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
