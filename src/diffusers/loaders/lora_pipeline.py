@@ -451,7 +451,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     def unfuse_lora(self, components: List[str] = ["unet", "text_encoder"], **kwargs):
@@ -891,7 +895,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     def unfuse_lora(self, components: List[str] = ["unet", "text_encoder", "text_encoder_2"], **kwargs):
@@ -1290,7 +1298,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.unfuse_lora with unet->transformer
@@ -1828,7 +1840,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             )
 
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
@@ -2548,7 +2564,11 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
@@ -2852,7 +2872,11 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
@@ -3157,7 +3181,11 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
@@ -3462,7 +3490,11 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
@@ -3770,7 +3802,11 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
@@ -4079,7 +4115,11 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
@@ -4384,7 +4424,11 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
