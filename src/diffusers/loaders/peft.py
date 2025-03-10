@@ -235,7 +235,7 @@ class PeftAdapterMixin:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
-            state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+            state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}):

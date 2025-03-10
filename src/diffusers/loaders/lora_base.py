@@ -343,7 +343,7 @@ def _load_lora_into_text_encoder(
 
     # Load the layers corresponding to text encoder and make necessary adjustments.
     if prefix is not None:
-        state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+        state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
     if len(state_dict) > 0:
         logger.info(f"Loading {prefix}.")
