@@ -467,7 +467,7 @@ class AutoencoderKLEncodeBenchmark(BaseBenchmarkTestCase):
         width = kwargs.get("width")
 
         tensor = torch.randn(
-            (batch, self.model.config.latent_channels, height, width), dtype=self.dtype, device="cuda"
+            (batch, self.model.config.in_channels, height, width), dtype=self.dtype, device="cuda"
         )
 
         try:
