@@ -142,14 +142,14 @@ def block_to_diffusers_checkpoint(block, checkpoint, block_idx, block_type):
             diffusers_attention_prefix = f"{block_type}_blocks.{block_idx}.attentions.{attention_idx}"
             idx = n * attention_idx + 1 if block_type == "up" else n * attention_idx + 2
             self_attention_prefix = f"{block_prefix}.{idx}"
-            cross_attention_prefix = f"{block_prefix}.{idx }"
+            cross_attention_prefix = f"{block_prefix}.{idx}"
             cross_attention_index = 1 if not attention.add_self_attention else 2
             idx = (
                 n * attention_idx + cross_attention_index
                 if block_type == "up"
                 else n * attention_idx + cross_attention_index + 1
             )
-            cross_attention_prefix = f"{block_prefix}.{idx }"
+            cross_attention_prefix = f"{block_prefix}.{idx}"
 
             diffusers_checkpoint.update(
                 cross_attn_to_diffusers_checkpoint(
@@ -220,9 +220,9 @@ def unet_model_from_original_config(original_config):
 
     block_out_channels = original_config["channels"]
 
-    assert (
-        len(set(original_config["depths"])) == 1
-    ), "UNet2DConditionModel currently do not support blocks with different number of layers"
+    assert len(set(original_config["depths"])) == 1, (
+        "UNet2DConditionModel currently do not support blocks with different number of layers"
+    )
     layers_per_block = original_config["depths"][0]
 
     class_labels_dim = original_config["mapping_cond_dim"]
