@@ -14,10 +14,11 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -229,11 +230,11 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)

@@ -418,6 +418,8 @@ jobs:
             test_location: "gguf"
           - backend: "torchao"
             test_location: "torchao"
+          - backend: "optimum_quanto"
+            test_location: "quanto"
     runs-on:
       group: aws-g6e-xlarge-plus
     container:
