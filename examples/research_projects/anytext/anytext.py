@@ -146,6 +146,12 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> # This example requires the `anytext_controlnet.py` file:
+        >>> # !git clone --depth 1 https://github.com/huggingface/diffusers.git
+        >>> # %cd diffusers/examples/research_projects/anytext
+        >>> # Let's choose a font file shared by an HF staff:
+        >>> # !wget https://huggingface.co/spaces/ysharma/TranslateQuotesInImageForwards/resolve/main/arial-unicode-ms.ttf
+
         >>> import torch
         >>> from diffusers import DiffusionPipeline
         >>> from anytext_controlnet import AnyTextControlNetModel
@@ -165,6 +171,7 @@ EXAMPLE_DOC_STRING = """
         >>> # generate image
         >>> prompt = 'photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream'
         >>> draw_pos = load_image("https://raw.githubusercontent.com/tyxsspa/AnyText/refs/heads/main/example_images/gen9.png")
+        >>> # There are two modes: "generate" and "edit". "edit" mode requires `ori_image` parameter for the image to be edited.
         >>> image = pipe(prompt, num_inference_steps=20, mode="generate", draw_pos=draw_pos,
         ...              ).images[0]
         >>> image
