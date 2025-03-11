@@ -70,12 +70,55 @@ class ModuleGroup:
         self.stream = stream
         self.cpu_param_dict = cpu_param_dict
         self.onload_self = onload_self
+        # Track if we've pinned our group's memory
+        self.pinned_memory = False
 
         if self.stream is not None and self.cpu_param_dict is None:
             raise ValueError("cpu_param_dict must be provided when using stream for data transfer.")
 
+    def pin_memory_(self):
+        r"""Pin the memory of this group's parameters for faster transfer."""
+        if self.stream is not None and not self.pinned_memory:
+            # Create the pinned memory dict just for this group's parameters
+            self.cpu_param_dict = {}
+            for group_module in self.modules:
+                for param in group_module.parameters():
+                    if param.device == self.offload_device:
+                        pinned_data = param.data.pin_memory()
+                        self.cpu_param_dict[param] = pinned_data
+                        param.data = pinned_data
+            if self.parameters is not None:
+                for param in self.parameters:
+                    if param.device == self.offload_device:
+                        pinned_data = param.data.pin_memory()
+                        self.cpu_param_dict[param] = pinned_data
+                        param.data = pinned_data
+            self.pinned_memory = True
+
+    def unpin_memory_(self):
+        r"""Unpin the memory of this group's parameters to free up CPU RAM."""
+        if self.stream is not None and self.pinned_memory:
+            # Only unpin if we're currently on CPU (i.e., offloaded)
+            for group_module in self.modules:
+                if not any(p.device == self.onload_device for p in group_module.parameters()):
+                    for param in group_module.parameters():
+                        if param in self.cpu_param_dict and param.device == self.offload_device:
+                            # Create a new non-pinned copy and replace
+                            param.data = param.data.clone()
+            if self.parameters is not None:
+                for param in self.parameters:
+                    if param in self.cpu_param_dict and param.device == self.offload_device:
+                        param.data = param.data.clone()
+            # Clear the CPU param dict
+            self.cpu_param_dict = {}
+            self.pinned_memory = False
+
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
+        # Pin memory before onloading
+        if self.stream is not None and not self.pinned_memory:
+            self.pin_memory_()
+            
         context = nullcontext() if self.stream is None else torch.cuda.stream(self.stream)
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -107,6 +150,9 @@ class ModuleGroup:
             if self.buffers is not None:
                 for buffer in self.buffers:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
+                    
+        # After offloading, we can unpin the memory if configured to do so
+        # We'll keep it pinned by default for better performance
 
 
 class GroupOffloadingHook(ModelHook):
@@ -123,9 +169,11 @@ class GroupOffloadingHook(ModelHook):
         self,
         group: ModuleGroup,
         next_group: Optional[ModuleGroup] = None,
+        unpin_after_use: bool = False,
     ) -> None:
         self.group = group
         self.next_group = next_group
+        self.unpin_after_use = unpin_after_use
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         if self.group.offload_leader == module:
@@ -154,6 +202,10 @@ class GroupOffloadingHook(ModelHook):
     def post_forward(self, module: torch.nn.Module, output):
         if self.group.offload_leader == module:
             self.group.offload_()
+            # After offloading, we can optionally unpin memory to free up CPU RAM
+            # This is most useful for large models where CPU RAM is limited
+            if self.unpin_after_use and self.group.pinned_memory:
+                self.group.unpin_memory_()
         return output
 
 
@@ -268,6 +320,7 @@ def apply_group_offloading(
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,
+    unpin_after_use: bool = False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -314,6 +367,10 @@ def apply_group_offloading(
         use_stream (`bool`, defaults to `False`):
             If True, offloading and onloading is done asynchronously using a CUDA stream. This can be useful for
             overlapping computation and data transfer.
+        unpin_after_use (`bool`, defaults to `False`):
+            If True, pinned memory is released after a module group has been offloaded to CPU. This reduces CPU memory
+            usage at the cost of potentially slower data transfer when the group is loaded again. Useful for large models
+            with limited CPU RAM.
 
     Example:
         ```python
@@ -331,6 +388,7 @@ def apply_group_offloading(
         ...     offload_type="block_level",
         ...     num_blocks_per_group=2,
         ...     use_stream=True,
+        ...     unpin_after_use=False,  # Set to True to reduce CPU memory usage
         ... )
         ```
     """
@@ -349,10 +407,10 @@ def apply_group_offloading(
             raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
 
         _apply_group_offloading_block_level(
-            module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream
+            module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream, unpin_after_use
         )
     elif offload_type == "leaf_level":
-        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream)
+        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream, unpin_after_use)
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
 
@@ -364,6 +422,7 @@ def _apply_group_offloading_block_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
+    unpin_after_use: bool = False,
 ) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
@@ -384,12 +443,9 @@ def _apply_group_offloading_block_level(
             for overlapping computation and data transfer.
     """
 
-    # Create a pinned CPU parameter dict for async data transfer if streams are to be used
-    cpu_param_dict = None
-    if stream is not None:
-        for param in module.parameters():
-            param.data = param.data.cpu().pin_memory()
-        cpu_param_dict = {param: param.data for param in module.parameters()}
+    # With progressive pinning approach, we'll initialize an empty CPU parameter dict
+    # and pin memory only when needed by each group
+    cpu_param_dict = {} if stream is not None else None
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -425,7 +481,7 @@ def _apply_group_offloading_block_level(
         )
 
         for group_module in group.modules:
-            _apply_group_offloading_hook(group_module, group, next_group)
+            _apply_group_offloading_hook(group_module, group, next_group, unpin_after_use)
 
     # Parameters and Buffers of the top-level module need to be offloaded/onloaded separately
     # when the forward pass of this module is called. This is because the top-level module is not
@@ -452,7 +508,7 @@ def _apply_group_offloading_block_level(
         onload_self=True,
     )
     next_group = matched_module_groups[0] if len(matched_module_groups) > 0 else None
-    _apply_group_offloading_hook(module, unmatched_group, next_group)
+    _apply_group_offloading_hook(module, unmatched_group, next_group, unpin_after_use)
 
 
 def _apply_group_offloading_leaf_level(
@@ -461,6 +517,7 @@ def _apply_group_offloading_leaf_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
+    unpin_after_use: bool = False,
 ) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
@@ -483,12 +540,9 @@ def _apply_group_offloading_leaf_level(
             for overlapping computation and data transfer.
     """
 
-    # Create a pinned CPU parameter dict for async data transfer if streams are to be used
-    cpu_param_dict = None
-    if stream is not None:
-        for param in module.parameters():
-            param.data = param.data.cpu().pin_memory()
-        cpu_param_dict = {param: param.data for param in module.parameters()}
+    # With progressive pinning approach, we'll initialize an empty CPU parameter dict
+    # and pin memory only when needed by each group
+    cpu_param_dict = {} if stream is not None else None
 
     # Create module groups for leaf modules and apply group offloading hooks
     modules_with_group_offloading = set()
@@ -506,7 +560,7 @@ def _apply_group_offloading_leaf_level(
             cpu_param_dict=cpu_param_dict,
             onload_self=True,
         )
-        _apply_group_offloading_hook(submodule, group, None)
+        _apply_group_offloading_hook(submodule, group, None, unpin_after_use)
         modules_with_group_offloading.add(name)
 
     # Parameters and Buffers at all non-leaf levels need to be offloaded/onloaded separately when the forward pass
@@ -551,7 +605,7 @@ def _apply_group_offloading_leaf_level(
             cpu_param_dict=cpu_param_dict,
             onload_self=True,
         )
-        _apply_group_offloading_hook(parent_module, group, None)
+        _apply_group_offloading_hook(parent_module, group, None, unpin_after_use)
 
     if stream is not None:
         # When using streams, we need to know the layer execution order for applying prefetching (to overlap data transfer
@@ -577,13 +631,14 @@ def _apply_group_offloading_hook(
     module: torch.nn.Module,
     group: ModuleGroup,
     next_group: Optional[ModuleGroup] = None,
+    unpin_after_use: bool = False,
 ) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(module)
 
     # We may have already registered a group offloading hook if the module had a torch.nn.Parameter whose parent
     # is the current module. In such cases, we don't want to overwrite the existing group offloading hook.
     if registry.get_hook(_GROUP_OFFLOADING) is None:
-        hook = GroupOffloadingHook(group, next_group)
+        hook = GroupOffloadingHook(group, next_group, unpin_after_use)
         registry.register_hook(hook, _GROUP_OFFLOADING)
 
 
