@@ -49,7 +49,7 @@ Hybrid Inference offers a fast and simple way to offload local generation requir
 ## Changelog
 
 - March 10 2025: Added VAE encode
-- March 2 2025: Initial release.
+- March 2 2025: Initial release with VAE decoding
 
 ## Contents
 
