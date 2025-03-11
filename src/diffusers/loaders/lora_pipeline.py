@@ -1260,6 +1260,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
             )
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
@@ -1292,7 +1293,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1310,6 +1311,13 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -1324,6 +1332,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
         )
 
     @classmethod
@@ -1786,6 +1795,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
             )
 
         if len(transformer_norm_state_dict) > 0:
@@ -1811,7 +1821,14 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     def load_lora_into_transformer(
-        cls, state_dict, network_alphas, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+        cls,
+        state_dict,
+        network_alphas,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -1833,6 +1850,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap : (`bool`, *optional*)
+                Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
+                in-place. This means that, instead of loading an additional adapter, this will take the existing
+                adapter weights and replace them with the weights of the new adapter. This can be faster and more
+                memory efficient. However, the main advantage of hotswapping is that when the model is compiled with
+                torch.compile, loading the new adapter does not require recompilation of the model. When using
+                hotswapping, the passed `adapter_name` should be the name of an already loaded adapter.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -1850,6 +1874,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
                 low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
             )
 
     @classmethod
