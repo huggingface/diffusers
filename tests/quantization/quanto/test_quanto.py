@@ -19,29 +19,8 @@ if is_optimum_quanto_available():
 
 if is_torch_available():
     import torch
-    import torch.nn as nn
 
-    class LoRALayer(nn.Module):
-        """Wraps a linear layer with LoRA-like adapter - Used for testing purposes only
-
-        Taken from
-        https://github.com/huggingface/transformers/blob/566302686a71de14125717dea9a6a45b24d42b37/tests/quantization/bnb/test_4bit.py#L62C5-L78C77
-        """
-
-        def __init__(self, module: nn.Module, rank: int):
-            super().__init__()
-            self.module = module
-            self.adapter = nn.Sequential(
-                nn.Linear(module.in_features, rank, bias=False),
-                nn.Linear(rank, module.out_features, bias=False),
-            )
-            small_std = (2.0 / (5 * min(module.in_features, module.out_features))) ** 0.5
-            nn.init.normal_(self.adapter[0].weight, std=small_std)
-            nn.init.zeros_(self.adapter[1].weight)
-            self.adapter.to(module.weight.device)
-
-        def forward(self, input, *args, **kwargs):
-            return self.module(input, *args, **kwargs) + self.adapter(input)
+    from ..utils import LoRALayer, get_memory_consumption_stat
 
 
 @nightly
@@ -85,20 +64,20 @@ class QuantoBaseTesterMixin:
                 assert isinstance(module, QLinear)
 
     def test_quanto_memory_usage(self):
-        unquantized_model = self.model_cls.from_pretrained(self.model_id, torch_dtype=self.torch_dtype)
-        unquantized_model_memory = unquantized_model.get_memory_footprint() / 1024**3
-
-        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
         inputs = self.get_dummy_inputs()
+        inputs = {
+            k: v.to(device=torch_device, dtype=torch.bfloat16) for k, v in inputs.items() if not isinstance(v, bool)
+        }
 
-        torch.cuda.reset_peak_memory_stats()
-        torch.cuda.empty_cache()
+        unquantized_model = self.model_cls.from_pretrained(self.model_id, torch_dtype=self.torch_dtype)
+        unquantized_model.to(torch_device)
+        unquantized_model_memory = get_memory_consumption_stat(unquantized_model, inputs)
 
-        model.to(torch_device)
-        with torch.no_grad():
-            model(**inputs)
-        max_memory = torch.cuda.max_memory_allocated() / 1024**3
-        assert (1.0 - (max_memory / unquantized_model_memory)) >= self.expected_memory_reduction
+        quantized_model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
+        quantized_model.to(torch_device)
+        quantized_model_memory = get_memory_consumption_stat(quantized_model, inputs)
+
+        assert unquantized_model_memory / quantized_model_memory >= self.expected_memory_reduction
 
     def test_keep_modules_in_fp32(self):
         r"""
@@ -318,14 +297,14 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
 
 
 class FluxTransformerFloat8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
-    expected_memory_reduction = 0.3
+    expected_memory_reduction = 0.6
 
     def get_dummy_init_kwargs(self):
         return {"weights_dtype": "float8"}
 
 
 class FluxTransformerInt8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
-    expected_memory_reduction = 0.3
+    expected_memory_reduction = 0.6
     _test_torch_compile = True
 
     def get_dummy_init_kwargs(self):

@@ -215,6 +215,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Dict[str, Any],
         unexpected_keys: List[str],
+        **kwargs,
     ):
         r"""
         Each nn.Linear layer that needs to be quantized is processsed here. First, we set the value the weight tensor,
