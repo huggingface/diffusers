@@ -1397,4 +1397,4 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     for key in list(converted_state_dict.keys()):
         converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
 
-    return state_dict
+    return converted_state_dict
