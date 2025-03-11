@@ -12,5 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .auto import DiffusersAutoQuantizer
+from ..utils import is_accelerate_available, is_torch_available
 from .base import DiffusersQuantizer
+
+
+if is_torch_available() and is_accelerate_available():
+    from .auto import DiffusersAutoQuantizer
