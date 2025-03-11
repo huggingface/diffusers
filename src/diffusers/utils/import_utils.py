@@ -186,7 +186,7 @@ _xformers_available, _xformers_version = _is_package_available("xformers")
 _gguf_available, _gguf_version = _is_package_available("gguf")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
-
+_torchao_available, _torchao_version = _is_package_available("torchao")
 
 _optimum_quanto_available = importlib.util.find_spec("optimum") is not None
 if _optimum_quanto_available:
@@ -723,6 +723,21 @@ def is_optimum_quanto_version(operation: str, version: str):
     if not _optimum_quanto_available:
         return False
     return compare_versions(parse(_optimum_quanto_version), operation, version)
+
+
+def is_torchao_version(operation: str, version: str):
+    """
+    Compares the current Accelerate version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _torch_available:
+        return False
+    return compare_versions(parse(_torchao_version), operation, version)
 
 
 def get_objects_from_module(module):
