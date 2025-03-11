@@ -171,7 +171,6 @@ class CosmosPipeline(DiffusionPipeline):
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
-        num_videos_per_prompt: int = 1,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
