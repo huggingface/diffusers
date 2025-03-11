@@ -26,6 +26,7 @@ from diffusers.utils.constants import (
     DECODE_ENDPOINT_HUNYUAN_VIDEO,
     DECODE_ENDPOINT_SD_V1,
     DECODE_ENDPOINT_SD_XL,
+    DECODE_ENDPOINT_WAN_2_1,
 )
 from diffusers.utils.remote_utils import (
     remote_decode,
@@ -176,18 +177,6 @@ class RemoteAutoencoderKLMixin:
             f"{output_slice}",
         )
 
-    def test_do_scaling_deprecation(self):
-        inputs = self.get_dummy_inputs()
-        inputs.pop("scaling_factor", None)
-        inputs.pop("shift_factor", None)
-        with self.assertWarns(FutureWarning) as warning:
-            _ = remote_decode(output_type="pt", partial_postprocess=True, **inputs)
-            self.assertEqual(
-                str(warning.warnings[0].message),
-                "`do_scaling` is deprecated, pass `scaling_factor` and `shift_factor` if required.",
-                str(warning.warnings[0].message),
-            )
-
     def test_input_tensor_type_base64_deprecation(self):
         inputs = self.get_dummy_inputs()
         with self.assertWarns(FutureWarning) as warning:
@@ -209,7 +198,7 @@ class RemoteAutoencoderKLMixin:
             )
 
 
-class RemoteAutoencoderKLHunyuanVideoMixin(RemoteAutoencoderKLMixin):
+class RemoteAutoencoderKLVideoMixin(RemoteAutoencoderKLMixin):
     def test_no_scaling(self):
         inputs = self.get_dummy_inputs()
         if inputs["scaling_factor"] is not None:
@@ -221,7 +210,6 @@ class RemoteAutoencoderKLHunyuanVideoMixin(RemoteAutoencoderKLMixin):
         processor = self.processor_cls()
         output = remote_decode(
             output_type="pt",
-            # required for now, will be removed in next update
             do_scaling=False,
             processor=processor,
             **inputs,
@@ -337,6 +325,8 @@ class RemoteAutoencoderKLHunyuanVideoMixin(RemoteAutoencoderKLMixin):
         inputs = self.get_dummy_inputs()
         output = remote_decode(output_type="mp4", return_type="mp4", **inputs)
         self.assertTrue(isinstance(output, bytes), f"Expected `bytes` output, got {type(output)}")
+        with open("test.mp4", "wb") as f:
+            f.write(output)
 
 
 class RemoteAutoencoderKLSDv1Tests(
@@ -442,7 +432,7 @@ class RemoteAutoencoderKLFluxPackedTests(
 
 
 class RemoteAutoencoderKLHunyuanVideoTests(
-    RemoteAutoencoderKLHunyuanVideoMixin,
+    RemoteAutoencoderKLVideoMixin,
     unittest.TestCase,
 ):
     shape = (
@@ -465,6 +455,31 @@ class RemoteAutoencoderKLHunyuanVideoTests(
         [149, 161, 168, 136, 150, 156, 129, 143, 149], dtype=torch.uint8
     )
     return_pt_slice = torch.tensor([0.1656, 0.2661, 0.3157, 0.0693, 0.1755, 0.2252, 0.0127, 0.1221, 0.1708])
+
+
+class RemoteAutoencoderKLWanTests(
+    RemoteAutoencoderKLVideoMixin,
+    unittest.TestCase,
+):
+    shape = (
+        1,
+        16,
+        3,
+        40,
+        64,
+    )
+    out_hw = (
+        320,
+        512,
+    )
+    endpoint = DECODE_ENDPOINT_WAN_2_1
+    dtype = torch.float16
+    processor_cls = VideoProcessor
+    output_pt_slice = torch.tensor([203, 174, 178, 204, 171, 177, 209, 183, 182], dtype=torch.uint8)
+    partial_postprocess_return_pt_slice = torch.tensor(
+        [206, 209, 221, 202, 199, 222, 207, 210, 217], dtype=torch.uint8
+    )
+    return_pt_slice = torch.tensor([0.6196, 0.6382, 0.7310, 0.5869, 0.5625, 0.7373, 0.6240, 0.6465, 0.7002])
 
 
 class RemoteAutoencoderKLSlowTestMixin:

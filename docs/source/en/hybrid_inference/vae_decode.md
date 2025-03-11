@@ -54,6 +54,7 @@ For the majority of these GPUs the memory usage % dictates other models (text en
 | **Stable Diffusion XL** | [https://x2dmsqunjd6k9prw.us-east-1.aws.endpoints.huggingface.cloud](https://x2dmsqunjd6k9prw.us-east-1.aws.endpoints.huggingface.cloud) | [`madebyollin/sdxl-vae-fp16-fix`](https://hf.co/madebyollin/sdxl-vae-fp16-fix) |
 | **Flux** | [https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud](https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud) | [`black-forest-labs/FLUX.1-schnell`](https://hf.co/black-forest-labs/FLUX.1-schnell) |
 | **HunyuanVideo** | [https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud](https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud) | [`hunyuanvideo-community/HunyuanVideo`](https://hf.co/hunyuanvideo-community/HunyuanVideo) |
+| **Wan2.1** | [https://lafotb093i5cnx2w.us-east-1.aws.endpoints.huggingface.cloud](https://lafotb093i5cnx2w.us-east-1.aws.endpoints.huggingface.cloud) | [`Wan-AI/Wan2.1-T2V-1.3B-Diffusers`](https://hf.co/Wan-AI/Wan2.1-T2V-1.3B-Diffusers) |
 
 
 > [!TIP]
