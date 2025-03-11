@@ -705,7 +705,7 @@ def is_torchao_version(operation: str, version: str):
         version (`str`):
             A version string
     """
-    if not _is_torchao_available:
+    if not _torchao_available:
         return False
     return compare_versions(parse(_torchao_version), operation, version)
 
@@ -738,21 +738,6 @@ def is_optimum_quanto_version(operation: str, version: str):
     if not _optimum_quanto_available:
         return False
     return compare_versions(parse(_optimum_quanto_version), operation, version)
-
-
-def is_torchao_version(operation: str, version: str):
-    """
-    Compares the current Accelerate version to a given reference with an operation.
-
-    Args:
-        operation (`str`):
-            A string representation of an operator, such as `">"` or `"<="`
-        version (`str`):
-            A version string
-    """
-    if not _torch_available:
-        return False
-    return compare_versions(parse(_torchao_version), operation, version)
 
 
 def get_objects_from_module(module):
