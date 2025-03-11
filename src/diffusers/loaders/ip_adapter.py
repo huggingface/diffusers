@@ -215,7 +215,8 @@ class IPAdapterMixin:
                             low_cpu_mem_usage=low_cpu_mem_usage,
                             cache_dir=cache_dir,
                             local_files_only=local_files_only,
-                        ).to(self.device, dtype=self.dtype)
+                            torch_dtype=self.dtype,
+                        ).to(self.device)
                         self.register_modules(image_encoder=image_encoder)
                     else:
                         raise ValueError(
@@ -526,8 +527,9 @@ class FluxIPAdapterMixin:
                                 low_cpu_mem_usage=low_cpu_mem_usage,
                                 cache_dir=cache_dir,
                                 local_files_only=local_files_only,
+                                dtype=image_encoder_dtype,
                             )
-                            .to(self.device, dtype=image_encoder_dtype)
+                            .to(self.device)
                             .eval()
                         )
                         self.register_modules(image_encoder=image_encoder)
@@ -805,9 +807,9 @@ class SD3IPAdapterMixin:
                         feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs).to(
                             self.device, dtype=self.dtype
                         ),
-                        image_encoder=SiglipVisionModel.from_pretrained(image_encoder_subfolder, **kwargs).to(
-                            self.device, dtype=self.dtype
-                        ),
+                        image_encoder=SiglipVisionModel.from_pretrained(
+                            image_encoder_subfolder, torch_dtype=self.dtype, **kwargs
+                        ).to(self.device),
                     )
                 else:
                     raise ValueError(

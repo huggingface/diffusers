@@ -22,8 +22,9 @@ from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -305,19 +306,19 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class SanaPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_sana_1024(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -325,7 +326,7 @@ class SanaPipelineIntegrationTests(unittest.TestCase):
         pipe = SanaPipeline.from_pretrained(
             "Efficient-Large-Model/Sana_1600M_1024px_diffusers", torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         image = pipe(
             prompt=self.prompt,
@@ -351,7 +352,7 @@ class SanaPipelineIntegrationTests(unittest.TestCase):
         pipe = SanaPipeline.from_pretrained(
             "Efficient-Large-Model/Sana_1600M_512px_diffusers", torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         image = pipe(
             prompt=self.prompt,

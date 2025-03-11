@@ -108,6 +108,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Optional[Dict[str, Any]] = None,
         unexpected_keys: Optional[List[str]] = None,
+        **kwargs,
     ):
         module, tensor_name = get_module_from_name(model, param_name)
         if tensor_name not in module._parameters and tensor_name not in module._buffers:

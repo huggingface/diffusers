@@ -24,11 +24,14 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, PNDMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -161,19 +164,19 @@ class StableDiffusion2InpaintPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_diffusion_inpaint_pipeline(self):
         init_image = load_image(
@@ -248,9 +251,9 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-1
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -270,7 +273,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
 
         prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 

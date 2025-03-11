@@ -50,32 +50,13 @@ if is_torch_available():
     import torch
     import torch.nn as nn
 
-    class LoRALayer(nn.Module):
-        """Wraps a linear layer with LoRA-like adapter - Used for testing purposes only
-
-        Taken from
-        https://github.com/huggingface/transformers/blob/566302686a71de14125717dea9a6a45b24d42b37/tests/quantization/bnb/test_4bit.py#L62C5-L78C77
-        """
-
-        def __init__(self, module: nn.Module, rank: int):
-            super().__init__()
-            self.module = module
-            self.adapter = nn.Sequential(
-                nn.Linear(module.in_features, rank, bias=False),
-                nn.Linear(rank, module.out_features, bias=False),
-            )
-            small_std = (2.0 / (5 * min(module.in_features, module.out_features))) ** 0.5
-            nn.init.normal_(self.adapter[0].weight, std=small_std)
-            nn.init.zeros_(self.adapter[1].weight)
-            self.adapter.to(module.weight.device)
-
-        def forward(self, input, *args, **kwargs):
-            return self.module(input, *args, **kwargs) + self.adapter(input)
+    from ..utils import LoRALayer, get_memory_consumption_stat
 
 
 if is_torchao_available():
     from torchao.dtypes import AffineQuantizedTensor
     from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
+    from torchao.quantization.quant_primitives import MappingType
     from torchao.utils import get_model_size_in_bytes
 
 
@@ -117,6 +98,19 @@ class TorchAoConfigTest(unittest.TestCase):
             "quant_type": "int4_weight_only",
             "quant_type_kwargs": {
                 "group_size": 8
+            }
+        }""".replace(" ", "").replace("\n", "")
+        quantization_repr = repr(quantization_config).replace(" ", "").replace("\n", "")
+        self.assertEqual(quantization_repr, expected_repr)
+
+        quantization_config = TorchAoConfig("int4dq", group_size=64, act_mapping_type=MappingType.SYMMETRIC)
+        expected_repr = """TorchAoConfig {
+            "modules_to_not_convert": null,
+            "quant_method": "torchao",
+            "quant_type": "int4dq",
+            "quant_type_kwargs": {
+                "act_mapping_type": "SYMMETRIC",
+                "group_size": 64
             }
         }""".replace(" ", "").replace("\n", "")
         quantization_repr = repr(quantization_config).replace(" ", "").replace("\n", "")
@@ -488,6 +482,22 @@ class TorchAoTest(unittest.TestCase):
             # int4wo does not quantize too many layers because of default group size, but for the layers it does
             # there is additional overhead of scales and zero points
             self.assertTrue(total_bf16 < total_int4wo)
+
+    def test_model_memory_usage(self):
+        model_id = "hf-internal-testing/tiny-flux-pipe"
+        expected_memory_saving_ratio = 2.0
+
+        inputs = self.get_dummy_tensor_inputs(device=torch_device)
+
+        transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
+        transformer_bf16.to(torch_device)
+        unquantized_model_memory = get_memory_consumption_stat(transformer_bf16, inputs)
+        del transformer_bf16
+
+        transformer_int8wo = self.get_dummy_components(TorchAoConfig("int8wo"), model_id=model_id)["transformer"]
+        transformer_int8wo.to(torch_device)
+        quantized_model_memory = get_memory_consumption_stat(transformer_int8wo, inputs)
+        assert unquantized_model_memory / quantized_model_memory >= expected_memory_saving_ratio
 
     def test_wrong_config(self):
         with self.assertRaises(ValueError):

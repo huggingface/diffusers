@@ -15,6 +15,7 @@ from diffusers import (
 )
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     floats_tensor,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
@@ -174,12 +175,12 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         init_image = load_image(
@@ -202,7 +203,7 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
 
     def test_sd3_img2img_inference(self):
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
 

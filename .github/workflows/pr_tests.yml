@@ -3,7 +3,6 @@ name: Fast tests for PRs
 on:
   pull_request:
     branches: [main]
-    types: [synchronize]
     paths:
       - "src/diffusers/**.py"
       - "benchmarks/**.py"

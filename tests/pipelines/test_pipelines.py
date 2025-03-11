@@ -1383,11 +1383,11 @@ class PipelineFastTests(unittest.TestCase):
             feature_extractor=self.dummy_extractor,
         )
 
-        sd.enable_model_cpu_offload()
+        sd.enable_model_cpu_offload(device=torch_device)
 
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         with CaptureLogger(logger) as cap_logger:
-            sd.to("cuda")
+            sd.to(torch_device)
 
         assert "It is strongly recommended against doing so" in str(cap_logger)
 

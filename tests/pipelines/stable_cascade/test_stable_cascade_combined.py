@@ -22,7 +22,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import DDPMWuerstchenScheduler, StableCascadeCombinedPipeline
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -205,7 +205,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -214,12 +214,12 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -242,40 +242,3 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
     @unittest.skip(reason="no callback test for combined pipeline")
     def test_callback_inputs(self):
         super().test_callback_inputs()
-
-    def test_stable_cascade_combined_prompt_embeds(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = StableCascadeCombinedPipeline(**components)
-        pipe.set_progress_bar_config(disable=None)
-
-        prompt = "A photograph of a shiba inu, wearing a hat"
-        (
-            prompt_embeds,
-            prompt_embeds_pooled,
-            negative_prompt_embeds,
-            negative_prompt_embeds_pooled,
-        ) = pipe.prior_pipe.encode_prompt(device, 1, 1, False, prompt=prompt)
-        generator = torch.Generator(device=device)
-
-        output_prompt = pipe(
-            prompt=prompt,
-            num_inference_steps=1,
-            prior_num_inference_steps=1,
-            output_type="np",
-            generator=generator.manual_seed(0),
-        )
-        output_prompt_embeds = pipe(
-            prompt=None,
-            prompt_embeds=prompt_embeds,
-            prompt_embeds_pooled=prompt_embeds_pooled,
-            negative_prompt_embeds=negative_prompt_embeds,
-            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
-            num_inference_steps=1,
-            prior_num_inference_steps=1,
-            output_type="np",
-            generator=generator.manual_seed(0),
-        )
-
-        assert np.abs(output_prompt.images - output_prompt_embeds.images).max() < 1e-5

@@ -1241,7 +1241,11 @@ def main(args):
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                generator = (
+                    torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                    if args.seed is not None
+                    else None
+                )
                 pipeline_args = {"prompt": args.validation_prompt}
 
                 with autocast_ctx:
@@ -1305,7 +1309,9 @@ def main(args):
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
             pipeline = pipeline.to(accelerator.device)
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+            generator = (
+                torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
+            )
 
             with autocast_ctx:
                 images = [

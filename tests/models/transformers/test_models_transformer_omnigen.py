@@ -30,6 +30,7 @@ class OmniGenTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = OmniGenTransformer2DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
+    model_split_percents = [0.1, 0.1, 0.1]
 
     @property
     def dummy_input(self):
@@ -73,9 +74,9 @@ class OmniGenTransformerTests(ModelTesterMixin, unittest.TestCase):
             "num_attention_heads": 4,
             "num_key_value_heads": 4,
             "intermediate_size": 32,
-            "num_layers": 1,
+            "num_layers": 20,
             "pad_token_id": 0,
-            "vocab_size": 100,
+            "vocab_size": 1000,
             "in_channels": 4,
             "time_step_dim": 4,
             "rope_scaling": {"long_factor": list(range(1, 3)), "short_factor": list(range(1, 3))},

@@ -45,6 +45,17 @@ class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     GGUF = "gguf"
     TORCHAO = "torchao"
+    QUANTO = "quanto"
+
+
+if is_torchao_available():
+    from torchao.quantization.quant_primitives import MappingType
+
+    class TorchAoJSONEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, MappingType):
+                return obj.name
+            return super().default(obj)
 
 
 @dataclass
@@ -673,4 +684,41 @@ class TorchAoConfig(QuantizationConfigMixin):
         ```
         """
         config_dict = self.to_dict()
-        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
+        return (
+            f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True, cls=TorchAoJSONEncoder)}\n"
+        )
+
+
+@dataclass
+class QuantoConfig(QuantizationConfigMixin):
+    """
+    This is a wrapper class about all possible attributes and features that you can play with a model that has been
+    loaded using `quanto`.
+
+    Args:
+        weights_dtype (`str`, *optional*, defaults to `"int8"`):
+            The target dtype for the weights after quantization. Supported values are ("float8","int8","int4","int2")
+       modules_to_not_convert (`list`, *optional*, default to `None`):
+            The list of modules to not quantize, useful for quantizing models that explicitly require to have some
+            modules left in their original precision (e.g. Whisper encoder, Llava encoder, Mixtral gate layers).
+    """
+
+    def __init__(
+        self,
+        weights_dtype: str = "int8",
+        modules_to_not_convert: Optional[List[str]] = None,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.QUANTO
+        self.weights_dtype = weights_dtype
+        self.modules_to_not_convert = modules_to_not_convert
+
+        self.post_init()
+
+    def post_init(self):
+        r"""
+        Safety checker that arguments are correct
+        """
+        accepted_weights = ["float8", "int8", "int4", "int2"]
+        if self.weights_dtype not in accepted_weights:
+            raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
