@@ -4733,7 +4733,11 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         ```
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
@@ -4752,7 +4756,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
-        super().unfuse_lora(components=components)
+        super().unfuse_lora(components=components, **kwargs)
 
 
 class LoraLoaderMixin(StableDiffusionLoraLoaderMixin):
