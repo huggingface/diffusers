@@ -72,8 +72,8 @@ class AutoencoderKLCosmosTests(ModelTesterMixin, UNetTesterMixin, unittest.TestC
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
-            "CosmosEncoder",
-            "CosmosDecoder",
+            "CosmosEncoder3d",
+            "CosmosDecoder3d",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 

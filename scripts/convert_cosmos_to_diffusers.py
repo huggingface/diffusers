@@ -64,6 +64,39 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "pos_embedder.seq": remove_keys_,
 }
 
+TRANSFORMER_CONFIGS = {
+    "Cosmos-1.0-Diffusion-7B-Text2World": {
+        "in_channels": 16,
+        "out_channels": 16,
+        "num_attention_heads": 32,
+        "attention_head_dim": 128,
+        "num_layers": 28,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (2.0, 1.0, 1.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": "learnable",
+    },
+    "Cosmos-1.0-Diffusion-7B-Video2World": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 32,
+        "attention_head_dim": 128,
+        "num_layers": 28,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (2.0, 1.0, 1.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": "learnable",
+    },
+}
+
 VAE_KEYS_RENAME_DICT = {
     "down.0": "down_blocks.0",
     "down.1": "down_blocks.1",
@@ -153,12 +186,13 @@ def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
     return state_dict
 
 
-def convert_transformer(ckpt_path: str):
+def convert_transformer(transformer_type: str, ckpt_path: str):
     PREFIX_KEY = "net."
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", weights_only=True))
 
     with init_empty_weights():
-        transformer = CosmosTransformer3DModel()
+        config = TRANSFORMER_CONFIGS[transformer_type]
+        transformer = CosmosTransformer3DModel(**config)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -219,6 +253,7 @@ def convert_vae(vae_type: str):
 
 def get_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--transformer_type", type=str, default=None, choices=list(TRANSFORMER_CONFIGS.keys()))
     parser.add_argument(
         "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
@@ -251,7 +286,7 @@ if __name__ == "__main__":
         assert args.tokenizer_path is not None
 
     if args.transformer_ckpt_path is not None:
-        transformer = convert_transformer(args.transformer_ckpt_path)
+        transformer = convert_transformer(args.transformer_type, args.transformer_ckpt_path)
         transformer = transformer.to(dtype=dtype)
         if not args.save_pipeline:
             transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")

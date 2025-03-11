@@ -468,12 +468,16 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         fps: Optional[int] = None,
+        condition_mask: Optional[torch.Tensor] = None,
         padding_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
         # 1. Concatenate padding mask if needed & prepare attention mask
+        if condition_mask is not None:
+            hidden_states = torch.cat([hidden_states, condition_mask], dim=1)
+
         if self.config.concat_padding_mask:
             padding_mask = transforms.functional.resize(
                 padding_mask, list(hidden_states.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST

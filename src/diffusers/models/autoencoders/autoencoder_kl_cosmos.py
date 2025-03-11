@@ -1054,7 +1054,12 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def encode(self, x: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
-        h = self._encode(x)
+        if self.use_slicing and x.shape[0] > 1:
+            encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
+            h = torch.cat(encoded_slices)
+        else:
+            h = self._encode(x)
+
         posterior = IdentityDistribution(h)
 
         if not return_dict:
@@ -1071,7 +1076,11 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
-        decoded = self._decode(z).sample
+        if self.use_slicing and z.shape[0] > 1:
+            decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
+            decoded = torch.cat(decoded_slices)
+        else:
+            decoded = self._decode(z).sample
 
         if not return_dict:
             return (decoded,)

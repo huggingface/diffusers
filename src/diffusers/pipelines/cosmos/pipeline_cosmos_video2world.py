@@ -275,11 +275,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
 
         if prompt_embeds is None:
             prompt_embeds = self._get_t5_prompt_embeds(
-                prompt=prompt,
-                num_videos_per_prompt=num_videos_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
+                prompt=prompt, max_sequence_length=max_sequence_length, device=device, dtype=dtype
             )
 
             # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -304,11 +300,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 )
 
             negative_prompt_embeds = self._get_t5_prompt_embeds(
-                prompt=negative_prompt,
-                num_videos_per_prompt=num_videos_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
+                prompt=negative_prompt, max_sequence_length=max_sequence_length, device=device, dtype=dtype
             )
 
             # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -356,17 +348,19 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         else:
             init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator) for vid in video]
 
+        init_latents = torch.cat(init_latents, dim=0).to(dtype)
+
         if self.vae.config.latents_mean is not None:
             latents_mean, latents_std = self.vae.config.latents_mean, self.vae.config.latents_std
             latents_mean = (
                 torch.tensor(latents_mean)
-                .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : latents.size(2)]
-                .to(latents)
+                .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : init_latents.size(2)]
+                .to(init_latents)
             )
             latents_std = (
                 torch.tensor(latents_std)
-                .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : latents.size(2)]
-                .to(latents)
+                .view(1, self.vae.config.latent_channels, -1, 1, 1)[:, :, : init_latents.size(2)]
+                .to(init_latents)
             )
             init_latents = (init_latents - latents_mean) * self.scheduler.config.sigma_data / latents_std
         else:
@@ -584,20 +578,20 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
         )
 
-        # if self.do_classifier_free_guidance:
-        #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device)
 
         # 5. Prepare latent variables
+        vae_dtype = self.vae.dtype
+        transformer_dtype = self.transformer.dtype
+
         if image is not None:
             video = self.video_processor.preprocess(image, height, width).unsqueeze(2)
         else:
             video = self.video_processor.preprocess_video(video, height, width)
+        video = video.to(device=device, dtype=vae_dtype)
 
-        transformer_dtype = self.transformer.dtype
-        num_channels_latents = self.transformer.config.in_channels
+        num_channels_latents = self.transformer.config.in_channels - 1
         latents, conditioning_latents, cond_indicator, uncond_indicator, cond_mask, uncond_mask = self.prepare_latents(
             video,
             batch_size * num_videos_per_prompt,
@@ -611,7 +605,10 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             generator,
             latents,
         )
+        uncond_mask = uncond_mask.to(transformer_dtype)
+        cond_mask = cond_mask.to(transformer_dtype)
         augment_sigma = torch.tensor([augment_sigma], device=device, dtype=torch.float32)
+        padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -646,18 +643,22 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 uncond_latent = uncond_latent.to(transformer_dtype)
                 cond_latent = cond_latent.to(transformer_dtype)
 
-                noise_pred_cond = self.transformer(
-                    hidden_states=cond_latent,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    fps=fps,
-                    return_dict=False,
-                )[0]
                 noise_pred_uncond = self.transformer(
                     hidden_states=uncond_latent,
                     timestep=timestep,
                     encoder_hidden_states=negative_prompt_embeds,
                     fps=fps,
+                    condition_mask=uncond_mask,
+                    padding_mask=padding_mask,
+                    return_dict=False,
+                )[0]
+                noise_pred_cond = self.transformer(
+                    hidden_states=cond_latent,
+                    timestep=timestep,
+                    encoder_hidden_states=prompt_embeds,
+                    fps=fps,
+                    condition_mask=cond_mask,
+                    padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
 
@@ -708,7 +709,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 latents = latents * latents_std / self.scheduler.config.sigma_data + latents_mean
             else:
                 latents = latents / self.scheduler.config.sigma_data
-            video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
+            video = self.vae.decode(latents.to(vae_dtype), return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents

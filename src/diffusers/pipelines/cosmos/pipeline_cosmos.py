@@ -258,11 +258,7 @@ class CosmosPipeline(DiffusionPipeline):
 
         if prompt_embeds is None:
             prompt_embeds = self._get_t5_prompt_embeds(
-                prompt=prompt,
-                num_videos_per_prompt=num_videos_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
+                prompt=prompt, max_sequence_length=max_sequence_length, device=device, dtype=dtype
             )
 
             # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -287,11 +283,7 @@ class CosmosPipeline(DiffusionPipeline):
                 )
 
             negative_prompt_embeds = self._get_t5_prompt_embeds(
-                prompt=negative_prompt,
-                num_videos_per_prompt=num_videos_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
+                prompt=negative_prompt, max_sequence_length=max_sequence_length, device=device, dtype=dtype
             )
 
             # duplicate text embeddings for each generation per prompt, using mps friendly method
