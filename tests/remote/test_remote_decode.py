@@ -21,11 +21,13 @@ import PIL.Image
 import torch
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.utils.remote_utils import (
+from diffusers.utils.constants import (
     DECODE_ENDPOINT_FLUX,
     DECODE_ENDPOINT_HUNYUAN_VIDEO,
     DECODE_ENDPOINT_SD_V1,
     DECODE_ENDPOINT_SD_XL,
+)
+from diffusers.utils.remote_utils import (
     remote_decode,
 )
 from diffusers.utils.testing_utils import (

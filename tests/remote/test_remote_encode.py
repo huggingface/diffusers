@@ -19,13 +19,15 @@ import PIL.Image
 import torch
 
 from diffusers.utils import load_image
-from diffusers.utils.remote_utils import (
+from diffusers.utils.constants import (
     DECODE_ENDPOINT_FLUX,
     DECODE_ENDPOINT_SD_V1,
     DECODE_ENDPOINT_SD_XL,
     ENCODE_ENDPOINT_FLUX,
     ENCODE_ENDPOINT_SD_V1,
     ENCODE_ENDPOINT_SD_XL,
+)
+from diffusers.utils.remote_utils import (
     remote_decode,
     remote_encode,
 )
