@@ -46,6 +46,6 @@ jobs:
 
         echo "No changes in the files. Proceeding..."
         rm -rf main_Makefile main_setup.py main_check_doc_toc.py
-      style_command: "make style && make quality"
+      style_command: "make style && make quality && make fix-copies"
     secrets:
       bot_token: ${{ secrets.GITHUB_TOKEN }}
