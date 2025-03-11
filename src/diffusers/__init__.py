@@ -2,20 +2,14 @@ __version__ = "0.33.0.dev0"
 
 from typing import TYPE_CHECKING
 
-from diffusers.quantizers import quantization_config
-from diffusers.utils import dummy_gguf_objects
-from diffusers.utils.import_utils import (
-    is_bitsandbytes_available,
-    is_gguf_available,
-    is_optimum_quanto_version,
-    is_torchao_available,
-)
-
 from .utils import (
     DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
+    is_accelerate_available,
+    is_bitsandbytes_available,
     is_flax_available,
+    is_gguf_available,
     is_k_diffusion_available,
     is_librosa_available,
     is_note_seq_available,
@@ -24,6 +18,7 @@ from .utils import (
     is_scipy_available,
     is_sentencepiece_available,
     is_torch_available,
+    is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
 )
@@ -65,7 +60,7 @@ _import_structure = {
 }
 
 try:
-    if not is_bitsandbytes_available():
+    if not is_torch_available() and not is_accelerate_available() and not is_bitsandbytes_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils import dummy_bitsandbytes_objects
@@ -77,7 +72,7 @@ else:
     _import_structure["quantizers.quantization_config"].append("BitsAndBytesConfig")
 
 try:
-    if not is_gguf_available():
+    if not is_torch_available() and not is_accelerate_available() and not is_gguf_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils import dummy_gguf_objects
@@ -89,7 +84,7 @@ else:
     _import_structure["quantizers.quantization_config"].append("GGUFQuantizationConfig")
 
 try:
-    if not is_torchao_available():
+    if not is_torch_available() and not is_accelerate_available() and not is_torchao_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils import dummy_torchao_objects
@@ -101,7 +96,7 @@ else:
     _import_structure["quantizers.quantization_config"].append("TorchAoConfig")
 
 try:
-    if not is_optimum_quanto_available():
+    if not is_torch_available() and not is_accelerate_available() and not is_optimum_quanto_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils import dummy_optimum_quanto_objects
@@ -111,7 +106,6 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("QuantoConfig")
-
 
 try:
     if not is_onnx_available():

@@ -804,9 +804,7 @@ class SD3IPAdapterMixin:
                     }
 
                     self.register_modules(
-                        feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs).to(
-                            self.device, dtype=self.dtype
-                        ),
+                        feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs),
                         image_encoder=SiglipVisionModel.from_pretrained(
                             image_encoder_subfolder, torch_dtype=self.dtype, **kwargs
                         ).to(self.device),
