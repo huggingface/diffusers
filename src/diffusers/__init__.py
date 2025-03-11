@@ -1042,6 +1042,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VideoToVideoSDPipeline,
             VQDiffusionPipeline,
             WanImageToVideoPipeline,
+            WanVideoToVideoPipeline,
             WanPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
