@@ -501,6 +501,7 @@ else:
             "VQDiffusionPipeline",
             "WanImageToVideoPipeline",
             "WanPipeline",
+            "WanVideoToVideoPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
