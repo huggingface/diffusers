@@ -1,10 +1,12 @@
-# AnyTextPipeline Pipeline
+# AnyTextPipeline
 
 Project page: https://aigcdesigngroup.github.io/homepage_anytext
 
 "AnyText comprises a diffusion pipeline with two primary elements: an auxiliary latent module and a text embedding module. The former uses inputs like text glyph, position, and masked image to generate latent features for text generation or editing. The latter employs an OCR model for encoding stroke data as embeddings, which blend with image caption embeddings from the tokenizer to generate texts that seamlessly integrate with the background. We employed text-control diffusion loss and text perceptual loss for training to further enhance writing accuracy."
 
-Each text line that needs to be generated should be enclosed in double quotes. For any usage questions, please refer to the [paper](https://arxiv.org/abs/2311.03054).
+> **Note:** Each text line that needs to be generated should be enclosed in double quotes.
+
+For any usage questions, please refer to the [paper](https://arxiv.org/abs/2311.03054).
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/b87ec9d2f265b448dd947c9d4a0da389/anytext.ipynb)
 

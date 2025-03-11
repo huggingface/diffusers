@@ -264,11 +264,11 @@ class EmbeddingManager(ModelMixin, ConfigMixin):
             idx = tokenized_text[i] == self.placeholder_token.to(device)
             if sum(idx) > 0:
                 if i >= len(self.text_embs_all):
-                    print("truncation for log images...")
+                    logger.warning("truncation for log images...")
                     break
                 text_emb = torch.cat(self.text_embs_all[i], dim=0)
                 if sum(idx) != len(text_emb):
-                    print("truncation for long caption...")
+                    logger.warning("truncation for long caption...")
                 text_emb = text_emb.to(embedded_text.device)
                 embedded_text[i][idx] = text_emb[: sum(idx)]
         return embedded_text
@@ -1065,6 +1065,8 @@ class AuxiliaryLatentModule(ModelMixin, ConfigMixin):
                     raise ValueError(f"Can't read ori_image image from {ori_image}!")
             elif isinstance(ori_image, torch.Tensor):
                 ori_image = ori_image.cpu().numpy()
+            elif isinstance(ori_image, PIL.Image.Image):
+                ori_image = np.array(ori_image.convert("RGB"))
             else:
                 if not isinstance(ori_image, np.ndarray):
                     raise ValueError(f"Unknown format of ori_image: {type(ori_image)}")
