@@ -29,6 +29,47 @@ if is_accelerate_available():
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class PinnedGroupManager:
+    """
+    Manages a sliding window of pinned module groups to limit total CPU memory usage.
+    Only keeps up to max_pinned_groups pinned at any given time, unpinning oldest
+    ones when the limit is reached.
+    """
+    def __init__(self, max_pinned_groups: Optional[int] = None):
+        self.max_pinned_groups = max_pinned_groups
+        self.pinned_groups = []
+        
+    def register_group(self, group: "ModuleGroup") -> None:
+        """Register a group with the manager"""
+        if self.max_pinned_groups is not None:
+            group._pinned_group_manager = self
+    
+    def on_group_pinned(self, group: "ModuleGroup") -> None:
+        """Called when a group is pinned, manages the sliding window"""
+        if self.max_pinned_groups is None:
+            return
+            
+        # Add the newly pinned group to our tracking list
+        if group not in self.pinned_groups:
+            self.pinned_groups.append(group)
+        
+        # If we've exceeded our limit, unpin the oldest group(s)
+        while len(self.pinned_groups) > self.max_pinned_groups:
+            oldest_group = self.pinned_groups.pop(0)
+            # Only unpin if it's not the group we just pinned
+            if oldest_group != group and oldest_group.pinned_memory:
+                oldest_group.unpin_memory_()
+    
+    def on_group_unpinned(self, group: "ModuleGroup") -> None:
+        """Called when a group is manually unpinned"""
+        if self.max_pinned_groups is None:
+            return
+            
+        # Remove the group from our tracking list
+        if group in self.pinned_groups:
+            self.pinned_groups.remove(group)
+
+
 # fmt: off
 _GROUP_OFFLOADING = "group_offloading"
 _LAYER_EXECUTION_TRACKER = "layer_execution_tracker"
@@ -58,6 +99,7 @@ class ModuleGroup:
         stream: Optional[torch.cuda.Stream] = None,
         cpu_param_dict: Optional[Dict[torch.nn.Parameter, torch.Tensor]] = None,
         onload_self: bool = True,
+        pinned_group_manager: Optional["PinnedGroupManager"] = None,
     ) -> None:
         self.modules = modules
         self.offload_device = offload_device
@@ -72,6 +114,8 @@ class ModuleGroup:
         self.onload_self = onload_self
         # Track if we've pinned our group's memory
         self.pinned_memory = False
+        # Reference to the pinned group manager for sliding window functionality
+        self._pinned_group_manager = pinned_group_manager
 
         if self.stream is not None and self.cpu_param_dict is None:
             raise ValueError("cpu_param_dict must be provided when using stream for data transfer.")
@@ -94,6 +138,10 @@ class ModuleGroup:
                         self.cpu_param_dict[param] = pinned_data
                         param.data = pinned_data
             self.pinned_memory = True
+            
+            # Notify the manager that this group has been pinned
+            if hasattr(self, "_pinned_group_manager") and self._pinned_group_manager is not None:
+                self._pinned_group_manager.on_group_pinned(self)
 
     def unpin_memory_(self):
         r"""Unpin the memory of this group's parameters to free up CPU RAM."""
@@ -112,6 +160,10 @@ class ModuleGroup:
             # Clear the CPU param dict
             self.cpu_param_dict = {}
             self.pinned_memory = False
+            
+            # Notify the manager that this group has been unpinned
+            if hasattr(self, "_pinned_group_manager") and self._pinned_group_manager is not None:
+                self._pinned_group_manager.on_group_unpinned(self)
 
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
@@ -321,6 +373,7 @@ def apply_group_offloading(
     non_blocking: bool = False,
     use_stream: bool = False,
     unpin_after_use: bool = False,
+    max_pinned_groups: Optional[int] = None,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -371,6 +424,10 @@ def apply_group_offloading(
             If True, pinned memory is released after a module group has been offloaded to CPU. This reduces CPU memory
             usage at the cost of potentially slower data transfer when the group is loaded again. Useful for large models
             with limited CPU RAM.
+        max_pinned_groups (`int`, *optional*):
+            If set, limits the number of module groups that can have pinned memory at any given time. When this limit
+            is reached, the oldest pinned groups are unpinned to make room for new ones. This implements a sliding window
+            approach to manage CPU memory usage while maintaining good performance for the most recently used groups.
 
     Example:
         ```python
@@ -389,6 +446,7 @@ def apply_group_offloading(
         ...     num_blocks_per_group=2,
         ...     use_stream=True,
         ...     unpin_after_use=False,  # Set to True to reduce CPU memory usage
+        ...     max_pinned_groups=5,    # Limit to 5 pinned groups at a time
         ... )
         ```
     """
@@ -401,16 +459,26 @@ def apply_group_offloading(
             raise ValueError("Using streams for data transfer requires a CUDA device.")
 
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
+    
+    # Create a pinned group manager if max_pinned_groups is set
+    pinned_group_manager = None
+    if max_pinned_groups is not None and stream is not None:
+        pinned_group_manager = PinnedGroupManager(max_pinned_groups)
+        logger.info(f"Using sliding window approach with maximum of {max_pinned_groups} pinned groups")
 
     if offload_type == "block_level":
         if num_blocks_per_group is None:
             raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
 
         _apply_group_offloading_block_level(
-            module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream, unpin_after_use
+            module, num_blocks_per_group, offload_device, onload_device, non_blocking, 
+            stream, unpin_after_use, pinned_group_manager
         )
     elif offload_type == "leaf_level":
-        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream, unpin_after_use)
+        _apply_group_offloading_leaf_level(
+            module, offload_device, onload_device, non_blocking, 
+            stream, unpin_after_use, pinned_group_manager
+        )
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
 
@@ -423,6 +491,7 @@ def _apply_group_offloading_block_level(
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
     unpin_after_use: bool = False,
+    pinned_group_manager: Optional[PinnedGroupManager] = None,
 ) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
@@ -469,6 +538,7 @@ def _apply_group_offloading_block_level(
                 stream=stream,
                 cpu_param_dict=cpu_param_dict,
                 onload_self=stream is None,
+                pinned_group_manager=pinned_group_manager,
             )
             matched_module_groups.append(group)
             for j in range(i, i + len(current_modules)):
@@ -506,6 +576,7 @@ def _apply_group_offloading_block_level(
         stream=None,
         cpu_param_dict=None,
         onload_self=True,
+        pinned_group_manager=pinned_group_manager,
     )
     next_group = matched_module_groups[0] if len(matched_module_groups) > 0 else None
     _apply_group_offloading_hook(module, unmatched_group, next_group, unpin_after_use)
@@ -518,6 +589,7 @@ def _apply_group_offloading_leaf_level(
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
     unpin_after_use: bool = False,
+    pinned_group_manager: Optional[PinnedGroupManager] = None,
 ) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
@@ -559,6 +631,7 @@ def _apply_group_offloading_leaf_level(
             stream=stream,
             cpu_param_dict=cpu_param_dict,
             onload_self=True,
+            pinned_group_manager=pinned_group_manager,
         )
         _apply_group_offloading_hook(submodule, group, None, unpin_after_use)
         modules_with_group_offloading.add(name)
@@ -604,6 +677,7 @@ def _apply_group_offloading_leaf_level(
             stream=stream,
             cpu_param_dict=cpu_param_dict,
             onload_self=True,
+            pinned_group_manager=pinned_group_manager,
         )
         _apply_group_offloading_hook(parent_module, group, None, unpin_after_use)
 
@@ -623,6 +697,7 @@ def _apply_group_offloading_leaf_level(
             stream=None,
             cpu_param_dict=None,
             onload_self=True,
+            pinned_group_manager=pinned_group_manager,
         )
         _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 
