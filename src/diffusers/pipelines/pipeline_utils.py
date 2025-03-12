@@ -445,6 +445,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
 
+        # Enable generic support for intel gaudi accelerator using GPU/HPU migration
+        if device_type == "hpu" and kwargs.pop("hpu_migration", True):
+            os.environ["PT_HPU_GPU_MIGRATION"] = "1"
+            os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
+
+            import habana_frameworks.torch.core as htcore # noqa: F401
+
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
