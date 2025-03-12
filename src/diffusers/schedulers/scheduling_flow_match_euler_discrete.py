@@ -444,12 +444,12 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             dt = sigma_next - sigma
         
         prev_sample = sample + dt * model_output
-        # Cast sample back to model compatible dtype
-        prev_sample = prev_sample.to(model_output.dtype)
 
         # upon completion increase step index by one
         if not use_per_token_timesteps:
             self._step_index += 1
+            # Cast sample back to model compatible dtype
+            prev_sample = prev_sample.to(model_output.dtype)
 
         if not return_dict:
             return (prev_sample,)
