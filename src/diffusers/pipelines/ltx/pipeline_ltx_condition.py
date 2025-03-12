@@ -946,7 +946,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             num_frames=num_frames,
             generator=generator,
             device=device,
-            dtype=prompt_embeds.dtype,
+            dtype=torch.float32,
         )
 
         video_coords = video_coords.float()
