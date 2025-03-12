@@ -1791,7 +1791,7 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
 
             file_name0 = os.path.join(os.path.join(tmp_dirname, "0"), "pytorch_lora_weights.safetensors")
             file_name1 = os.path.join(os.path.join(tmp_dirname, "1"), "pytorch_lora_weights.safetensors")
-            unet.load_lora_adapter(file_name0, safe_serialization=True, adapter_name="adapter0")
+            unet.load_lora_adapter(file_name0, safe_serialization=True, adapter_name="adapter0", prefix=None)
 
             if do_compile:
                 unet = torch.compile(unet, mode="reduce-overhead")
@@ -1801,7 +1801,7 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
             assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
 
             # hotswap the 2nd adapter
-            unet.load_lora_adapter(file_name1, adapter_name="adapter0", hotswap=True)
+            unet.load_lora_adapter(file_name1, adapter_name="adapter0", hotswap=True, prefix=None)
 
             # we need to call forward to potentially trigger recompilation
             with torch.inference_mode():
@@ -1812,7 +1812,7 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
             name = "does-not-exist"
             msg = f"Trying to hotswap LoRA adapter '{name}' but there is no existing adapter by that name"
             with self.assertRaisesRegex(ValueError, msg):
-                unet.load_lora_adapter(file_name1, adapter_name=name, hotswap=True)
+                unet.load_lora_adapter(file_name1, adapter_name=name, hotswap=True, prefix=None)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_model(self, rank0, rank1):
