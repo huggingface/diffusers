@@ -59,10 +59,9 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
 
 
 def _maybe_raise_error_for_ambiguity(config):
-    
     rank_pattern = config["rank_pattern"].copy()
     target_modules = config["target_modules"]
-    
+
     for key in list(rank_pattern.keys()):
         # try to detect ambiguity
         # `target_modules` can also be a str, in which case this loop would loop
@@ -71,10 +70,12 @@ def _maybe_raise_error_for_ambiguity(config):
         # But this cuts it for now.
         exact_matches = [mod for mod in target_modules if mod == key]
         substring_matches = [mod for mod in target_modules if key in mod and mod != key]
-        
+
         if exact_matches and substring_matches:
             if not is_peft_version(">=", "0.14.1"):
-                raise ValueError("There are ambiguous keys present in this LoRA. To load it, please update your `peft` installation - `pip install -U peft`.")
+                raise ValueError(
+                    "There are ambiguous keys present in this LoRA. To load it, please update your `peft` installation - `pip install -U peft`."
+                )
 
 
 class PeftAdapterMixin:
