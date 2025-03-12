@@ -41,20 +41,47 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
     Examples:
+        Image conditioning:
+
         ```python
         >>> import torch
-        >>> from diffusers import CosmosPipeline
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import CosmosVideoToWorldPipeline
+        >>> from diffusers.utils import export_to_video, load_image
 
-        >>> model_id = "nvidia/Cosmos-1.0-Diffusion-7B-Text2World"
-        >>> pipe = CosmosPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-        >>> pipe.vae.enable_tiling()
+        >>> model_id = "nvidia/Cosmos-1.0-Diffusion-7B-Video2World"
+        >>> pipe = CosmosVideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = "A sleek, humanoid robot stands in a vast warehouse filled with neatly stacked cardboard boxes on industrial shelves. The robot's metallic body gleams under the bright, even lighting, highlighting its futuristic design and intricate joints. A glowing blue light emanates from its chest, adding a touch of advanced technology. The background is dominated by rows of boxes, suggesting a highly organized storage system. The floor is lined with wooden pallets, enhancing the industrial setting. The camera remains static, capturing the robot's poised stance amidst the orderly environment, with a shallow depth of field that keeps the focus on the robot while subtly blurring the background for a cinematic effect."
+        >>> prompt = "The video depicts a long, straight highway stretching into the distance, flanked by metal guardrails. The road is divided into multiple lanes, with a few vehicles visible in the far distance. The surrounding landscape features dry, grassy fields on one side and rolling hills on the other. The sky is mostly clear with a few scattered clouds, suggesting a bright, sunny day."
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input.jpg"
+        ... )
 
-        >>> output = pipe(prompt=prompt).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=30)
+        >>> video = pipe(image=image, prompt=prompt).frames[0]
+        >>> export_to_video(video, "output.mp4", fps=30)
+        ```
+
+        Video conditioning:
+
+        ```python
+        >>> import torch
+        >>> from diffusers import CosmosVideoToWorldPipeline
+        >>> from diffusers.utils import export_to_video, load_video
+
+        >>> model_id = "nvidia/Cosmos-1.0-Diffusion-7B-Video2World"
+        >>> pipe = CosmosVideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe.transformer = torch.compile(pipe.transformer)
+        >>> pipe.to("cuda")
+
+        >>> prompt = "The video depicts a winding mountain road covered in snow, with a single vehicle traveling along it. The road is flanked by steep, rocky cliffs and sparse vegetation. The landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the solitude and beauty of a winter drive through a mountainous region."
+        >>> video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input-vid.mp4"
+        ... )[
+        ...     :21
+        ... ]  # This example uses only the first 21 frames
+
+        >>> video = pipe(video=video, prompt=prompt).frames[0]
+        >>> export_to_video(video, "output.mp4", fps=30)
         ```
 """
 
@@ -654,6 +681,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                     return_dict=False,
                 )[0]
 
+                sample = latents
                 if self.do_classifier_free_guidance:
                     current_uncond_indicator = uncond_indicator * 0 if is_augment_sigma_greater else uncond_indicator
                     uncond_noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=torch.float32)
@@ -673,9 +701,10 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                         return_dict=False,
                     )[0]
                     noise_pred = torch.cat([noise_pred_uncond, noise_pred])
+                    sample = torch.cat([sample, sample])
 
                 # pred_original_sample (x0)
-                noise_pred = self.scheduler.step(noise_pred, t, latents, return_dict=False)[1]
+                noise_pred = self.scheduler.step(noise_pred, t, sample, return_dict=False)[1]
                 self.scheduler._step_index -= 1
 
                 if self.do_classifier_free_guidance:
