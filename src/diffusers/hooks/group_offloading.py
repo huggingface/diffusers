@@ -150,7 +150,7 @@ class ModuleGroup:
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
-        # For CPU offloading, use the most memory-efficient approach possible
+        # For CPU offloading
         if self.offload_device.type == "cpu":
             # Synchronize if using stream
             if self.stream is not None:
@@ -160,53 +160,38 @@ class ModuleGroup:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 
-            # For most memory-efficient CPU offloading, let's use a special approach
-            # that simulates a full model device transfer:
-            # 1. We'll minimize RAM usage by avoiding both unnecessary copies and
-            #    the accumulation of wasted memory over time
-                
-            # First, for module groups, look for the highest-level module and offload at that level
+            # For module groups, use a single, unified approach that is closest to 
+            # the behavior of model.to("cpu")
             if self.modules:
-                # For each root module in the group
                 for group_module in self.modules:
-                    # Only offload if some parameters are not on CPU
+                    # Check if we need to offload this module
                     if any(p.device.type != "cpu" for p in group_module.parameters()):
+                        # Use PyTorch's built-in to() method directly, which preserves
+                        # memory mapping when moving to CPU
                         try:
-                            # Try the lowest possible CPU memory approach - this works like model.to("cpu")
-                            # but at the module level
-                            if hasattr(group_module, "_apply"):
-                                # This internal PyTorch method is what to() uses but with less overhead
-                                def cpu_tensor(t):
-                                    if t.device.type != "cpu":
-                                        return t.cpu()
-                                    return t
-                                    
-                                # Apply to all tensors in the module without unnecessary copies
-                                group_module._apply(cpu_tensor)
-                            else:
-                                # Fallback to the direct method
-                                for param in group_module.parameters():
-                                    if param.device.type != "cpu":
-                                        param.data = param.data.cpu()
+                            # Non-blocking=False for CPU transfers, as it ensures memory is
+                            # immediately available and potentially preserves memory mapping
+                            group_module.to("cpu", non_blocking=False)
                         except Exception as e:
-                            # If for any reason the optimized approach fails, fall back to direct method
-                            logger.warning(f"Optimized CPU offloading failed: {e}, falling back to direct method")
+                            # If there's any error, fall back to parameter-level offloading
+                            logger.warning(f"Module-level CPU offloading failed: {e}, falling back to parameter-level")
                             for param in group_module.parameters():
                                 if param.device.type != "cpu":
-                                    param.data = param.data.cpu()
-                            
-            # Handle explicit parameters - move directly to CPU
+                                    param.data = param.data.to("cpu", non_blocking=False)
+            
+            # Handle explicit parameters - move directly to CPU with non-blocking=False
+            # which can preserve memory mapping in some PyTorch versions
             if self.parameters is not None:
                 for param in self.parameters:
                     if param.device.type != "cpu":
-                        # Direct CPU transfer 
-                        param.data = param.data.cpu()
+                        param.data = param.data.to("cpu", non_blocking=False)
                         
-            # Handle buffers - move directly to CPU
+            # Handle buffers
             if self.buffers is not None:
                 for buffer in self.buffers:
                     if buffer.device.type != "cpu":
-                        buffer.data = buffer.data.cpu()
+                        buffer.data = buffer.data.to("cpu", non_blocking=False)
+                        
             # Let Python's normal reference counting handle cleanup
             # We don't force garbage collection to avoid slowing down inference
                 
