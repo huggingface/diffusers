@@ -35,36 +35,37 @@ class PinnedGroupManager:
     Only keeps up to max_pinned_groups pinned at any given time, unpinning oldest
     ones when the limit is reached.
     """
+
     def __init__(self, max_pinned_groups: Optional[int] = None):
         self.max_pinned_groups = max_pinned_groups
         self.pinned_groups = []
-        
+
     def register_group(self, group: "ModuleGroup") -> None:
         """Register a group with the manager"""
         if self.max_pinned_groups is not None:
             group._pinned_group_manager = self
-    
+
     def on_group_pinned(self, group: "ModuleGroup") -> None:
         """Called when a group is pinned, manages the sliding window"""
         if self.max_pinned_groups is None:
             return
-            
+
         # Add the newly pinned group to our tracking list
         if group not in self.pinned_groups:
             self.pinned_groups.append(group)
-        
+
         # If we've exceeded our limit, unpin the oldest group(s)
         while len(self.pinned_groups) > self.max_pinned_groups:
             oldest_group = self.pinned_groups.pop(0)
             # Only unpin if it's not the group we just pinned
             if oldest_group != group and oldest_group.pinned_memory:
                 oldest_group.unpin_memory_()
-    
+
     def on_group_unpinned(self, group: "ModuleGroup") -> None:
         """Called when a group is manually unpinned"""
         if self.max_pinned_groups is None:
             return
-            
+
         # Remove the group from our tracking list
         if group in self.pinned_groups:
             self.pinned_groups.remove(group)
@@ -138,7 +139,7 @@ class ModuleGroup:
                         self.cpu_param_dict[param] = pinned_data
                         param.data = pinned_data
             self.pinned_memory = True
-            
+
             # Notify the manager that this group has been pinned
             if hasattr(self, "_pinned_group_manager") and self._pinned_group_manager is not None:
                 self._pinned_group_manager.on_group_pinned(self)
@@ -160,7 +161,7 @@ class ModuleGroup:
             # Clear the CPU param dict
             self.cpu_param_dict = {}
             self.pinned_memory = False
-            
+
             # Notify the manager that this group has been unpinned
             if hasattr(self, "_pinned_group_manager") and self._pinned_group_manager is not None:
                 self._pinned_group_manager.on_group_unpinned(self)
@@ -170,7 +171,7 @@ class ModuleGroup:
         # Pin memory before onloading
         if self.stream is not None and not self.pinned_memory:
             self.pin_memory_()
-            
+
         context = nullcontext() if self.stream is None else torch.cuda.stream(self.stream)
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -202,7 +203,7 @@ class ModuleGroup:
             if self.buffers is not None:
                 for buffer in self.buffers:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
-                    
+
         # After offloading, we can unpin the memory if configured to do so
         # We'll keep it pinned by default for better performance
 
@@ -229,6 +230,10 @@ class GroupOffloadingHook(ModelHook):
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         if self.group.offload_leader == module:
+            # Make sure we pin memory first (if using streams) before offloading
+            if self.group.stream is not None and not self.group.pinned_memory:
+                self.group.pin_memory_()
+            # Now it's safe to offload
             self.group.offload_()
         return module
 
@@ -459,7 +464,7 @@ def apply_group_offloading(
             raise ValueError("Using streams for data transfer requires a CUDA device.")
 
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
-    
+
     # Create a pinned group manager if max_pinned_groups is set
     pinned_group_manager = None
     if max_pinned_groups is not None and stream is not None:
@@ -471,13 +476,18 @@ def apply_group_offloading(
             raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
 
         _apply_group_offloading_block_level(
-            module, num_blocks_per_group, offload_device, onload_device, non_blocking, 
-            stream, unpin_after_use, pinned_group_manager
+            module,
+            num_blocks_per_group,
+            offload_device,
+            onload_device,
+            non_blocking,
+            stream,
+            unpin_after_use,
+            pinned_group_manager,
         )
     elif offload_type == "leaf_level":
         _apply_group_offloading_leaf_level(
-            module, offload_device, onload_device, non_blocking, 
-            stream, unpin_after_use, pinned_group_manager
+            module, offload_device, onload_device, non_blocking, stream, unpin_after_use, pinned_group_manager
         )
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
