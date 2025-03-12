@@ -161,7 +161,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = begin_index
 
     def precondition_inputs(self, sample, sigma):
-        c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        c_in = self._get_conditioning_c_in(sigma)
         scaled_sample = sample * c_in
         return scaled_sample
 
@@ -439,6 +439,10 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
         noisy_samples = original_samples + noise * sigma
         return noisy_samples
+
+    def _get_conditioning_c_in(self, sigma):
+        c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        return c_in
 
     def __len__(self):
         return self.config.num_train_timesteps

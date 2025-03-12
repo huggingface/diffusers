@@ -633,9 +633,13 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 current_sigma = self.scheduler.sigmas[i]
                 is_augment_sigma_greater = augment_sigma >= current_sigma
 
+                c_in_augment = self.scheduler._get_conditioning_c_in(augment_sigma)
+                c_in_original = self.scheduler._get_conditioning_c_in(current_sigma)
+
                 current_cond_indicator = cond_indicator * 0 if is_augment_sigma_greater else cond_indicator
                 cond_noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=torch.float32)
                 cond_latent = conditioning_latents + cond_noise * augment_sigma[:, None, None, None, None]
+                cond_latent = cond_latent * c_in_augment / c_in_original
                 cond_latent = current_cond_indicator * cond_latent + (1 - current_cond_indicator) * latents
                 cond_latent = self.scheduler.scale_model_input(cond_latent, t)
                 cond_latent = cond_latent.to(transformer_dtype)
@@ -654,6 +658,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                     current_uncond_indicator = uncond_indicator * 0 if is_augment_sigma_greater else uncond_indicator
                     uncond_noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=torch.float32)
                     uncond_latent = conditioning_latents + uncond_noise * augment_sigma[:, None, None, None, None]
+                    uncond_latent = uncond_latent * c_in_augment / c_in_original
                     uncond_latent = current_uncond_indicator * uncond_latent + (1 - current_uncond_indicator) * latents
                     uncond_latent = self.scheduler.scale_model_input(uncond_latent, t)
                     uncond_latent = uncond_latent.to(transformer_dtype)
