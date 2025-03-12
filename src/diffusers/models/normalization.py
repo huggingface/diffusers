@@ -550,8 +550,7 @@ class RMSNorm(nn.Module):
             hidden_states = torch_npu.npu_rms_norm(hidden_states, self.weight, epsilon=self.eps)[0]
             if self.bias is not None:
                 hidden_states = hidden_states + self.bias
-        # YiYi TODO: testing only, remove this change before merging
-        elif is_torch_version(">=", "3.3"):
+        elif is_torch_version(">=", "2.4"):
             if self.weight is not None:
                 # convert into half-precision if necessary
                 if self.weight.dtype in [torch.float16, torch.bfloat16]:
