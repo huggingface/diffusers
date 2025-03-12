@@ -1313,7 +1313,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 Note that hotswapping adapters of the text encoder is not yet supported. There are some further
                 limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
-       """
+        """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
