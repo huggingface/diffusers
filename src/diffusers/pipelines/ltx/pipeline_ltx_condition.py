@@ -463,7 +463,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
 
 
     @staticmethod
-    # adapted from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
     def _prepare_video_ids(batch_size: int, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1, device: torch.device = None) -> torch.Tensor:
 
         latent_sample_coords = torch.meshgrid(
@@ -480,7 +479,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
     
 
     @staticmethod
-    # adapted from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
     def _scale_video_ids(video_ids: torch.Tensor, scale_factor: int = 32, scale_factor_t: int = 8, frame_index: int = 0, device: torch.device = None) -> torch.Tensor:
 
         scaled_latent_coords = (
@@ -493,7 +491,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         return scaled_latent_coords
     
     @staticmethod
-    # adapted from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
+    # Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
     def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1, device: torch.device = None) -> torch.Tensor:
         # Unpacked latents of shape are [B, C, F, H, W] are patched into tokens of shape [B, C, F // p_t, p_t, H // p, p, W // p, p].
         # The patch dimensions are then permuted and collapsed into the channel dimension of shape:
