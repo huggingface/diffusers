@@ -496,9 +496,6 @@ class CosmosPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
         )
 
-        if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device)
 
@@ -531,7 +528,7 @@ class CosmosPipeline(DiffusionPipeline):
                 self._current_timestep = t
                 timestep = t.expand(latents.shape[0]).to(transformer_dtype)
 
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 latent_model_input = latent_model_input.to(transformer_dtype)
 
@@ -543,13 +540,29 @@ class CosmosPipeline(DiffusionPipeline):
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
+                if self.do_classifier_free_guidance:
+                    noise_pred_uncond = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        fps=fps,
+                        padding_mask=padding_mask,
+                        return_dict=False,
+                    )[0]
+                    noise_pred = torch.cat([noise_pred_uncond, noise_pred])
+
+                # pred_original_sample (x0)
+                noise_pred = self.scheduler.step(noise_pred, t, latents, return_dict=False)[1]
+                self.scheduler._step_index -= 1
 
                 if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_text + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
+                    noise_pred = noise_pred_cond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                # pred_sample (eps)
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, return_dict=False, pred_original_sample=noise_pred
+                )[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -559,6 +572,7 @@ class CosmosPipeline(DiffusionPipeline):
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

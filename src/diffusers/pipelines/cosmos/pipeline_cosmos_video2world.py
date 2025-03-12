@@ -318,6 +318,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         height: int = 704,
         width: int = 1280,
         num_frames: int = 121,
+        do_classifier_free_guidance: bool = True,
         input_frames_guidance: bool = False,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
@@ -331,11 +332,12 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             )
 
         num_cond_frames = video.size(2)
-        num_cond_latent_frames = (num_cond_frames - 1) // self.vae_scale_factor_temporal + 1
         if num_cond_frames >= num_frames:
             # Take the last `num_frames` frames for conditioning
+            num_cond_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
             video = video[:, :, -num_frames:]
         else:
+            num_cond_latent_frames = (num_cond_frames - 1) // self.vae_scale_factor_temporal + 1
             num_padding_frames = num_frames - num_cond_frames
             padding = video.new_zeros(video.size(0), video.size(1), num_padding_frames, video.size(3), video.size(4))
             video = torch.cat([video, padding], dim=2)
@@ -374,22 +376,25 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            latents = latents.to(device=device, dtype=dtype) * self.scheduler.config.sigma_max
+            latents = latents.to(device=device, dtype=dtype)
 
         latents = latents * self.scheduler.config.sigma_max
-
-        cond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
-        uncond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
-        cond_indicator[:, :, :num_cond_latent_frames] = 1.0
-        uncond_indicator[:, :, :num_cond_latent_frames] = 1.0
 
         padding_shape = (batch_size, 1, num_latent_frames, latent_height, latent_width)
         ones_padding = latents.new_ones(padding_shape)
         zeros_padding = latents.new_zeros(padding_shape)
+
+        cond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
+        cond_indicator[:, :, :num_cond_latent_frames] = 1.0
         cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
-        uncond_mask = zeros_padding
-        if input_frames_guidance:
-            uncond_mask = uncond_indicator * ones_padding + (1 - uncond_indicator) * zeros_padding
+
+        uncond_indicator = uncond_mask = None
+        if do_classifier_free_guidance:
+            uncond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
+            uncond_indicator[:, :, :num_cond_latent_frames] = 1.0
+            uncond_mask = zeros_padding
+            if not input_frames_guidance:
+                uncond_mask = uncond_indicator * ones_padding + (1 - uncond_indicator) * zeros_padding
 
         return latents, init_latents, cond_indicator, uncond_indicator, cond_mask, uncond_mask
 
@@ -599,23 +604,23 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             height,
             width,
             num_frames,
+            self.do_classifier_free_guidance,
             input_frames_guidance,
             torch.float32,
             device,
             generator,
             latents,
         )
-        uncond_mask = uncond_mask.to(transformer_dtype)
         cond_mask = cond_mask.to(transformer_dtype)
+        if self.do_classifier_free_guidance:
+            uncond_mask = uncond_mask.to(transformer_dtype)
+
         augment_sigma = torch.tensor([augment_sigma], device=device, dtype=torch.float32)
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-
-        if not guidance_scale > 1.0:
-            raise ValueError("Running inference without CFG is not yet supported. Please set `guidance_scale > 1`.")
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -628,31 +633,14 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 current_sigma = self.scheduler.sigmas[i]
                 is_augment_sigma_greater = augment_sigma >= current_sigma
 
-                current_uncond_indicator = uncond_indicator * 0 if is_augment_sigma_greater else uncond_indicator
-                uncond_noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=torch.float32)
-                uncond_latent = conditioning_latents + uncond_noise * augment_sigma[:, None, None, None, None]
-                uncond_latent = self.scheduler.scale_model_input(uncond_latent, t)
-                uncond_latent = current_uncond_indicator * uncond_latent + (1 - current_uncond_indicator) * latents
-
                 current_cond_indicator = cond_indicator * 0 if is_augment_sigma_greater else cond_indicator
                 cond_noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=torch.float32)
                 cond_latent = conditioning_latents + cond_noise * augment_sigma[:, None, None, None, None]
-                cond_latent = self.scheduler.scale_model_input(cond_latent, t)
                 cond_latent = current_cond_indicator * cond_latent + (1 - current_cond_indicator) * latents
-
-                uncond_latent = uncond_latent.to(transformer_dtype)
+                cond_latent = self.scheduler.scale_model_input(cond_latent, t)
                 cond_latent = cond_latent.to(transformer_dtype)
 
-                noise_pred_uncond = self.transformer(
-                    hidden_states=uncond_latent,
-                    timestep=timestep,
-                    encoder_hidden_states=negative_prompt_embeds,
-                    fps=fps,
-                    condition_mask=uncond_mask,
-                    padding_mask=padding_mask,
-                    return_dict=False,
-                )[0]
-                noise_pred_cond = self.transformer(
+                noise_pred = self.transformer(
                     hidden_states=cond_latent,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
@@ -662,18 +650,48 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                     return_dict=False,
                 )[0]
 
-                noise_pred = torch.cat([noise_pred_uncond, noise_pred_cond], dim=0)
-                noise_pred = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-                noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2, dim=0)
+                if self.do_classifier_free_guidance:
+                    current_uncond_indicator = uncond_indicator * 0 if is_augment_sigma_greater else uncond_indicator
+                    uncond_noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=torch.float32)
+                    uncond_latent = conditioning_latents + uncond_noise * augment_sigma[:, None, None, None, None]
+                    uncond_latent = current_uncond_indicator * uncond_latent + (1 - current_uncond_indicator) * latents
+                    uncond_latent = self.scheduler.scale_model_input(uncond_latent, t)
+                    uncond_latent = uncond_latent.to(transformer_dtype)
 
-                noise_pred_cond = (
-                    current_cond_indicator * conditioning_latents + (1 - current_cond_indicator) * noise_pred_cond
-                )
-                noise_pred_uncond = (
-                    current_uncond_indicator * conditioning_latents
-                    + (1 - current_uncond_indicator) * noise_pred_uncond
-                )
-                latents = noise_pred_cond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                    noise_pred_uncond = self.transformer(
+                        hidden_states=uncond_latent,
+                        timestep=timestep,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        fps=fps,
+                        condition_mask=uncond_mask,
+                        padding_mask=padding_mask,
+                        return_dict=False,
+                    )[0]
+                    noise_pred = torch.cat([noise_pred_uncond, noise_pred])
+
+                # pred_original_sample (x0)
+                noise_pred = self.scheduler.step(noise_pred, t, latents, return_dict=False)[1]
+                self.scheduler._step_index -= 1
+
+                if self.do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2, dim=0)
+                    noise_pred_uncond = (
+                        current_uncond_indicator * conditioning_latents
+                        + (1 - current_uncond_indicator) * noise_pred_uncond
+                    )
+                    noise_pred_cond = (
+                        current_cond_indicator * conditioning_latents + (1 - current_cond_indicator) * noise_pred_cond
+                    )
+                    noise_pred = noise_pred_cond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                else:
+                    noise_pred = (
+                        current_cond_indicator * conditioning_latents + (1 - current_cond_indicator) * noise_pred
+                    )
+
+                # pred_sample (eps)
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, return_dict=False, pred_original_sample=noise_pred
+                )[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -683,6 +701,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

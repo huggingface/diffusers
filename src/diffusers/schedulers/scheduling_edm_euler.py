@@ -318,6 +318,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
+        pred_original_sample: Optional[torch.Tensor] = None,
     ) -> Union[EDMEulerSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
@@ -381,7 +382,8 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        pred_original_sample = self.precondition_outputs(sample, model_output, sigma_hat)
+        if pred_original_sample is None:
+            pred_original_sample = self.precondition_outputs(sample, model_output, sigma_hat)
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat
