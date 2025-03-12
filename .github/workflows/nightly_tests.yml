@@ -437,6 +437,9 @@ jobs:
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install -U ${{ matrix.config.backend }}
+          if [ "${{ matrix.config.backend }}" = "bitsandbytes" ]; then
+            python -m uv pip install peft
+          fi
           python -m uv pip install pytest-reportlog
       - name: Environment
         run: |
