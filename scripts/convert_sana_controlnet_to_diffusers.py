@@ -2,13 +2,10 @@
 from __future__ import annotations
 
 import argparse
-import os
 from contextlib import nullcontext
 
 import torch
 from accelerate import init_empty_weights
-from huggingface_hub import hf_hub_download, snapshot_download
-from termcolor import colored
 
 from diffusers import (
     SanaControlNetModel,
@@ -19,32 +16,9 @@ from diffusers.utils.import_utils import is_accelerate_available
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
-ckpt_ids = [
-    "Efficient-Large-Model/Sana_1600M_1024px_BF16_ControlNet_HED/checkpoints/Sana_1600M_1024px_BF16_ControlNet_HED.pth",
-    "Efficient-Large-Model/Sana_600M_1024px_ControlNet_HED/checkpoints/Sana_600M_1024px_ControlNet_HED.pth",
-]
-
-
 def main(args):
-    cache_dir_path = os.path.expanduser("~/.cache/huggingface/hub")
+    file_path = args.orig_ckpt_path
 
-    if args.orig_ckpt_path is None or args.orig_ckpt_path in ckpt_ids:
-        ckpt_id = args.orig_ckpt_path or ckpt_ids[0]
-        snapshot_download(
-            repo_id=f"{'/'.join(ckpt_id.split('/')[:2])}",
-            cache_dir=cache_dir_path,
-            repo_type="model",
-        )
-        file_path = hf_hub_download(
-            repo_id=f"{'/'.join(ckpt_id.split('/')[:2])}",
-            filename=f"{'/'.join(ckpt_id.split('/')[2:])}",
-            cache_dir=cache_dir_path,
-            repo_type="model",
-        )
-    else:
-        file_path = args.orig_ckpt_path
-
-    print(colored(f"Loading checkpoint from {file_path}", "green", attrs=["bold"]))
     all_state_dict = torch.load(file_path, weights_only=True)
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
@@ -194,7 +168,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--orig_ckpt_path", default=None, type=str, required=False, help="Path to the checkpoint to convert."
+        "--orig_ckpt_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
         "--image_size",
