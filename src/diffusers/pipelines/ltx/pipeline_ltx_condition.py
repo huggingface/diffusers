@@ -584,7 +584,8 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         Add timestep-dependent noise to the hard-conditioning latents. This helps with motion continuity, especially
         when conditioned on a single frame.
         """
-        generator = torch.Generator(device="cpu").manual_seed(0)
+        # YiYi TODO: testing only, remove this change before merging
+        # generator = torch.Generator(device="cpu").manual_seed(0)
         noise = randn_tensor(
             latents.shape,
             generator=generator,
@@ -618,7 +619,8 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
 
         shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = torch.load("/raid/yiyi/LTX-Video/init_latents.pt").to(device, dtype=dtype)
+        # YiYi TODO: testing only, remove this change before merging
+        # latents = torch.load("/raid/yiyi/LTX-Video/init_latents.pt").to(device, dtype=dtype)
 
         condition_latent_frames_mask = torch.zeros((batch_size, num_latent_frames), device=device, dtype=torch.float32)
 
@@ -628,8 +630,9 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         extra_conditioning_num_latents = 0
         for data, strength, frame_index in zip(conditions, condition_strength, condition_frame_index):
             condition_latents = retrieve_latents(self.vae.encode(data), generator=generator)
-            condition_latents = self._normalize_latents(condition_latents, self.vae.latents_mean, self.vae.latents_std)
-            condition_latents = torch.load("/raid/yiyi/LTX-Video/conditioning_latents.pt").to(device, dtype=dtype)
+            condition_latents = self._normalize_latents(
+                condition_latents, self.vae.latents_mean, self.vae.latents_std
+            ).to(device, dtype=dtype)
 
             num_data_frames = data.size(2)
             num_cond_frames = condition_latents.size(2)
@@ -659,7 +662,8 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                         condition_latents = condition_latents[:, :, :num_prefix_latent_frames]
 
                 noise = randn_tensor(condition_latents.shape, generator=generator, device=device, dtype=dtype)
-                noise = torch.load("/raid/yiyi/LTX-Video/noise.pt").to(device, dtype=dtype)
+                # YiYi TODO: testing only, remove this change before merging
+                # noise = torch.load("/raid/yiyi/LTX-Video/noise.pt").to(device, dtype=dtype)
                 condition_latents = torch.lerp(noise, condition_latents, strength)
 
                 condition_video_ids = self._prepare_video_ids(
