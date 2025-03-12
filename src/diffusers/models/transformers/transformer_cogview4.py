@@ -12,21 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.attention import FeedForward
-from ...models.attention_processor import Attention
-from ...models.modeling_utils import ModelMixin
-from ...models.normalization import AdaLayerNormContinuous
-from ...utils import logging
+from ...loaders import PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ..attention import FeedForward
+from ..attention_processor import Attention
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
-from ...loaders import PeftAdapterMixin
+from ..modeling_utils import ModelMixin
+from ..normalization import AdaLayerNormContinuous
 from ..cache_utils import CacheMixin
 
 
@@ -124,7 +124,7 @@ class CogView4AttnProcessor:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         batch_size, text_seq_length, embed_dim = encoder_hidden_states.shape
@@ -157,7 +157,7 @@ class CogView4AttnProcessor:
                 key[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
             )
 
-        # 4. Attention and Attention Mask
+        # 4. Attention
         if attention_mask is not None:
             text_attention_mask = attention_mask.float().to(query.device)
             actual_text_seq_length = text_attention_mask.size(1)
@@ -167,7 +167,9 @@ class CogView4AttnProcessor:
             attention_mask_matrix = new_attention_mask @ new_attention_mask.transpose(1, 2)
             attention_mask = (attention_mask_matrix > 0).unsqueeze(1).to(query.dtype)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False)
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
 
@@ -246,8 +248,8 @@ class CogView4TransformerBlock(nn.Module):
             1 + c_scale_mlp.unsqueeze(1)
         ) + c_shift_mlp.unsqueeze(1)
 
-        ff_output = self.ff(norm_hidden_states, **kwargs)
-        ff_output_context = self.ff(norm_encoder_hidden_states, **kwargs)
+        ff_output = self.ff(norm_hidden_states)
+        ff_output_context = self.ff(norm_encoder_hidden_states)
         hidden_states = hidden_states + ff_output * gate_mlp.unsqueeze(1)
         encoder_hidden_states = encoder_hidden_states + ff_output_context * c_gate_mlp.unsqueeze(1)
 
@@ -258,30 +260,34 @@ class CogView4RotaryPosEmbed(nn.Module):
     def __init__(self, dim: int, patch_size: int, rope_axes_dim: Tuple[int, int], theta: float = 10000.0) -> None:
         super().__init__()
 
+        self.dim = dim
         self.patch_size = patch_size
         self.rope_axes_dim = rope_axes_dim
-
-        dim_h, dim_w = dim // 2, dim // 2
-        h_inv_freq = 1.0 / (theta ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: (dim_h // 2)].float() / dim_h))
-        w_inv_freq = 1.0 / (theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w))
-        h_seq = torch.arange(self.rope_axes_dim[0])
-        w_seq = torch.arange(self.rope_axes_dim[1])
-        self.freqs_h = torch.outer(h_seq, h_inv_freq)
-        self.freqs_w = torch.outer(w_seq, w_inv_freq)
+        self.theta = theta
 
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, height, width = hidden_states.shape
         height, width = height // self.patch_size, width // self.patch_size
 
-        h_idx = torch.arange(height)
-        w_idx = torch.arange(width)
+        dim_h, dim_w = self.dim // 2, self.dim // 2
+        h_inv_freq = 1.0 / (
+            self.theta ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: (dim_h // 2)].float() / dim_h)
+        )
+        w_inv_freq = 1.0 / (
+            self.theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: (dim_w // 2)].float() / dim_w)
+        )
+        h_seq = torch.arange(self.rope_axes_dim[0])
+        w_seq = torch.arange(self.rope_axes_dim[1])
+        freqs_h = torch.outer(h_seq, h_inv_freq)
+        freqs_w = torch.outer(w_seq, w_inv_freq)
+
+        h_idx = torch.arange(height, device=freqs_h.device)
+        w_idx = torch.arange(width, device=freqs_w.device)
         inner_h_idx = h_idx * self.rope_axes_dim[0] // height
         inner_w_idx = w_idx * self.rope_axes_dim[1] // width
 
-        self.freqs_h = self.freqs_h.to(hidden_states.device)
-        self.freqs_w = self.freqs_w.to(hidden_states.device)
-        freqs_h = self.freqs_h[inner_h_idx]
-        freqs_w = self.freqs_w[inner_w_idx]
+        freqs_h = freqs_h[inner_h_idx]
+        freqs_w = freqs_w[inner_w_idx]
 
         # Create position matrices for height and width
         # [height, 1, dim//4] and [1, width, dim//4]
@@ -393,10 +399,26 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         original_size: torch.Tensor,
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         attention_mask: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         batch_size, num_channels, height, width = hidden_states.shape
 
         # 1. RoPE
@@ -430,6 +452,10 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         # 5. Unpatchify
         hidden_states = hidden_states.reshape(batch_size, post_patch_height, post_patch_width, -1, p, p)
         output = hidden_states.permute(0, 3, 1, 4, 2, 5).flatten(4, 5).flatten(2, 3)
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)
