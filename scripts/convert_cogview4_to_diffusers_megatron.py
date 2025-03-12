@@ -27,7 +27,13 @@ import torch
 from tqdm import tqdm
 from transformers import GlmModel, PreTrainedTokenizerFast
 
-from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
+from diffusers import (
+    AutoencoderKL,
+    CogView4Pipeline,
+    CogView4ControlPipeline,
+    CogView4Transformer2DModel,
+    FlowMatchEulerDiscreteScheduler,
+)
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 
 
@@ -112,6 +118,12 @@ parser.add_argument(
     default=128,
     help="Maximum size for positional embeddings.",
 )
+parser.add_argument(
+    "--control",
+    action="store_true",
+    default=False,
+    help="Whether to use control model.",
+)
 
 args = parser.parse_args()
 
@@ -156,7 +168,9 @@ def convert_megatron_transformer_checkpoint_to_diffusers(
     new_state_dict = {}
 
     # Patch Embedding
-    new_state_dict["patch_embed.proj.weight"] = mega["encoder_expand_linear.weight"].reshape(hidden_size, 64)
+    new_state_dict["patch_embed.proj.weight"] = mega["encoder_expand_linear.weight"].reshape(
+        hidden_size, 128 if args.control else 64, 64
+    )
     new_state_dict["patch_embed.proj.bias"] = mega["encoder_expand_linear.bias"]
     new_state_dict["patch_embed.text_proj.weight"] = mega["text_projector.weight"]
     new_state_dict["patch_embed.text_proj.bias"] = mega["text_projector.bias"]
@@ -340,13 +354,22 @@ def main(args):
     )
 
     # Create the pipeline
-    pipe = CogView4Pipeline(
-        tokenizer=tokenizer,
-        text_encoder=text_encoder,
-        vae=vae,
-        transformer=transformer,
-        scheduler=scheduler,
-    )
+    if args.control:
+        pipe = CogView4ControlPipeline(
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
+            vae=vae,
+            transformer=transformer,
+            scheduler=scheduler,
+        )
+    else:
+        pipe = CogView4Pipeline(
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
+            vae=vae,
+            transformer=transformer,
+            scheduler=scheduler,
+        )
 
     # Save the converted pipeline
     pipe.save_pretrained(
