@@ -20,6 +20,7 @@ import ftfy
 import regex as re
 import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
+from PIL import Image
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import WanLoraLoaderMixin
