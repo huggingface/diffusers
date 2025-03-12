@@ -1144,8 +1144,16 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.register_buffer("latents_mean", latents_mean, persistent=True)
         self.register_buffer("latents_std", latents_std, persistent=True)
 
-        self.spatial_compression_ratio = patch_size * 2 ** sum(spatio_temporal_scaling) if spatial_compression_ratio is None else spatial_compression_ratio
-        self.temporal_compression_ratio = patch_size_t * 2 ** sum(spatio_temporal_scaling) if temporal_compression_ratio is None else temporal_compression_ratio
+        self.spatial_compression_ratio = (
+            patch_size * 2 ** sum(spatio_temporal_scaling)
+            if spatial_compression_ratio is None
+            else spatial_compression_ratio
+        )
+        self.temporal_compression_ratio = (
+            patch_size_t * 2 ** sum(spatio_temporal_scaling)
+            if temporal_compression_ratio is None
+            else temporal_compression_ratio
+        )
 
         # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
         # to perform decoding of a single video latent at a time.

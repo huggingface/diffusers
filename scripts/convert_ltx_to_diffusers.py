@@ -350,7 +350,7 @@ if __name__ == "__main__":
 
         if args.version == "0.9.5":
             scheduler = FlowMatchEulerDiscreteScheduler(use_dynamic_shifting=False)
-        else: 
+        else:
             scheduler = FlowMatchEulerDiscreteScheduler(
                 use_dynamic_shifting=True,
                 base_shift=0.95,
@@ -358,7 +358,7 @@ if __name__ == "__main__":
                 base_image_seq_len=1024,
                 max_image_seq_len=4096,
                 shift_terminal=0.1,
-        )
+            )
 
         pipe = LTXPipeline(
             scheduler=scheduler,

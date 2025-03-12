@@ -115,8 +115,16 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         self.theta = theta
         self._causal_rope_fix = _causal_rope_fix
 
-    
-    def _prepare_video_coords(self, batch_size: int, num_frames: int, height: int, width: int, rope_interpolation_scale: Tuple[torch.Tensor, float, float], device: torch.device) -> torch.Tensor:
+    def _prepare_video_coords(
+        self,
+        batch_size: int,
+        num_frames: int,
+        height: int,
+        width: int,
+        rope_interpolation_scale: Tuple[torch.Tensor, float, float],
+        frame_rate: float,
+        device: torch.device,
+    ) -> torch.Tensor:
         # Always compute rope in fp32
         grid_h = torch.arange(height, dtype=torch.float32, device=device)
         grid_w = torch.arange(width, dtype=torch.float32, device=device)
@@ -132,9 +140,7 @@ class LTXVideoRotaryPosEmbed(nn.Module):
             grid[:, 2:3] = grid[:, 2:3] * rope_interpolation_scale[2] * self.patch_size / self.base_width
         else:
             if not self._causal_rope_fix:
-                grid[:, 0:1] = (
-                    grid[:, 0:1] * rope_interpolation_scale[0:1] * self.patch_size_t / self.base_num_frames
-                )
+                grid[:, 0:1] = grid[:, 0:1] * rope_interpolation_scale[0:1] * self.patch_size_t / self.base_num_frames
             else:
                 grid[:, 0:1] = (
                     ((grid[:, 0:1] - 1) * rope_interpolation_scale[0:1] + 1 / frame_rate).clamp(min=0)
@@ -145,9 +151,8 @@ class LTXVideoRotaryPosEmbed(nn.Module):
             grid[:, 2:3] = grid[:, 2:3] * rope_interpolation_scale[2:3] * self.patch_size / self.base_width
 
         grid = grid.flatten(2, 4).transpose(1, 2)
-        
+
         return grid
-    
 
     def forward(
         self,
@@ -162,14 +167,22 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         batch_size = hidden_states.size(0)
 
         if video_coords is None:
-            grid = self._prepare_video_coords(batch_size, num_frames, height, width, rope_interpolation_scale=rope_interpolation_scale, device=hidden_states.device)
+            grid = self._prepare_video_coords(
+                batch_size,
+                num_frames,
+                height,
+                width,
+                rope_interpolation_scale=rope_interpolation_scale,
+                frame_rate=frame_rate,
+                device=hidden_states.device,
+            )
         else:
             grid = torch.stack(
                 [
-                    video_coords[:, 0] / self.base_num_frames, 
-                    video_coords[:, 1] / self.base_height, 
-                    video_coords[:, 2] / self.base_width
-                ], 
+                    video_coords[:, 0] / self.base_num_frames,
+                    video_coords[:, 1] / self.base_height,
+                    video_coords[:, 2] / self.base_width,
+                ],
                 dim=-1,
             )
 
@@ -432,8 +445,9 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
             msg = "Passing a tuple for `rope_interpolation_scale` is deprecated and will be removed in v0.34.0."
             deprecate("rope_interpolation_scale", "0.34.0", msg)
 
-
-        image_rotary_emb = self.rope(hidden_states, num_frames, height, width, frame_rate, rope_interpolation_scale, video_coords)
+        image_rotary_emb = self.rope(
+            hidden_states, num_frames, height, width, frame_rate, rope_interpolation_scale, video_coords
+        )
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:

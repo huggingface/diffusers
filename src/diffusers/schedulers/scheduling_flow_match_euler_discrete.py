@@ -431,7 +431,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if use_per_token_timesteps:
             t_eps = 1e-6
-            per_token_sigmas = timestep/self.config.num_train_timesteps
+            per_token_sigmas = timestep / self.config.num_train_timesteps
 
             sigmas = self.sigmas[:, None, None]
             lower_mask = sigmas < per_token_sigmas[None] - t_eps
@@ -442,7 +442,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sigma = self.sigmas[self.step_index]
             sigma_next = self.sigmas[self.step_index + 1]
             dt = sigma_next - sigma
-        
+
         prev_sample = sample + dt * model_output
 
         # upon completion increase step index by one
