@@ -207,10 +207,8 @@ class ModuleGroup:
                 for buffer in self.buffers:
                     if buffer.device.type != "cpu":
                         buffer.data = buffer.data.cpu()
-                        
-            # Force garbage collection to clean up any released memory
-            import gc
-            gc.collect()
+            # Let Python's normal reference counting handle cleanup
+            # We don't force garbage collection to avoid slowing down inference
                 
         else:
             # For non-CPU offloading, synchronize if using stream
