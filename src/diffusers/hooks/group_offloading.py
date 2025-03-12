@@ -108,9 +108,9 @@ class ModuleGroup:
 
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
-        # Pin memory before onloading
-        if self.stream is not None and not self.pinned_memory:
-            self.pin_memory_()
+        # Prepare CPU dict before onloading
+        if self.stream is not None and not self.cpu_dict_prepared:
+            self.pin_memory_()  # This now just prepares the CPU dict
 
         context = nullcontext() if self.stream is None else torch.cuda.stream(self.stream)
         if self.stream is not None:
@@ -170,9 +170,9 @@ class GroupOffloadingHook(ModelHook):
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         if self.group.offload_leader == module:
-            # Make sure we pin memory first (if using streams) before offloading
-            if self.group.stream is not None and not self.group.pinned_memory:
-                self.group.pin_memory_()
+            # Make sure we prepare CPU dict first (if using streams) before offloading
+            if self.group.stream is not None and not self.group.cpu_dict_prepared:
+                self.group.pin_memory_()  # This now just prepares the CPU dict
             # Now it's safe to offload
             self.group.offload_()
         return module
@@ -199,9 +199,8 @@ class GroupOffloadingHook(ModelHook):
     def post_forward(self, module: torch.nn.Module, output):
         if self.group.offload_leader == module:
             self.group.offload_()
-            # After offloading, we can optionally unpin memory to free up CPU RAM
-            # This is most useful for large models where CPU RAM is limited
-            if self.unpin_after_use and self.group.pinned_memory:
+            # This is now a no-op but kept for API compatibility
+            if self.unpin_after_use and self.group.cpu_dict_prepared:
                 self.group.unpin_memory_()
         return output
 
