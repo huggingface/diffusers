@@ -81,6 +81,7 @@ from diffusers.utils.testing_utils import (
     require_hf_hub_version_greater,
     require_onnxruntime,
     require_peft_backend,
+    require_peft_version_greater,
     require_torch_2,
     require_torch_accelerator,
     require_transformers_version_greater,
@@ -2184,6 +2185,7 @@ class PipelineNightlyTests(unittest.TestCase):
 @require_torch_2
 @require_torch_accelerator
 @require_peft_backend
+@require_peft_version_greater("0.14.0")
 @is_torch_compile
 class TestLoraHotSwappingForPipeline(unittest.TestCase):
     """Test that hotswapping does not result in recompilation in a pipeline.

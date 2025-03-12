@@ -63,6 +63,7 @@ from diffusers.utils.testing_utils import (
     is_torch_compile,
     numpy_cosine_similarity_distance,
     require_peft_backend,
+    require_peft_version_greater,
     require_torch_2,
     require_torch_accelerator,
     require_torch_accelerator_with_training,
@@ -1670,6 +1671,7 @@ class ModelPushToHubTester(unittest.TestCase):
 @require_torch_2
 @require_torch_accelerator
 @require_peft_backend
+@require_peft_version_greater("0.14.0")
 @is_torch_compile
 class TestLoraHotSwappingForModel(unittest.TestCase):
     """Test that hotswapping does not result in recompilation on the model directly.
