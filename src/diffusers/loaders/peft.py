@@ -57,23 +57,12 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
 }
 
 
-def _maybe_adjust_config(config):
-    """
-    We may run into some ambiguous configuration values when a model has module names, sharing a common prefix
-    (`proj_out.weight` and `blocks.transformer.proj_out.weight`, for example) and they have different LoRA ranks. This
-    method removes the ambiguity by following what is described here:
-    https://github.com/huggingface/diffusers/pull/9985#issuecomment-2493840028.
-    """
-    # Track keys that have been explicitly removed to prevent re-adding them.
-    deleted_keys = set()
-
+def _maybe_raise_error_for_ambiguity(config):
+    
     rank_pattern = config["rank_pattern"].copy()
     target_modules = config["target_modules"]
-    original_r = config["r"]
-
+    
     for key in list(rank_pattern.keys()):
-        key_rank = rank_pattern[key]
-
         # try to detect ambiguity
         # `target_modules` can also be a str, in which case this loop would loop
         # over the chars of the str. The technically correct way to match LoRA keys
@@ -81,35 +70,10 @@ def _maybe_adjust_config(config):
         # But this cuts it for now.
         exact_matches = [mod for mod in target_modules if mod == key]
         substring_matches = [mod for mod in target_modules if key in mod and mod != key]
-        ambiguous_key = key
-
+        
         if exact_matches and substring_matches:
-            # if ambiguous, update the rank associated with the ambiguous key (`proj_out`, for example)
-            config["r"] = key_rank
-            # remove the ambiguous key from `rank_pattern` and record it as deleted
-            del config["rank_pattern"][key]
-            deleted_keys.add(key)
-            # For substring matches, add them with the original rank only if they haven't been assigned already
-            for mod in substring_matches:
-                if mod not in config["rank_pattern"] and mod not in deleted_keys:
-                    config["rank_pattern"][mod] = original_r
-
-            # Update the rest of the target modules with the original rank if not already set and not deleted
-            for mod in target_modules:
-                if mod != ambiguous_key and mod not in config["rank_pattern"] and mod not in deleted_keys:
-                    config["rank_pattern"][mod] = original_r
-
-    # Handle alphas to deal with cases like:
-    # https://github.com/huggingface/diffusers/pull/9999#issuecomment-2516180777
-    has_different_ranks = len(config["rank_pattern"]) > 1 and list(config["rank_pattern"])[0] != config["r"]
-    if has_different_ranks:
-        config["lora_alpha"] = config["r"]
-        alpha_pattern = {}
-        for module_name, rank in config["rank_pattern"].items():
-            alpha_pattern[module_name] = rank
-        config["alpha_pattern"] = alpha_pattern
-
-    return config
+            if not is_peft_version(">=", "0.14.1"):
+                raise ValueError("There are ambiguous keys present in this LoRA. To load it, please update your `peft` installation - `pip install -U peft`.")
 
 
 class PeftAdapterMixin:
@@ -253,16 +217,18 @@ class PeftAdapterMixin:
                 # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
                 # Bias layers in LoRA only have a single dimension
                 if "lora_B" in key and val.ndim > 1:
-                    # TODO: revisit this after https://github.com/huggingface/peft/pull/2382 is merged.
-                    rank[key] = val.shape[1]
+                    # Check out https://github.com/huggingface/peft/pull/2419 for the `^` symbol.
+                    # We may run into some ambiguous configuration values when a model has module
+                    # names, sharing a common prefix (`proj_out.weight` and `blocks.transformer.proj_out.weight`,
+                    # for example) and they have different LoRA ranks.
+                    rank[f"^{key}"] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
                 alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
-            # TODO: revisit this after https://github.com/huggingface/peft/pull/2382 is merged.
-            lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
+            _maybe_raise_error_for_ambiguity(lora_config_kwargs)
 
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
