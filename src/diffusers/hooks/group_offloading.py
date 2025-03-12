@@ -82,38 +82,65 @@ class ModuleGroup:
             self.stream.synchronize()
 
         with context:
-            # Use direct per-parameter transfers rather than module-level transfers
-            # This gives us more control and potentially better memory management
-            for group_module in self.modules:
-                # Check if any parameter needs moving
-                if any(p.device != self.onload_device for p in group_module.parameters()):
-                    for param in group_module.parameters():
-                        if param.device != self.onload_device:
-                            # Use direct CUDA transfer for each parameter
-                            if self.onload_device.type == "cuda":
-                                param.data = param.data.cuda(self.onload_device.index, 
-                                                           non_blocking=self.non_blocking)
+            # Use the most efficient module-level transfer when possible
+            # This approach mirrors how PyTorch handles full model transfers
+            if self.modules:
+                for group_module in self.modules:
+                    # Only onload if some parameters are not on the target device
+                    if any(p.device != self.onload_device for p in group_module.parameters()):
+                        try:
+                            # Try the most efficient approach using _apply
+                            if hasattr(group_module, "_apply"):
+                                # This is what module.to() uses internally
+                                def to_device(t):
+                                    if t.device != self.onload_device:
+                                        if self.onload_device.type == "cuda":
+                                            return t.cuda(self.onload_device.index, 
+                                                        non_blocking=self.non_blocking)
+                                        else:
+                                            return t.to(self.onload_device, 
+                                                       non_blocking=self.non_blocking)
+                                    return t
+                                
+                                # Apply to all tensors without unnecessary copies
+                                group_module._apply(to_device)
                             else:
-                                param.data = param.data.to(self.onload_device, 
-                                                          non_blocking=self.non_blocking)
-                
+                                # Fallback to direct parameter transfer
+                                for param in group_module.parameters():
+                                    if param.device != self.onload_device:
+                                        if self.onload_device.type == "cuda":
+                                            param.data = param.data.cuda(self.onload_device.index, 
+                                                                       non_blocking=self.non_blocking)
+                                        else:
+                                            param.data = param.data.to(self.onload_device, 
+                                                                      non_blocking=self.non_blocking)
+                        except Exception as e:
+                            # If optimization fails, fall back to direct parameter transfer
+                            logger.warning(f"Optimized onloading failed: {e}, falling back to direct method")
+                            for param in group_module.parameters():
+                                if param.device != self.onload_device:
+                                    if self.onload_device.type == "cuda":
+                                        param.data = param.data.cuda(self.onload_device.index, 
+                                                                   non_blocking=self.non_blocking)
+                                    else:
+                                        param.data = param.data.to(self.onload_device, 
+                                                                  non_blocking=self.non_blocking)
+            
             # Handle explicit parameters
             if self.parameters is not None:
                 for param in self.parameters:
                     if param.device != self.onload_device:
-                        # Use direct CUDA transfer for each parameter  
                         if self.onload_device.type == "cuda":
                             param.data = param.data.cuda(self.onload_device.index, 
                                                        non_blocking=self.non_blocking)
                         else:
                             param.data = param.data.to(self.onload_device, 
                                                       non_blocking=self.non_blocking)
-                
+            
             # Handle buffers
             if self.buffers is not None:
                 for buffer in self.buffers:
                     if buffer.device != self.onload_device:
-                        # Use direct CUDA transfer for each buffer
                         if self.onload_device.type == "cuda":
                             buffer.data = buffer.data.cuda(self.onload_device.index, 
                                                          non_blocking=self.non_blocking)
@@ -133,22 +160,46 @@ class ModuleGroup:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 
-            # Instead of using to() on the whole module which might create copies,
-            # directly move each parameter's data to CPU with cpu() which uses
-            # the memory-optimized path
-            for group_module in self.modules:
-                # Check if any parameter needs moving
-                if any(p.device.type != "cpu" for p in group_module.parameters()):
-                    for param in group_module.parameters():
-                        if param.device.type != "cpu":
-                            # Use direct cpu() method which is more memory-efficient than to()
-                            param.data = param.data.cpu()
+            # For most memory-efficient CPU offloading, let's use a special approach
+            # that simulates a full model device transfer:
+            # 1. We'll minimize RAM usage by avoiding both unnecessary copies and
+            #    the accumulation of wasted memory over time
+                
+            # First, for module groups, look for the highest-level module and offload at that level
+            if self.modules:
+                # For each root module in the group
+                for group_module in self.modules:
+                    # Only offload if some parameters are not on CPU
+                    if any(p.device.type != "cpu" for p in group_module.parameters()):
+                        try:
+                            # Try the lowest possible CPU memory approach - this works like model.to("cpu")
+                            # but at the module level
+                            if hasattr(group_module, "_apply"):
+                                # This internal PyTorch method is what to() uses but with less overhead
+                                def cpu_tensor(t):
+                                    if t.device.type != "cpu":
+                                        return t.cpu()
+                                    return t
+                                    
+                                # Apply to all tensors in the module without unnecessary copies
+                                group_module._apply(cpu_tensor)
+                            else:
+                                # Fallback to the direct method
+                                for param in group_module.parameters():
+                                    if param.device.type != "cpu":
+                                        param.data = param.data.cpu()
+                        except Exception as e:
+                            # If for any reason the optimized approach fails, fall back to direct method
+                            logger.warning(f"Optimized CPU offloading failed: {e}, falling back to direct method")
+                            for param in group_module.parameters():
+                                if param.device.type != "cpu":
+                                    param.data = param.data.cpu()
                             
             # Handle explicit parameters - move directly to CPU
             if self.parameters is not None:
                 for param in self.parameters:
                     if param.device.type != "cpu":
-                        # Direct CPU transfer with cpu() method
+                        # Direct CPU transfer 
                         param.data = param.data.cpu()
                         
             # Handle buffers - move directly to CPU
@@ -156,6 +207,11 @@ class ModuleGroup:
                 for buffer in self.buffers:
                     if buffer.device.type != "cpu":
                         buffer.data = buffer.data.cpu()
+                        
+            # Force garbage collection to clean up any released memory
+            import gc
+            gc.collect()
+                
         else:
             # For non-CPU offloading, synchronize if using stream
             if self.stream is not None:
