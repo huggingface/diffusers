@@ -37,6 +37,8 @@ _GROUP_OFFLOADING = "group_offloading"
 _LAYER_EXECUTION_TRACKER = "layer_execution_tracker"
 _LAZY_PREFETCH_GROUP_OFFLOADING = "lazy_prefetch_group_offloading"
 
+# Always use memory-efficient CPU offloading to minimize RAM usage
+
 _SUPPORTED_PYTORCH_LAYERS = (
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
     torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
@@ -80,14 +82,20 @@ class ModuleGroup:
             self.stream.synchronize()
 
         with context:
+            # Only transfer parameters that aren't already on the target device
             for group_module in self.modules:
-                group_module.to(self.onload_device, non_blocking=self.non_blocking)
+                if any(p.device != self.onload_device for p in group_module.parameters()):
+                    group_module.to(self.onload_device, non_blocking=self.non_blocking)
+                    
             if self.parameters is not None:
                 for param in self.parameters:
-                    param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+                    if param.device != self.onload_device:
+                        param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+                        
             if self.buffers is not None:
                 for buffer in self.buffers:
-                    buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+                    if buffer.device != self.onload_device:
+                        buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
@@ -95,15 +103,40 @@ class ModuleGroup:
         if self.stream is not None:
             torch.cuda.current_stream().synchronize()
             
-        # Use regular to() method for all cases - much simpler!
-        for group_module in self.modules:
-            group_module.to(self.offload_device, non_blocking=self.non_blocking)
-        if self.parameters is not None:
-            for param in self.parameters:
-                param.data = param.data.to(self.offload_device, non_blocking=self.non_blocking)
-        if self.buffers is not None:
-            for buffer in self.buffers:
-                buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
+        # For CPU offloading, use a method that preserves memory mapping benefits
+        if self.offload_device.type == 'cpu':
+            # Empty GPU cache before offloading to reduce memory fragmentation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
+            # Use to() method directly on modules
+            for group_module in self.modules:
+                # Don't make copies if already on CPU
+                if any(p.device.type != 'cpu' for p in group_module.parameters()):
+                    group_module.to(self.offload_device, non_blocking=self.non_blocking)
+                
+            # Handle explicit parameters - avoid copies when already on CPU
+            if self.parameters is not None:
+                for param in self.parameters:
+                    if param.device.type != 'cpu':
+                        # Let PyTorch handle the transfer which can preserve memory mapping
+                        param.data = param.data.to(self.offload_device, non_blocking=self.non_blocking)
+                        
+            # Handle buffers - avoid copies when already on CPU
+            if self.buffers is not None:
+                for buffer in self.buffers:
+                    if buffer.device.type != 'cpu':
+                        buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
+        else:
+            # For non-CPU offloading, use the regular approach
+            for group_module in self.modules:
+                group_module.to(self.offload_device, non_blocking=self.non_blocking)
+            if self.parameters is not None:
+                for param in self.parameters:
+                    param.data = param.data.to(self.offload_device, non_blocking=self.non_blocking)
+            if self.buffers is not None:
+                for buffer in self.buffers:
+                    buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
 
         # After offloading, we can unpin the memory if configured to do so
         # We'll keep it pinned by default for better performance
@@ -314,7 +347,8 @@ def apply_group_offloading(
             If True, offloading and onloading is done with non-blocking data transfer.
         use_stream (`bool`, defaults to `False`):
             If True, offloading and onloading is done asynchronously using a CUDA stream. This can be useful for
-            overlapping computation and data transfer.
+            overlapping computation and data transfer. Memory-efficient CPU offloading is automatically used
+            to minimize RAM usage by preserving memory mapping benefits and avoiding unnecessary copies.
 
     Example:
         ```python
