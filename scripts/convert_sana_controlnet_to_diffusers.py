@@ -9,12 +9,8 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download, snapshot_download
 from termcolor import colored
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import (
-    AutoencoderDC,
-    DPMSolverMultistepScheduler,
-    FlowMatchEulerDiscreteScheduler,
     SanaControlNetModel,
 )
 from diffusers.models.modeling_utils import load_model_dict_into_meta
@@ -53,7 +49,7 @@ def main(args):
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
 
-     # Patch embeddings.
+    # Patch embeddings.
     converted_state_dict["patch_embed.proj.weight"] = state_dict.pop("x_embedder.proj.weight")
     converted_state_dict["patch_embed.proj.bias"] = state_dict.pop("x_embedder.proj.bias")
 
@@ -79,7 +75,7 @@ def main(args):
 
     # y norm
     converted_state_dict["caption_norm.weight"] = state_dict.pop("attention_y_norm.weight")
-    
+
     # Positional embedding interpolation scale.
     interpolation_scale = {512: None, 1024: None, 2048: 1.0, 4096: 2.0}
 
@@ -128,7 +124,9 @@ def main(args):
         q = state_dict.pop(f"controlnet.{depth}.copied_block.cross_attn.q_linear.weight")
         q_bias = state_dict.pop(f"controlnet.{depth}.copied_block.cross_attn.q_linear.bias")
         k, v = torch.chunk(state_dict.pop(f"controlnet.{depth}.copied_block.cross_attn.kv_linear.weight"), 2, dim=0)
-        k_bias, v_bias = torch.chunk(state_dict.pop(f"controlnet.{depth}.copied_block.cross_attn.kv_linear.bias"), 2, dim=0)
+        k_bias, v_bias = torch.chunk(
+            state_dict.pop(f"controlnet.{depth}.copied_block.cross_attn.kv_linear.bias"), 2, dim=0
+        )
 
         converted_state_dict[f"transformer_blocks.{depth}.attn2.to_q.weight"] = q
         converted_state_dict[f"transformer_blocks.{depth}.attn2.to_q.bias"] = q_bias
@@ -145,7 +143,9 @@ def main(args):
         )
 
         # ControlNet After Projection
-        converted_state_dict[f"controlnet_blocks.{depth}.weight"] = state_dict.pop(f"controlnet.{depth}.after_proj.weight")
+        converted_state_dict[f"controlnet_blocks.{depth}.weight"] = state_dict.pop(
+            f"controlnet.{depth}.after_proj.weight"
+        )
         converted_state_dict[f"controlnet_blocks.{depth}.bias"] = state_dict.pop(f"controlnet.{depth}.after_proj.bias")
 
     # ControlNet
@@ -205,7 +205,10 @@ if __name__ == "__main__":
         help="Image size of pretrained model, 512, 1024, 2048 or 4096.",
     )
     parser.add_argument(
-        "--model_type", default="SanaMS_1600M_P1_ControlNet_D7", type=str, choices=["SanaMS_1600M_P1_D20", "SanaMS_600M_P1_D28"]
+        "--model_type",
+        default="SanaMS_1600M_P1_ControlNet_D7",
+        type=str,
+        choices=["SanaMS_1600M_P1_D20", "SanaMS_600M_P1_D28"],
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
     parser.add_argument("--dtype", default="fp16", type=str, choices=["fp32", "fp16", "bf16"], help="Weight dtype.")

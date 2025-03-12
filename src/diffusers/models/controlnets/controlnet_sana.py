@@ -267,7 +267,7 @@ class SanaControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     post_patch_width,
                 )
             block_res_samples = block_res_samples + (hidden_states,)
-        
+
         # 3. ControlNet blocks
         controlnet_block_res_samples = ()
         for block_res_sample, controlnet_block in zip(block_res_samples, self.controlnet_blocks):

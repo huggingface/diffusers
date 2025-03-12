@@ -25,7 +25,7 @@ from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFa
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput, PixArtImageProcessor
 from ...loaders import SanaLoraLoaderMixin
-from ...models import AutoencoderDC, SanaTransformer2DModel, SanaControlNetModel
+from ...models import AutoencoderDC, SanaControlNetModel, SanaTransformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -210,12 +210,12 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         super().__init__()
 
         self.register_modules(
-            tokenizer=tokenizer, 
+            tokenizer=tokenizer,
             text_encoder=text_encoder,
             vae=vae,
             transformer=transformer,
             controlnet=controlnet,
-            scheduler=scheduler
+            scheduler=scheduler,
         )
 
         self.vae_scale_factor = (
