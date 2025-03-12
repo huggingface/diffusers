@@ -82,52 +82,85 @@ class ModuleGroup:
             self.stream.synchronize()
 
         with context:
-            # Only transfer parameters that aren't already on the target device
+            # Use direct per-parameter transfers rather than module-level transfers
+            # This gives us more control and potentially better memory management
             for group_module in self.modules:
+                # Check if any parameter needs moving
                 if any(p.device != self.onload_device for p in group_module.parameters()):
-                    group_module.to(self.onload_device, non_blocking=self.non_blocking)
-                    
+                    for param in group_module.parameters():
+                        if param.device != self.onload_device:
+                            # Use direct CUDA transfer for each parameter
+                            if self.onload_device.type == "cuda":
+                                param.data = param.data.cuda(self.onload_device.index, 
+                                                           non_blocking=self.non_blocking)
+                            else:
+                                param.data = param.data.to(self.onload_device, 
+                                                          non_blocking=self.non_blocking)
+                
+            # Handle explicit parameters
             if self.parameters is not None:
                 for param in self.parameters:
                     if param.device != self.onload_device:
-                        param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
-                        
+                        # Use direct CUDA transfer for each parameter  
+                        if self.onload_device.type == "cuda":
+                            param.data = param.data.cuda(self.onload_device.index, 
+                                                       non_blocking=self.non_blocking)
+                        else:
+                            param.data = param.data.to(self.onload_device, 
+                                                      non_blocking=self.non_blocking)
+                
+            # Handle buffers
             if self.buffers is not None:
                 for buffer in self.buffers:
                     if buffer.device != self.onload_device:
-                        buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+                        # Use direct CUDA transfer for each buffer
+                        if self.onload_device.type == "cuda":
+                            buffer.data = buffer.data.cuda(self.onload_device.index, 
+                                                         non_blocking=self.non_blocking)
+                        else:
+                            buffer.data = buffer.data.to(self.onload_device, 
+                                                        non_blocking=self.non_blocking)
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
-        # Synchronize if using stream
-        if self.stream is not None:
-            torch.cuda.current_stream().synchronize()
-            
-        # For CPU offloading, use a method that preserves memory mapping benefits
-        if self.offload_device.type == 'cpu':
+        # For CPU offloading, use the most memory-efficient approach possible
+        if self.offload_device.type == "cpu":
+            # Synchronize if using stream
+            if self.stream is not None:
+                torch.cuda.current_stream().synchronize()
+                
             # Empty GPU cache before offloading to reduce memory fragmentation
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 
-            # Use to() method directly on modules
+            # Instead of using to() on the whole module which might create copies,
+            # directly move each parameter's data to CPU with cpu() which uses
+            # the memory-optimized path
             for group_module in self.modules:
-                # Don't make copies if already on CPU
-                if any(p.device.type != 'cpu' for p in group_module.parameters()):
-                    group_module.to(self.offload_device, non_blocking=self.non_blocking)
-                
-            # Handle explicit parameters - avoid copies when already on CPU
+                # Check if any parameter needs moving
+                if any(p.device.type != "cpu" for p in group_module.parameters()):
+                    for param in group_module.parameters():
+                        if param.device.type != "cpu":
+                            # Use direct cpu() method which is more memory-efficient than to()
+                            param.data = param.data.cpu()
+                            
+            # Handle explicit parameters - move directly to CPU
             if self.parameters is not None:
                 for param in self.parameters:
-                    if param.device.type != 'cpu':
-                        # Let PyTorch handle the transfer which can preserve memory mapping
-                        param.data = param.data.to(self.offload_device, non_blocking=self.non_blocking)
+                    if param.device.type != "cpu":
+                        # Direct CPU transfer with cpu() method
+                        param.data = param.data.cpu()
                         
-            # Handle buffers - avoid copies when already on CPU
+            # Handle buffers - move directly to CPU
             if self.buffers is not None:
                 for buffer in self.buffers:
-                    if buffer.device.type != 'cpu':
-                        buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
+                    if buffer.device.type != "cpu":
+                        buffer.data = buffer.data.cpu()
         else:
+            # For non-CPU offloading, synchronize if using stream
+            if self.stream is not None:
+                torch.cuda.current_stream().synchronize()
+                
             # For non-CPU offloading, use the regular approach
             for group_module in self.modules:
                 group_module.to(self.offload_device, non_blocking=self.non_blocking)
@@ -394,9 +427,7 @@ def apply_group_offloading(
             stream,
         )
     elif offload_type == "leaf_level":
-        _apply_group_offloading_leaf_level(
-            module, offload_device, onload_device, non_blocking, stream
-        )
+        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream)
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
 
