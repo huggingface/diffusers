@@ -46,15 +46,18 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import CogView4Pipeline
 
         >>> pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B-Control", torch_dtype=torch.bfloat16)
-        >>> pipe.to("cuda")
-
-        >>> prompt = "A photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
-        >>> image.save("output.png")
+        >>> control_image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+        ... )
+        >>> prompt = "A bird in space"
+        >>> image = pipe(
+        ...     prompt, control_image=control_image, height=1024, width=1024, guidance_scale=3.5)
+        ... ).images[0]
+        >>> image.save("cogview4-control.png")
         ```
 """
 
-
+# Copied from diffusers.pipelines.cogview4.pipeline_cogview4.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -175,6 +178,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    # Copied from diffusers.pipelines.cogview4.pipeline_cogview4.CogView4Pipeline._get_glm_embeds
     def _get_glm_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -341,7 +345,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
             # image batch size is the same as prompt batch size
             repeat_by = num_images_per_prompt
 
-        image = image.repeat_interleave(repeat_by, dim=0)
+        image = image.repeat_interleave(repeat_by, dim=0, output_size=image.shape[0] * repeat_by)
 
         image = image.to(device=device, dtype=dtype)
 

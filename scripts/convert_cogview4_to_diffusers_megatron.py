@@ -162,14 +162,14 @@ def convert_megatron_transformer_checkpoint_to_diffusers(
     Returns:
         dict: The converted state dictionary compatible with Diffusers.
     """
-    ckpt = torch.load(ckpt_path, map_location="cpu")
+    ckpt = torch.load(ckpt_path, map_location="cpu",weights_only=False)
     mega = ckpt["model"]
 
     new_state_dict = {}
 
     # Patch Embedding
     new_state_dict["patch_embed.proj.weight"] = mega["encoder_expand_linear.weight"].reshape(
-        hidden_size, 128 if args.control else 64, 64
+        hidden_size, 128 if args.control else 64
     )
     new_state_dict["patch_embed.proj.bias"] = mega["encoder_expand_linear.bias"]
     new_state_dict["patch_embed.text_proj.weight"] = mega["text_projector.weight"]
@@ -260,7 +260,7 @@ def convert_cogview4_vae_checkpoint_to_diffusers(ckpt_path, vae_config):
     Returns:
         dict: The converted VAE state dictionary compatible with Diffusers.
     """
-    original_state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+    original_state_dict = torch.load(ckpt_path, map_location="cpu",weights_only=False)["state_dict"]
     return convert_ldm_vae_checkpoint(original_state_dict, vae_config)
 
 
@@ -294,7 +294,7 @@ def main(args):
         )
         transformer = CogView4Transformer2DModel(
             patch_size=2,
-            in_channels=16,
+            in_channels=32 if args.control else 16,
             num_layers=args.num_layers,
             attention_head_dim=args.attention_head_dim,
             num_attention_heads=args.num_heads,
