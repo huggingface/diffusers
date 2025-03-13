@@ -245,6 +245,9 @@ def load_model_dict_into_meta(
             ):
                 param = param.to(torch.float32)
                 set_module_kwargs["dtype"] = torch.float32
+            # For quantizers have save weights using torch.float8_e4m3fn
+            elif hf_quantizer is not None and param.dtype == getattr(torch, "float8_e4m3fn", None):
+                pass
             else:
                 param = param.to(dtype)
                 set_module_kwargs["dtype"] = dtype
@@ -292,7 +295,9 @@ def load_model_dict_into_meta(
         elif is_quantized and (
             hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=param_device)
         ):
-            hf_quantizer.create_quantized_param(model, param, param_name, param_device, state_dict, unexpected_keys)
+            hf_quantizer.create_quantized_param(
+                model, param, param_name, param_device, state_dict, unexpected_keys, dtype=dtype
+            )
         else:
             set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
 
