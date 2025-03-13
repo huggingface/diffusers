@@ -481,7 +481,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # Scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * np.float64(self.scheduler.init_noise_sigma)
+        latents = latents * self.scheduler.init_noise_sigma
 
         # 5. Add noise to image
         noise_level = np.array([noise_level]).astype(np.int64)
