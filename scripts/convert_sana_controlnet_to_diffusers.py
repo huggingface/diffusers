@@ -16,6 +16,7 @@ from diffusers.utils.import_utils import is_accelerate_available
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
+
 def main(args):
     file_path = args.orig_ckpt_path
 
@@ -182,7 +183,7 @@ if __name__ == "__main__":
         "--model_type",
         default="SanaMS_1600M_P1_ControlNet_D7",
         type=str,
-        choices=["SanaMS_1600M_P1_D20", "SanaMS_600M_P1_D28"],
+        choices=["SanaMS_1600M_P1_ControlNet_D7", "SanaMS_600M_P1_ControlNet_D7"],
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
     parser.add_argument("--dtype", default="fp16", type=str, choices=["fp32", "fp16", "bf16"], help="Weight dtype.")

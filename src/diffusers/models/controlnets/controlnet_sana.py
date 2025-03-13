@@ -231,7 +231,7 @@ class SanaControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         post_patch_height, post_patch_width = height // p, width // p
 
         hidden_states = self.patch_embed(hidden_states)
-        hidden_states = hidden_states + self.input_block(self.patch_embed(controlnet_cond))
+        hidden_states = hidden_states + self.input_block(self.patch_embed(controlnet_cond.to(hidden_states.dtype)))
 
         timestep, embedded_timestep = self.time_embed(
             timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype
