@@ -18,7 +18,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention_processor import (
     Attention,
@@ -195,7 +195,7 @@ class SanaTransformerBlock(nn.Module):
         return hidden_states
 
 
-class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model introduced in [Sana](https://huggingface.co/papers/2410.10629) family of models.
 
