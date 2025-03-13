@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 
 import numpy as np
 import torch
@@ -43,7 +43,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import CogView4Pipeline
+        >>> from diffusers import CogView4ControlPipeline
 
         >>> pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B-Control", torch_dtype=torch.bfloat16)
         >>> control_image = load_image(
@@ -421,6 +421,14 @@ class CogView4ControlPipeline(DiffusionPipeline):
         return self._num_timesteps
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -446,6 +454,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         output_type: str = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -559,6 +568,8 @@ class CogView4ControlPipeline(DiffusionPipeline):
             negative_prompt_embeds,
         )
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # Default call parameters
@@ -652,6 +663,8 @@ class CogView4ControlPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
+                self._current_timestep = t
                 latent_model_input = torch.cat([latents, control_image], dim=1).to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -664,6 +677,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
                     original_size=original_size,
                     target_size=target_size,
                     crop_coords=crops_coords_top_left,
+                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -676,6 +690,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
                         original_size=original_size,
                         target_size=target_size,
                         crop_coords=crops_coords_top_left,
+                        attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
 
@@ -699,6 +714,8 @@ class CogView4ControlPipeline(DiffusionPipeline):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
+        self._current_timestep = None
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
