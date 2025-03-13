@@ -662,7 +662,7 @@ def parse_args(input_args=None):
         action="store_true",
         default=False,
         help=(
-            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -1883,7 +1883,11 @@ def main(args):
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                generator = (
+                    torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                    if args.seed is not None
+                    else None
+                )
                 pipeline_args = {"prompt": args.validation_prompt}
 
                 if torch.backends.mps.is_available():
@@ -1987,7 +1991,9 @@ def main(args):
                 )
             # run inference
             pipeline = pipeline.to(accelerator.device)
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+            generator = (
+                torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
+            )
             images = [
                 pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                 for _ in range(args.num_validation_images)

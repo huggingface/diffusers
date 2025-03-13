@@ -60,29 +60,8 @@ if is_transformers_available():
 
 if is_torch_available():
     import torch
-    import torch.nn as nn
 
-    class LoRALayer(nn.Module):
-        """Wraps a linear layer with LoRA-like adapter - Used for testing purposes only
-
-        Taken from
-        https://github.com/huggingface/transformers/blob/566302686a71de14125717dea9a6a45b24d42b37/tests/quantization/bnb/test_8bit.py#L62C5-L78C77
-        """
-
-        def __init__(self, module: nn.Module, rank: int):
-            super().__init__()
-            self.module = module
-            self.adapter = nn.Sequential(
-                nn.Linear(module.in_features, rank, bias=False),
-                nn.Linear(rank, module.out_features, bias=False),
-            )
-            small_std = (2.0 / (5 * min(module.in_features, module.out_features))) ** 0.5
-            nn.init.normal_(self.adapter[0].weight, std=small_std)
-            nn.init.zeros_(self.adapter[1].weight)
-            self.adapter.to(module.weight.device)
-
-        def forward(self, input, *args, **kwargs):
-            return self.module(input, *args, **kwargs) + self.adapter(input)
+    from ..utils import LoRALayer, get_memory_consumption_stat
 
 
 if is_bitsandbytes_available():
@@ -101,6 +80,8 @@ class Base8bitTests(unittest.TestCase):
 
     # This was obtained on audace so the number might slightly change
     expected_rel_difference = 1.94
+
+    expected_memory_saving_ratio = 0.7
 
     prompt = "a beautiful sunset amidst the mountains."
     num_inference_steps = 10
@@ -142,8 +123,10 @@ class BnB8bitBasicTests(Base8bitTests):
         )
 
     def tearDown(self):
-        del self.model_fp16
-        del self.model_8bit
+        if hasattr(self, "model_fp16"):
+            del self.model_fp16
+        if hasattr(self, "model_8bit"):
+            del self.model_8bit
 
         gc.collect()
         torch.cuda.empty_cache()
@@ -181,6 +164,28 @@ class BnB8bitBasicTests(Base8bitTests):
         self.assertAlmostEqual(mem_fp16 / mem_8bit, self.expected_rel_difference, delta=1e-2)
         linear = get_some_linear_layer(self.model_8bit)
         self.assertTrue(linear.weight.__class__ == bnb.nn.Int8Params)
+
+    def test_model_memory_usage(self):
+        # Delete to not let anything interfere.
+        del self.model_8bit, self.model_fp16
+
+        # Re-instantiate.
+        inputs = self.get_dummy_inputs()
+        inputs = {
+            k: v.to(device=torch_device, dtype=torch.float16) for k, v in inputs.items() if not isinstance(v, bool)
+        }
+        model_fp16 = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", torch_dtype=torch.float16
+        ).to(torch_device)
+        unquantized_model_memory = get_memory_consumption_stat(model_fp16, inputs)
+        del model_fp16
+
+        config = BitsAndBytesConfig(load_in_8bit=True)
+        model_8bit = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", quantization_config=config, torch_dtype=torch.float16
+        )
+        quantized_model_memory = get_memory_consumption_stat(model_8bit, inputs)
+        assert unquantized_model_memory / quantized_model_memory >= self.expected_memory_saving_ratio
 
     def test_original_dtype(self):
         r"""
@@ -248,7 +253,7 @@ class BnB8bitBasicTests(Base8bitTests):
         self.assertTrue(linear.weight.dtype == torch.int8)
         self.assertTrue(isinstance(linear, bnb.nn.Linear8bitLt))
 
-        self.assertTrue(isinstance(model_8bit.proj_out, nn.Linear))
+        self.assertTrue(isinstance(model_8bit.proj_out, torch.nn.Linear))
         self.assertTrue(model_8bit.proj_out.weight.dtype != torch.int8)
 
     def test_config_from_pretrained(self):

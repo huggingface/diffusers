@@ -37,6 +37,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
@@ -44,7 +45,7 @@ from diffusers.utils.testing_utils import (
     nightly,
     require_accelerate_version_greater,
     require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -378,17 +379,17 @@ class StableDiffusionDepth2ImgPipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
@@ -425,17 +426,17 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
