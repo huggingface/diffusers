@@ -32,6 +32,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipeline_cogview4 import CogView4Pipeline
+        from .pipeline_cogview4_control import CogView4ControlPipeline
 else:
     import sys
 
