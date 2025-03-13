@@ -10,6 +10,7 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate,
     require_big_gpu_with_torch_cuda,
+    require_torch_cuda_compatibility,
     torch_device,
 )
 
@@ -311,11 +312,17 @@ class FluxTransformerInt8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCa
         return {"weights_dtype": "int8"}
 
 
+require_torch_cuda_compatibility(8.0)
+
+
 class FluxTransformerInt4WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
     expected_memory_reduction = 0.55
 
     def get_dummy_init_kwargs(self):
         return {"weights_dtype": "int4"}
+
+
+require_torch_cuda_compatibility(8.0)
 
 
 class FluxTransformerInt2WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):

@@ -101,6 +101,8 @@ if is_torch_available():
             mps_backend_registered = hasattr(torch.backends, "mps")
             torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
 
+    from .torch_utils import get_torch_cuda_device_capability
+
 
 def torch_all_close(a, b, *args, **kwargs):
     if not is_torch_available():
@@ -280,6 +282,18 @@ def require_torch_gpu(test_case):
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
         test_case
     )
+
+
+def require_torch_cuda_compatibility(expected_compute_capability):
+    def decorator(test_case):
+        if not torch.cuda.is_available():
+            return unittest.skip(test_case)
+        else:
+            compute_capability = get_torch_cuda_device_capability()
+            current_compute_capability = f"{compute_capability[0]}.{compute_capability[1]}"
+            return unittest.skipUnless(float(current_compute_capability) == float(expected_compute_capability))
+
+    return decorator
 
 
 # These decorators are for accelerator-specific behaviours that are not GPU-specific
