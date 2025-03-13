@@ -19,8 +19,8 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import ftfy
 import regex as re
 import torch
-from transformers import AutoTokenizer, UMT5EncoderModel
 from PIL import Image
+from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import WanLoraLoaderMixin
@@ -415,43 +415,20 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             init_latents = torch.cat(init_latents, dim=0).to(dtype).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
 
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = self.scheduler.add_noise(init_latents, noise, timestep)
+            latents = self.scheduler.scale_noise(init_latents, timestep, noise)
         else:
             latents = latents.to(device)
 
         return latents
 
-    def _prepare_latents(
-        self,
-        batch_size: int,
-        num_channels_latents: int = 16,
-        height: int = 480,
-        width: int = 832,
-        num_frames: int = 81,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
+    def get_timesteps(self, num_inference_steps, timesteps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
-        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_latent_frames,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = timesteps[t_start * self.scheduler.order :]
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        return latents
+        return timesteps, num_inference_steps - t_start
 
     @property
     def guidance_scale(self):
@@ -488,7 +465,9 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         width: int = 832,
         num_frames: int = 81,
         num_inference_steps: int = 50,
+        timesteps: Optional[List[int]] = None,
         guidance_scale: float = 5.0,
+        strength: float = 0.8,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -571,9 +550,6 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         height = height or self.transformer.config.sample_height * self.vae_scale_factor_spatial
         width = width or self.transformer.config.sample_width * self.vae_scale_factor_spatial
-        num_frames = len(video) if latents is None else latents.size(1)
-
-        num_frames = len(video) if latents is None else latents.size(1)
         num_videos_per_prompt = 1
 
         # 1. Check inputs. Raise error if not correct
@@ -639,7 +615,6 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_channels_latents,
             height,
             width,
-            num_frames,
             torch.float32,
             device,
             generator,

@@ -15,12 +15,12 @@
 import gc
 import unittest
 
-from PIL import Image
 import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanVideoToVideoPipeline, WanTransformer3DModel
+from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanTransformer3DModel, WanVideoToVideoPipeline
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_accelerator,
@@ -108,7 +108,7 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prompt": "dance monkey",
             "negative_prompt": "negative",  # TODO
             "generator": generator,
-            "num_inference_steps": 2,
+            "num_inference_steps": 4,
             "guidance_scale": 6.0,
             "height": 16,
             "width": 16,

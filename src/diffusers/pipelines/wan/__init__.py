@@ -35,6 +35,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_wan import WanPipeline
         from .pipeline_wan_i2v import WanImageToVideoPipeline
+        from .pipeline_wan_video2video import WanVideoToVideoPipeline
 
 else:
     import sys

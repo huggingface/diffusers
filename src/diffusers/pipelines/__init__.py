@@ -709,7 +709,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserPipeline,
             UniDiffuserTextDecoder,
         )
-        from .wan import WanImageToVideoPipeline, WanVideoToVideoPipeline, WanPipeline
+        from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
