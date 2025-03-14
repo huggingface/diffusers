@@ -20,6 +20,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
@@ -655,7 +656,7 @@ class WanDecoder3d(nn.Module):
         return x
 
 
-class AutoencoderKLWan(ModelMixin, ConfigMixin):
+class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
     Introduced in [Wan 2.1].
@@ -715,11 +716,6 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
     ) -> None:
         super().__init__()
 
-        # Store normalization parameters as tensors
-        self.mean = torch.tensor(latents_mean)
-        self.std = torch.tensor(latents_std)
-        self.scale = torch.stack([self.mean, 1.0 / self.std])  # Shape: [2, C]
-
         self.z_dim = z_dim
         self.temperal_downsample = temperal_downsample
         self.temperal_upsample = temperal_downsample[::-1]
@@ -751,7 +747,6 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
         self._enc_feat_map = [None] * self._enc_conv_num
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
-        scale = self.scale.type_as(x)
         self.clear_cache()
         ## cache
         t = x.shape[2]
@@ -770,8 +765,6 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
 
         enc = self.quant_conv(out)
         mu, logvar = enc[:, : self.z_dim, :, :, :], enc[:, self.z_dim :, :, :, :]
-        mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(1, self.z_dim, 1, 1, 1)
-        logvar = (logvar - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(1, self.z_dim, 1, 1, 1)
         enc = torch.cat([mu, logvar], dim=1)
         self.clear_cache()
         return enc
@@ -798,10 +791,8 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, scale, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         self.clear_cache()
-        # z: [b,c,t,h,w]
-        z = z / scale[1].view(1, self.z_dim, 1, 1, 1) + scale[0].view(1, self.z_dim, 1, 1, 1)
 
         iter_ = z.shape[2]
         x = self.post_quant_conv(z)
@@ -835,8 +826,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin):
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
         """
-        scale = self.scale.type_as(z)
-        decoded = self._decode(z, scale).sample
+        decoded = self._decode(z).sample
         if not return_dict:
             return (decoded,)
 
