@@ -120,7 +120,6 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         height: int,
         width: int,
         rope_interpolation_scale: Tuple[torch.Tensor, float, float],
-        frame_rate: float,
         device: torch.device,
     ) -> torch.Tensor:
         # Always compute rope in fp32
@@ -146,7 +145,6 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         num_frames: Optional[int] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        frame_rate: Optional[int] = None,
         rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None,
         video_coords: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -159,7 +157,6 @@ class LTXVideoRotaryPosEmbed(nn.Module):
                 height,
                 width,
                 rope_interpolation_scale=rope_interpolation_scale,
-                frame_rate=frame_rate,
                 device=hidden_states.device,
             )
         else:
@@ -404,7 +401,6 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
         num_frames: Optional[int] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        frame_rate: Optional[int] = None,
         rope_interpolation_scale: Optional[Union[Tuple[float, float, float], torch.Tensor]] = None,
         video_coords: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -425,9 +421,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        image_rotary_emb = self.rope(
-            hidden_states, num_frames, height, width, frame_rate, rope_interpolation_scale, video_coords
-        )
+        image_rotary_emb = self.rope(hidden_states, num_frames, height, width, rope_interpolation_scale, video_coords)
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
