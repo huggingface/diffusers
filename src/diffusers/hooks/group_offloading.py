@@ -124,6 +124,7 @@ class GroupOffloadingHook(ModelHook):
         group: ModuleGroup,
         next_group: Optional[ModuleGroup] = None,
     ) -> None:
+        super().__init__()
         self.group = group
         self.next_group = next_group
 
@@ -168,6 +169,7 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
     _is_stateful = False
 
     def __init__(self):
+        super().__init__()
         self.execution_order: List[Tuple[str, torch.nn.Module]] = []
         self._layer_execution_tracker_module_names = set()
 
@@ -253,6 +255,7 @@ class LayerExecutionTrackerHook(ModelHook):
     _is_stateful = False
 
     def __init__(self, execution_order_update_callback):
+        super().__init__()
         self.execution_order_update_callback = execution_order_update_callback
 
     def pre_forward(self, module, *args, **kwargs):

@@ -17,7 +17,9 @@ import unittest
 
 import torch
 
+from diffusers.configuration_utils import ConfigMixin
 from diffusers.hooks import HookRegistry, ModelHook
+from diffusers.models.modeling_utils import ModelMixin
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
 from diffusers.utils.testing_utils import CaptureLogger, torch_device
@@ -42,6 +44,26 @@ class DummyBlock(torch.nn.Module):
 
 
 class DummyModel(torch.nn.Module):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int, num_layers: int) -> None:
+        super().__init__()
+
+        self.linear_1 = torch.nn.Linear(in_features, hidden_features)
+        self.activation = torch.nn.ReLU()
+        self.blocks = torch.nn.ModuleList(
+            [DummyBlock(hidden_features, hidden_features, hidden_features) for _ in range(num_layers)]
+        )
+        self.linear_2 = torch.nn.Linear(hidden_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.linear_1(x)
+        x = self.activation(x)
+        for block in self.blocks:
+            x = block(x)
+        x = self.linear_2(x)
+        return x
+
+
+class DummyModelWithMixin(ModelMixin, ConfigMixin):
     def __init__(self, in_features: int, hidden_features: int, out_features: int, num_layers: int) -> None:
         super().__init__()
 
@@ -380,3 +402,96 @@ class HookTests(unittest.TestCase):
             .replace("\n", "")
         )
         self.assertEqual(output, expected_invocation_order_log)
+
+
+class ModelMixinHookTests(unittest.TestCase):
+    in_features = 4
+    hidden_features = 8
+    out_features = 4
+    num_layers = 2
+
+    def setUp(self):
+        params = self.get_module_parameters()
+        self.model = DummyModelWithMixin(**params)
+        self.model.to(torch_device)
+
+    def tearDown(self):
+        super().tearDown()
+
+        del self.model
+        gc.collect()
+        free_memory()
+
+    def get_module_parameters(self):
+        return {
+            "in_features": self.in_features,
+            "hidden_features": self.hidden_features,
+            "out_features": self.out_features,
+            "num_layers": self.num_layers,
+        }
+
+    def get_generator(self):
+        return torch.manual_seed(0)
+
+    def test_enable_disable_hook(self):
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(AddHook(1), "add_hook")
+        registry.register_hook(MultiplyHook(2), "multiply_hook")
+
+        input = torch.randn(1, 4, device=torch_device, generator=self.get_generator())
+        output1 = self.model(input).mean().detach().cpu().item()
+
+        self.model._disable_hook("multiply_hook")
+        output2 = self.model(input).mean().detach().cpu().item()
+
+        self.model._enable_hook("multiply_hook")
+        output3 = self.model(input).mean().detach().cpu().item()
+
+        self.assertNotEqual(output1, output2)
+        self.assertEqual(output1, output3)
+
+    def test_enable_disable_hook_containing_new_forward(self):
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(AddHook(1), "add_hook")
+        for block in self.model.blocks:
+            block_registry = HookRegistry.check_if_exists_or_initialize(block)
+            block_registry.register_hook(SkipLayerHook(skip_layer=True), "skip_layer_hook")
+        registry.register_hook(MultiplyHook(2), "multiply_hook")
+
+        input = torch.randn(1, 4, device=torch_device, generator=self.get_generator())
+        output1 = self.model(input).mean().detach().cpu().item()
+
+        self.model._disable_hook("skip_layer_hook")
+        output2 = self.model(input).mean().detach().cpu().item()
+
+        self.model._disable_hook("add_hook")
+        output3 = self.model(input).mean().detach().cpu().item()
+
+        self.model._enable_hook("skip_layer_hook")
+        self.model._enable_hook("add_hook")
+        output4 = self.model(input).mean().detach().cpu().item()
+
+        self.assertNotEqual(output1, output2)
+        self.assertNotEqual(output2, output3)
+        self.assertEqual(output1, output4)
+
+    def test_remove_all_hooks(self):
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(AddHook(1), "add_hook")
+        registry.register_hook(MultiplyHook(2), "multiply_hook")
+
+        input = torch.randn(1, 4, device=torch_device, generator=self.get_generator())
+        output1 = self.model(input).mean().detach().cpu().item()
+
+        self.model._disable_hook("add_hook")
+        self.model._disable_hook("multiply_hook")
+        output2 = self.model(input).mean().detach().cpu().item()
+
+        self.model._remove_all_hooks()
+        output3 = self.model(input).mean().detach().cpu().item()
+
+        for module in self.model.modules():
+            self.assertFalse(hasattr(module, "_diffusers_hook"))
+
+        self.assertNotEqual(output1, output3)
+        self.assertEqual(output2, output3)
