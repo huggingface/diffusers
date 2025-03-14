@@ -19,7 +19,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
-import torch.nn.functional as F
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -38,7 +37,13 @@ from ...loaders import (
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-from ...models import AutoencoderKL, ControlNetModel, ControlNetUnionModel, ImageProjection, UNet2DConditionModel
+from ...models import (
+    AutoencoderKL,
+    ControlNetUnionModel,
+    ImageProjection,
+    MultiControlNetUnionModel,
+    UNet2DConditionModel,
+)
 from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
@@ -59,6 +64,17 @@ from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutpu
 
 if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+
+
+from ...utils import is_torch_xla_available
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -233,7 +249,9 @@ class StableDiffusionXLControlNetUnionPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: ControlNetUnionModel,
+        controlnet: Union[
+            ControlNetUnionModel, List[ControlNetUnionModel], Tuple[ControlNetUnionModel], MultiControlNetUnionModel
+        ],
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
@@ -242,8 +260,8 @@ class StableDiffusionXLControlNetUnionPipeline(
     ):
         super().__init__()
 
-        if not isinstance(controlnet, ControlNetUnionModel):
-            raise ValueError("Expected `controlnet` to be of type `ControlNetUnionModel`.")
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = MultiControlNetUnionModel(controlnet)
 
         self.register_modules(
             vae=vae,
@@ -257,7 +275,7 @@ class StableDiffusionXLControlNetUnionPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
@@ -397,7 +415,9 @@ class StableDiffusionXLControlNetUnionPipeline(
                 prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
-                pooled_prompt_embeds = prompt_embeds[0]
+                if pooled_prompt_embeds is None and prompt_embeds[0].ndim == 2:
+                    pooled_prompt_embeds = prompt_embeds[0]
+
                 if clip_skip is None:
                     prompt_embeds = prompt_embeds.hidden_states[-2]
                 else:
@@ -456,8 +476,10 @@ class StableDiffusionXLControlNetUnionPipeline(
                     uncond_input.input_ids.to(device),
                     output_hidden_states=True,
                 )
+
                 # We are only ALWAYS interested in the pooled output of the final text encoder
-                negative_pooled_prompt_embeds = negative_prompt_embeds[0]
+                if negative_pooled_prompt_embeds is None and negative_prompt_embeds[0].ndim == 2:
+                    negative_pooled_prompt_embeds = negative_prompt_embeds[0]
                 negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
 
                 negative_prompt_embeds_list.append(negative_prompt_embeds)
@@ -649,6 +671,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
+        control_mode=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if callback_on_step_end_tensor_inputs is not None and not all(
@@ -706,66 +729,90 @@ class StableDiffusionXLControlNetUnionPipeline(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
-        # Check `image`
-        is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
-            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
-        )
-        if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
-        ):
-            self.check_image(image, prompt, prompt_embeds)
-        elif (
-            isinstance(self.controlnet, ControlNetUnionModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetUnionModel)
-        ):
-            self.check_image(image, prompt, prompt_embeds)
+        # `prompt` needs more sophisticated handling when there are multiple
+        # conditionings.
+        if isinstance(self.controlnet, MultiControlNetUnionModel):
+            if isinstance(prompt, list):
+                logger.warning(
+                    f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
+                    " prompts. The conditionings will be fixed across the prompts."
+                )
 
-        else:
-            assert False
+        # Check `image`
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
+
+        if isinstance(controlnet, ControlNetUnionModel):
+            for image_ in image:
+                self.check_image(image_, prompt, prompt_embeds)
+        elif isinstance(controlnet, MultiControlNetUnionModel):
+            if not isinstance(image, list):
+                raise TypeError("For multiple controlnets: `image` must be type `list`")
+            elif not all(isinstance(i, list) for i in image):
+                raise ValueError("For multiple controlnets: elements of `image` must be list of conditionings.")
+            elif len(image) != len(self.controlnet.nets):
+                raise ValueError(
+                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
+                )
+
+            for images_ in image:
+                for image_ in images_:
+                    self.check_image(image_, prompt, prompt_embeds)
 
         # Check `controlnet_conditioning_scale`
-        if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
-        ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-
-        elif (
-            isinstance(self.controlnet, ControlNetUnionModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetUnionModel)
-        ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-
-        else:
-            assert False
-
-        if not isinstance(control_guidance_start, (tuple, list)):
-            control_guidance_start = [control_guidance_start]
-
-        if not isinstance(control_guidance_end, (tuple, list)):
-            control_guidance_end = [control_guidance_end]
+        if isinstance(controlnet, MultiControlNetUnionModel):
+            if isinstance(controlnet_conditioning_scale, list):
+                if any(isinstance(i, list) for i in controlnet_conditioning_scale):
+                    raise ValueError("A single batch of multiple conditionings is not supported at the moment.")
+            elif isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
+                self.controlnet.nets
+            ):
+                raise ValueError(
+                    "For multiple controlnets: When `controlnet_conditioning_scale` is specified as `list`, it must have"
+                    " the same length as the number of controlnets"
+                )
 
         if len(control_guidance_start) != len(control_guidance_end):
             raise ValueError(
                 f"`control_guidance_start` has {len(control_guidance_start)} elements, but `control_guidance_end` has {len(control_guidance_end)} elements. Make sure to provide the same number of elements to each list."
             )
 
+        if isinstance(controlnet, MultiControlNetUnionModel):
+            if len(control_guidance_start) != len(self.controlnet.nets):
+                raise ValueError(
+                    f"`control_guidance_start`: {control_guidance_start} has {len(control_guidance_start)} elements but there are {len(self.controlnet.nets)} controlnets available. Make sure to provide {len(self.controlnet.nets)}."
+                )
+
         for start, end in zip(control_guidance_start, control_guidance_end):
             if start >= end:
                 raise ValueError(
-                    f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}."
+                    f"control_guidance_start: {start} cannot be larger or equal to control guidance end: {end}."
                 )
             if start < 0.0:
-                raise ValueError(f"control guidance start: {start} can't be smaller than 0.")
+                raise ValueError(f"control_guidance_start: {start} can't be smaller than 0.")
             if end > 1.0:
-                raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
+                raise ValueError(f"control_guidance_end: {end} can't be larger than 1.0.")
+
+        # Check `control_mode`
+        if isinstance(controlnet, ControlNetUnionModel):
+            if max(control_mode) >= controlnet.config.num_control_type:
+                raise ValueError(f"control_mode: must be lower than {controlnet.config.num_control_type}.")
+        elif isinstance(controlnet, MultiControlNetUnionModel):
+            for _control_mode, _controlnet in zip(control_mode, self.controlnet.nets):
+                if max(_control_mode) >= _controlnet.config.num_control_type:
+                    raise ValueError(f"control_mode: must be lower than {_controlnet.config.num_control_type}.")
+
+        # Equal number of `image` and `control_mode` elements
+        if isinstance(controlnet, ControlNetUnionModel):
+            if len(image) != len(control_mode):
+                raise ValueError("Expected len(control_image) == len(control_mode)")
+        elif isinstance(controlnet, MultiControlNetUnionModel):
+            if not all(isinstance(i, list) for i in control_mode):
+                raise ValueError(
+                    "For multiple controlnets: elements of control_mode must be lists representing conditioning mode."
+                )
+
+            elif sum(len(x) for x in image) != sum(len(x) for x in control_mode):
+                raise ValueError("Expected len(control_image) == len(control_mode)")
 
         if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
             raise ValueError(
@@ -941,7 +988,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        control_image: PipelineImageInput = None,
+        control_image: Union[PipelineImageInput, List[PipelineImageInput]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -968,7 +1015,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         guess_mode: bool = False,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
-        control_mode: Optional[Union[int, List[int]]] = None,
+        control_mode: Optional[Union[int, List[int], List[List[int]]]] = None,
         original_size: Tuple[int, int] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Tuple[int, int] = None,
@@ -990,7 +1037,7 @@ class StableDiffusionXLControlNetUnionPipeline(
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders.
-            control_image (`PipelineImageInput`):
+            control_image (`PipelineImageInput` or `List[PipelineImageInput]`, *optional*):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
                 specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
                 as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
@@ -1082,6 +1129,11 @@ class StableDiffusionXLControlNetUnionPipeline(
                 The percentage of total steps at which the ControlNet starts applying.
             control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
                 The percentage of total steps at which the ControlNet stops applying.
+            control_mode (`int` or `List[int]` or `List[List[int]], *optional*):
+                The control condition types for the ControlNet. See the ControlNet's model card forinformation on the
+                available control modes. If multiple ControlNets are specified in `init`, control_mode should be a list
+                where each ControlNet should have its corresponding control mode list. Should reflect the order of
+                conditions in control_image.
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
                 `original_size` defaults to `(height, width)` if not specified. Part of SDXL's micro-conditioning as
@@ -1137,47 +1189,61 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
+        if not isinstance(control_image, list):
+            control_image = [control_image]
+        else:
+            control_image = control_image.copy()
+
+        if not isinstance(control_mode, list):
+            control_mode = [control_mode]
+
+        if isinstance(controlnet, MultiControlNetUnionModel):
+            control_image = [[item] for item in control_image]
+            control_mode = [[item] for item in control_mode]
+
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
         elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
-
-        if not isinstance(control_image, list):
-            control_image = [control_image]
-
-        if not isinstance(control_mode, list):
-            control_mode = [control_mode]
-
-        if len(control_image) != len(control_mode):
-            raise ValueError("Expected len(control_image) == len(control_type)")
-
-        num_control_type = controlnet.config.num_control_type
-
-        # 1. Check inputs
-        control_type = [0 for _ in range(num_control_type)]
-        # 1. Check inputs. Raise error if not correct
-        for _image, control_idx in zip(control_image, control_mode):
-            control_type[control_idx] = 1
-            self.check_inputs(
-                prompt,
-                prompt_2,
-                _image,
-                negative_prompt,
-                negative_prompt_2,
-                prompt_embeds,
-                negative_prompt_embeds,
-                pooled_prompt_embeds,
-                ip_adapter_image,
-                ip_adapter_image_embeds,
-                negative_pooled_prompt_embeds,
-                controlnet_conditioning_scale,
-                control_guidance_start,
-                control_guidance_end,
-                callback_on_step_end_tensor_inputs,
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetUnionModel) else len(control_mode)
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
             )
 
-        control_type = torch.Tensor(control_type)
+        if isinstance(controlnet_conditioning_scale, float):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetUnionModel) else len(control_mode)
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * mult
+
+        # 1. Check inputs
+        self.check_inputs(
+            prompt,
+            prompt_2,
+            control_image,
+            negative_prompt,
+            negative_prompt_2,
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            ip_adapter_image,
+            ip_adapter_image_embeds,
+            negative_pooled_prompt_embeds,
+            controlnet_conditioning_scale,
+            control_guidance_start,
+            control_guidance_end,
+            control_mode,
+            callback_on_step_end_tensor_inputs,
+        )
+
+        if isinstance(controlnet, ControlNetUnionModel):
+            control_type = torch.zeros(controlnet.config.num_control_type).scatter_(0, torch.tensor(control_mode), 1)
+        elif isinstance(controlnet, MultiControlNetUnionModel):
+            control_type = [
+                torch.zeros(controlnet_.config.num_control_type).scatter_(0, torch.tensor(control_mode_), 1)
+                for control_mode_, controlnet_ in zip(control_mode, self.controlnet.nets)
+            ]
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
@@ -1195,7 +1261,11 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         device = self._execution_device
 
-        global_pool_conditions = controlnet.config.global_pool_conditions
+        global_pool_conditions = (
+            controlnet.config.global_pool_conditions
+            if isinstance(controlnet, ControlNetUnionModel)
+            else controlnet.nets[0].config.global_pool_conditions
+        )
         guess_mode = guess_mode or global_pool_conditions
 
         # 3.1 Encode input prompt
@@ -1234,19 +1304,51 @@ class StableDiffusionXLControlNetUnionPipeline(
             )
 
         # 4. Prepare image
-        for idx, _ in enumerate(control_image):
-            control_image[idx] = self.prepare_image(
-                image=control_image[idx],
-                width=width,
-                height=height,
-                batch_size=batch_size * num_images_per_prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                device=device,
-                dtype=controlnet.dtype,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
-                guess_mode=guess_mode,
-            )
-            height, width = control_image[idx].shape[-2:]
+        if isinstance(controlnet, ControlNetUnionModel):
+            control_images = []
+
+            for image_ in control_image:
+                image_ = self.prepare_image(
+                    image=image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+
+                control_images.append(image_)
+
+            control_image = control_images
+            height, width = control_image[0].shape[-2:]
+
+        elif isinstance(controlnet, MultiControlNetUnionModel):
+            control_images = []
+
+            for control_image_ in control_image:
+                images = []
+
+                for image_ in control_image_:
+                    image_ = self.prepare_image(
+                        image=image_,
+                        width=width,
+                        height=height,
+                        batch_size=batch_size * num_images_per_prompt,
+                        num_images_per_prompt=num_images_per_prompt,
+                        device=device,
+                        dtype=controlnet.dtype,
+                        do_classifier_free_guidance=self.do_classifier_free_guidance,
+                        guess_mode=guess_mode,
+                    )
+
+                    images.append(image_)
+                control_images.append(images)
+
+            control_image = control_images
+            height, width = control_image[0][0].shape[-2:]
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
@@ -1281,10 +1383,11 @@ class StableDiffusionXLControlNetUnionPipeline(
         # 7.1 Create tensor stating which controlnets to keep
         controlnet_keep = []
         for i in range(len(timesteps)):
-            controlnet_keep.append(
-                1.0
-                - float(i / len(timesteps) < control_guidance_start or (i + 1) / len(timesteps) > control_guidance_end)
-            )
+            keeps = [
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
+            controlnet_keep.append(keeps)
 
         # 7.2 Prepare added time ids & embeddings
         original_size = original_size or (height, width)
@@ -1349,11 +1452,20 @@ class StableDiffusionXLControlNetUnionPipeline(
         is_controlnet_compiled = is_compiled_module(self.controlnet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
 
-        control_type = (
-            control_type.reshape(1, -1)
-            .to(device, dtype=prompt_embeds.dtype)
-            .repeat(batch_size * num_images_per_prompt * 2, 1)
-        )
+        if isinstance(controlnet, ControlNetUnionModel):
+            control_type = (
+                control_type.reshape(1, -1)
+                .to(self._execution_device, dtype=prompt_embeds.dtype)
+                .repeat(batch_size * num_images_per_prompt * 2, 1)
+            )
+        if isinstance(controlnet, MultiControlNetUnionModel):
+            control_type = [
+                _control_type.reshape(1, -1)
+                .to(self._execution_device, dtype=prompt_embeds.dtype)
+                .repeat(batch_size * num_images_per_prompt * 2, 1)
+                for _control_type in control_type
+            ]
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -1453,6 +1565,9 @@ class StableDiffusionXLControlNetUnionPipeline(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16

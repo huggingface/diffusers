@@ -41,7 +41,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -216,14 +216,14 @@ class LEditsPPPipelineStableDiffusionXLFastTests(unittest.TestCase):
         )
 
         latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
-        print(latent_slice.flatten())
+
         expected_slice = np.array([0.2528, 0.1458, -0.2166, 0.4565, -0.5656, -1.0286, -0.9961, 0.5933, 1.1172])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
         latent_slice = sd_pipe.init_latents[1, -1, -3:, -3:].to(device)
-        print(latent_slice.flatten())
+
         expected_slice = np.array([-0.0796, 2.0583, 0.5500, 0.5358, 0.0282, -0.2803, -1.0470, 0.7024, -0.0072])
-        print(latent_slice.flatten())
+
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_ledits_pp_warmup_steps(self):
@@ -253,7 +253,7 @@ class LEditsPPPipelineStableDiffusionXLFastTests(unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class LEditsPPPipelineStableDiffusionXLSlowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

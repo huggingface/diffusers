@@ -213,7 +213,9 @@ class Attention(nn.Module):
             self.norm_q = LpNorm(p=2, dim=-1, eps=eps)
             self.norm_k = LpNorm(p=2, dim=-1, eps=eps)
         else:
-            raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None,'layer_norm','fp32_layer_norm','rms_norm'")
+            raise ValueError(
+                f"unknown qk_norm: {qk_norm}. Should be one of None, 'layer_norm', 'fp32_layer_norm', 'layer_norm_across_heads', 'rms_norm', 'rms_norm_across_heads', 'l2'."
+            )
 
         if cross_attention_norm is None:
             self.norm_cross = None
@@ -272,12 +274,20 @@ class Attention(nn.Module):
             self.to_add_out = None
 
         if qk_norm is not None and added_kv_proj_dim is not None:
-            if qk_norm == "fp32_layer_norm":
+            if qk_norm == "layer_norm":
+                self.norm_added_q = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+                self.norm_added_k = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+            elif qk_norm == "fp32_layer_norm":
                 self.norm_added_q = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
                 self.norm_added_k = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
             elif qk_norm == "rms_norm":
                 self.norm_added_q = RMSNorm(dim_head, eps=eps)
                 self.norm_added_k = RMSNorm(dim_head, eps=eps)
+            elif qk_norm == "rms_norm_across_heads":
+                # Wan applies qk norm across all heads
+                # Wan also doesn't apply a q norm
+                self.norm_added_q = None
+                self.norm_added_k = RMSNorm(dim_head * kv_heads, eps=eps)
             else:
                 raise ValueError(
                     f"unknown qk_norm: {qk_norm}. Should be one of `None,'layer_norm','fp32_layer_norm','rms_norm'`"
@@ -297,7 +307,10 @@ class Attention(nn.Module):
         self.set_processor(processor)
 
     def set_use_xla_flash_attention(
-        self, use_xla_flash_attention: bool, partition_spec: Optional[Tuple[Optional[str], ...]] = None
+        self,
+        use_xla_flash_attention: bool,
+        partition_spec: Optional[Tuple[Optional[str], ...]] = None,
+        is_flux=False,
     ) -> None:
         r"""
         Set whether to use xla flash attention from `torch_xla` or not.
@@ -316,7 +329,10 @@ class Attention(nn.Module):
             elif is_spmd() and is_torch_xla_version("<", "2.4"):
                 raise "flash attention pallas kernel using SPMD is supported from torch_xla version 2.4"
             else:
-                processor = XLAFlashAttnProcessor2_0(partition_spec)
+                if is_flux:
+                    processor = XLAFluxFlashAttnProcessor2_0(partition_spec)
+                else:
+                    processor = XLAFlashAttnProcessor2_0(partition_spec)
         else:
             processor = (
                 AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
@@ -399,11 +415,12 @@ class Attention(nn.Module):
             else:
                 try:
                     # Make sure we can run the memory efficient attention
-                    _ = xformers.ops.memory_efficient_attention(
-                        torch.randn((1, 2, 40), device="cuda"),
-                        torch.randn((1, 2, 40), device="cuda"),
-                        torch.randn((1, 2, 40), device="cuda"),
-                    )
+                    dtype = None
+                    if attention_op is not None:
+                        op_fw, op_bw = attention_op
+                        dtype, *_ = op_fw.SUPPORTED_DTYPES
+                    q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
+                    _ = xformers.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
                     raise e
 
@@ -724,10 +741,14 @@ class Attention(nn.Module):
 
         if out_dim == 3:
             if attention_mask.shape[0] < batch_size * head_size:
-                attention_mask = attention_mask.repeat_interleave(head_size, dim=0)
+                attention_mask = attention_mask.repeat_interleave(
+                    head_size, dim=0, output_size=attention_mask.shape[0] * head_size
+                )
         elif out_dim == 4:
             attention_mask = attention_mask.unsqueeze(1)
-            attention_mask = attention_mask.repeat_interleave(head_size, dim=1)
+            attention_mask = attention_mask.repeat_interleave(
+                head_size, dim=1, output_size=attention_mask.shape[1] * head_size
+            )
 
         return attention_mask
 
@@ -899,7 +920,7 @@ class SanaMultiscaleLinearAttention(nn.Module):
         scores = torch.matmul(key.transpose(-1, -2), query)
         scores = scores.to(dtype=torch.float32)
         scores = scores / (torch.sum(scores, dim=2, keepdim=True) + self.eps)
-        hidden_states = torch.matmul(value, scores)
+        hidden_states = torch.matmul(value, scores.to(value.dtype))
         return hidden_states
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -1401,7 +1422,7 @@ class JointAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("JointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -2318,9 +2339,8 @@ class FluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2522,6 +2542,7 @@ class FusedFluxAttnProcessor2_0:
             key = apply_rotary_emb(key, image_rotary_emb)
 
         hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2771,9 +2792,8 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
 
             # IP-adapter
             ip_query = hidden_states_query_proj
-            ip_attn_output = None
-            # for ip-adapter
-            # TODO: support for multiple adapters
+            ip_attn_output = torch.zeros_like(hidden_states)
+
             for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
                 ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
             ):
@@ -2784,12 +2804,14 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
                 ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 # the output of sdp = (batch, num_heads, seq_len, head_dim)
                 # TODO: add support for attn.scale when we move to Torch 2.1
-                ip_attn_output = F.scaled_dot_product_attention(
+                current_ip_hidden_states = F.scaled_dot_product_attention(
                     ip_query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
                 )
-                ip_attn_output = ip_attn_output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                ip_attn_output = scale * ip_attn_output
-                ip_attn_output = ip_attn_output.to(ip_query.dtype)
+                current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
+                    batch_size, -1, attn.heads * head_dim
+                )
+                current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
+                ip_attn_output += scale * current_ip_hidden_states
 
             return hidden_states, encoder_hidden_states, ip_attn_output
         else:
@@ -2818,9 +2840,7 @@ class CogVideoXAttnProcessor2_0:
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        batch_size, sequence_length, _ = hidden_states.shape
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -3148,6 +3168,11 @@ class AttnProcessorNPU:
             # scaled_dot_product_attention expects attention_mask shape to be
             # (batch, heads, source_length, target_length)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+            attention_mask = attention_mask.repeat(1, 1, hidden_states.shape[1], 1)
+            if attention_mask.dtype == torch.bool:
+                attention_mask = torch.logical_not(attention_mask.bool())
+            else:
+                attention_mask = attention_mask.bool()
 
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
@@ -3422,6 +3447,106 @@ class XLAFlashAttnProcessor2_0:
         return hidden_states
 
 
+class XLAFluxFlashAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
+    """
+
+    def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
+        if is_torch_xla_version("<", "2.3"):
+            raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
+        if is_spmd() and is_torch_xla_version("<", "2.4"):
+            raise ImportError("SPMD support for XLA flash attention needs torch_xla version >= 2.4.")
+        self.partition_spec = partition_spec
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.FloatTensor:
+        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
+        if encoder_hidden_states is not None:
+            # `context` projections.
+            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+            # attention
+            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+
+        if image_rotary_emb is not None:
+            from .embeddings import apply_rotary_emb
+
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        query /= math.sqrt(head_dim)
+        hidden_states = flash_attention(query, key, value, causal=False)
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if encoder_hidden_states is not None:
+            encoder_hidden_states, hidden_states = (
+                hidden_states[:, : encoder_hidden_states.shape[1]],
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+            )
+
+            # linear proj
+            hidden_states = attn.to_out[0](hidden_states)
+            # dropout
+            hidden_states = attn.to_out[1](hidden_states)
+
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+            return hidden_states, encoder_hidden_states
+        else:
+            return hidden_states
+
+
 class MochiVaeAttnProcessor2_0:
     r"""
     Attention processor used in Mochi VAE.
@@ -3583,8 +3708,10 @@ class StableAudioAttnProcessor2_0:
         if kv_heads != attn.heads:
             # if GQA or MQA, repeat the key/value heads to reach the number of query heads.
             heads_per_kv_head = attn.heads // kv_heads
-            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1)
-            value = torch.repeat_interleave(value, heads_per_kv_head, dim=1)
+            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1, output_size=key.shape[1] * heads_per_kv_head)
+            value = torch.repeat_interleave(
+                value, heads_per_kv_head, dim=1, output_size=value.shape[1] * heads_per_kv_head
+            )
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)

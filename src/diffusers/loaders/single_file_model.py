@@ -19,12 +19,14 @@ from typing import Optional
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
+from typing_extensions import Self
 
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
+    convert_auraflow_transformer_checkpoint_to_diffusers,
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_flux_transformer_checkpoint_to_diffusers,
@@ -33,9 +35,13 @@ from .single_file_utils import (
     convert_ldm_vae_checkpoint,
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
+    convert_lumina2_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
+    convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
+    convert_wan_transformer_to_diffusers,
+    convert_wan_vae_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
     create_vae_diffusers_config_from_ldm,
@@ -49,7 +55,7 @@ logger = logging.get_logger(__name__)
 
 
 if is_accelerate_available():
-    from accelerate import init_empty_weights
+    from accelerate import dispatch_model, init_empty_weights
 
     from ..models.modeling_utils import load_model_dict_into_meta
 
@@ -106,6 +112,26 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_hunyuan_video_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "AuraFlowTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_auraflow_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Lumina2Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_lumina2_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "SanaTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_sana_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "WanTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "AutoencoderKLWan": {
+        "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
+        "default_subfolder": "vae",
+    },
 }
 
 
@@ -138,7 +164,7 @@ class FromOriginalModelMixin:
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path_or_dict: Optional[str] = None, **kwargs):
+    def from_single_file(cls, pretrained_model_link_or_path_or_dict: Optional[str] = None, **kwargs) -> Self:
         r"""
         Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format. The model
         is set in evaluation mode (`model.eval()`) by default.
@@ -182,6 +208,9 @@ class FromOriginalModelMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            disable_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
+                is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -226,9 +255,16 @@ class FromOriginalModelMixin:
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
         config_revision = kwargs.pop("config_revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         quantization_config = kwargs.pop("quantization_config", None)
         device = kwargs.pop("device", None)
+        disable_mmap = kwargs.pop("disable_mmap", False)
+
+        if not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
 
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
@@ -241,6 +277,7 @@ class FromOriginalModelMixin:
                 cache_dir=cache_dir,
                 local_files_only=local_files_only,
                 revision=revision,
+                disable_mmap=disable_mmap,
             )
         if quantization_config is not None:
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
@@ -350,17 +387,23 @@ class FromOriginalModelMixin:
                 keep_in_fp32_modules=keep_in_fp32_modules,
             )
 
+        device_map = None
         if is_accelerate_available():
             param_device = torch.device(device) if device else torch.device("cpu")
-            unexpected_keys = load_model_dict_into_meta(
+            empty_state_dict = model.state_dict()
+            unexpected_keys = [
+                param_name for param_name in diffusers_format_checkpoint if param_name not in empty_state_dict
+            ]
+            device_map = {"": param_device}
+            load_model_dict_into_meta(
                 model,
                 diffusers_format_checkpoint,
                 dtype=torch_dtype,
-                device=param_device,
+                device_map=device_map,
                 hf_quantizer=hf_quantizer,
                 keep_in_fp32_modules=keep_in_fp32_modules,
+                unexpected_keys=unexpected_keys,
             )
-
         else:
             _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
@@ -381,5 +424,9 @@ class FromOriginalModelMixin:
             model.to(torch_dtype)
 
         model.eval()
+
+        if device_map is not None:
+            device_map_kwargs = {"device_map": device_map}
+            dispatch_model(model, **device_map_kwargs)
 
         return model

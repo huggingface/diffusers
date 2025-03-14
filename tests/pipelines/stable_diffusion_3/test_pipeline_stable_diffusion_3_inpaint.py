@@ -106,6 +106,8 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
             "tokenizer_3": tokenizer_3,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
@@ -161,39 +163,6 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
 
         # Outputs should be different here
         assert max_diff > 1e-2
-
-    def test_stable_diffusion_3_inpaint_prompt_embeds(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-
-        output_with_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        do_classifier_free_guidance = inputs["guidance_scale"] > 1
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = pipe.encode_prompt(
-            prompt,
-            prompt_2=None,
-            prompt_3=None,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            device=torch_device,
-        )
-        output_with_embeds = pipe(
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            **inputs,
-        ).images[0]
-
-        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
 
     def test_multi_vae(self):
         pass

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,8 +26,10 @@ from .quantization_config import (
     GGUFQuantizationConfig,
     QuantizationConfigMixin,
     QuantizationMethod,
+    QuantoConfig,
     TorchAoConfig,
 )
+from .quanto import QuantoQuantizer
 from .torchao import TorchAoHfQuantizer
 
 
@@ -35,6 +37,7 @@ AUTO_QUANTIZER_MAPPING = {
     "bitsandbytes_4bit": BnB4BitDiffusersQuantizer,
     "bitsandbytes_8bit": BnB8BitDiffusersQuantizer,
     "gguf": GGUFQuantizer,
+    "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
 }
 
@@ -42,6 +45,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "bitsandbytes_4bit": BitsAndBytesConfig,
     "bitsandbytes_8bit": BitsAndBytesConfig,
     "gguf": GGUFQuantizationConfig,
+    "quanto": QuantoConfig,
     "torchao": TorchAoConfig,
 }
 

@@ -14,6 +14,7 @@
 # limitations under the License.
 import inspect
 import os
+import re
 import tempfile
 import unittest
 from itertools import product
@@ -1134,6 +1135,43 @@ class PeftLoraLoaderMixinTests:
         pipe.set_adapters("adapter-1")
         _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
+    def test_multiple_wrong_adapter_name_raises_error(self):
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        if self.has_two_text_encoders or self.has_three_text_encoders:
+            if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+
+        scale_with_wrong_components = {"foo": 0.0, "bar": 0.0, "tik": 0.0}
+        logger = logging.get_logger("diffusers.loaders.lora_base")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            pipe.set_adapters("adapter-1", adapter_weights=scale_with_wrong_components)
+
+        wrong_components = sorted(set(scale_with_wrong_components.keys()))
+        msg = f"The following components in `adapter_weights` are not part of the pipeline: {wrong_components}. "
+        self.assertTrue(msg in str(cap_logger.out))
+
+        # test this works.
+        pipe.set_adapters("adapter-1")
+        _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
     def test_simple_inference_with_text_denoiser_block_scale(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
@@ -1556,11 +1594,17 @@ class PeftLoraLoaderMixinTests:
                     ].weight += float("inf")
                 else:
                     named_modules = [name for name, _ in pipe.transformer.named_modules()]
+                    tower_name = (
+                        "transformer_blocks"
+                        if any(name == "transformer_blocks" for name in named_modules)
+                        else "blocks"
+                    )
+                    transformer_tower = getattr(pipe.transformer, tower_name)
                     has_attn1 = any("attn1" in name for name in named_modules)
                     if has_attn1:
-                        pipe.transformer.transformer_blocks[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
+                        transformer_tower[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
                     else:
-                        pipe.transformer.transformer_blocks[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
+                        transformer_tower[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
 
             # with `safe_fusing=True` we should see an Error
             with self.assertRaises(ValueError):
@@ -1904,6 +1948,50 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs()
             _ = pipe(**inputs)[0]
 
+    def test_logs_info_when_no_lora_keys_found(self):
+        scheduler_cls = self.scheduler_classes[0]
+        # Skip text encoder check for now as that is handled with `transformers`.
+        components, _, _ = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
+        logger = logging.get_logger("diffusers.loaders.peft")
+        logger.setLevel(logging.WARNING)
+
+        with CaptureLogger(logger) as cap_logger:
+            pipe.load_lora_weights(no_op_state_dict)
+        out_after_lora_attempt = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        denoiser = getattr(pipe, "unet") if self.unet_kwargs is not None else getattr(pipe, "transformer")
+        self.assertTrue(cap_logger.out.startswith(f"No LoRA keys associated to {denoiser.__class__.__name__}"))
+        self.assertTrue(np.allclose(original_out, out_after_lora_attempt, atol=1e-5, rtol=1e-5))
+
+        # test only for text encoder
+        for lora_module in self.pipeline_class._lora_loadable_modules:
+            if "text_encoder" in lora_module:
+                text_encoder = getattr(pipe, lora_module)
+                if lora_module == "text_encoder":
+                    prefix = "text_encoder"
+                elif lora_module == "text_encoder_2":
+                    prefix = "text_encoder_2"
+
+                logger = logging.get_logger("diffusers.loaders.lora_base")
+                logger.setLevel(logging.WARNING)
+
+                with CaptureLogger(logger) as cap_logger:
+                    self.pipeline_class.load_lora_into_text_encoder(
+                        no_op_state_dict, network_alphas=None, text_encoder=text_encoder, prefix=prefix
+                    )
+
+                self.assertTrue(
+                    cap_logger.out.startswith(f"No LoRA keys associated to {text_encoder.__class__.__name__}")
+                )
+
     def test_set_adapters_match_attention_kwargs(self):
         """Test to check if outputs after `set_adapters()` and attention kwargs match."""
         call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
@@ -2098,3 +2186,152 @@ class PeftLoraLoaderMixinTests:
         lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
         self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+
+    def test_layerwise_casting_inference_denoiser(self):
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
+
+        def check_linear_dtype(module, storage_dtype, compute_dtype):
+            patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+            if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
+                patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
+            for name, submodule in module.named_modules():
+                if not isinstance(submodule, SUPPORTED_PYTORCH_LAYERS):
+                    continue
+                dtype_to_check = storage_dtype
+                if "lora" in name or any(re.search(pattern, name) for pattern in patterns_to_check):
+                    dtype_to_check = compute_dtype
+                if getattr(submodule, "weight", None) is not None:
+                    self.assertEqual(submodule.weight.dtype, dtype_to_check)
+                if getattr(submodule, "bias", None) is not None:
+                    self.assertEqual(submodule.bias.dtype, dtype_to_check)
+
+        def initialize_pipeline(storage_dtype=None, compute_dtype=torch.float32):
+            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device, dtype=compute_dtype)
+            pipe.set_progress_bar_config(disable=None)
+
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder.add_adapter(text_lora_config)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                )
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder_2.add_adapter(text_lora_config)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
+
+            if storage_dtype is not None:
+                denoiser.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+                check_linear_dtype(denoiser, storage_dtype, compute_dtype)
+
+            return pipe
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        pipe_fp32 = initialize_pipeline(storage_dtype=None)
+        pipe_fp32(**inputs, generator=torch.manual_seed(0))[0]
+
+        pipe_float8_e4m3_fp32 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
+        pipe_float8_e4m3_fp32(**inputs, generator=torch.manual_seed(0))[0]
+
+        pipe_float8_e4m3_bf16 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+        pipe_float8_e4m3_bf16(**inputs, generator=torch.manual_seed(0))[0]
+
+    @require_peft_version_greater("0.14.0")
+    def test_layerwise_casting_peft_input_autocast_denoiser(self):
+        r"""
+        A test that checks if layerwise casting works correctly with PEFT layers and forward pass does not fail. This
+        is different from `test_layerwise_casting_inference_denoiser` as that disables the application of layerwise
+        cast hooks on the PEFT layers (relevant logic in `models.modeling_utils.ModelMixin.enable_layerwise_casting`).
+        In this test, we enable the layerwise casting on the PEFT layers as well. If run with PEFT version <= 0.14.0,
+        this test will fail with the following error:
+
+        ```
+        RuntimeError: expected mat1 and mat2 to have the same dtype, but got: c10::Float8_e4m3fn != float
+        ```
+
+        See the docstring of [`hooks.layerwise_casting.PeftInputAutocastDisableHook`] for more details.
+        """
+
+        from diffusers.hooks.layerwise_casting import (
+            _PEFT_AUTOCAST_DISABLE_HOOK,
+            DEFAULT_SKIP_MODULES_PATTERN,
+            SUPPORTED_PYTORCH_LAYERS,
+            apply_layerwise_casting,
+        )
+
+        storage_dtype = torch.float8_e4m3fn
+        compute_dtype = torch.float32
+
+        def check_module(denoiser):
+            # This will also check if the peft layers are in torch.float8_e4m3fn dtype (unlike test_layerwise_casting_inference_denoiser)
+            for name, module in denoiser.named_modules():
+                if not isinstance(module, SUPPORTED_PYTORCH_LAYERS):
+                    continue
+                dtype_to_check = storage_dtype
+                if any(re.search(pattern, name) for pattern in patterns_to_check):
+                    dtype_to_check = compute_dtype
+                if getattr(module, "weight", None) is not None:
+                    self.assertEqual(module.weight.dtype, dtype_to_check)
+                if getattr(module, "bias", None) is not None:
+                    self.assertEqual(module.bias.dtype, dtype_to_check)
+                if isinstance(module, BaseTunerLayer):
+                    self.assertTrue(getattr(module, "_diffusers_hook", None) is not None)
+                    self.assertTrue(module._diffusers_hook.get_hook(_PEFT_AUTOCAST_DISABLE_HOOK) is not None)
+
+        # 1. Test forward with add_adapter
+        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device, dtype=compute_dtype)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+        if getattr(denoiser, "_skip_layerwise_casting_patterns", None) is not None:
+            patterns_to_check += tuple(denoiser._skip_layerwise_casting_patterns)
+
+        apply_layerwise_casting(
+            denoiser, storage_dtype=storage_dtype, compute_dtype=compute_dtype, skip_modules_pattern=patterns_to_check
+        )
+        check_module(denoiser)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        # 2. Test forward with load_lora_weights
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            self.pipeline_class.save_lora_weights(
+                save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
+            )
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            components, _, _ = self.get_dummy_components(self.scheduler_classes[0])
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device, dtype=compute_dtype)
+            pipe.set_progress_bar_config(disable=None)
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            apply_layerwise_casting(
+                denoiser,
+                storage_dtype=storage_dtype,
+                compute_dtype=compute_dtype,
+                skip_modules_pattern=patterns_to_check,
+            )
+            check_module(denoiser)
+
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+            pipe(**inputs, generator=torch.manual_seed(0))[0]

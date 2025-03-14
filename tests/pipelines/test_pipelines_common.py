@@ -24,10 +24,13 @@ from diffusers import (
     DDIMScheduler,
     DiffusionPipeline,
     KolorsPipeline,
+    PyramidAttentionBroadcastConfig,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
+from diffusers.hooks import apply_group_offloading
+from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
@@ -39,11 +42,15 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_accelerate_version_greater,
     require_accelerator,
+    require_hf_hub_version_greater,
     require_torch,
+    require_torch_gpu,
+    require_transformers_version_greater,
     skip_mps,
     torch_device,
 )
@@ -520,7 +527,9 @@ class FluxIPAdapterTesterMixin:
 
         The following scenarios are tested:
           - Single IP-Adapter with scale=0 should produce same output as no IP-Adapter.
+          - Multi IP-Adapter with scale=0 should produce same output as no IP-Adapter.
           - Single IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
+          - Multi IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
         """
         # Raising the tolerance for this test when it's run on a CPU because we
         # compare against static slices and that can be shaky (with a VVVV low probability).
@@ -538,6 +547,7 @@ class FluxIPAdapterTesterMixin:
         else:
             output_without_adapter = expected_pipe_slice
 
+        # 1. Single IP-Adapter test cases
         adapter_state_dict = create_flux_ip_adapter_state_dict(pipe.transformer)
         pipe.transformer._load_ip_adapter_weights(adapter_state_dict)
 
@@ -569,6 +579,44 @@ class FluxIPAdapterTesterMixin:
         )
         self.assertGreater(
             max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
+        )
+
+        # 2. Multi IP-Adapter test cases
+        adapter_state_dict_1 = create_flux_ip_adapter_state_dict(pipe.transformer)
+        adapter_state_dict_2 = create_flux_ip_adapter_state_dict(pipe.transformer)
+        pipe.transformer._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
+
+        # forward pass with multi ip adapter, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        inputs["negative_ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        pipe.set_ip_adapter_scale([0.0, 0.0])
+        output_without_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_without_multi_adapter_scale = output_without_multi_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        # forward pass with multi ip adapter, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        inputs["negative_ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        pipe.set_ip_adapter_scale([42.0, 42.0])
+        output_with_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_with_multi_adapter_scale = output_with_multi_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        max_diff_without_multi_adapter_scale = np.abs(
+            output_without_multi_adapter_scale - output_without_adapter
+        ).max()
+        max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
+        self.assertLess(
+            max_diff_without_multi_adapter_scale,
+            expected_max_diff,
+            "Output without multi-ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_multi_adapter_scale,
+            1e-2,
+            "Output with multi-ip-adapter scale must be different from normal inference",
         )
 
 
@@ -985,6 +1033,9 @@ class PipelineTesterMixin:
     test_attention_slicing = True
 
     test_xformers_attention = True
+    test_layerwise_casting = False
+    test_group_offloading = False
+    supports_dduf = True
 
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
@@ -1192,7 +1243,6 @@ class PipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
-            print(batch_size, batched_input)
             output = pipe(**batched_input)
             assert len(output[0]) == batch_size
 
@@ -1976,6 +2026,118 @@ class PipelineTesterMixin:
 
             assert f"You are trying to load the model files of the `variant={variant}`" in str(error.exception)
 
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
+        if not hasattr(self.pipeline_class, "encode_prompt"):
+            return
+
+        components = self.get_dummy_components()
+
+        # We initialize the pipeline with only text encoders and tokenizers,
+        # mimicking a real-world scenario.
+        components_with_text_encoders = {}
+        for k in components:
+            if "text" in k or "tokenizer" in k:
+                components_with_text_encoders[k] = components[k]
+            else:
+                components_with_text_encoders[k] = None
+        pipe_with_just_text_encoder = self.pipeline_class(**components_with_text_encoders)
+        pipe_with_just_text_encoder = pipe_with_just_text_encoder.to(torch_device)
+
+        # Get inputs and also the args of `encode_prompts`.
+        inputs = self.get_dummy_inputs(torch_device)
+        encode_prompt_signature = inspect.signature(pipe_with_just_text_encoder.encode_prompt)
+        encode_prompt_parameters = list(encode_prompt_signature.parameters.values())
+
+        # Required args in encode_prompt with those with no default.
+        required_params = []
+        for param in encode_prompt_parameters:
+            if param.name == "self" or param.name == "kwargs":
+                continue
+            if param.default is inspect.Parameter.empty:
+                required_params.append(param.name)
+
+        # Craft inputs for the `encode_prompt()` method to run in isolation.
+        encode_prompt_param_names = [p.name for p in encode_prompt_parameters if p.name != "self"]
+        input_keys = list(inputs.keys())
+        encode_prompt_inputs = {k: inputs.pop(k) for k in input_keys if k in encode_prompt_param_names}
+
+        pipe_call_signature = inspect.signature(pipe_with_just_text_encoder.__call__)
+        pipe_call_parameters = pipe_call_signature.parameters
+
+        # For each required arg in encode_prompt, check if it's missing
+        # in encode_prompt_inputs. If so, see if __call__ has a default
+        # for that arg and use it if available.
+        for required_param_name in required_params:
+            if required_param_name not in encode_prompt_inputs:
+                pipe_call_param = pipe_call_parameters.get(required_param_name, None)
+                if pipe_call_param is not None and pipe_call_param.default is not inspect.Parameter.empty:
+                    # Use the default from pipe.__call__
+                    encode_prompt_inputs[required_param_name] = pipe_call_param.default
+                elif extra_required_param_value_dict is not None and isinstance(extra_required_param_value_dict, dict):
+                    encode_prompt_inputs[required_param_name] = extra_required_param_value_dict[required_param_name]
+                else:
+                    raise ValueError(
+                        f"Required parameter '{required_param_name}' in "
+                        f"encode_prompt has no default in either encode_prompt or __call__."
+                    )
+
+        # Compute `encode_prompt()`.
+        with torch.no_grad():
+            encoded_prompt_outputs = pipe_with_just_text_encoder.encode_prompt(**encode_prompt_inputs)
+
+        # Programatically determine the reutrn names of `encode_prompt.`
+        ast_vistor = ReturnNameVisitor()
+        encode_prompt_tree = ast_vistor.get_ast_tree(cls=self.pipeline_class)
+        ast_vistor.visit(encode_prompt_tree)
+        prompt_embed_kwargs = ast_vistor.return_names
+        prompt_embeds_kwargs = dict(zip(prompt_embed_kwargs, encoded_prompt_outputs))
+
+        # Pack the outputs of `encode_prompt`.
+        adapted_prompt_embeds_kwargs = {
+            k: prompt_embeds_kwargs.pop(k) for k in list(prompt_embeds_kwargs.keys()) if k in pipe_call_parameters
+        }
+
+        # now initialize a pipeline without text encoders and compute outputs with the
+        # `encode_prompt()` outputs and other relevant inputs.
+        components_with_text_encoders = {}
+        for k in components:
+            if "text" in k or "tokenizer" in k:
+                components_with_text_encoders[k] = None
+            else:
+                components_with_text_encoders[k] = components[k]
+        pipe_without_text_encoders = self.pipeline_class(**components_with_text_encoders).to(torch_device)
+
+        # Set `negative_prompt` to None as we have already calculated its embeds
+        # if it was present in `inputs`. This is because otherwise we will interfere wrongly
+        # for non-None `negative_prompt` values as defaults (PixArt for example).
+        pipe_without_tes_inputs = {**inputs, **adapted_prompt_embeds_kwargs}
+        if (
+            pipe_call_parameters.get("negative_prompt", None) is not None
+            and pipe_call_parameters.get("negative_prompt").default is not None
+        ):
+            pipe_without_tes_inputs.update({"negative_prompt": None})
+
+        # Pipelines like attend and excite have `prompt` as a required argument.
+        if (
+            pipe_call_parameters.get("prompt", None) is not None
+            and pipe_call_parameters.get("prompt").default is inspect.Parameter.empty
+            and pipe_call_parameters.get("prompt_embeds", None) is not None
+            and pipe_call_parameters.get("prompt_embeds").default is None
+        ):
+            pipe_without_tes_inputs.update({"prompt": None})
+
+        pipe_out = pipe_without_text_encoders(**pipe_without_tes_inputs)[0]
+
+        # Compare against regular pipeline outputs.
+        full_pipe = self.pipeline_class(**components).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        pipe_out_2 = full_pipe(**inputs)[0]
+
+        if isinstance(pipe_out, np.ndarray) and isinstance(pipe_out_2, np.ndarray):
+            self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
+        elif isinstance(pipe_out, torch.Tensor) and isinstance(pipe_out_2, torch.Tensor):
+            self.assertTrue(torch.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
+
     def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
         if not issubclass(self.pipeline_class, StableDiffusionMixin):
@@ -1990,6 +2152,127 @@ class PipelineTesterMixin:
                 (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, UNetControlNetXSModel),
             )
         )
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
+        if not self.supports_dduf:
+            return
+
+        from huggingface_hub import export_folder_as_dduf
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device="cpu")
+        inputs.pop("generator")
+        inputs["generator"] = torch.manual_seed(0)
+
+        pipeline_out = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
+            pipe.save_pretrained(tmpdir, safe_serialization=True)
+            export_folder_as_dduf(dduf_filename, folder_path=tmpdir)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
+
+        inputs["generator"] = torch.manual_seed(0)
+        loaded_pipeline_out = loaded_pipe(**inputs)[0]
+
+        if isinstance(pipeline_out, np.ndarray) and isinstance(loaded_pipeline_out, np.ndarray):
+            assert np.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
+        elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
+            assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
+
+    def test_layerwise_casting_inference(self):
+        if not self.test_layerwise_casting:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device, dtype=torch.bfloat16)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        _ = pipe(**inputs)[0]
+
+    @require_torch_gpu
+    def test_group_offloading_inference(self):
+        if not self.test_group_offloading:
+            return
+
+        def create_pipe():
+            torch.manual_seed(0)
+            components = self.get_dummy_components()
+            pipe = self.pipeline_class(**components)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def enable_group_offload_on_component(pipe, group_offloading_kwargs):
+            # We intentionally don't test VAE's here. This is because some tests enable tiling on the VAE. If
+            # tiling is enabled and a forward pass is run, when cuda streams are used, the execution order of
+            # the layers is not traced correctly. This causes errors. For apply group offloading to VAE, a
+            # warmup forward pass (even with dummy small inputs) is recommended.
+            for component_name in [
+                "text_encoder",
+                "text_encoder_2",
+                "text_encoder_3",
+                "transformer",
+                "unet",
+                "controlnet",
+            ]:
+                if not hasattr(pipe, component_name):
+                    continue
+                component = getattr(pipe, component_name)
+                if not getattr(component, "_supports_group_offloading", True):
+                    continue
+                if hasattr(component, "enable_group_offload"):
+                    # For diffusers ModelMixin implementations
+                    component.enable_group_offload(torch.device(torch_device), **group_offloading_kwargs)
+                else:
+                    # For other models not part of diffusers
+                    apply_group_offloading(
+                        component, onload_device=torch.device(torch_device), **group_offloading_kwargs
+                    )
+                self.assertTrue(
+                    all(
+                        module._diffusers_hook.get_hook("group_offloading") is not None
+                        for module in component.modules()
+                        if hasattr(module, "_diffusers_hook")
+                    )
+                )
+            for component_name in ["vae", "vqvae"]:
+                if hasattr(pipe, component_name):
+                    getattr(pipe, component_name).to(torch_device)
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(torch_device)
+            return pipe(**inputs)[0]
+
+        pipe = create_pipe().to(torch_device)
+        output_without_group_offloading = run_forward(pipe)
+
+        pipe = create_pipe()
+        enable_group_offload_on_component(pipe, {"offload_type": "block_level", "num_blocks_per_group": 1})
+        output_with_group_offloading1 = run_forward(pipe)
+
+        pipe = create_pipe()
+        enable_group_offload_on_component(pipe, {"offload_type": "leaf_level"})
+        output_with_group_offloading2 = run_forward(pipe)
+
+        if torch.is_tensor(output_without_group_offloading):
+            output_without_group_offloading = output_without_group_offloading.detach().cpu().numpy()
+            output_with_group_offloading1 = output_with_group_offloading1.detach().cpu().numpy()
+            output_with_group_offloading2 = output_with_group_offloading2.detach().cpu().numpy()
+
+        self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-4))
+        self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-4))
 
 
 @is_staging_test
@@ -2127,148 +2410,139 @@ class PipelinePushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
 
-# For SDXL and its derivative pipelines (such as ControlNet), we have the text encoders
-# and the tokenizers as optional components. So, we need to override the `test_save_load_optional_components()`
-# test for all such pipelines. This requires us to use a custom `encode_prompt()` function.
-class SDXLOptionalComponentsTesterMixin:
-    def encode_prompt(
-        self, tokenizers, text_encoders, prompt: str, num_images_per_prompt: int = 1, negative_prompt: str = None
-    ):
-        device = text_encoders[0].device
+class PyramidAttentionBroadcastTesterMixin:
+    pab_config = PyramidAttentionBroadcastConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(100, 800),
+        spatial_attention_block_identifiers=["transformer_blocks"],
+    )
 
-        if isinstance(prompt, str):
-            prompt = [prompt]
-        batch_size = len(prompt)
+    def test_pyramid_attention_broadcast_layers(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        prompt_embeds_list = []
-        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-            text_inputs = tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
+        num_layers = 0
+        num_single_layers = 0
+        dummy_component_kwargs = {}
+        dummy_component_parameters = inspect.signature(self.get_dummy_components).parameters
+        if "num_layers" in dummy_component_parameters:
+            num_layers = 2
+            dummy_component_kwargs["num_layers"] = num_layers
+        if "num_single_layers" in dummy_component_parameters:
+            num_single_layers = 2
+            dummy_component_kwargs["num_single_layers"] = num_single_layers
 
-            text_input_ids = text_inputs.input_ids
-
-            prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
-            pooled_prompt_embeds = prompt_embeds[0]
-            prompt_embeds = prompt_embeds.hidden_states[-2]
-            prompt_embeds_list.append(prompt_embeds)
-
-        prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
-
-        if negative_prompt is None:
-            negative_prompt_embeds = torch.zeros_like(prompt_embeds)
-            negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
-        else:
-            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
-
-            negative_prompt_embeds_list = []
-            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-                uncond_input = tokenizer(
-                    negative_prompt,
-                    padding="max_length",
-                    max_length=tokenizer.model_max_length,
-                    truncation=True,
-                    return_tensors="pt",
-                )
-
-                negative_prompt_embeds = text_encoder(uncond_input.input_ids.to(device), output_hidden_states=True)
-                negative_pooled_prompt_embeds = negative_prompt_embeds[0]
-                negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
-                negative_prompt_embeds_list.append(negative_prompt_embeds)
-
-            negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
-
-        bs_embed, seq_len, _ = prompt_embeds.shape
-
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-
-        # for classifier-free guidance
-        # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-        seq_len = negative_prompt_embeds.shape[1]
-
-        negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
-            bs_embed * num_images_per_prompt, -1
-        )
-
-        # for classifier-free guidance
-        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
-            bs_embed * num_images_per_prompt, -1
-        )
-
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
-
-    def _test_save_load_optional_components(self, expected_max_difference=1e-4):
-        components = self.get_dummy_components()
-
+        components = self.get_dummy_components(**dummy_component_kwargs)
         pipe = self.pipeline_class(**components)
-        for optional_component in pipe._optional_components:
-            setattr(pipe, optional_component, None)
-
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
+        self.pab_config.current_timestep_callback = lambda: pipe.current_timestep
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_cache(self.pab_config)
 
-        tokenizer = components.pop("tokenizer")
-        tokenizer_2 = components.pop("tokenizer_2")
-        text_encoder = components.pop("text_encoder")
-        text_encoder_2 = components.pop("text_encoder_2")
+        expected_hooks = 0
+        if self.pab_config.spatial_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.pab_config.temporal_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.pab_config.cross_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
 
-        tokenizers = [tokenizer, tokenizer_2] if tokenizer is not None else [tokenizer_2]
-        text_encoders = [text_encoder, text_encoder_2] if text_encoder is not None else [text_encoder_2]
-        prompt = inputs.pop("prompt")
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = self.encode_prompt(tokenizers, text_encoders, prompt)
-        inputs["prompt_embeds"] = prompt_embeds
-        inputs["negative_prompt_embeds"] = negative_prompt_embeds
-        inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
-        inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        count = 0
+        for module in denoiser.modules():
+            if hasattr(module, "_diffusers_hook"):
+                hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                if hook is None:
+                    continue
+                count += 1
+                self.assertTrue(
+                    isinstance(hook, PyramidAttentionBroadcastHook),
+                    "Hook should be of type PyramidAttentionBroadcastHook.",
+                )
+                self.assertTrue(hook.state.cache is None, "Cache should be None at initialization.")
+        self.assertEqual(count, expected_hooks, "Number of hooks should match the expected number.")
 
+        # Perform dummy inference step to ensure state is updated
+        def pab_state_check_callback(pipe, i, t, kwargs):
+            for module in denoiser.modules():
+                if hasattr(module, "_diffusers_hook"):
+                    hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                    if hook is None:
+                        continue
+                    self.assertTrue(
+                        hook.state.cache is not None,
+                        "Cache should have updated during inference.",
+                    )
+                    self.assertTrue(
+                        hook.state.iteration == i + 1,
+                        "Hook iteration state should have updated during inference.",
+                    )
+            return {}
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 2
+        inputs["callback_on_step_end"] = pab_state_check_callback
+        pipe(**inputs)[0]
+
+        # After inference, reset_stateful_hooks is called within the pipeline, which should have reset the states
+        for module in denoiser.modules():
+            if hasattr(module, "_diffusers_hook"):
+                hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
+                if hook is None:
+                    continue
+                self.assertTrue(
+                    hook.state.cache is None,
+                    "Cache should be reset to None after inference.",
+                )
+                self.assertTrue(
+                    hook.state.iteration == 0,
+                    "Iteration should be reset to 0 after inference.",
+                )
+
+    def test_pyramid_attention_broadcast_inference(self, expected_atol: float = 0.2):
+        # We need to use higher tolerance because we are using a random model. With a converged/trained
+        # model, the tolerance can be lower.
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        num_layers = 2
+        components = self.get_dummy_components(num_layers=num_layers)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # Run inference without PAB
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
         output = pipe(**inputs)[0]
+        original_image_slice = output.flatten()
+        original_image_slice = np.concatenate((original_image_slice[:8], original_image_slice[-8:]))
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            for component in pipe_loaded.components.values():
-                if hasattr(component, "set_default_attn_processor"):
-                    component.set_default_attn_processor()
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
+        # Run inference with PAB enabled
+        self.pab_config.current_timestep_callback = lambda: pipe.current_timestep
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        denoiser.enable_cache(self.pab_config)
 
-        for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
-            )
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        image_slice_pab_enabled = output.flatten()
+        image_slice_pab_enabled = np.concatenate((image_slice_pab_enabled[:8], image_slice_pab_enabled[-8:]))
 
-        inputs = self.get_dummy_inputs(generator_device)
-        _ = inputs.pop("prompt")
-        inputs["prompt_embeds"] = prompt_embeds
-        inputs["negative_prompt_embeds"] = negative_prompt_embeds
-        inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
-        inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
+        # Run inference with PAB disabled
+        denoiser.disable_cache()
 
-        output_loaded = pipe_loaded(**inputs)[0]
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        output = pipe(**inputs)[0]
+        image_slice_pab_disabled = output.flatten()
+        image_slice_pab_disabled = np.concatenate((image_slice_pab_disabled[:8], image_slice_pab_disabled[-8:]))
 
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, expected_max_difference)
+        assert np.allclose(
+            original_image_slice, image_slice_pab_enabled, atol=expected_atol
+        ), "PAB outputs should not differ much in specified timestep range."
+        assert np.allclose(
+            original_image_slice, image_slice_pab_disabled, atol=1e-4
+        ), "Outputs from normal inference and after disabling cache should not differ."
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

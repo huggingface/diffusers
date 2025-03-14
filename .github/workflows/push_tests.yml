@@ -83,7 +83,7 @@ jobs:
           python utils/print_env.py
       - name: PyTorch CUDA checkpoint tests on Ubuntu
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -137,7 +137,7 @@ jobs:
 
     - name: Run PyTorch CUDA tests
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -187,7 +187,7 @@ jobs:
 
     - name: Run Flax TPU tests
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
         python -m pytest -n 0 \
           -s -v -k "Flax" \
@@ -235,7 +235,7 @@ jobs:
 
     - name: Run ONNXRuntime CUDA tests
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \
@@ -283,7 +283,7 @@ jobs:
         python utils/print_env.py
     - name: Run example tests on GPU
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         RUN_COMPILE: yes
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
@@ -326,7 +326,7 @@ jobs:
         python utils/print_env.py
     - name: Run example tests on GPU
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "xformers" --make-reports=tests_torch_xformers_cuda tests/
     - name: Failure short reports
@@ -349,7 +349,6 @@ jobs:
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --gpus 0 --shm-size "16gb" --ipc host
-
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
@@ -359,7 +358,6 @@ jobs:
     - name: NVIDIA-SMI
       run: |
         nvidia-smi
-
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
@@ -372,7 +370,7 @@ jobs:
 
     - name: Run example tests on GPU
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install timm

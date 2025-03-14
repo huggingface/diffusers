@@ -22,9 +22,10 @@ from diffusers.loaders import FromOriginalModelMixin
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import FeedForward
 from ..attention_processor import Attention, AttentionProcessor
+from ..cache_utils import CacheMixin
 from ..embeddings import (
     CombinedTimestepGuidanceTextProjEmbeddings,
     CombinedTimestepTextProjEmbeddings,
@@ -502,7 +503,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
     A Transformer model for video-like data used in [HunyuanVideo](https://huggingface.co/tencent/HunyuanVideo).
 
@@ -542,6 +543,13 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     """
 
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["x_embedder", "context_embedder", "norm"]
+    _no_split_modules = [
+        "HunyuanVideoTransformerBlock",
+        "HunyuanVideoSingleTransformerBlock",
+        "HunyuanVideoPatchEmbed",
+        "HunyuanVideoTokenRefiner",
+    ]
 
     @register_to_config
     def __init__(
@@ -573,7 +581,11 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         self.context_embedder = HunyuanVideoTokenRefiner(
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
-        self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, pooled_projection_dim)
+
+        if guidance_embeds:
+            self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, pooled_projection_dim)
+        else:
+            self.time_text_embed = CombinedTimestepTextProjEmbeddings(inner_dim, pooled_projection_dim)
 
         # 2. RoPE
         self.rope = HunyuanVideoRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
@@ -664,10 +676,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -704,7 +712,11 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
-        temb = self.time_text_embed(timestep, guidance, pooled_projections)
+        if self.config.guidance_embeds:
+            temb = self.time_text_embed(timestep, guidance, pooled_projections)
+        else:
+            temb = self.time_text_embed(timestep, pooled_projections)
+
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)
 
@@ -713,49 +725,37 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         condition_sequence_length = encoder_hidden_states.shape[1]
         sequence_length = latent_sequence_length + condition_sequence_length
         attention_mask = torch.zeros(
-            batch_size, sequence_length, sequence_length, device=hidden_states.device, dtype=torch.bool
-        )  # [B, N, N]
+            batch_size, sequence_length, device=hidden_states.device, dtype=torch.bool
+        )  # [B, N]
 
         effective_condition_sequence_length = encoder_attention_mask.sum(dim=1, dtype=torch.int)  # [B,]
         effective_sequence_length = latent_sequence_length + effective_condition_sequence_length
 
         for i in range(batch_size):
-            attention_mask[i, : effective_sequence_length[i], : effective_sequence_length[i]] = True
+            attention_mask[i, : effective_sequence_length[i]] = True
+        # [B, 1, 1, N], for broadcasting across attention heads
+        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module, return_dict=None):
-                def custom_forward(*inputs):
-                    if return_dict is not None:
-                        return module(*inputs, return_dict=return_dict)
-                    else:
-                        return module(*inputs)
-
-                return custom_forward
-
-            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-
             for block in self.transformer_blocks:
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     temb,
                     attention_mask,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
 
             for block in self.single_transformer_blocks:
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     temb,
                     attention_mask,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
 
         else:

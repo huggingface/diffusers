@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -269,7 +269,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
     if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
@@ -773,7 +773,7 @@ def parse_args(input_args=None):
         action="store_true",
         default=False,
         help=(
-            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -1875,7 +1875,7 @@ def main(args):
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
 
-    # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
+    # if --train_text_encoder_ti we need add_special_tokens to be True for textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
 
     if not train_dataset.custom_instance_prompts:

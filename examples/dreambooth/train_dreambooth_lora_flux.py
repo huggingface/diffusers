@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -181,7 +181,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     # autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
     autocast_ctx = nullcontext()
 

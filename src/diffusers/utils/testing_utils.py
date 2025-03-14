@@ -86,7 +86,12 @@ if is_torch_available():
             ) from e
         logger.info(f"torch_device overrode to {torch_device}")
     else:
-        torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            torch_device = "cuda"
+        elif torch.xpu.is_available():
+            torch_device = "xpu"
+        else:
+            torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
             version.parse(torch.__version__).base_version
         ) >= version.parse("1.12")
@@ -95,6 +100,8 @@ if is_torch_available():
             # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
             mps_backend_registered = hasattr(torch.backends, "mps")
             torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
+
+    from .torch_utils import get_torch_cuda_device_capability
 
 
 def torch_all_close(a, b, *args, **kwargs):
@@ -275,6 +282,20 @@ def require_torch_gpu(test_case):
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
         test_case
     )
+
+
+def require_torch_cuda_compatibility(expected_compute_capability):
+    def decorator(test_case):
+        if not torch.cuda.is_available():
+            return unittest.skip(test_case)
+        else:
+            current_compute_capability = get_torch_cuda_device_capability()
+            return unittest.skipUnless(
+                float(current_compute_capability) == float(expected_compute_capability),
+                "Test not supported for this compute capability.",
+            )
+
+    return decorator
 
 
 # These decorators are for accelerator-specific behaviours that are not GPU-specific
@@ -473,6 +494,18 @@ def require_bitsandbytes_version_greater(bnb_version):
         ) > version.parse(bnb_version)
         return unittest.skipUnless(
             correct_bnb_version, f"Test requires bitsandbytes with the version greater than {bnb_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_hf_hub_version_greater(hf_hub_version):
+    def decorator(test_case):
+        correct_hf_hub_version = version.parse(
+            version.parse(importlib.metadata.version("huggingface_hub")).base_version
+        ) > version.parse(hf_hub_version)
+        return unittest.skipUnless(
+            correct_hf_hub_version, f"Test requires huggingface_hub with the version greater than {hf_hub_version}."
         )(test_case)
 
     return decorator
@@ -1055,12 +1088,51 @@ def _is_torch_fp64_available(device):
 # Guard these lookups for when Torch is not used - alternative accelerator support is for PyTorch
 if is_torch_available():
     # Behaviour flags
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "cpu": True, "mps": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
 
     # Function definitions
-    BACKEND_EMPTY_CACHE = {"cuda": torch.cuda.empty_cache, "cpu": None, "mps": None, "default": None}
-    BACKEND_DEVICE_COUNT = {"cuda": torch.cuda.device_count, "cpu": lambda: 0, "mps": lambda: 0, "default": 0}
-    BACKEND_MANUAL_SEED = {"cuda": torch.cuda.manual_seed, "cpu": torch.manual_seed, "default": torch.manual_seed}
+    BACKEND_EMPTY_CACHE = {
+        "cuda": torch.cuda.empty_cache,
+        "xpu": torch.xpu.empty_cache,
+        "cpu": None,
+        "mps": torch.mps.empty_cache,
+        "default": None,
+    }
+    BACKEND_DEVICE_COUNT = {
+        "cuda": torch.cuda.device_count,
+        "xpu": torch.xpu.device_count,
+        "cpu": lambda: 0,
+        "mps": lambda: 0,
+        "default": 0,
+    }
+    BACKEND_MANUAL_SEED = {
+        "cuda": torch.cuda.manual_seed,
+        "xpu": torch.xpu.manual_seed,
+        "cpu": torch.manual_seed,
+        "mps": torch.mps.manual_seed,
+        "default": torch.manual_seed,
+    }
+    BACKEND_RESET_PEAK_MEMORY_STATS = {
+        "cuda": torch.cuda.reset_peak_memory_stats,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
+    BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
+        "cuda": torch.cuda.reset_max_memory_allocated,
+        "xpu": None,
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
+    BACKEND_MAX_MEMORY_ALLOCATED = {
+        "cuda": torch.cuda.max_memory_allocated,
+        "xpu": getattr(torch.xpu, "max_memory_allocated", None),
+        "cpu": 0,
+        "mps": 0,
+        "default": 0,
+    }
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
@@ -1089,6 +1161,18 @@ def backend_empty_cache(device: str):
 
 def backend_device_count(device: str):
     return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
+
+
+def backend_reset_peak_memory_stats(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
+
+
+def backend_reset_max_memory_allocated(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
+
+
+def backend_max_memory_allocated(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
 
 
 # These are callables which return boolean behaviour flags and can be used to specify some
@@ -1147,3 +1231,6 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_EMPTY_CACHE, "EMPTY_CACHE_FN")
         update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
         update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
+        update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEMORY_STATS_FN")
+        update_mapping_from_spec(BACKEND_RESET_MAX_MEMORY_ALLOCATED, "RESET_MAX_MEMORY_ALLOCATED_FN")
+        update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")

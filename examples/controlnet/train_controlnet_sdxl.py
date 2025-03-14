@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -157,9 +157,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
 
-                formatted_images = []
-
-                formatted_images.append(np.asarray(validation_image))
+                formatted_images = [np.asarray(validation_image)]
 
                 for image in images:
                     formatted_images.append(np.asarray(image))

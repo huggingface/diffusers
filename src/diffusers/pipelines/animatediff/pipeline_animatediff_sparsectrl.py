@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.controlnets.controlnet_sparsectrl import SparseControlNetModel
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -30,6 +30,7 @@ from ...models.unets.unet_motion_model import MotionAdapter
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -42,7 +43,15 @@ from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -127,6 +136,7 @@ class AnimateDiffSparseControlNetPipeline(
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for controlled text-to-video generation using the method described in [SparseCtrl: Adding Sparse Controls
@@ -188,7 +198,7 @@ class AnimateDiffSparseControlNetPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(do_resize=False, vae_scale_factor=self.vae_scale_factor)
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
@@ -993,6 +1003,9 @@ class AnimateDiffSparseControlNetPipeline(
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
+
+                    if XLA_AVAILABLE:
+                        xm.mark_step()
 
         # 11. Post processing
         if output_type == "latent":

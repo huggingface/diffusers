@@ -10,6 +10,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
+|Spatiotemporal Skip Guidance (STG)|[Spatiotemporal Skip Guidance for Enhanced Video Diffusion Sampling](https://arxiv.org/abs/2411.18664) (CVPR 2025) enhances video diffusion models by generating a weaker model through layer skipping and using it as guidance, improving fidelity in models like HunyuanVideo, LTXVideo, and Mochi.|[Spatiotemporal Skip Guidance](#spatiotemporal-skip-guidance)|-|[Junha Hyung](https://junhahyung.github.io/), [Kinam Kim](https://kinam0252.github.io/)|
 |Adaptive Mask Inpainting|Adaptive Mask Inpainting algorithm from [Beyond the Contact: Discovering Comprehensive Affordance for 3D Objects from Pre-trained 2D Diffusion Models](https://github.com/snuvclab/coma) (ECCV '24, Oral) provides a way to insert human inside the scene image without altering the background, by inpainting with adapting mask.|[Adaptive Mask Inpainting](#adaptive-mask-inpainting)|-|[Hyeonwoo Kim](https://sshowbiz.xyz),[Sookwan Han](https://jellyheadandrew.github.io)|
 |Flux with CFG|[Flux with CFG](https://github.com/ToTheBeginning/PuLID/blob/main/docs/pulid_for_flux.md) provides an implementation of using CFG in [Flux](https://blackforestlabs.ai/announcing-black-forest-labs/).|[Flux with CFG](#flux-with-cfg)|[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/flux_with_cfg.ipynb)|[Linoy Tsaban](https://github.com/linoytsaban), [Apolinário](https://github.com/apolinario), and [Sayak Paul](https://github.com/sayakpaul)|
 |Differential Diffusion|[Differential Diffusion](https://github.com/exx8/differential-diffusion) modifies an image according to a text prompt, and according to a map that specifies the amount of change in each region.|[Differential Diffusion](#differential-diffusion)|[![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/exx8/differential-diffusion) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/exx8/differential-diffusion/blob/main/examples/SD2.ipynb)|[Eran Levin](https://github.com/exx8) and [Ohad Fried](https://www.ohadf.com/)|
@@ -24,40 +25,44 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 | Speech to Image                                                                                                                       | Using automatic-speech-recognition to transcribe text and Stable Diffusion to generate images                                                                                                                                                                                                                                                                                                                                                                                                            | [Speech to Image](#speech-to-image)                                                       |[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/speech_to_image.ipynb)                                                                                                                                                                                                   |             [Mikail Duzenli](https://github.com/MikailINTech)
 | Wild Card Stable Diffusion                                                                                                            | Stable Diffusion Pipeline that supports prompts that contain wildcard terms (indicated by surrounding double underscores), with values instantiated randomly from a corresponding txt file or a dictionary of possible values                                                                                                                                                                                                                                                                            | [Wildcard Stable Diffusion](#wildcard-stable-diffusion)                                   | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/wildcard_stable_diffusion.ipynb)                                                                                                                                                                                 |              [Shyam Sudhakaran](https://github.com/shyamsn97) |
 | [Composable Stable Diffusion](https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/) | Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                            | [Composable Stable Diffusion](#composable-stable-diffusion)                               | -                                                                                                                                                                                                                  |                      [Mark Rich](https://github.com/MarkRich) |
-| Seed Resizing Stable Diffusion                                                                                                        | Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                                                                                                       | [Seed Resizing](#seed-resizing)                                                           | -                                                                                                                                                                                                                  |                      [Mark Rich](https://github.com/MarkRich) |
-| Imagic Stable Diffusion                                                                                                               | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image                                                                                                                                                                                                                                                                                                                                                                                                                   | [Imagic Stable Diffusion](#imagic-stable-diffusion)                                       | -                                                                                                                                                                                                                  |                      [Mark Rich](https://github.com/MarkRich) |
+| Seed Resizing Stable Diffusion                                                                                                        | Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                                                                                                       | [Seed Resizing](#seed-resizing)                                                           | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/seed_resizing.ipynb)                                                                                                                                                                                                                  |                      [Mark Rich](https://github.com/MarkRich) |
+| Imagic Stable Diffusion                                                                                                               | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image                                                                                                                                                                                                                                                                                                                                                                                                                   | [Imagic Stable Diffusion](#imagic-stable-diffusion)                                       | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/imagic_stable_diffusion.ipynb)                                                                                                                                                                                                  |                      [Mark Rich](https://github.com/MarkRich) |
 | Multilingual Stable Diffusion                                                                                                         | Stable Diffusion Pipeline that supports prompts in 50 different languages.                                                                                                                                                                                                                                                                                                                                                                                                                               | [Multilingual Stable Diffusion](#multilingual-stable-diffusion-pipeline)                  | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/multilingual_stable_diffusion.ipynb)                                                                                                                                                                             |          [Juan Carlos Piñeros](https://github.com/juancopi81) |
-| GlueGen Stable Diffusion                                                                                                         | Stable Diffusion Pipeline that supports prompts in different languages using GlueGen adapter.                                                                                                                                                                                                                                                                                                                                                                                                                               | [GlueGen Stable Diffusion](#gluegen-stable-diffusion-pipeline)                  | -                                                                                                                                                                                                                  |          [Phạm Hồng Vinh](https://github.com/rootonchair) |
+| GlueGen Stable Diffusion                                                                                                         | Stable Diffusion Pipeline that supports prompts in different languages using GlueGen adapter.                                                                                                                                                                                                                                                                                                                                                                                                                               | [GlueGen Stable Diffusion](#gluegen-stable-diffusion-pipeline)                  | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/gluegen_stable_diffusion.ipynb)                                                                                                                                                                                                                  |          [Phạm Hồng Vinh](https://github.com/rootonchair) |
 | Image to Image Inpainting Stable Diffusion                                                                                            | Stable Diffusion Pipeline that enables the overlaying of two images and subsequent inpainting                                                                                                                                                                                                                                                                                                                                                                                                            | [Image to Image Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion) | -                                                                                                                                                                                                                  |                    [Alex McKinney](https://github.com/vvvm23) |
-| Text Based Inpainting Stable Diffusion                                                                                                | Stable Diffusion Inpainting Pipeline that enables passing a text prompt to generate the mask for inpainting                                                                                                                                                                                                                                                                                                                                                                                              | [Text Based Inpainting Stable Diffusion](#text-based-inpainting-stable-diffusion)     | -                                                                                                                                                                                                                  |                   [Dhruv Karan](https://github.com/unography) |
+| Text Based Inpainting Stable Diffusion                                                                                                | Stable Diffusion Inpainting Pipeline that enables passing a text prompt to generate the mask for inpainting                                                                                                                                                                                                                                                                                                                                                                                              | [Text Based Inpainting Stable Diffusion](#text-based-inpainting-stable-diffusion)     | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/text_based_inpainting_stable_dffusion.ipynb)                                                                                                                                                                                                    |                   [Dhruv Karan](https://github.com/unography) |
 | Bit Diffusion                                                                                                                         | Diffusion on discrete data                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [Bit Diffusion](#bit-diffusion)                                                           | -  |                       [Stuti R.](https://github.com/kingstut) |
 | K-Diffusion Stable Diffusion                                                                                                          | Run Stable Diffusion with any of [K-Diffusion's samplers](https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py)                                                                                                                                                                                                                                                                                                                                                                  | [Stable Diffusion with K Diffusion](#stable-diffusion-with-k-diffusion)                   | -  |    [Patrick von Platen](https://github.com/patrickvonplaten/) |
 | Checkpoint Merger Pipeline                                                                                                            | Diffusion Pipeline that enables merging of saved model checkpoints                                                                                                                                                                                                                                                                                                                                                                                                                                       | [Checkpoint Merger Pipeline](#checkpoint-merger-pipeline)                                 | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) |
-| Stable Diffusion v1.1-1.4 Comparison                                                                                                  | Run all 4 model checkpoints for Stable Diffusion and compare their results together                                                                                                                                                                                                                                                                                                                                                                                                                      | [Stable Diffusion Comparison](#stable-diffusion-comparisons)                              | - |        [Suvaditya Mukherjee](https://github.com/suvadityamuk) |
-| MagicMix                                                                                                                              | Diffusion Pipeline for semantic mixing of an image and a text prompt                                                                                                                                                                                                                                                                                                                                                                                                                                     | [MagicMix](#magic-mix)                                                                    | - |                    [Partho Das](https://github.com/daspartho) |
-| Stable UnCLIP                                                                                                                         | Diffusion Pipeline for combining prior model (generate clip image embedding from text, UnCLIPPipeline `"kakaobrain/karlo-v1-alpha"`) and decoder pipeline (decode clip image embedding to image, StableDiffusionImageVariationPipeline `"lambdalabs/sd-image-variations-diffusers"` ).                                                                                                                                                                                                                   | [Stable UnCLIP](#stable-unclip)                                                           | -  |                                [Ray Wang](https://wrong.wang) |
-| UnCLIP Text Interpolation Pipeline                                                                                                    | Diffusion Pipeline that allows passing two prompts and produces images while interpolating between the text-embeddings of the two prompts                                                                                                                                                                                                                                                                                                                                                                | [UnCLIP Text Interpolation Pipeline](#unclip-text-interpolation-pipeline)                 | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) |
-| UnCLIP Image Interpolation Pipeline                                                                                                   | Diffusion Pipeline that allows passing two images/image_embeddings and produces images while interpolating between their image-embeddings                                                                                                                                                                                                                                                                                                                                                                | [UnCLIP Image Interpolation Pipeline](#unclip-image-interpolation-pipeline)               | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) |
-| DDIM Noise Comparative Analysis Pipeline                                                                                              | Investigating how the diffusion models learn visual concepts from each noise level (which is a contribution of [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227))                                                                                                                                                                                                                                                                                                                             | [DDIM Noise Comparative Analysis Pipeline](#ddim-noise-comparative-analysis-pipeline)     | - |              [Aengus (Duc-Anh)](https://github.com/aengusng8) |
-| CLIP Guided Img2Img Stable Diffusion Pipeline                                                                                         | Doing CLIP guidance for image to image generation with Stable Diffusion                                                                                                                                                                                                                                                                                                                                                                                                                                  | [CLIP Guided Img2Img Stable Diffusion](#clip-guided-img2img-stable-diffusion)             | - |               [Nipun Jindal](https://github.com/nipunjindal/) |
+| Stable Diffusion v1.1-1.4 Comparison                                                                                                  | Run all 4 model checkpoints for Stable Diffusion and compare their results together                                                                                                                                                                                                                                                                                                                                                                                                                      | [Stable Diffusion Comparison](#stable-diffusion-comparisons)                              | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/stable_diffusion_comparison.ipynb) |        [Suvaditya Mukherjee](https://github.com/suvadityamuk) |
+| MagicMix                                                                                                                              | Diffusion Pipeline for semantic mixing of an image and a text prompt                                                                                                                                                                                                                                                                                                                                                                                                                                     | [MagicMix](#magic-mix)                                                                    | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/magic_mix.ipynb) |                    [Partho Das](https://github.com/daspartho) |
+| Stable UnCLIP                                                                                                                         | Diffusion Pipeline for combining prior model (generate clip image embedding from text, UnCLIPPipeline `"kakaobrain/karlo-v1-alpha"`) and decoder pipeline (decode clip image embedding to image, StableDiffusionImageVariationPipeline `"lambdalabs/sd-image-variations-diffusers"` ).                                                                                                                                                                                                                   | [Stable UnCLIP](#stable-unclip)                                                           | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/stable_unclip.ipynb)  |                                [Ray Wang](https://wrong.wang) |
+| UnCLIP Text Interpolation Pipeline                                                                                                    | Diffusion Pipeline that allows passing two prompts and produces images while interpolating between the text-embeddings of the two prompts                                                                                                                                                                                                                                                                                                                                                                | [UnCLIP Text Interpolation Pipeline](#unclip-text-interpolation-pipeline)                 | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/unclip_text_interpolation.ipynb)| [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) |
+| UnCLIP Image Interpolation Pipeline                                                                                                   | Diffusion Pipeline that allows passing two images/image_embeddings and produces images while interpolating between their image-embeddings                                                                                                                                                                                                                                                                                                                                                                | [UnCLIP Image Interpolation Pipeline](#unclip-image-interpolation-pipeline)               | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/unclip_image_interpolation.ipynb)| [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) |
+| DDIM Noise Comparative Analysis Pipeline                                                                                              | Investigating how the diffusion models learn visual concepts from each noise level (which is a contribution of [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227))                                                                                                                                                                                                                                                                                                                             | [DDIM Noise Comparative Analysis Pipeline](#ddim-noise-comparative-analysis-pipeline)     | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/ddim_noise_comparative_analysis.ipynb)|              [Aengus (Duc-Anh)](https://github.com/aengusng8) |
+| CLIP Guided Img2Img Stable Diffusion Pipeline                                                                                         | Doing CLIP guidance for image to image generation with Stable Diffusion                                                                                                                                                                                                                                                                                                                                                                                                                                  | [CLIP Guided Img2Img Stable Diffusion](#clip-guided-img2img-stable-diffusion)             | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/clip_guided_img2img_stable_diffusion.ipynb) |               [Nipun Jindal](https://github.com/nipunjindal/) |
 | TensorRT Stable Diffusion Text to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Text2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Text to Image Pipeline](#tensorrt-text2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 | EDICT Image Editing Pipeline                                                                                                          | Diffusion pipeline for text-guided image editing                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [EDICT Image Editing Pipeline](#edict-image-editing-pipeline)                             | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/edict_image_pipeline.ipynb) |                    [Joqsan Azocar](https://github.com/Joqsan) |
 | Stable Diffusion RePaint                                                                                                              | Stable Diffusion pipeline using [RePaint](https://arxiv.org/abs/2201.09865) for inpainting.                                                                                                                                                                                                                                                                                                                                                                                                               | [Stable Diffusion RePaint](#stable-diffusion-repaint )|[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/stable_diffusion_repaint.ipynb)|                  [Markus Pobitzer](https://github.com/Markus-Pobitzer) |
 | TensorRT Stable Diffusion Image to Image Pipeline                                                                                                    | Accelerates the Stable Diffusion Image2Image Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Image to Image Pipeline](#tensorrt-image2image-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 | Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) |
-| CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | - | [Karachev Denis](https://github.com/TheDenk) |
+| CLIP Guided Images Mixing Stable Diffusion Pipeline | Сombine images using usual diffusion models. | [CLIP Guided Images Mixing Using Stable Diffusion](#clip-guided-images-mixing-with-stable-diffusion) | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/clip_guided_images_mixing_with_stable_diffusion.ipynb) | [Karachev Denis](https://github.com/TheDenk) |
 | TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 |   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon)
 |   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
 | Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LsqilswLR40XLLcp6XFOl5nKb_wOe26W?usp=sharing) | [Andrew Zhu](https://xhinker.medium.com/) |
-| FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipeline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) |
+| Stable Diffusion Mixture Tiling Pipeline SD 1.5 | A pipeline generates cohesive images by integrating multiple diffusion processes, each focused on a specific image region and considering boundary effects for smooth blending | [Stable Diffusion Mixture Tiling Pipeline SD 1.5](#stable-diffusion-mixture-tiling-pipeline-sd-15) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/albarji/mixture-of-diffusers) | [Álvaro B Jiménez](https://github.com/albarji/) |
+| Stable Diffusion Mixture Canvas Pipeline SD 1.5 | A pipeline generates cohesive images by integrating multiple diffusion processes, each focused on a specific image region and considering boundary effects for smooth blending. Works by defining a list of Text2Image region objects that detail the region of influence of each diffuser. | [Stable Diffusion Mixture Canvas Pipeline SD 1.5](#stable-diffusion-mixture-canvas-pipeline-sd-15) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/albarji/mixture-of-diffusers) | [Álvaro B Jiménez](https://github.com/albarji/) |
+| Stable Diffusion Mixture Tiling Pipeline SDXL | A pipeline generates cohesive images by integrating multiple diffusion processes, each focused on a specific image region and considering boundary effects for smooth blending | [Stable Diffusion Mixture Tiling Pipeline SDXL](#stable-diffusion-mixture-tiling-pipeline-sdxl) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/elismasilva/mixture-of-diffusers-sdxl-tiling) | [Eliseu Silva](https://github.com/DEVAIEXP/) |
+| Stable Diffusion MoD ControlNet Tile SR Pipeline SDXL | This is an advanced pipeline that leverages ControlNet Tile and Mixture-of-Diffusers techniques, integrating tile diffusion directly into the latent space denoising process. Designed to overcome the limitations of conventional pixel-space tile processing, this pipeline delivers Super Resolution (SR) upscaling for higher-quality images, reduced processing time, and greater adaptability. | [Stable Diffusion MoD ControlNet Tile SR Pipeline SDXL](#stable-diffusion-mod-controlnet-tile-sr-pipeline-sdxl) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/elismasilva/mod-control-tile-upscaler-sdxl) | [Eliseu Silva](https://github.com/DEVAIEXP/) |
+| FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipeline](#stable-diffusion-fabric-pipeline) | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/stable_diffusion_fabric.ipynb)| [Shauray Singh](https://shauray8.github.io/about_shauray/) |
 | sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion Pipeline](#stable-diffusion-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) |
 | sketch inpaint xl - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion XL Pipeline](#stable-diffusion-xl-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) |
 | prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) |
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
 |   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
 |   Latent Consistency Interpolation Pipeline                                                                                                    | Interpolate the latent space of Latent Consistency Models with multiple prompts                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Interpolation Pipeline](#latent-consistency-interpolation-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pK3NrLWJSiJsBynLns1K1-IDTW9zbPvl?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
-| SDE Drag Pipeline                                                                                                                         | The pipeline supports drag editing of images using stochastic differential equations                                                                                                                                                                                                                                                                                                                                                                                                                | [SDE Drag Pipeline](#sde-drag-pipeline)                                                     | - | [NieShen](https://github.com/NieShenRuc) [Fengqi Zhu](https://github.com/Monohydroxides) |
+| SDE Drag Pipeline                                                                                                                         | The pipeline supports drag editing of images using stochastic differential equations                                                                                                                                                                                                                                                                                                                                                                                                                | [SDE Drag Pipeline](#sde-drag-pipeline)                                                     | [Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/sde_drag.ipynb) | [NieShen](https://github.com/NieShenRuc) [Fengqi Zhu](https://github.com/Monohydroxides) |
 |   Regional Prompting Pipeline                                                                                               | Assign multiple prompts for different regions                                                                                                                                                                                                                                                                                                                                                    |  [Regional Prompting Pipeline](#regional-prompting-pipeline) | - | [hako-mikan](https://github.com/hako-mikan) |
 | LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
 | AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
@@ -77,6 +82,9 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixart alpha and its diffusers pipeline | [PIXART-α Controlnet pipeline](#pixart-α-controlnet-pipeline) | - | [Raul Ciotescu](https://github.com/raulc0399/) |
 | HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffusion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
 | [🪆Matryoshka Diffusion Models](https://huggingface.co/papers/2310.15111) | A diffusion process that denoises inputs at multiple resolutions jointly and uses a NestedUNet architecture where features and parameters for small scale inputs are nested within those of the large scales. See [original codebase](https://github.com/apple/ml-mdm). | [🪆Matryoshka Diffusion Models](#matryoshka-diffusion-models) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/pcuenq/mdm) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/1f54875fc7aeaabcf284ebde64820966/matryoshka_hf.ipynb) | [M. Tolga Cangöz](https://github.com/tolgacangoz) |
+| Stable Diffusion XL Attentive Eraser Pipeline |[[AAAI2025 Oral] Attentive Eraser](https://github.com/Anonym0u3/AttentiveEraser) is a novel tuning-free method that enhances object removal capabilities in pre-trained diffusion models.|[Stable Diffusion XL Attentive Eraser Pipeline](#stable-diffusion-xl-attentive-eraser-pipeline)|-|[Wenhao Sun](https://github.com/Anonym0u3) and [Benlei Cui](https://github.com/Benny079)|
+| Perturbed-Attention Guidance |StableDiffusionPAGPipeline is a modification of StableDiffusionPipeline to support Perturbed-Attention Guidance (PAG).|[Perturbed-Attention Guidance](#perturbed-attention-guidance)|[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/perturbed_attention_guidance.ipynb)|[Hyoungwon Cho](https://github.com/HyoungwonCho)|
+| CogVideoX DDIM Inversion Pipeline | Implementation of DDIM inversion and guided attention-based editing denoising process on CogVideoX. | [CogVideoX DDIM Inversion Pipeline](#cogvideox-ddim-inversion-pipeline) | - | [LittleNyima](https://github.com/LittleNyima) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -85,6 +93,55 @@ pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion
 ```
 
 ## Example usages
+
+### Spatiotemporal Skip Guidance
+
+**Junha Hyung\*, Kinam Kim\*, Susung Hong, Min-Jung Kim, Jaegul Choo**
+
+**KAIST AI, University of Washington**
+
+[*Spatiotemporal Skip Guidance (STG) for Enhanced Video Diffusion Sampling*](https://arxiv.org/abs/2411.18664) (CVPR 2025) is a simple training-free sampling guidance method for enhancing transformer-based video diffusion models. STG employs an implicit weak model via self-perturbation, avoiding the need for external models or additional training. By selectively skipping spatiotemporal layers, STG produces an aligned, degraded version of the original model to boost sample quality without compromising diversity or dynamic degree.
+
+Following is the example video of STG applied to Mochi.
+
+
+https://github.com/user-attachments/assets/148adb59-da61-4c50-9dfa-425dcb5c23b3
+
+More examples and information can be found on the [GitHub repository](https://github.com/junhahyung/STGuidance) and the [Project website](https://junhahyung.github.io/STGuidance/).
+
+#### Usage example
+```python
+import torch
+from pipeline_stg_mochi import MochiSTGPipeline
+from diffusers.utils import export_to_video
+
+# Load the pipeline
+pipe = MochiSTGPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", torch_dtype=torch.bfloat16)
+
+# Enable memory savings
+pipe = pipe.to("cuda")
+
+#--------Option--------#
+prompt = "A close-up of a beautiful woman's face with colored powder exploding around her, creating an abstract splash of vibrant hues, realistic style."
+stg_applied_layers_idx = [34]
+stg_mode = "STG"
+stg_scale = 1.0 # 0.0 for CFG
+#----------------------#
+
+# Generate video frames
+frames = pipe(
+    prompt, 
+    height=480,
+    width=480,
+    num_frames=81,
+    stg_applied_layers_idx=stg_applied_layers_idx,
+    stg_scale=stg_scale,
+    generator = torch.Generator().manual_seed(42),
+    do_rescaling=do_rescaling,
+).frames[0]
+
+export_to_video(frames, "output.mp4", fps=30)
+```
 
 ### Adaptive Mask Inpainting
 
@@ -947,9 +1004,14 @@ image.save('./imagic/imagic_image_alpha_2.png')
 Test seed resizing. Originally generate an image in 512 by 512, then generate image with same seed at 512 by 592 using seed resizing. Finally, generate 512 by 592 using original stable diffusion pipeline.
 
 ```python
+import os
 import torch as th
 import numpy as np
 from diffusers import DiffusionPipeline
+
+# Ensure the save directory exists or create it
+save_dir = './seed_resize/'
+os.makedirs(save_dir, exist_ok=True)
 
 has_cuda = th.cuda.is_available()
 device = th.device('cpu' if not has_cuda else 'cuda')
@@ -963,7 +1025,6 @@ def dummy(images, **kwargs):
     return images, False
 
 pipe.safety_checker = dummy
-
 
 images = []
 th.manual_seed(0)
@@ -983,15 +1044,14 @@ res = pipe(
     width=width,
     generator=generator)
 image = res.images[0]
-image.save('./seed_resize/seed_resize_{w}_{h}_image.png'.format(w=width, h=height))
-
+image.save(os.path.join(save_dir, 'seed_resize_{w}_{h}_image.png'.format(w=width, h=height)))
 
 th.manual_seed(0)
 generator = th.Generator("cuda").manual_seed(0)
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
+    custom_pipeline="seed_resize_stable_diffusion"
 ).to(device)
 
 width = 512
@@ -1005,11 +1065,11 @@ res = pipe(
     width=width,
     generator=generator)
 image = res.images[0]
-image.save('./seed_resize/seed_resize_{w}_{h}_image.png'.format(w=width, h=height))
+image.save(os.path.join(save_dir, 'seed_resize_{w}_{h}_image.png'.format(w=width, h=height)))
 
 pipe_compare = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
+    custom_pipeline="seed_resize_stable_diffusion"
 ).to(device)
 
 res = pipe_compare(
@@ -1022,7 +1082,7 @@ res = pipe_compare(
 )
 
 image = res.images[0]
-image.save('./seed_resize/seed_resize_{w}_{h}_image_compare.png'.format(w=width, h=height))
+image.save(os.path.join(save_dir, 'seed_resize_{w}_{h}_image_compare.png'.format(w=width, h=height)))
 ```
 
 ### Multilingual Stable Diffusion Pipeline
@@ -1099,38 +1159,100 @@ GlueGen is a minimal adapter that allows alignment between any encoder (Text Enc
 Make sure you downloaded `gluenet_French_clip_overnorm_over3_noln.ckpt` for French (there are also pre-trained weights for Chinese, Italian, Japanese, Spanish or train your own) at [GlueGen's official repo](https://github.com/salesforce/GlueGen/tree/main).
 
 ```python
-from PIL import Image
-
+import os
+import gc
+import urllib.request
 import torch
-
-from transformers import AutoModel, AutoTokenizer
-
+from transformers import XLMRobertaTokenizer, XLMRobertaForMaskedLM, CLIPTokenizer, CLIPTextModel
 from diffusers import DiffusionPipeline
 
-if __name__ == "__main__":
-    device = "cuda"
+# Download checkpoints
+CHECKPOINTS = [
+    "https://storage.googleapis.com/sfr-gluegen-data-research/checkpoints_all/gluenet_checkpoint/gluenet_Chinese_clip_overnorm_over3_noln.ckpt",
+    "https://storage.googleapis.com/sfr-gluegen-data-research/checkpoints_all/gluenet_checkpoint/gluenet_French_clip_overnorm_over3_noln.ckpt",
+    "https://storage.googleapis.com/sfr-gluegen-data-research/checkpoints_all/gluenet_checkpoint/gluenet_Italian_clip_overnorm_over3_noln.ckpt",
+    "https://storage.googleapis.com/sfr-gluegen-data-research/checkpoints_all/gluenet_checkpoint/gluenet_Japanese_clip_overnorm_over3_noln.ckpt",
+    "https://storage.googleapis.com/sfr-gluegen-data-research/checkpoints_all/gluenet_checkpoint/gluenet_Spanish_clip_overnorm_over3_noln.ckpt",
+    "https://storage.googleapis.com/sfr-gluegen-data-research/checkpoints_all/gluenet_checkpoint/gluenet_sound2img_audioclip_us8k.ckpt"
+]
 
-    lm_model_id = "xlm-roberta-large"
-    token_max_length = 77
+LANGUAGE_PROMPTS = {
+    "French": "une voiture sur la plage",
+    #"Chinese": "海滩上的一辆车",
+    #"Italian": "una macchina sulla spiaggia",
+    #"Japanese": "浜辺の車",
+    #"Spanish": "un coche en la playa"
+}
 
-    text_encoder = AutoModel.from_pretrained(lm_model_id)
-    tokenizer = AutoTokenizer.from_pretrained(lm_model_id, model_max_length=token_max_length, use_fast=False)
+def download_checkpoints(checkpoint_dir):
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    for url in CHECKPOINTS:
+        filename = os.path.join(checkpoint_dir, os.path.basename(url))
+        if not os.path.exists(filename):
+            print(f"Downloading {filename}...")
+            urllib.request.urlretrieve(url, filename)
+            print(f"Downloaded {filename}")
+        else:
+            print(f"Checkpoint {filename} already exists, skipping download.")
+    return checkpoint_dir
 
-    tensor_norm = torch.Tensor([[43.8203],[28.3668],[27.9345],[28.0084],[28.2958],[28.2576],[28.3373],[28.2695],[28.4097],[28.2790],[28.2825],[28.2807],[28.2775],[28.2708],[28.2682],[28.2624],[28.2589],[28.2611],[28.2616],[28.2639],[28.2613],[28.2566],[28.2615],[28.2665],[28.2799],[28.2885],[28.2852],[28.2863],[28.2780],[28.2818],[28.2764],[28.2532],[28.2412],[28.2336],[28.2514],[28.2734],[28.2763],[28.2977],[28.2971],[28.2948],[28.2818],[28.2676],[28.2831],[28.2890],[28.2979],[28.2999],[28.3117],[28.3363],[28.3554],[28.3626],[28.3589],[28.3597],[28.3543],[28.3660],[28.3731],[28.3717],[28.3812],[28.3753],[28.3810],[28.3777],[28.3693],[28.3713],[28.3670],[28.3691],[28.3679],[28.3624],[28.3703],[28.3703],[28.3720],[28.3594],[28.3576],[28.3562],[28.3438],[28.3376],[28.3389],[28.3433],[28.3191]])
+def load_checkpoint(pipeline, checkpoint_path, device):
+    state_dict = torch.load(checkpoint_path, map_location=device)
+    state_dict = state_dict.get("state_dict", state_dict)
+    missing_keys, unexpected_keys = pipeline.unet.load_state_dict(state_dict, strict=False)
+    return pipeline
 
-    pipeline = DiffusionPipeline.from_pretrained(
-        "stable-diffusion-v1-5/stable-diffusion-v1-5",
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-        custom_pipeline="gluegen"
-    ).to(device)
-    pipeline.load_language_adapter("gluenet_French_clip_overnorm_over3_noln.ckpt", num_token=token_max_length, dim=1024, dim_out=768, tensor_norm=tensor_norm)
+def generate_image(pipeline, prompt, device, output_path):
+    with torch.inference_mode():
+        image = pipeline(
+            prompt,
+            generator=torch.Generator(device=device).manual_seed(42),
+            num_inference_steps=50
+        ).images[0]
+        image.save(output_path)
+        print(f"Image saved to {output_path}")
 
-    prompt = "une voiture sur la plage"
+checkpoint_dir = download_checkpoints("./checkpoints_all/gluenet_checkpoint")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {device}")
 
-    generator = torch.Generator(device=device).manual_seed(42)
-    image = pipeline(prompt, generator=generator).images[0]
-    image.save("gluegen_output_fr.png")
+tokenizer = XLMRobertaTokenizer.from_pretrained("xlm-roberta-base", use_fast=False)
+model = XLMRobertaForMaskedLM.from_pretrained("xlm-roberta-base").to(device)
+inputs = tokenizer("Ceci est une phrase incomplète avec un [MASK].", return_tensors="pt").to(device)
+with torch.inference_mode():
+    _ = model(**inputs)
+
+
+clip_tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+clip_text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
+
+# Initialize pipeline
+pipeline = DiffusionPipeline.from_pretrained(
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
+    text_encoder=clip_text_encoder,
+    tokenizer=clip_tokenizer,
+    custom_pipeline="gluegen",
+    safety_checker=None
+).to(device)
+
+os.makedirs("outputs", exist_ok=True)
+
+# Generate images
+for language, prompt in LANGUAGE_PROMPTS.items():
+
+    checkpoint_file = f"gluenet_{language}_clip_overnorm_over3_noln.ckpt"
+    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_file)
+    try:
+        pipeline = load_checkpoint(pipeline, checkpoint_path, device)
+        output_path = f"outputs/gluegen_output_{language.lower()}.png"
+        generate_image(pipeline, prompt, device, output_path)
+    except Exception as e:
+        print(f"Error processing {language} model: {e}")
+        continue
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 ```
 
 Which will produce:
@@ -1181,28 +1303,49 @@ Currently uses the CLIPSeg model for mask generation, then calls the standard St
 ```python
 from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
 from diffusers import DiffusionPipeline
-
 from PIL import Image
 import requests
+import torch
 
+# Load CLIPSeg model and processor
 processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
-model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
+model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined").to("cuda")
 
+# Load Stable Diffusion Inpainting Pipeline with custom pipeline
 pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
     custom_pipeline="text_inpainting",
     segmentation_model=model,
     segmentation_processor=processor
-)
-pipe = pipe.to("cuda")
+).to("cuda")
 
-
+# Load input image
 url = "https://github.com/timojl/clipseg/blob/master/example_image.jpg?raw=true"
-image = Image.open(requests.get(url, stream=True).raw).resize((512, 512))
-text = "a glass"  # will mask out this text
-prompt = "a cup"  # the masked out region will be replaced with this
+image = Image.open(requests.get(url, stream=True).raw)
 
-image = pipe(image=image, text=text, prompt=prompt).images[0]
+# Step 1: Resize input image for CLIPSeg (224x224)
+segmentation_input = image.resize((224, 224))
+
+# Step 2: Generate segmentation mask
+text = "a glass"  # Object to mask
+inputs = processor(text=text, images=segmentation_input, return_tensors="pt").to("cuda")
+
+with torch.no_grad():
+    mask = model(**inputs).logits.sigmoid()  # Get segmentation mask
+
+# Resize mask back to 512x512 for SD inpainting
+mask = torch.nn.functional.interpolate(mask.unsqueeze(0), size=(512, 512), mode="bilinear").squeeze(0)
+
+# Step 3: Resize input image for Stable Diffusion
+image = image.resize((512, 512))
+
+# Step 4: Run inpainting with Stable Diffusion
+prompt = "a cup"  # The masked-out region will be replaced with this
+result = pipe(image=image, mask=mask, prompt=prompt,text=text).images[0]
+
+# Save output
+result.save("inpainting_output.png")
+print("Inpainting completed. Image saved as 'inpainting_output.png'.")
 ```
 
 ### Bit Diffusion
@@ -1378,8 +1521,10 @@ There are 3 parameters for the method-
 Here is an example usage-
 
 ```python
+import requests
 from diffusers import DiffusionPipeline, DDIMScheduler
 from PIL import Image
+from io import BytesIO
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
@@ -1387,9 +1532,11 @@ pipe = DiffusionPipeline.from_pretrained(
     scheduler=DDIMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler"),
 ).to('cuda')
 
-img = Image.open('phone.jpg')
+url = "https://user-images.githubusercontent.com/59410571/209578593-141467c7-d831-4792-8b9a-b17dc5e47816.jpg"
+response = requests.get(url)
+image = Image.open(BytesIO(response.content)).convert("RGB")  # Convert to RGB to avoid issues
 mix_img = pipe(
-    img,
+    image,
     prompt='bed',
     kmin=0.3,
     kmax=0.5,
@@ -1542,6 +1689,8 @@ This Diffusion Pipeline takes two images or an image_embeddings tensor of size 2
 import torch
 from diffusers import DiffusionPipeline
 from PIL import Image
+import requests
+from io import BytesIO
 
 device = torch.device("cpu" if not torch.cuda.is_available() else "cuda")
 dtype = torch.float16 if torch.cuda.is_available() else torch.bfloat16
@@ -1553,13 +1702,25 @@ pipe = DiffusionPipeline.from_pretrained(
 )
 pipe.to(device)
 
-images = [Image.open('./starry_night.jpg'), Image.open('./flowers.jpg')]
+# List of image URLs
+image_urls = [
+    'https://camo.githubusercontent.com/ef13c8059b12947c0d5e8d3ea88900de6bf1cd76bbf61ace3928e824c491290e/68747470733a2f2f68756767696e67666163652e636f2f64617461736574732f4e616761536169416268696e61792f556e434c4950496d616765496e746572706f6c6174696f6e53616d706c65732f7265736f6c76652f6d61696e2f7374617272795f6e696768742e6a7067',
+    'https://camo.githubusercontent.com/d1947ab7c49ae3f550c28409d5e8b120df48e456559cf4557306c0848337702c/68747470733a2f2f68756767696e67666163652e636f2f64617461736574732f4e616761536169416268696e61792f556e434c4950496d616765496e746572706f6c6174696f6e53616d706c65732f7265736f6c76652f6d61696e2f666c6f776572732e6a7067'
+]
+
+# Open images from URLs
+images = []
+for url in image_urls:
+    response = requests.get(url)
+    img = Image.open(BytesIO(response.content))
+    images.append(img)
+
 # For best results keep the prompts close in length to each other. Of course, feel free to try out with differing lengths.
 generator = torch.Generator(device=device).manual_seed(42)
 
 output = pipe(image=images, steps=6, generator=generator)
 
-for i,image in enumerate(output.images):
+for i, image in enumerate(output.images):
     image.save('starry_to_flowers_%s.jpg' % i)
 ```
 
@@ -1636,37 +1797,51 @@ from diffusers import DiffusionPipeline
 from PIL import Image
 from transformers import CLIPImageProcessor, CLIPModel
 
+# Load CLIP model and feature extractor
 feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16
 )
+
+# Load guided pipeline
 guided_pipeline = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    # custom_pipeline="clip_guided_stable_diffusion",
-    custom_pipeline="/home/njindal/diffusers/examples/community/clip_guided_stable_diffusion.py",
+    custom_pipeline="clip_guided_stable_diffusion_img2img",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
     torch_dtype=torch.float16,
 )
 guided_pipeline.enable_attention_slicing()
 guided_pipeline = guided_pipeline.to("cuda")
+
+# Define prompt and fetch image
 prompt = "fantasy book cover, full moon, fantasy forest landscape, golden vector elements, fantasy magic, dark light night, intricate, elegant, sharp focus, illustration, highly detailed, digital painting, concept art, matte, art by WLOP and Artgerm and Albert Bierstadt, masterpiece"
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+edit_image = Image.open(BytesIO(response.content)).convert("RGB")
+
+# Run the pipeline
 image = guided_pipeline(
     prompt=prompt,
-    num_inference_steps=30,
-    image=init_image,
-    strength=0.75,
-    guidance_scale=7.5,
-    clip_guidance_scale=100,
-    num_cutouts=4,
-    use_cutouts=False,
+    height=512,  # Height of the output image
+    width=512,   # Width of the output image
+    image=edit_image,  # Input image to guide the diffusion
+    strength=0.75,  # How much to transform the input image
+    num_inference_steps=30,  # Number of diffusion steps
+    guidance_scale=7.5,  # Scale of the classifier-free guidance
+    clip_guidance_scale=100,  # Scale of the CLIP guidance
+    num_images_per_prompt=1,  # Generate one image per prompt
+    eta=0.0,  # Noise scheduling parameter
+    num_cutouts=4,  # Number of cutouts for CLIP guidance
+    use_cutouts=False,  # Whether to use cutouts
+    output_type="pil",  # Output as PIL image
 ).images[0]
-display(image)
+
+# Display the generated image
+image.show()
+
 ```
 
 Init Image
@@ -2243,6 +2418,85 @@ CLIP guided stable diffusion images mixing pipeline allows to combine two images
 This approach is using (optional) CoCa model to avoid writing image description.
 [More code examples](https://github.com/TheDenk/images_mixing)
 
+### Example Images Mixing (with CoCa)
+
+```python
+import PIL
+import torch
+import requests
+import open_clip
+from open_clip import SimpleTokenizer
+from io import BytesIO
+from diffusers import DiffusionPipeline
+from transformers import CLIPImageProcessor, CLIPModel
+
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+# Loading additional models
+feature_extractor = CLIPImageProcessor.from_pretrained(
+    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
+)
+clip_model = CLIPModel.from_pretrained(
+    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16
+)
+coca_model = open_clip.create_model('coca_ViT-L-14', pretrained='laion2B-s13B-b90k').to('cuda')
+coca_model.dtype = torch.float16
+coca_transform = open_clip.image_transform(
+    coca_model.visual.image_size,
+    is_train=False,
+    mean=getattr(coca_model.visual, 'image_mean', None),
+    std=getattr(coca_model.visual, 'image_std', None),
+)
+coca_tokenizer = SimpleTokenizer()
+
+# Pipeline creating
+mixing_pipeline = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="clip_guided_images_mixing_stable_diffusion",
+    clip_model=clip_model,
+    feature_extractor=feature_extractor,
+    coca_model=coca_model,
+    coca_tokenizer=coca_tokenizer,
+    coca_transform=coca_transform,
+    torch_dtype=torch.float16,
+)
+mixing_pipeline.enable_attention_slicing()
+mixing_pipeline = mixing_pipeline.to("cuda")
+
+# Pipeline running
+generator = torch.Generator(device="cuda").manual_seed(17)
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+content_image = download_image("https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir.jpg")
+style_image = download_image("https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/gigachad.jpg")
+
+pipe_images = mixing_pipeline(
+    num_inference_steps=50,
+    content_image=content_image,
+    style_image=style_image,
+    noise_strength=0.65,
+    slerp_latent_style_strength=0.9,
+    slerp_prompt_style_strength=0.1,
+    slerp_clip_image_style_strength=0.1,
+    guidance_scale=9.0,
+    batch_size=1,
+    clip_guidance_scale=100,
+    generator=generator,
+).images
+
+output_path = "mixed_output.jpg"
+pipe_images[0].save(output_path)
+print(f"Image saved successfully at {output_path}")
+```
+
+![image_mixing_result](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir_gigachad.png)
+
 ### Stable Diffusion XL Long Weighted Prompt Pipeline
 
 This SDXL pipeline supports unlimited length prompt and negative prompt, compatible with A1111 prompt weighted style.
@@ -2308,83 +2562,7 @@ In the above code, the `prompt2` is appended to the `prompt`, which is more than
 
 For more results, checkout [PR #6114](https://github.com/huggingface/diffusers/pull/6114).
 
-### Example Images Mixing (with CoCa)
-
-```python
-import requests
-from io import BytesIO
-
-import PIL
-import torch
-import open_clip
-from open_clip import SimpleTokenizer
-from diffusers import DiffusionPipeline
-from transformers import CLIPImageProcessor, CLIPModel
-
-
-def download_image(url):
-    response = requests.get(url)
-    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
-
-# Loading additional models
-feature_extractor = CLIPImageProcessor.from_pretrained(
-    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
-)
-clip_model = CLIPModel.from_pretrained(
-    "laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16
-)
-coca_model = open_clip.create_model('coca_ViT-L-14', pretrained='laion2B-s13B-b90k').to('cuda')
-coca_model.dtype = torch.float16
-coca_transform = open_clip.image_transform(
-    coca_model.visual.image_size,
-    is_train=False,
-    mean=getattr(coca_model.visual, 'image_mean', None),
-    std=getattr(coca_model.visual, 'image_std', None),
-)
-coca_tokenizer = SimpleTokenizer()
-
-# Pipeline creating
-mixing_pipeline = DiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
-    custom_pipeline="clip_guided_images_mixing_stable_diffusion",
-    clip_model=clip_model,
-    feature_extractor=feature_extractor,
-    coca_model=coca_model,
-    coca_tokenizer=coca_tokenizer,
-    coca_transform=coca_transform,
-    torch_dtype=torch.float16,
-)
-mixing_pipeline.enable_attention_slicing()
-mixing_pipeline = mixing_pipeline.to("cuda")
-
-# Pipeline running
-generator = torch.Generator(device="cuda").manual_seed(17)
-
-def download_image(url):
-    response = requests.get(url)
-    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
-
-content_image = download_image("https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir.jpg")
-style_image = download_image("https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/gigachad.jpg")
-
-pipe_images = mixing_pipeline(
-    num_inference_steps=50,
-    content_image=content_image,
-    style_image=style_image,
-    noise_strength=0.65,
-    slerp_latent_style_strength=0.9,
-    slerp_prompt_style_strength=0.1,
-    slerp_clip_image_style_strength=0.1,
-    guidance_scale=9.0,
-    batch_size=1,
-    clip_guidance_scale=100,
-    generator=generator,
-).images
-```
-
-![image_mixing_result](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/boromir_gigachad.png)
-
-### Stable Diffusion Mixture Tiling
+### Stable Diffusion Mixture Tiling Pipeline SD 1.5
 
 This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
 
@@ -2414,6 +2592,192 @@ image = pipeline(
 ```
 
 ![mixture_tiling_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/mixture_tiling.png)
+
+### Stable Diffusion Mixture Canvas Pipeline SD 1.5
+
+This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
+
+```python
+from PIL import Image
+from diffusers import LMSDiscreteScheduler, DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import Image2ImageRegion, Text2ImageRegion, preprocess_image
+
+
+# Load and preprocess guide image
+iic_image = preprocess_image(Image.open("input_image.png").convert("RGB"))
+
+# Create scheduler and model (similar to StableDiffusionPipeline)
+scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler).to("cuda:0", custom_pipeline="mixture_canvas")
+pipeline.to("cuda")
+
+# Mixture of Diffusers generation
+output = pipeline(
+    canvas_height=800,
+    canvas_width=352,
+    regions=[
+        Text2ImageRegion(0, 800, 0, 352, guidance_scale=8,
+            prompt=f"best quality, masterpiece, WLOP, sakimichan, art contest winner on pixiv, 8K, intricate details, wet effects, rain drops, ethereal, mysterious, futuristic, UHD, HDR, cinematic lighting, in a beautiful forest, rainy day, award winning, trending on artstation, beautiful confident cheerful young woman, wearing a futuristic sleeveless dress, ultra beautiful detailed  eyes, hyper-detailed face, complex,  perfect, model,  textured,  chiaroscuro, professional make-up, realistic, figure in frame, "),
+        Image2ImageRegion(352-800, 352, 0, 352, reference_image=iic_image, strength=1.0),
+    ],
+    num_inference_steps=100,
+    seed=5525475061,
+)["images"][0]
+```
+
+![Input_Image](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/input_image.png)
+![mixture_canvas_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/canvas.png)
+
+### Stable Diffusion Mixture Tiling Pipeline SDXL
+
+This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
+
+```python
+import torch
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler, AutoencoderKL
+
+device="cuda"
+
+# Load fixed vae (optional)
+vae = AutoencoderKL.from_pretrained(
+    "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
+).to(device)
+
+# Create scheduler and model (similar to StableDiffusionPipeline)
+model_id="stablediffusionapi/yamermix-v8-vae"
+scheduler = DPMSolverMultistepScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16,
+    vae=vae,
+    custom_pipeline="mixture_tiling_sdxl",
+    scheduler=scheduler,
+    use_safetensors=False    
+).to(device)
+
+pipe.enable_model_cpu_offload()
+pipe.enable_vae_tiling()
+pipe.enable_vae_slicing()
+
+generator = torch.Generator(device).manual_seed(297984183)
+
+# Mixture of Diffusers generation
+image = pipe(
+    prompt=[[
+        "A charming house in the countryside, by jakub rozalski, sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece",
+        "A dirt road in the countryside crossing pastures, by jakub rozalski, sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece",        
+        "An old and rusty giant robot lying on a dirt road, by jakub rozalski, dark sunset lighting, elegant, highly detailed, smooth, sharp focus, artstation, stunning masterpiece"
+    ]],
+    tile_height=1024,
+    tile_width=1280,
+    tile_row_overlap=0,
+    tile_col_overlap=256,
+    guidance_scale_tiles=[[7, 7, 7]], # or guidance_scale=7 if is the same for all prompts
+    height=1024,
+    width=3840,    
+    generator=generator,
+    num_inference_steps=30,
+)["images"][0]
+```
+
+![mixture_tiling_results](https://huggingface.co/datasets/elismasilva/results/resolve/main/mixture_of_diffusers_sdxl_1.png)
+
+### Stable Diffusion MoD ControlNet Tile SR Pipeline SDXL
+
+This pipeline implements the [MoD (Mixture-of-Diffusers)]("https://arxiv.org/pdf/2408.06072") tiled diffusion technique and combines it with SDXL's ControlNet Tile process to generate SR images.
+
+This works better with 4x scales, but you can try adjusts parameters to higher scales.
+
+````python
+import torch
+from diffusers import DiffusionPipeline, ControlNetUnionModel, AutoencoderKL, UniPCMultistepScheduler, UNet2DConditionModel
+from diffusers.utils import load_image
+from PIL import Image
+
+device = "cuda"
+
+# Initialize the models and pipeline
+controlnet = ControlNetUnionModel.from_pretrained(
+    "brad-twinkl/controlnet-union-sdxl-1.0-promax", torch_dtype=torch.float16
+).to(device=device)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to(device=device)
+
+model_id = "SG161222/RealVisXL_V5.0"
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16,
+    vae=vae,
+    controlnet=controlnet,
+    custom_pipeline="mod_controlnet_tile_sr_sdxl",    
+    use_safetensors=True,
+    variant="fp16",
+).to(device)
+
+unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet", variant="fp16", use_safetensors=True)
+
+#pipe.enable_model_cpu_offload()  # << Enable this if you have limited VRAM
+pipe.enable_vae_tiling() # << Enable this if you have limited VRAM
+pipe.enable_vae_slicing() # << Enable this if you have limited VRAM
+
+# Set selected scheduler
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+# Load image
+control_image = load_image("https://huggingface.co/datasets/DEVAIEXP/assets/resolve/main/1.jpg")
+original_height = control_image.height
+original_width = control_image.width
+print(f"Current resolution: H:{original_height} x W:{original_width}")
+
+# Pre-upscale image for tiling
+resolution = 4096
+tile_gaussian_sigma = 0.3
+max_tile_size = 1024 # or 1280
+
+current_size = max(control_image.size)
+scale_factor = max(2, resolution / current_size)
+new_size = (int(control_image.width * scale_factor), int(control_image.height * scale_factor))
+image = control_image.resize(new_size, Image.LANCZOS)
+
+# Update target height and width
+target_height = image.height
+target_width = image.width
+print(f"Target resolution: H:{target_height} x W:{target_width}")
+
+# Calculate overlap size
+normal_tile_overlap, border_tile_overlap = pipe.calculate_overlap(target_width, target_height)
+
+# Set other params
+tile_weighting_method = pipe.TileWeightingMethod.COSINE.value
+guidance_scale = 4
+num_inference_steps = 35
+denoising_strenght = 0.65
+controlnet_strength = 1.0
+prompt = "high-quality, noise-free edges, high quality, 4k, hd, 8k"
+negative_prompt = "blurry, pixelated, noisy, low resolution, artifacts, poor details"
+
+# Image generation
+generated_image = pipe(
+    image=image,
+    control_image=control_image,
+    control_mode=[6],
+    controlnet_conditioning_scale=float(controlnet_strength),
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    normal_tile_overlap=normal_tile_overlap,
+    border_tile_overlap=border_tile_overlap,
+    height=target_height,
+    width=target_width,
+    original_size=(original_width, original_height),
+    target_size=(target_width, target_height),
+    guidance_scale=guidance_scale,        
+    strength=float(denoising_strenght),
+    tile_weighting_method=tile_weighting_method,
+    max_tile_size=max_tile_size,
+    tile_gaussian_sigma=float(tile_gaussian_sigma),
+    num_inference_steps=num_inference_steps,
+)["images"][0]
+````
+![Upscaled](https://huggingface.co/datasets/DEVAIEXP/assets/resolve/main/1_input_4x.png)
 
 ### TensorRT Inpainting Stable Diffusion Pipeline
 
@@ -2456,41 +2820,6 @@ prompt = "a mecha robot sitting on a bench"
 image = pipe(prompt, image=input_image, mask_image=mask_image, strength=0.75,).images[0]
 image.save('tensorrt_inpaint_mecha_robot.png')
 ```
-
-### Stable Diffusion Mixture Canvas
-
-This pipeline uses the Mixture. Refer to the [Mixture](https://arxiv.org/abs/2302.02412) paper for more details.
-
-```python
-from PIL import Image
-from diffusers import LMSDiscreteScheduler, DiffusionPipeline
-from diffusers.pipelines.pipeline_utils import Image2ImageRegion, Text2ImageRegion, preprocess_image
-
-
-# Load and preprocess guide image
-iic_image = preprocess_image(Image.open("input_image.png").convert("RGB"))
-
-# Create scheduler and model (similar to StableDiffusionPipeline)
-scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
-pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler).to("cuda:0", custom_pipeline="mixture_canvas")
-pipeline.to("cuda")
-
-# Mixture of Diffusers generation
-output = pipeline(
-    canvas_height=800,
-    canvas_width=352,
-    regions=[
-        Text2ImageRegion(0, 800, 0, 352, guidance_scale=8,
-            prompt=f"best quality, masterpiece, WLOP, sakimichan, art contest winner on pixiv, 8K, intricate details, wet effects, rain drops, ethereal, mysterious, futuristic, UHD, HDR, cinematic lighting, in a beautiful forest, rainy day, award winning, trending on artstation, beautiful confident cheerful young woman, wearing a futuristic sleeveless dress, ultra beautiful detailed  eyes, hyper-detailed face, complex,  perfect, model,  textured,  chiaroscuro, professional make-up, realistic, figure in frame, "),
-        Image2ImageRegion(352-800, 352, 0, 352, reference_image=iic_image, strength=1.0),
-    ],
-    num_inference_steps=100,
-    seed=5525475061,
-)["images"][0]
-```
-
-![Input_Image](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/input_image.png)
-![mixture_canvas_results](https://huggingface.co/datasets/kadirnar/diffusers_readme_images/resolve/main/canvas.png)
 
 ### IADB pipeline
 
@@ -3908,33 +4237,89 @@ This pipeline provides drag-and-drop image editing using stochastic differential
 See [paper](https://arxiv.org/abs/2311.01410), [paper page](https://ml-gsai.github.io/SDE-Drag-demo/), [original repo](https://github.com/ML-GSAI/SDE-Drag) for more information.
 
 ```py
-import PIL
 import torch
 from diffusers import DDIMScheduler, DiffusionPipeline
+from PIL import Image
+import requests
+from io import BytesIO
+import numpy as np
 
 # Load the pipeline
 model_path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
 pipe = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, custom_pipeline="sde_drag")
-pipe.to('cuda')
 
-# To save GPU memory, torch.float16 can be used, but it may compromise image quality.
-# If not training LoRA, please avoid using torch.float16
-# pipe.to(torch.float16)
+# Ensure the model is moved to the GPU
+device = "cuda" if torch.cuda.is_available() else "cpu"
+pipe.to(device)
 
-# Provide prompt, image, mask image, and the starting and target points for drag editing.
-prompt = "prompt of the image"
-image = PIL.Image.open('/path/to/image')
-mask_image = PIL.Image.open('/path/to/mask_image')
-source_points = [[123, 456]]
-target_points = [[234, 567]]
+# Function to load image from URL
+def load_image_from_url(url):
+    response = requests.get(url)
+    return Image.open(BytesIO(response.content)).convert("RGB")
 
-# train_lora is optional, and in most cases, using train_lora can better preserve consistency with the original image.
-pipe.train_lora(prompt, image)
+# Function to prepare mask
+def prepare_mask(mask_image):
+    # Convert to grayscale
+    mask = mask_image.convert("L")
+    return mask
 
-output = pipe(prompt, image, mask_image, source_points, target_points)
-output_image = PIL.Image.fromarray(output)
+# Function to convert numpy array to PIL Image
+def array_to_pil(array):
+    # Ensure the array is in uint8 format
+    if array.dtype != np.uint8:
+        if array.max() <= 1.0:
+            array = (array * 255).astype(np.uint8)
+        else:
+            array = array.astype(np.uint8)
+    
+    # Handle different array shapes
+    if len(array.shape) == 3:
+        if array.shape[0] == 3:  # If channels first
+            array = array.transpose(1, 2, 0)
+        return Image.fromarray(array)
+    elif len(array.shape) == 4:  # If batch dimension
+        array = array[0]
+        if array.shape[0] == 3:  # If channels first
+            array = array.transpose(1, 2, 0)
+        return Image.fromarray(array)
+    else:
+        raise ValueError(f"Unexpected array shape: {array.shape}")
+
+# Image and mask URLs
+image_url = 'https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png'
+mask_url = 'https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png'
+
+# Load the images
+image = load_image_from_url(image_url)
+mask_image = load_image_from_url(mask_url)
+
+# Resize images to a size that's compatible with the model's latent space
+image = image.resize((512, 512))
+mask_image = mask_image.resize((512, 512))
+
+# Prepare the mask (keep as PIL Image)
+mask = prepare_mask(mask_image)
+
+# Provide the prompt and points for drag editing
+prompt = "A cute dog"
+source_points = [[32, 32]]  # Adjusted for 512x512 image
+target_points = [[64, 64]]  # Adjusted for 512x512 image
+
+# Generate the output image
+output_array = pipe(
+    prompt=prompt,
+    image=image,
+    mask_image=mask,
+    source_points=source_points,
+    target_points=target_points
+)
+
+# Convert output array to PIL Image and save
+output_image = array_to_pil(output_array)
 output_image.save("./output.png")
+print("Output image saved as './output.png'")
+
 ```
 
 ### Instaflow Pipeline
@@ -4585,8 +4970,8 @@ image = pipe(
 ```
 
 | ![Gradient](https://github.com/user-attachments/assets/e38ce4d5-1ae6-4df0-ab43-adc1b45716b5) | ![Input](https://github.com/user-attachments/assets/9c95679c-e9d7-4f5a-90d6-560203acd6b3) | ![Output](https://github.com/user-attachments/assets/5313ff64-a0c4-418b-8b55-a38f1a5e7532) |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Gradient                                                                                   | Input                                                                                   | Output                                                                                   |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Gradient                                                                                     | Input                                                                                     | Output                                                                                     |
 
 A colab notebook demonstrating all results can be found [here](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing). Depth Maps have also been added in the same colab.
 
@@ -4633,6 +5018,93 @@ make_image_grid(image, rows=1, cols=len(image))
 # pipe.change_nesting_level(<int>)  # 0, 1, or 2
 # 50+, 100+, and 250+ num_inference_steps are recommended for nesting levels 0, 1, and 2 respectively.
 ```
+
+### Stable Diffusion XL Attentive Eraser Pipeline
+<img src="https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/fenmian.png"  width="600" />
+
+**Stable Diffusion XL Attentive Eraser Pipeline** is an advanced object removal pipeline that leverages SDXL for precise content suppression and seamless region completion. This pipeline uses **self-attention redirection guidance** to modify the model’s self-attention mechanism, allowing for effective removal and inpainting across various levels of mask precision, including semantic segmentation masks, bounding boxes, and hand-drawn masks. If you are interested in more detailed information and have any questions, please refer to the [paper](https://arxiv.org/abs/2412.12974) and [official implementation](https://github.com/Anonym0u3/AttentiveEraser).
+
+#### Key features
+
+- **Tuning-Free**: No additional training is required, making it easy to integrate and use.
+- **Flexible Mask Support**: Works with different types of masks for targeted object removal.
+- **High-Quality Results**: Utilizes the inherent generative power of diffusion models for realistic content completion.
+
+#### Usage example
+To use the Stable Diffusion XL Attentive Eraser Pipeline, you can initialize it as follows:
+```py
+import torch
+from diffusers import DDIMScheduler, DiffusionPipeline
+from diffusers.utils import load_image
+import torch.nn.functional as F
+from torchvision.transforms.functional import to_tensor, gaussian_blur
+
+dtype = torch.float16
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu") 
+
+scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    custom_pipeline="pipeline_stable_diffusion_xl_attentive_eraser",
+    scheduler=scheduler,
+    variant="fp16",
+    use_safetensors=True,
+    torch_dtype=dtype,
+).to(device)
+
+
+def preprocess_image(image_path, device):
+    image = to_tensor((load_image(image_path)))
+    image = image.unsqueeze_(0).float() * 2 - 1 # [0,1] --> [-1,1]
+    if image.shape[1] != 3:
+        image = image.expand(-1, 3, -1, -1)
+        image = F.interpolate(image, (1024, 1024))
+        image = image.to(dtype).to(device)
+        return image
+
+def preprocess_mask(mask_path, device):
+    mask = to_tensor((load_image(mask_path, convert_method=lambda img: img.convert('L'))))
+    mask = mask.unsqueeze_(0).float()  # 0 or 1
+    mask = F.interpolate(mask, (1024, 1024))
+    mask = gaussian_blur(mask, kernel_size=(77, 77))
+    mask[mask < 0.1] = 0
+    mask[mask >= 0.1] = 1
+    mask = mask.to(dtype).to(device)
+    return mask
+
+prompt = "" # Set prompt to null
+seed=123 
+generator = torch.Generator(device=device).manual_seed(seed)
+source_image_path = "https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/an1024.png"
+mask_path = "https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/an1024_mask.png"
+source_image = preprocess_image(source_image_path, device)
+mask = preprocess_mask(mask_path, device)
+
+image = pipeline(
+    prompt=prompt, 
+    image=source_image,
+    mask_image=mask,
+    height=1024,
+    width=1024,
+    AAS=True, # enable AAS
+    strength=0.8, # inpainting strength
+    rm_guidance_scale=9, # removal guidance scale
+    ss_steps = 9, # similarity suppression steps
+    ss_scale = 0.3, # similarity suppression scale
+    AAS_start_step=0, # AAS start step
+    AAS_start_layer=34, # AAS start layer
+    AAS_end_layer=70, # AAS end layer
+    num_inference_steps=50, # number of inference steps # AAS_end_step = int(strength*num_inference_steps)
+    generator=generator,
+    guidance_scale=1,
+).images[0]
+image.save('./removed_img.png')
+print("Object removal completed")
+```
+
+| Source Image                                                                                   | Mask                                                                                        | Output                                                                                              |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| ![Source Image](https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/an1024.png) | ![Mask](https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/an1024_mask.png) | ![Output](https://raw.githubusercontent.com/Anonym0u3/Images/refs/heads/main/AE_step40_layer34.png) |
 
 # Perturbed-Attention Guidance
 
@@ -4801,3 +5273,39 @@ with torch.no_grad():
 
 In the folder examples/pixart there is also a script that can be used to train new models.
 Please check the script `train_controlnet_hf_diffusers.sh` on how to start the training.
+
+# CogVideoX DDIM Inversion Pipeline
+
+This implementation performs DDIM inversion on the video based on CogVideoX and uses guided attention to reconstruct or edit the inversion latents.
+
+## Example Usage
+
+```python
+import torch
+
+from examples.community.cogvideox_ddim_inversion import CogVideoXPipelineForDDIMInversion
+
+
+# Load pretrained pipeline
+pipeline = CogVideoXPipelineForDDIMInversion.from_pretrained(
+    "THUDM/CogVideoX1.5-5B",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+# Run DDIM inversion, and the videos will be generated in the output_path
+output = pipeline_for_inversion(
+    prompt="prompt that describes the edited video",
+    video_path="path/to/input.mp4",
+    guidance_scale=6.0,
+    num_inference_steps=50,
+    skip_frames_start=0,
+    skip_frames_end=0,
+    frame_sample_step=None,
+    max_num_frames=81,
+    width=720,
+    height=480,
+    seed=42,
+)
+pipeline.export_latents_to_video(output.inverse_latents[-1], "path/to/inverse_video.mp4", fps=8)
+pipeline.export_latents_to_video(output.recon_latents[-1], "path/to/recon_video.mp4", fps=8)
+```

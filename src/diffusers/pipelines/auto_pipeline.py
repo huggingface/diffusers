@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
+from .cogview4 import CogView4Pipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -32,6 +33,10 @@ from .controlnet import (
     StableDiffusionXLControlNetUnionImg2ImgPipeline,
     StableDiffusionXLControlNetUnionInpaintPipeline,
     StableDiffusionXLControlNetUnionPipeline,
+)
+from .controlnet_sd3 import (
+    StableDiffusion3ControlNetInpaintingPipeline,
+    StableDiffusion3ControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .flux import (
@@ -64,10 +69,12 @@ from .kandinsky2_2 import (
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
-from .lumina import LuminaText2ImgPipeline
+from .lumina import LuminaPipeline
+from .lumina2 import Lumina2Pipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
+    SanaPAGPipeline,
     StableDiffusion3PAGImg2ImgPipeline,
     StableDiffusion3PAGPipeline,
     StableDiffusionControlNetPAGInpaintPipeline,
@@ -82,6 +89,7 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .sana import SanaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
@@ -116,11 +124,14 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
         ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionPipeline),
+        ("stable-diffusion-3-controlnet", StableDiffusion3ControlNetPipeline),
         ("wuerstchen", WuerstchenCombinedPipeline),
         ("cascade", StableCascadeCombinedPipeline),
         ("lcm", LatentConsistencyModelPipeline),
         ("pixart-alpha", PixArtAlphaPipeline),
         ("pixart-sigma", PixArtSigmaPipeline),
+        ("sana", SanaPipeline),
+        ("sana-pag", SanaPAGPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGPipeline),
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGPipeline),
@@ -130,8 +141,10 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux", FluxPipeline),
         ("flux-control", FluxControlPipeline),
         ("flux-controlnet", FluxControlNetPipeline),
-        ("lumina", LuminaText2ImgPipeline),
+        ("lumina", LuminaPipeline),
+        ("lumina2", Lumina2Pipeline),
         ("cogview3", CogView3PlusPipeline),
+        ("cogview4", CogView4Pipeline),
     ]
 )
 
@@ -170,6 +183,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionInpaintPipeline),
+        ("stable-diffusion-3-controlnet", StableDiffusion3ControlNetInpaintingPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
         ("flux", FluxInpaintPipeline),
         ("flux-controlnet", FluxControlNetInpaintPipeline),
@@ -293,7 +307,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -385,7 +399,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         ```py
         >>> from diffusers import AutoPipelineForText2Image
 
-        >>> pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt).images[0]
         ```
         """
@@ -448,7 +462,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 
         >>> pipe_i2i = AutoPipelineForImage2Image.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", requires_safety_checker=False
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", requires_safety_checker=False
         ... )
 
         >>> pipe_t2i = AutoPipelineForText2Image.from_pipe(pipe_i2i)
@@ -589,7 +603,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -681,7 +695,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         ```py
         >>> from diffusers import AutoPipelineForImage2Image
 
-        >>> pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = AutoPipelineForImage2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt, image).images[0]
         ```
         """
@@ -756,7 +770,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         >>> from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 
         >>> pipe_t2i = AutoPipelineForText2Image.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", requires_safety_checker=False
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", requires_safety_checker=False
         ... )
 
         >>> pipe_i2i = AutoPipelineForImage2Image.from_pipe(pipe_t2i)
@@ -900,7 +914,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -992,7 +1006,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         ```py
         >>> from diffusers import AutoPipelineForInpainting
 
-        >>> pipeline = AutoPipelineForInpainting.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> image = pipeline(prompt, image=init_image, mask_image=mask_image).images[0]
         ```
         """

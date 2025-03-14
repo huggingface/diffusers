@@ -23,10 +23,11 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoSDPipeline, UNet3DConditionModel
 from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     load_numpy,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -173,22 +174,30 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin,
     def test_num_images_per_prompt(self):
         pass
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "num_images_per_prompt": 1,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
 
 @slow
 @skip_mps
-@require_torch_gpu
+@require_torch_accelerator
 class TextToVideoSDPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_two_step_model(self):
         expected_video = load_numpy(

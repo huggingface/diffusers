@@ -22,8 +22,9 @@ from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -52,6 +53,8 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
     test_xformers_attention = False
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -254,6 +257,36 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 "Attention slicing should not affect the inference results",
             )
 
+    def test_vae_tiling(self, expected_diff_max: float = 0.2):
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe.to("cpu")
+        pipe.set_progress_bar_config(disable=None)
+
+        # Without tiling
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["height"] = inputs["width"] = 128
+        output_without_tiling = pipe(**inputs)[0]
+
+        # With tiling
+        pipe.vae.enable_tiling(
+            tile_sample_min_height=96,
+            tile_sample_min_width=96,
+            tile_sample_stride_height=64,
+            tile_sample_stride_width=64,
+        )
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["height"] = inputs["width"] = 128
+        output_with_tiling = pipe(**inputs)[0]
+
+        self.assertLess(
+            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
+            expected_diff_max,
+            "VAE tiling should not affect the inference results",
+        )
+
     # TODO(aryan): Create a dummy gemma model with smol vocab size
     @unittest.skip(
         "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
@@ -273,19 +306,19 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class SanaPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_sana_1024(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -293,7 +326,7 @@ class SanaPipelineIntegrationTests(unittest.TestCase):
         pipe = SanaPipeline.from_pretrained(
             "Efficient-Large-Model/Sana_1600M_1024px_diffusers", torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         image = pipe(
             prompt=self.prompt,
@@ -319,7 +352,7 @@ class SanaPipelineIntegrationTests(unittest.TestCase):
         pipe = SanaPipeline.from_pretrained(
             "Efficient-Large-Model/Sana_1600M_512px_diffusers", torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         image = pipe(
             prompt=self.prompt,

@@ -39,7 +39,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_numpy,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -189,6 +189,13 @@ class ControlNetImg2ImgPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
 
 class StableDiffusionMultiControlNetPipelineFastTests(
     IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
@@ -197,6 +204,8 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     image_params = frozenset([])  # TO_DO: add image_params once refactored VaeImageProcessor.preprocess
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -389,9 +398,16 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             except NotImplementedError:
                 pass
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
@@ -409,7 +425,7 @@ class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)

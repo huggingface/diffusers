@@ -21,8 +21,16 @@ from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import UVit2DModel, VQModel
 from ...schedulers import AmusedScheduler
-from ...utils import replace_example_docstring
+from ...utils import is_torch_xla_available, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 
 EXAMPLE_DOC_STRING = """
@@ -89,7 +97,9 @@ class AmusedInpaintPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = 2 ** (len(self.vqvae.config.block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vqvae.config.block_out_channels) - 1) if getattr(self, "vqvae", None) else 8
+        )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_normalize=False)
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor,
@@ -353,6 +363,9 @@ class AmusedInpaintPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, timestep, latents)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if output_type == "latent":
             output = latents

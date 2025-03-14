@@ -19,15 +19,31 @@ from typing import Callable, List, Optional, Union
 import torch
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 from k_diffusion.sampling import BrownianTreeNoiseSampler, get_sigmas_karras
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPTokenizerFast,
+)
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import (
+    StableDiffusionLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import LMSDiscreteScheduler
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...schedulers import KarrasDiffusionSchedulers, LMSDiscreteScheduler
+from ...utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from ..stable_diffusion import StableDiffusionPipelineOutput
+from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -83,7 +99,8 @@ class StableDiffusionKDiffusionPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+            Please, refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            details.
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -94,13 +111,13 @@ class StableDiffusionKDiffusionPipeline(
 
     def __init__(
         self,
-        vae,
-        text_encoder,
-        tokenizer,
-        unet,
-        scheduler,
-        safety_checker,
-        feature_extractor,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: Union[CLIPTokenizer, CLIPTokenizerFast],
+        unet: UNet2DConditionModel,
+        scheduler: KarrasDiffusionSchedulers,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -124,7 +141,7 @@ class StableDiffusionKDiffusionPipeline(
             feature_extractor=feature_extractor,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)

@@ -89,7 +89,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -200,7 +200,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _optional_components = []
-    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "control_image", "mask", "masked_image_latents"]
 
     def __init__(
         self,
@@ -230,15 +230,14 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             controlnet=controlnet,
         )
 
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+        latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor * 2,
-            vae_latent_channels=self.vae.config.latent_channels,
+            vae_latent_channels=latent_channels,
             do_normalize=False,
             do_binarize=True,
             do_convert_grayscale=True,
@@ -931,8 +930,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         if isinstance(self.controlnet, FluxControlNetModel):
             control_image = self.prepare_image(
                 image=control_image,
-                width=height,
-                height=width,
+                width=width,
+                height=height,
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
@@ -1017,10 +1016,10 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         )
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -1179,6 +1178,9 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    control_image = callback_outputs.pop("control_image", control_image)
+                    mask = callback_outputs.pop("mask", mask)
+                    masked_image_latents = callback_outputs.pop("masked_image_latents", masked_image_latents)
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()

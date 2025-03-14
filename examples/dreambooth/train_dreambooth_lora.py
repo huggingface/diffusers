@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,7 +54,11 @@ from diffusers import (
 )
 from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params
+from diffusers.training_utils import (
+    _set_state_dict_into_text_encoder,
+    cast_training_params,
+    free_memory,
+)
 from diffusers.utils import (
     check_min_version,
     convert_state_dict_to_diffusers,
@@ -146,19 +150,19 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
 
     if args.validation_images is None:
         images = []
         for _ in range(args.num_validation_images):
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast(accelerator.device.type):
                 image = pipeline(**pipeline_args, generator=generator).images[0]
                 images.append(image)
     else:
         images = []
         for image in args.validation_images:
             image = Image.open(image)
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast(accelerator.device.type):
                 image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
             images.append(image)
 
@@ -177,7 +181,7 @@ def log_validation(
             )
 
     del pipeline
-    torch.cuda.empty_cache()
+    free_memory()
 
     return images
 
@@ -793,7 +797,7 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            torch_dtype = torch.float16 if accelerator.device.type in ("cuda", "xpu") else torch.float32
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
             elif args.prior_generation_precision == "fp16":
@@ -829,8 +833,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1085,7 +1088,7 @@ def main(args):
         tokenizer = None
 
         gc.collect()
-        torch.cuda.empty_cache()
+        free_memory()
     else:
         pre_computed_encoder_hidden_states = None
         validation_prompt_encoder_hidden_states = None
@@ -1116,17 +1119,22 @@ def main(args):
     )
 
     # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
+        )
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
@@ -1143,8 +1151,15 @@ def main(args):
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
+    if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+        if num_training_steps_for_scheduler != args.max_train_steps:
+            logger.warning(
+                f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
+                f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
+                f"This inconsistency may result in the learning rate scheduler not functioning properly."
+            )
+
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 

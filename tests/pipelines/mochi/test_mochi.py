@@ -17,15 +17,18 @@ import inspect
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, MochiPipeline, MochiTransformer3DModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
+    nightly,
     numpy_cosine_similarity_distance,
+    require_big_gpu_with_torch_cuda,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -53,6 +56,8 @@ class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
     test_xformers_attention = False
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -260,26 +265,28 @@ class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
 
-@slow
+@nightly
 @require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class MochiPipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_mochi(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         videos = pipe(
@@ -293,7 +300,7 @@ class MochiPipelineIntegrationTests(unittest.TestCase):
         ).frames
 
         video = videos[0]
-        expected_video = torch.randn(1, 16, 480, 848, 3).numpy()
+        expected_video = torch.randn(1, 19, 480, 848, 3).numpy()
 
         max_diff = numpy_cosine_similarity_distance(video, expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video}"

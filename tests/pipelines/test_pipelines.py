@@ -66,6 +66,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     get_python_version,
@@ -75,9 +76,11 @@ from diffusers.utils.testing_utils import (
     nightly,
     require_compel,
     require_flax,
+    require_hf_hub_version_greater,
     require_onnxruntime,
     require_torch_2,
-    require_torch_gpu,
+    require_torch_accelerator,
+    require_transformers_version_greater,
     run_test_in_subprocess,
     slow,
     torch_device,
@@ -981,6 +984,18 @@ class DownloadTests(unittest.TestCase):
             assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
             assert len(files) == 14
 
+    def test_download_dduf_with_custom_pipeline_raises_error(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.download(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", custom_pipeline="my_pipeline"
+            )
+
+    def test_download_dduf_with_connected_pipeline_raises_error(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.download(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
+            )
+
     def test_get_pipeline_class_from_flax(self):
         flax_config = {"_class_name": "FlaxStableDiffusionPipeline"}
         config = {"_class_name": "StableDiffusionPipeline"}
@@ -1136,7 +1151,7 @@ class CustomPipelineTests(unittest.TestCase):
         assert conf_1 == conf_2
 
     @slow
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_download_from_git(self):
         # Because adaptive_avg_pool2d_backward_cuda
         # does not have a deterministic implementation.
@@ -1350,7 +1365,7 @@ class PipelineFastTests(unittest.TestCase):
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 64, 64, 3)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_pipe_false_offload_warn(self):
         unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -1368,11 +1383,11 @@ class PipelineFastTests(unittest.TestCase):
             feature_extractor=self.dummy_extractor,
         )
 
-        sd.enable_model_cpu_offload()
+        sd.enable_model_cpu_offload(device=torch_device)
 
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         with CaptureLogger(logger) as cap_logger:
-            sd.to("cuda")
+            sd.to(torch_device)
 
         assert "It is strongly recommended against doing so" in str(cap_logger)
 
@@ -1802,6 +1817,55 @@ class PipelineFastTests(unittest.TestCase):
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
 
+    @parameterized.expand([torch.float32, torch.float16])
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_load_dduf_from_hub(self, dtype):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir, torch_dtype=dtype
+            ).to(torch_device)
+            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
+            pipe.save_pretrained(tmpdir)
+            loaded_pipe = DiffusionPipeline.from_pretrained(tmpdir, torch_dtype=dtype).to(torch_device)
+
+            out_2 = loaded_pipe(
+                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
+            ).images
+
+        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_load_dduf_from_hub_local_files_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
+            ).to(torch_device)
+            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
+            local_files_pipe = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir, local_files_only=True
+            ).to(torch_device)
+            out_2 = local_files_pipe(
+                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
+            ).images
+
+        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
+
+    def test_dduf_raises_error_with_custom_pipeline(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", custom_pipeline="my_pipeline"
+            )
+
+    def test_dduf_raises_error_with_connected_pipeline(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
+            )
+
     def test_wrong_model(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         with self.assertRaises(ValueError) as error_context:
@@ -1812,21 +1876,42 @@ class PipelineFastTests(unittest.TestCase):
         assert "is of type" in str(error_context.exception)
         assert "but should be" in str(error_context.exception)
 
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_dduf_load_sharded_checkpoint_diffusion_model(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe = DiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-flux-dev-pipe-sharded-checkpoint-DDUF",
+                dduf_file="tiny-flux-dev-pipe-sharded-checkpoint.dduf",
+                cache_dir=tmpdir,
+            ).to(torch_device)
+
+            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
+            pipe.save_pretrained(tmpdir)
+            loaded_pipe = DiffusionPipeline.from_pretrained(tmpdir).to(torch_device)
+
+            out_2 = loaded_pipe(
+                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
+            ).images
+
+        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_smart_download(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
@@ -2018,7 +2103,7 @@ class PipelineSlowTests(unittest.TestCase):
 
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
         pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.enable_attention_slicing()
 
         compel = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)
@@ -2045,19 +2130,19 @@ class PipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_ddpm_ddim_equality_batched(self):
         seed = 0

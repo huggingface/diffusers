@@ -18,10 +18,17 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL.Image
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+    T5EncoderModel,
+    T5TokenizerFast,
+)
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -74,7 +81,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -156,7 +163,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
+class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FluxIPAdapterMixin):
     r"""
     The Flux pipeline for image inpainting.
 
@@ -183,8 +190,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
-    _optional_components = []
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->transformer->vae"
+    _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
@@ -196,6 +203,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
         transformer: FluxTransformer2DModel,
+        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: CLIPImageProcessor = None,
     ):
         super().__init__()
 
@@ -207,16 +216,17 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             tokenizer_2=tokenizer_2,
             transformer=transformer,
             scheduler=scheduler,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
         )
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+        latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor * 2,
-            vae_latent_channels=self.vae.config.latent_channels,
+            vae_latent_channels=latent_channels,
             do_normalize=False,
             do_binarize=True,
             do_convert_grayscale=True,
@@ -401,6 +411,55 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        image_embeds = self.image_encoder(image).image_embeds
+        image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        return image_embeds
+
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
+    ):
+        image_embeds = []
+        if ip_adapter_image_embeds is None:
+            if not isinstance(ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image]
+
+            if len(ip_adapter_image) != self.transformer.encoder_hid_proj.num_ip_adapters:
+                raise ValueError(
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
+                )
+
+            for single_ip_adapter_image in ip_adapter_image:
+                single_image_embeds = self.encode_image(single_ip_adapter_image, device, 1)
+                image_embeds.append(single_image_embeds[None, :])
+        else:
+            if not isinstance(ip_adapter_image_embeds, list):
+                ip_adapter_image_embeds = [ip_adapter_image_embeds]
+
+            if len(ip_adapter_image_embeds) != self.transformer.encoder_hid_proj.num_ip_adapters:
+                raise ValueError(
+                    f"`ip_adapter_image_embeds` must have same length as the number of IP Adapters. Got {len(ip_adapter_image_embeds)} image embeds and {self.transformer.encoder_hid_proj.num_ip_adapters} IP Adapters."
+                )
+
+            for single_image_embeds in ip_adapter_image_embeds:
+                image_embeds.append(single_image_embeds)
+
+        ip_adapter_image_embeds = []
+        for single_image_embeds in image_embeds:
+            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
+            single_image_embeds = single_image_embeds.to(device=device)
+            ip_adapter_image_embeds.append(single_image_embeds)
+
+        return ip_adapter_image_embeds
+
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_inpaint.StableDiffusion3InpaintPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
@@ -438,8 +497,12 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         height,
         width,
         output_type,
+        negative_prompt=None,
+        negative_prompt_2=None,
         prompt_embeds=None,
+        negative_prompt_embeds=None,
         pooled_prompt_embeds=None,
+        negative_pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         padding_mask_crop=None,
         max_sequence_length=None,
@@ -478,9 +541,32 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
             raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
 
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+        elif negative_prompt_2 is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt_2`: {negative_prompt_2} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
+            )
+        if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
         if padding_mask_crop is not None:
@@ -685,6 +771,9 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Union[str, List[str]] = None,
+        negative_prompt_2: Optional[Union[str, List[str]]] = None,
+        true_cfg_scale: float = 1.0,
         image: PipelineImageInput = None,
         mask_image: PipelineImageInput = None,
         masked_image_latents: PipelineImageInput = None,
@@ -700,6 +789,12 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
+        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
+        negative_ip_adapter_image: Optional[PipelineImageInput] = None,
+        negative_ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -778,6 +873,17 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, pooled text embeddings will be generated from `prompt` input argument.
+            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
+                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
+            negative_ip_adapter_image:
+                (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            negative_ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
+                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -819,8 +925,12 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             height,
             width,
             output_type=output_type,
+            negative_prompt=negative_prompt,
+            negative_prompt_2=negative_prompt_2,
             prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             padding_mask_crop=padding_mask_crop,
             max_sequence_length=max_sequence_length,
@@ -857,6 +967,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
+        do_true_cfg = true_cfg_scale > 1 and negative_prompt is not None
         (
             prompt_embeds,
             pooled_prompt_embeds,
@@ -871,16 +982,31 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,
         )
+        if do_true_cfg:
+            (
+                negative_prompt_embeds,
+                negative_pooled_prompt_embeds,
+                _,
+            ) = self.encode_prompt(
+                prompt=negative_prompt,
+                prompt_2=negative_prompt_2,
+                prompt_embeds=negative_prompt_embeds,
+                pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                lora_scale=lora_scale,
+            )
 
         # 4.Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -947,12 +1073,43 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             guidance = None
 
+        if (ip_adapter_image is not None or ip_adapter_image_embeds is not None) and (
+            negative_ip_adapter_image is None and negative_ip_adapter_image_embeds is None
+        ):
+            negative_ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
+        elif (ip_adapter_image is None and ip_adapter_image_embeds is None) and (
+            negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None
+        ):
+            ip_adapter_image = np.zeros((width, height, 3), dtype=np.uint8)
+
+        if self.joint_attention_kwargs is None:
+            self._joint_attention_kwargs = {}
+
+        image_embeds = None
+        negative_image_embeds = None
+        if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                device,
+                batch_size * num_images_per_prompt,
+            )
+        if negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None:
+            negative_image_embeds = self.prepare_ip_adapter_image_embeds(
+                negative_ip_adapter_image,
+                negative_ip_adapter_image_embeds,
+                device,
+                batch_size * num_images_per_prompt,
+            )
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
+                if image_embeds is not None:
+                    self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
                 noise_pred = self.transformer(
@@ -966,6 +1123,22 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
+
+                if do_true_cfg:
+                    if negative_image_embeds is not None:
+                        self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
+                    neg_noise_pred = self.transformer(
+                        hidden_states=latents,
+                        timestep=timestep / 1000,
+                        guidance=guidance,
+                        pooled_projections=negative_pooled_prompt_embeds,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
+                    noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
