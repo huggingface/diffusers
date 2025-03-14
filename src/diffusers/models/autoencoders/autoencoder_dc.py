@@ -190,7 +190,7 @@ class DCUpBlock2d(nn.Module):
             x = F.pixel_shuffle(x, self.factor)
 
         if self.shortcut:
-            y = hidden_states.repeat_interleave(self.repeats, dim=1)
+            y = hidden_states.repeat_interleave(self.repeats, dim=1, output_size=hidden_states.shape[1] * self.repeats)
             y = F.pixel_shuffle(y, self.factor)
             hidden_states = x + y
         else:
@@ -361,7 +361,9 @@ class Decoder(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.in_shortcut:
-            x = hidden_states.repeat_interleave(self.in_shortcut_repeats, dim=1)
+            x = hidden_states.repeat_interleave(
+                self.in_shortcut_repeats, dim=1, output_size=hidden_states.shape[1] * self.in_shortcut_repeats
+            )
             hidden_states = self.conv_in(hidden_states) + x
         else:
             hidden_states = self.conv_in(hidden_states)

@@ -687,7 +687,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
-        emb = emb.repeat_interleave(sample_num_frames, dim=0)
+        emb = emb.repeat_interleave(sample_num_frames, dim=0, output_size=emb.shape[0] * sample_num_frames)
 
         # 2. pre-process
         batch_size, channels, num_frames, height, width = sample.shape

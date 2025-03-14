@@ -426,7 +426,9 @@ class FourierFeatures(nn.Module):
         w = w.repeat(num_channels)[None, :, None, None, None]  # [1, num_channels * num_freqs, 1, 1, 1]
 
         # Interleaved repeat of input channels to match w
-        h = inputs.repeat_interleave(num_freqs, dim=1)  # [B, C * num_freqs, T, H, W]
+        h = inputs.repeat_interleave(
+            num_freqs, dim=1, output_size=inputs.shape[1] * num_freqs
+        )  # [B, C * num_freqs, T, H, W]
         # Scale channels by frequency.
         h = w * h
 

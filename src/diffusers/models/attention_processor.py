@@ -741,10 +741,14 @@ class Attention(nn.Module):
 
         if out_dim == 3:
             if attention_mask.shape[0] < batch_size * head_size:
-                attention_mask = attention_mask.repeat_interleave(head_size, dim=0)
+                attention_mask = attention_mask.repeat_interleave(
+                    head_size, dim=0, output_size=attention_mask.shape[0] * head_size
+                )
         elif out_dim == 4:
             attention_mask = attention_mask.unsqueeze(1)
-            attention_mask = attention_mask.repeat_interleave(head_size, dim=1)
+            attention_mask = attention_mask.repeat_interleave(
+                head_size, dim=1, output_size=attention_mask.shape[1] * head_size
+            )
 
         return attention_mask
 
@@ -3704,8 +3708,10 @@ class StableAudioAttnProcessor2_0:
         if kv_heads != attn.heads:
             # if GQA or MQA, repeat the key/value heads to reach the number of query heads.
             heads_per_kv_head = attn.heads // kv_heads
-            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1)
-            value = torch.repeat_interleave(value, heads_per_kv_head, dim=1)
+            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1, output_size=key.shape[1] * heads_per_kv_head)
+            value = torch.repeat_interleave(
+                value, heads_per_kv_head, dim=1, output_size=value.shape[1] * heads_per_kv_head
+            )
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)

@@ -1961,7 +1961,7 @@ class PeftLoraLoaderMixinTests:
 
         no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
         logger = logging.get_logger("diffusers.loaders.peft")
-        logger.setLevel(logging.INFO)
+        logger.setLevel(logging.WARNING)
 
         with CaptureLogger(logger) as cap_logger:
             pipe.load_lora_weights(no_op_state_dict)
@@ -1981,7 +1981,7 @@ class PeftLoraLoaderMixinTests:
                     prefix = "text_encoder_2"
 
                 logger = logging.get_logger("diffusers.loaders.lora_base")
-                logger.setLevel(logging.INFO)
+                logger.setLevel(logging.WARNING)
 
                 with CaptureLogger(logger) as cap_logger:
                     self.pipeline_class.load_lora_into_text_encoder(

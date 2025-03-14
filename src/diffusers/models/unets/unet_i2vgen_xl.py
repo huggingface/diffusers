@@ -592,7 +592,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 3. time + FPS embeddings.
         emb = t_emb + fps_emb
-        emb = emb.repeat_interleave(repeats=num_frames, dim=0)
+        emb = emb.repeat_interleave(num_frames, dim=0, output_size=emb.shape[0] * num_frames)
 
         # 4. context embeddings.
         # The context embeddings consist of both text embeddings from the input prompt
@@ -620,7 +620,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         image_emb = self.context_embedding(image_embeddings)
         image_emb = image_emb.view(-1, self.config.in_channels, self.config.cross_attention_dim)
         context_emb = torch.cat([context_emb, image_emb], dim=1)
-        context_emb = context_emb.repeat_interleave(repeats=num_frames, dim=0)
+        context_emb = context_emb.repeat_interleave(num_frames, dim=0, output_size=context_emb.shape[0] * num_frames)
 
         image_latents = image_latents.permute(0, 2, 1, 3, 4).reshape(
             image_latents.shape[0] * image_latents.shape[2],

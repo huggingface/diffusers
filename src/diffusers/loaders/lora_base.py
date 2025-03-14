@@ -423,8 +423,12 @@ def _load_lora_into_text_encoder(
         # Unsafe code />
 
     if prefix is not None and not state_dict:
-        logger.info(
-            f"No LoRA keys associated to {text_encoder.__class__.__name__} found with the {prefix=}. This is safe to ignore if LoRA state dict didn't originally have any {text_encoder.__class__.__name__} related params. Open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new"
+        logger.warning(
+            f"No LoRA keys associated to {text_encoder.__class__.__name__} found with the {prefix=}. "
+            "This is safe to ignore if LoRA state dict didn't originally have any "
+            f"{text_encoder.__class__.__name__} related params. You can also try specifying `prefix=None` "
+            "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
+            "https://github.com/huggingface/diffusers/issues/new"
         )
 
 

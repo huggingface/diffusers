@@ -353,7 +353,11 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
             attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
             attention_mask = F.pad(attention_mask, (0, self.additional_embeddings), value=0.0)
             attention_mask = (attention_mask[:, None, :] + self.causal_attention_mask).to(hidden_states.dtype)
-            attention_mask = attention_mask.repeat_interleave(self.config.num_attention_heads, dim=0)
+            attention_mask = attention_mask.repeat_interleave(
+                self.config.num_attention_heads,
+                dim=0,
+                output_size=attention_mask.shape[0] * self.config.num_attention_heads,
+            )
 
         if self.norm_in is not None:
             hidden_states = self.norm_in(hidden_states)

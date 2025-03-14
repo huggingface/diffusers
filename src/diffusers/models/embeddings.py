@@ -139,7 +139,9 @@ def get_3d_sincos_pos_embed(
 
     # 3. Concat
     pos_embed_spatial = pos_embed_spatial[None, :, :]
-    pos_embed_spatial = pos_embed_spatial.repeat_interleave(temporal_size, dim=0)  # [T, H*W, D // 4 * 3]
+    pos_embed_spatial = pos_embed_spatial.repeat_interleave(
+        temporal_size, dim=0, output_size=pos_embed_spatial.shape[0] * temporal_size
+    )  # [T, H*W, D // 4 * 3]
 
     pos_embed_temporal = pos_embed_temporal[:, None, :]
     pos_embed_temporal = pos_embed_temporal.repeat_interleave(
@@ -1152,10 +1154,13 @@ def get_1d_rotary_pos_embed(
         / linear_factor
     )  # [D/2]
     freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
+    is_npu = freqs.device.type == "npu"
+    if is_npu:
+        freqs = freqs.float()
     if use_real and repeat_interleave_real:
         # flux, hunyuan-dit, cogvideox
-        freqs_cos = freqs.cos().repeat_interleave(2, dim=1).float()  # [S, D]
-        freqs_sin = freqs.sin().repeat_interleave(2, dim=1).float()  # [S, D]
+        freqs_cos = freqs.cos().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
+        freqs_sin = freqs.sin().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
         return freqs_cos, freqs_sin
     elif use_real:
         # stable audio, allegro
