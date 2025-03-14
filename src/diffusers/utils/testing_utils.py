@@ -289,9 +289,8 @@ def require_torch_cuda_compatibility(expected_compute_capability):
         if not torch.cuda.is_available():
             return unittest.skip(test_case)
         else:
-            compute_capability = get_torch_cuda_device_capability()
-            current_compute_capability = f"{compute_capability[0]}.{compute_capability[1]}"
-            return unittest.skipUnless(float(current_compute_capability) == float(expected_compute_capability))
+            current_compute_capability = get_torch_cuda_device_capability()
+            return unittest.skipUnless(float(current_compute_capability) == float(expected_compute_capability), "Test not supported for this compute capability.")
 
     return decorator
 
