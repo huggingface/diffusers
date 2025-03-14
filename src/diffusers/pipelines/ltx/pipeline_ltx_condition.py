@@ -401,7 +401,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
-    # Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
