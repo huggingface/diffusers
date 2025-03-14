@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import unittest
 
 import numpy as np
@@ -23,8 +22,6 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanTransformer3DModel, WanVideoToVideoPipeline
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_accelerator,
-    slow,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -146,24 +143,4 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "WanVideoToVideoPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
     )
     def test_save_load_float16(self):
-        pass
-
-
-@slow
-@require_torch_accelerator
-class WanPipelineIntegrationTests(unittest.TestCase):
-    prompt = "A painting of a squirrel eating a burger."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    @unittest.skip("TODO: test needs to be implemented")
-    def test_Wanx(self):
         pass
