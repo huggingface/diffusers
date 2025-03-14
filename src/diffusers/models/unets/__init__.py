@@ -5,6 +5,7 @@ if is_torch_available():
     from .unet_1d import UNet1DModel
     from .unet_2d import UNet2DModel
     from .unet_2d_condition import UNet2DConditionModel
+    from .unet_3d import UNet3DModel
     from .unet_3d_condition import UNet3DConditionModel
     from .unet_i2vgen_xl import I2VGenXLUNet
     from .unet_kandinsky3 import Kandinsky3UNet

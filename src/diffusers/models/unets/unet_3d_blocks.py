@@ -405,6 +405,130 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         return hidden_states
 
 
+class UNetMidBlock3D(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        num_attention_heads: int = 1,
+        output_scale_factor: float = 1.0,
+        use_linear_projection: bool = True,
+        upcast_attention: bool = False,
+    ):
+        super().__init__()
+
+        self.num_attention_heads = num_attention_heads
+        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+
+        # there is always at least one resnet
+        resnets = [
+            ResnetBlock2D(
+                in_channels=in_channels,
+                out_channels=in_channels,
+                temb_channels=temb_channels,
+                eps=resnet_eps,
+                groups=resnet_groups,
+                dropout=dropout,
+                time_embedding_norm=resnet_time_scale_shift,
+                non_linearity=resnet_act_fn,
+                output_scale_factor=output_scale_factor,
+                pre_norm=resnet_pre_norm,
+            )
+        ]
+        temp_convs = [
+            TemporalConvLayer(
+                in_channels,
+                in_channels,
+                dropout=0.1,
+                norm_num_groups=resnet_groups,
+            )
+        ]
+        attentions = []
+        temp_attentions = []
+
+        for _ in range(num_layers):
+            attentions.append(
+                Transformer2DModel(
+                    in_channels // num_attention_heads,
+                    num_attention_heads,
+                    in_channels=in_channels,
+                    num_layers=1,
+                    norm_num_groups=resnet_groups,
+                    use_linear_projection=use_linear_projection,
+                    upcast_attention=upcast_attention,
+                )
+            )
+            temp_attentions.append(
+                TransformerTemporalModel(
+                    in_channels // num_attention_heads,
+                    num_attention_heads,
+                    in_channels=in_channels,
+                    num_layers=1,
+                    norm_num_groups=resnet_groups,
+                )
+            )
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+            temp_convs.append(
+                TemporalConvLayer(
+                    in_channels,
+                    in_channels,
+                    dropout=0.1,
+                    norm_num_groups=resnet_groups,
+                )
+            )
+
+        self.resnets = nn.ModuleList(resnets)
+        self.temp_convs = nn.ModuleList(temp_convs)
+        self.attentions = nn.ModuleList(attentions)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        num_frames: int = 1,
+    ) -> torch.Tensor:
+        hidden_states = self.resnets[0](hidden_states, temb)
+        hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
+        for attn, temp_attn, resnet, temp_conv in zip(
+            self.attentions, self.temp_attentions, self.resnets[1:], self.temp_convs[1:]
+        ):
+            hidden_states = attn(
+                hidden_states,
+                return_dict=False,
+            )[0]
+            hidden_states = temp_attn(
+                hidden_states,
+                num_frames=num_frames,
+                return_dict=False,
+            )[0]
+            hidden_states = resnet(hidden_states, temb)
+            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+
+        return hidden_states
+
+
 class CrossAttnDownBlock3D(nn.Module):
     def __init__(
         self,
