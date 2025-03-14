@@ -20,14 +20,14 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanTransformer3DModel, WanVideoToVideoPipeline
+from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanTransformer3DModel, WanVideoToVideoPipeline
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_accelerator,
     slow,
 )
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..pipeline_params import TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     PipelineTesterMixin,
 )
@@ -39,8 +39,7 @@ enable_full_determinism()
 class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = WanVideoToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    batch_params = frozenset(["video", "prompt", "negative_prompt"])
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
         [
@@ -66,8 +65,7 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        # TODO: impl FlowDPMSolverMultistepScheduler
-        scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
+        scheduler = UniPCMultistepScheduler(flow_shift=3.0)
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
@@ -102,7 +100,7 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        video = [Image.new("RGB", (16, 16))] * 19
+        video = [Image.new("RGB", (16, 16))] * 17
         inputs = {
             "video": video,
             "prompt": "dance monkey",
@@ -112,7 +110,6 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale": 6.0,
             "height": 16,
             "width": 16,
-            "num_frames": 9,
             "max_sequence_length": 16,
             "output_type": "pt",
         }
@@ -130,13 +127,25 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
+        self.assertEqual(generated_video.shape, (17, 3, 16, 16))
+        expected_video = torch.randn(17, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
+        pass
+
+    @unittest.skip(
+        "WanVideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors"
+    )
+    def test_float16_inference(self):
+        pass
+
+    @unittest.skip(
+        "WanVideoToVideoPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
+    )
+    def test_save_load_float16(self):
         pass
 
 

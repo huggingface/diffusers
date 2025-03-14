@@ -395,11 +395,13 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        num_frames = (video.size(2) - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.size(1)
+        num_latent_frames = (
+            (video.size(2) - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.size(1)
+        )
         shape = (
             batch_size,
-            num_frames,
             num_channels_latents,
+            num_latent_frames,
             height // self.vae_scale_factor_spatial,
             width // self.vae_scale_factor_spatial,
         )
@@ -412,10 +414,19 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             else:
                 init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator) for vid in video]
 
-            init_latents = torch.cat(init_latents, dim=0).to(dtype).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
+            init_latents = torch.cat(init_latents, dim=0).to(dtype)
+
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).to(device, dtype)
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                device, dtype
+            )
+
+            init_latents = (init_latents - latents_mean) * latents_std
 
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = self.scheduler.scale_noise(init_latents, timestep, noise)
+            latents = self.scheduler.add_noise(init_latents, noise, timestep)
         else:
             latents = latents.to(device)
 
@@ -464,7 +475,6 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         negative_prompt: Union[str, List[str]] = None,
         height: int = 480,
         width: int = 832,
-        num_frames: int = 81,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 5.0,
@@ -605,8 +615,9 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._num_timesteps = len(timesteps)
 
         if latents is None:
-            video = self.video_processor.preprocess_video(video, height=height, width=width)
-            video = video.to(device=device, dtype=prompt_embeds.dtype)
+            video = self.video_processor.preprocess_video(video, height=height, width=width).to(
+                device, dtype=torch.float32
+            )
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
