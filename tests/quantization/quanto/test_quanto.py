@@ -312,7 +312,7 @@ class FluxTransformerInt8WeightsTest(FluxTransformerQuantoMixin, unittest.TestCa
         return {"weights_dtype": "int8"}
 
 
-require_torch_cuda_compatibility(8.0)
+@require_torch_cuda_compatibility(8.0)
 
 
 class FluxTransformerInt4WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
@@ -322,7 +322,7 @@ class FluxTransformerInt4WeightsTest(FluxTransformerQuantoMixin, unittest.TestCa
         return {"weights_dtype": "int4"}
 
 
-require_torch_cuda_compatibility(8.0)
+@require_torch_cuda_compatibility(8.0)
 
 
 class FluxTransformerInt2WeightsTest(FluxTransformerQuantoMixin, unittest.TestCase):
