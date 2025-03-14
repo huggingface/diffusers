@@ -50,8 +50,7 @@ class UNet3DOutput(BaseOutput):
 
 class UNet3DModel(ModelMixin, ConfigMixin):
     r"""
-    A 3D UNet model that takes a noisy sample, and a timestep and returns a sample
-    shaped output.
+    A 3D UNet model that takes a noisy sample, and a timestep and returns a sample shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -289,15 +288,14 @@ class UNet3DModel(ModelMixin, ConfigMixin):
             mid_block_additional_residual: (`torch.Tensor`, *optional*):
                 A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unets.unet_3d_condition.UNet3DOutput`] instead of a plain
-                tuple.
+                Whether or not to return a [`~models.unets.unet_3d_condition.UNet3DOutput`] instead of a plain tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
 
         Returns:
             [`~models.unets.unet_3d_condition.UNet3DOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unets.unet_3d_condition.UNet3DOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is the sample tensor.
+                If `return_dict` is True, an [`~models.unets.unet_3d_condition.UNet3DOutput`] is returned, otherwise a
+                `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
