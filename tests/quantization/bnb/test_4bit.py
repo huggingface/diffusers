@@ -103,13 +103,16 @@ class Base4bitTests(unittest.TestCase):
 
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
-            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/prompt_embeds.pt", torch_device
+            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/prompt_embeds.pt",
+            torch_device,
         )
         pooled_prompt_embeds = load_pt(
-            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/pooled_prompt_embeds.pt", torch_device
+            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/pooled_prompt_embeds.pt",
+            torch_device,
         )
         latent_model_input = load_pt(
-            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/latent_model_input.pt", torch_device
+            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/latent_model_input.pt",
+            torch_device,
         )
 
         input_dict_for_transformer = {
