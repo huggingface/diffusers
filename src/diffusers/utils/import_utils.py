@@ -109,6 +109,7 @@ if _onnx_available:
         "onnxruntime-rocm",
         "onnxruntime-migraphx",
         "onnxruntime-training",
+        "onnxruntime-vitisai",
     )
     _onnxruntime_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
