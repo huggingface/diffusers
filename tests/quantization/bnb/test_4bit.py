@@ -215,7 +215,7 @@ class BnB4BitBasicTests(Base4bitTests):
                     self.assertTrue(module.weight.dtype == torch.uint8)
 
         # test if inference works.
-        with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.no_grad() and torch.amp.autocast(torch_device, dtype=torch.float16):
             input_dict_for_transformer = self.get_dummy_inputs()
             model_inputs = {
                 k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
@@ -389,7 +389,7 @@ class BnB4BitTrainingTests(Base4bitTests):
         model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
 
         # Step 4: Check if the gradient is not None
-        with torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.amp.autocast(torch_device, dtype=torch.float16):
             out = self.model_4bit(**model_inputs)[0]
             out.norm().backward()
 
