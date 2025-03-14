@@ -99,7 +99,7 @@ class KolorsPAGPipelineFastTests(
         )
         torch.manual_seed(0)
         text_encoder = ChatGLMModel.from_pretrained(
-            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.bfloat16
+            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.float32
         )
         tokenizer = ChatGLMTokenizer.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
 
