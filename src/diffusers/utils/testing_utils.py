@@ -322,15 +322,17 @@ def require_torch_multi_gpu(test_case):
 
 def require_torch_multi_accelerator(test_case):
     """
-    Decorator marking a test that requires a multi-accelerator setup (in PyTorch). These tests are skipped on a machine without
-    multiple hardware accelerators.
+    Decorator marking a test that requires a multi-accelerator setup (in PyTorch). These tests are skipped on a machine
+    without multiple hardware accelerators.
     """
     if not is_torch_available():
         return unittest.skip("test requires PyTorch")(test_case)
 
     import torch
 
-    return unittest.skipUnless(torch.cuda.device_count() > 1 or torch.xpu.device_count() > 1, "test requires multiple hardware accelerators")(test_case)
+    return unittest.skipUnless(
+        torch.cuda.device_count() > 1 or torch.xpu.device_count() > 1, "test requires multiple hardware accelerators"
+    )(test_case)
 
 
 def require_torch_accelerator_with_fp16(test_case):
@@ -364,6 +366,31 @@ def require_big_gpu_with_torch_cuda(test_case):
     total_memory = device_properties.total_memory / (1024**3)
     return unittest.skipUnless(
         total_memory >= BIG_GPU_MEMORY, f"test requires a GPU with at least {BIG_GPU_MEMORY} GB memory"
+    )(test_case)
+
+
+def require_big_accelerator(test_case):
+    """
+    Decorator marking a test that requires a bigger hardware accelerator (24GB) for execution. Some example pipelines:
+    Flux, SD3, Cog, etc.
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    if not (torch.cuda.is_available() or torch.xpu.is_available()):
+        return unittest.skip("test requires PyTorch CUDA")(test_case)
+
+    if torch.xpu.is_available():
+        device_properties = torch.xpu.get_device_properties(0)
+    else:
+        device_properties = torch.cuda.get_device_properties(0)
+
+    total_memory = device_properties.total_memory / (1024**3)
+    return unittest.skipUnless(
+        total_memory >= BIG_GPU_MEMORY,
+        f"test requires a hardware accelerator with at least {BIG_GPU_MEMORY} GB memory",
     )(test_case)
 
 
