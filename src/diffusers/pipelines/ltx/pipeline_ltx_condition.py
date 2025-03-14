@@ -21,6 +21,7 @@ import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTXVideo
 from ...models.transformers import LTXVideoTransformer3DModel
@@ -45,12 +46,11 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTXImageToVideoPipeline
+        >>> from diffusers import LTXConditionPipeline
         >>> from diffusers.utils import export_to_video, load_image
 
-        >>> pipe = LTXImageToVideoPipeline.from_pretrained("Lightricks/LTX-Video", torch_dtype=torch.bfloat16)
+        >>> pipe = LTXConditionPipeline.from_pretrained("YiYiXu/ltx-95", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/images/8.png"
         ... )
@@ -405,6 +405,11 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
     def check_inputs(
         self,
         prompt,
+        conditions,
+        image,
+        video,
+        frame_index,
+        strength,
         height,
         width,
         callback_on_step_end_tensor_inputs=None,
@@ -454,6 +459,26 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
                 )
+
+        if conditions is not None and (image is not None or video is not None):
+            raise ValueError("If `conditions` is provided, `image` and `video` must not be provided.")
+
+        if conditions is None and (image is None and video is None):
+            raise ValueError("If `conditions` is not provided, `image` or `video` must be provided.")
+
+        if conditions is None:
+            if isinstance(image, list) and isinstance(frame_index, list) and len(image) != len(frame_index):
+                raise ValueError(
+                    "If `conditions` is not provided, `image` and `frame_index` must be of the same length."
+                )
+            elif isinstance(image, list) and isinstance(strength, list) and len(image) != len(strength):
+                raise ValueError("If `conditions` is not provided, `image` and `strength` must be of the same length.")
+            elif isinstance(video, list) and isinstance(frame_index, list) and len(video) != len(frame_index):
+                raise ValueError(
+                    "If `conditions` is not provided, `video` and `frame_index` must be of the same length."
+                )
+            elif isinstance(video, list) and isinstance(strength, list) and len(video) != len(strength):
+                raise ValueError("If `conditions` is not provided, `video` and `strength` must be of the same length.")
 
     @staticmethod
     def _prepare_video_ids(
@@ -699,7 +724,8 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             patch_size=self.transformer_spatial_patch_size,
             device=device,
         )
-        video_ids_scaled = self._scale_video_ids(
+        conditioning_mask = condition_latent_frames_mask.gather(1, video_ids[:, 0])
+        video_ids = self._scale_video_ids(
             video_ids,
             scale_factor=self.vae_spatial_compression_ratio,
             scale_factor_t=self.vae_temporal_compression_ratio,
@@ -709,11 +735,10 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         latents = self._pack_latents(
             latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
         )
-        conditioning_mask = condition_latent_frames_mask.gather(1, video_ids[:, 0])
 
         if len(extra_conditioning_latents) > 0:
             latents = torch.cat([*extra_conditioning_latents, latents], dim=1)
-            video_ids = torch.cat([*extra_conditioning_video_ids, video_ids_scaled], dim=2)
+            video_ids = torch.cat([*extra_conditioning_video_ids, video_ids], dim=2)
             conditioning_mask = torch.cat([*extra_conditioning_mask, conditioning_mask], dim=1)
 
         return latents, conditioning_mask, video_ids, extra_conditioning_num_latents
@@ -742,7 +767,11 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        conditions: Union[LTXVideoCondition, List[LTXVideoCondition]],
+        conditions: Union[LTXVideoCondition, List[LTXVideoCondition]] = None,
+        image: Union[PipelineImageInput, List[PipelineImageInput]] = None,
+        video: List[PipelineImageInput] = None,
+        frame_index: Union[int, List[int]] = 0,
+        strength: Union[float, List[float]] = 1.0,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
@@ -773,8 +802,19 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         Function invoked when calling the pipeline for generation.
 
         Args:
-            conditions (`List[LTXVideoCondition]`):
-                The list of frame-conditioning items for the video generation.
+            conditions (`List[LTXVideoCondition], *optional*`):
+                The list of frame-conditioning items for the video generation.If not provided, conditions will be
+                created using `image`, `video`, `frame_index` and `strength`.
+            image (`PipelineImageInput` or `List[PipelineImageInput]`, *optional*):
+                The image or images to condition the video generation. If not provided, one has to pass `video` or
+                `conditions`.
+            video (`List[PipelineImageInput]`, *optional*):
+                The video to condition the video generation. If not provided, one has to pass `image` or `conditions`.
+            frame_index (`int` or `List[int]`, *optional*):
+                The frame index or frame indices at which the image or video will conditionally effect the video
+                generation. If not provided, one has to pass `conditions`.
+            strength (`float` or `List[float]`, *optional*):
+                The strength or strengths of the conditioning effect. If not provided, one has to pass `conditions`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -857,6 +897,11 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt=prompt,
+            conditions=conditions,
+            image=image,
+            video=video,
+            frame_index=frame_index,
+            strength=strength,
             height=height,
             width=width,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -877,6 +922,31 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+
+        if conditions is not None:
+            if not isinstance(conditions, list):
+                conditions = [conditions]
+
+            strength = [condition.strength for condition in conditions]
+            frame_index = [condition.frame_index for condition in conditions]
+            image = [condition.image for condition in conditions]
+            video = [condition.video for condition in conditions]
+        else:
+            if not isinstance(image, list):
+                image = [image]
+                num_conditions = 1
+            elif isinstance(image, list):
+                num_conditions = len(image)
+            if not isinstance(video, list):
+                video = [video]
+                num_conditions = 1
+            elif isinstance(video, list):
+                num_conditions = len(video)
+
+            if not isinstance(frame_index, list):
+                frame_index = [frame_index] * num_conditions
+            if not isinstance(strength, list):
+                strength = [strength] * num_conditions
 
         device = self._execution_device
 
@@ -905,17 +975,20 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         vae_dtype = self.vae.dtype
 
         conditioning_tensors = []
-        conditioning_strengths = []
-        conditioning_start_frames = []
-
-        for condition in conditions:
-            if condition.image is not None:
-                condition_tensor = self.video_processor.preprocess(condition.image, height, width).unsqueeze(2)
-            elif condition.video is not None:
-                condition_tensor = self.video_processor.preprocess_video(condition.video, height, width)
+        for condition_image, condition_video, condition_frame_index, condition_strength in zip(
+            image, video, frame_index, strength
+        ):
+            if condition_image is not None:
+                condition_tensor = (
+                    self.video_processor.preprocess(condition_image, height, width)
+                    .unsqueeze(2)
+                    .to(device, dtype=vae_dtype)
+                )
+            elif condition_video is not None:
+                condition_tensor = self.video_processor.preprocess_video(condition_video, height, width)
                 num_frames_input = condition_tensor.size(2)
                 num_frames_output = self.trim_conditioning_sequence(
-                    condition.frame_index, num_frames_input, num_frames
+                    condition_frame_index, num_frames_input, num_frames
                 )
                 condition_tensor = condition_tensor[:, :, :num_frames_output]
                 condition_tensor = condition_tensor.to(device, dtype=vae_dtype)
@@ -928,15 +1001,13 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     f"but got {condition_tensor.size(2)} frames."
                 )
             conditioning_tensors.append(condition_tensor)
-            conditioning_strengths.append(condition.strength)
-            conditioning_start_frames.append(condition.frame_index)
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents, conditioning_mask, video_coords, extra_conditioning_num_latents = self.prepare_latents(
             conditioning_tensors,
-            conditioning_strengths,
-            conditioning_start_frames,
+            strength,
+            frame_index,
             batch_size=batch_size * num_videos_per_prompt,
             num_channels_latents=num_channels_latents,
             height=height,
@@ -1015,9 +1086,10 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                     timestep, _ = timestep.chunk(2)
 
-                denoised_latents = self.scheduler.step(-noise_pred, timestep, latents, return_dict=False)[0]
-                t_eps = 1e-6
-                tokens_to_denoise_mask = (t / 1000 - t_eps < (1.0 - conditioning_mask)).unsqueeze(-1)
+                denoised_latents = self.scheduler.step(
+                    -noise_pred, t, latents, per_token_timesteps=timestep, return_dict=False
+                )[0]
+                tokens_to_denoise_mask = (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1)
                 latents = torch.where(tokens_to_denoise_mask, denoised_latents, latents)
 
                 if callback_on_step_end is not None:

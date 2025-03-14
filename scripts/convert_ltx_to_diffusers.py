@@ -105,6 +105,7 @@ VAE_SPECIAL_KEYS_REMAP = {
     "per_channel_statistics.mean-of-means": remove_keys_,
     "per_channel_statistics.mean-of-stds": remove_keys_,
     "model.diffusion_model": remove_keys_,
+    "decoder.timestep_scale_multiplier": remove_keys_,
 }
 
 
@@ -270,6 +271,7 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "decoder_causal": False,
             "spatial_compression_ratio": 32,
             "temporal_compression_ratio": 8,
+            "timestep_scale_multiplier": 1000.0,
         }
         VAE_KEYS_RENAME_DICT.update(VAE_095_RENAME_DICT)
     return config

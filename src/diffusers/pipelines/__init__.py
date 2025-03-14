@@ -260,7 +260,7 @@ else:
         ]
     )
     _import_structure["latte"] = ["LattePipeline"]
-    _import_structure["ltx"] = ["LTXPipeline", "LTXImageToVideoPipeline"]
+    _import_structure["ltx"] = ["LTXPipeline", "LTXImageToVideoPipeline", "LTXConditionPipeline"]
     _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Text2ImgPipeline"]
     _import_structure["marigold"].extend(
@@ -610,7 +610,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
-        from .ltx import LTXImageToVideoPipeline, LTXPipeline
+        from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXPipeline
         from .lumina import LuminaText2ImgPipeline
         from .lumina2 import Lumina2Text2ImgPipeline
         from .marigold import (
