@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention
@@ -102,7 +102,6 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         patch_size: int = 1,
         patch_size_t: int = 1,
         theta: float = 10000.0,
-        _causal_rope_fix: bool = False,
     ) -> None:
         super().__init__()
 
@@ -113,7 +112,6 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         self.patch_size = patch_size
         self.patch_size_t = patch_size_t
         self.theta = theta
-        self._causal_rope_fix = _causal_rope_fix
 
     def _prepare_video_coords(
         self,
@@ -133,22 +131,10 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         grid = torch.stack(grid, dim=0)
         grid = grid.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
 
-        if isinstance(rope_interpolation_scale, tuple):
-            # This will be deprecated in v0.34.0
+        if rope_interpolation_scale is not None:
             grid[:, 0:1] = grid[:, 0:1] * rope_interpolation_scale[0] * self.patch_size_t / self.base_num_frames
             grid[:, 1:2] = grid[:, 1:2] * rope_interpolation_scale[1] * self.patch_size / self.base_height
             grid[:, 2:3] = grid[:, 2:3] * rope_interpolation_scale[2] * self.patch_size / self.base_width
-        else:
-            if not self._causal_rope_fix:
-                grid[:, 0:1] = grid[:, 0:1] * rope_interpolation_scale[0:1] * self.patch_size_t / self.base_num_frames
-            else:
-                grid[:, 0:1] = (
-                    ((grid[:, 0:1] - 1) * rope_interpolation_scale[0:1] + 1 / frame_rate).clamp(min=0)
-                    * self.patch_size_t
-                    / self.base_num_frames
-                )
-            grid[:, 1:2] = grid[:, 1:2] * rope_interpolation_scale[1:2] * self.patch_size / self.base_height
-            grid[:, 2:3] = grid[:, 2:3] * rope_interpolation_scale[2:3] * self.patch_size / self.base_width
 
         grid = grid.flatten(2, 4).transpose(1, 2)
 
@@ -363,7 +349,6 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
         caption_channels: int = 4096,
         attention_bias: bool = True,
         attention_out_bias: bool = True,
-        _causal_rope_fix: bool = False,
     ) -> None:
         super().__init__()
 
@@ -385,7 +370,6 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
             patch_size=patch_size,
             patch_size_t=patch_size_t,
             theta=10000.0,
-            _causal_rope_fix=_causal_rope_fix,
         )
 
         self.transformer_blocks = nn.ModuleList(
@@ -440,10 +424,6 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
                 logger.warning(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-
-        if not isinstance(rope_interpolation_scale, torch.Tensor):
-            msg = "Passing a tuple for `rope_interpolation_scale` is deprecated and will be removed in v0.34.0."
-            deprecate("rope_interpolation_scale", "0.34.0", msg)
 
         image_rotary_emb = self.rope(
             hidden_states, num_frames, height, width, frame_rate, rope_interpolation_scale, video_coords
