@@ -105,6 +105,7 @@ VAE_SPECIAL_KEYS_REMAP = {
     "per_channel_statistics.mean-of-means": remove_keys_,
     "per_channel_statistics.mean-of-stds": remove_keys_,
     "model.diffusion_model": remove_keys_,
+    "decoder.timestep_scale_multiplier": remove_keys_,
 }
 
 
@@ -268,6 +269,9 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "scaling_factor": 1.0,
             "encoder_causal": True,
             "decoder_causal": False,
+            "spatial_compression_ratio": 32,
+            "temporal_compression_ratio": 8,
+            "timestep_scale_multiplier": 1000.0,
         }
         VAE_KEYS_RENAME_DICT.update(VAE_095_RENAME_DICT)
     return config
@@ -346,14 +350,17 @@ if __name__ == "__main__":
         for param in text_encoder.parameters():
             param.data = param.data.contiguous()
 
-        scheduler = FlowMatchEulerDiscreteScheduler(
-            use_dynamic_shifting=True,
-            base_shift=0.95,
-            max_shift=2.05,
-            base_image_seq_len=1024,
-            max_image_seq_len=4096,
-            shift_terminal=0.1,
-        )
+        if args.version == "0.9.5":
+            scheduler = FlowMatchEulerDiscreteScheduler(use_dynamic_shifting=False)
+        else:
+            scheduler = FlowMatchEulerDiscreteScheduler(
+                use_dynamic_shifting=True,
+                base_shift=0.95,
+                max_shift=2.05,
+                base_image_seq_len=1024,
+                max_image_seq_len=4096,
+                shift_terminal=0.1,
+            )
 
         pipe = LTXPipeline(
             scheduler=scheduler,
