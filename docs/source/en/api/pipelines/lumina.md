@@ -58,10 +58,10 @@ Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fa
 First, load the pipeline:
 
 ```python
-from diffusers import LuminaText2ImgPipeline
+from diffusers import LuminaPipeline
 import torch
 
-pipeline = LuminaText2ImgPipeline.from_pretrained(
+pipeline = LuminaPipeline.from_pretrained(
 	"Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 ```
@@ -86,11 +86,11 @@ image = pipeline(prompt="Upper body of a young woman in a Victorian-era outfit w
 
 Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
 
-Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`LuminaText2ImgPipeline`] for inference with bitsandbytes.
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`LuminaPipeline`] for inference with bitsandbytes.
 
 ```py
 import torch
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, Transformer2DModel, LuminaText2ImgPipeline
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, Transformer2DModel, LuminaPipeline
 from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
 
 quant_config = BitsAndBytesConfig(load_in_8bit=True)
@@ -109,7 +109,7 @@ transformer_8bit = Transformer2DModel.from_pretrained(
     torch_dtype=torch.float16,
 )
 
-pipeline = LuminaText2ImgPipeline.from_pretrained(
+pipeline = LuminaPipeline.from_pretrained(
     "Alpha-VLLM/Lumina-Next-SFT-diffusers",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
@@ -122,9 +122,9 @@ image = pipeline(prompt).images[0]
 image.save("lumina.png")
 ```
 
-## LuminaText2ImgPipeline
+## LuminaPipeline
 
-[[autodoc]] LuminaText2ImgPipeline
+[[autodoc]] LuminaPipeline
 	- all
 	- __call__
 

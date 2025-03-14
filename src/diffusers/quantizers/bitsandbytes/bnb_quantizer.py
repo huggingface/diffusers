@@ -135,6 +135,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
+        **kwargs,
     ):
         import bitsandbytes as bnb
 
@@ -456,6 +457,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
+        **kwargs,
     ):
         import bitsandbytes as bnb
 
