@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_cogview4"] = ["CogView4Pipeline"]
+    _import_structure["pipeline_cogview4_control"] = ["CogView4ControlPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -31,6 +32,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipeline_cogview4 import CogView4Pipeline
+        from .pipeline_cogview4_control import CogView4ControlPipeline
 else:
     import sys
 
