@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_ltx"] = ["LTXPipeline"]
+    _import_structure["pipeline_ltx_condition"] = ["LTXConditionPipeline"]
     _import_structure["pipeline_ltx_image2video"] = ["LTXImageToVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -34,6 +35,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_ltx import LTXPipeline
+        from .pipeline_ltx_condition import LTXConditionPipeline
         from .pipeline_ltx_image2video import LTXImageToVideoPipeline
 
 else:
