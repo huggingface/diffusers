@@ -275,6 +275,7 @@ else:
             "TCDScheduler",
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
+            "VDMScheduler",
             "VQDiffusionScheduler",
         ]
     )
@@ -839,6 +840,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TCDScheduler,
             UnCLIPScheduler,
             UniPCMultistepScheduler,
+            VDMScheduler,
             VQDiffusionScheduler,
         )
         from .training_utils import EMAModel
