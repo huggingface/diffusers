@@ -16,16 +16,15 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PixArtImageProcessor
+from ...image_processor import PipelineImageInput, PixArtImageProcessor
 from ...loaders import SanaLoraLoaderMixin
-from ...models import AutoencoderDC, SanaTransformer2DModel
+from ...models import AutoencoderDC, SanaControlNetModel, SanaTransformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -111,17 +110,30 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import SanaPipeline
+        >>> from diffusers import SanaControlNetModel, SanaControlNetPipeline
+        >>> from diffusers.utils import load_image
 
-        >>> pipe = SanaPipeline.from_pretrained(
-        ...     "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers", torch_dtype=torch.float32
+        >>> controlnet = SanaControlNetModel.from_pretrained(
+        ...     "ishan24/Sana_600M_1024px_ControlNet_diffusers", torch_dtype=torch.bfloat16
+        ... )
+        >>> pipe = SanaControlNetPipeline.from_pretrained(
+        ...     "Efficient-Large-Model/Sana_600M_1024px_diffusers",
+        ...     variant="fp16",
+        ...     torch_dtype=torch.float16,
+        ...     controlnet=controlnet,
         ... )
         >>> pipe.to("cuda")
+        >>> pipe.vae.to(torch.bfloat16)
         >>> pipe.text_encoder.to(torch.bfloat16)
-        >>> pipe.transformer = pipe.transformer.to(torch.bfloat16)
-
-        >>> image = pipe(prompt='a cyberpunk cat with a neon sign that says "Sana"')[0]
-        >>> image[0].save("output.png")
+        >>> cond_image = load_image(
+        ...     "https://huggingface.co/ishan24/Sana_600M_1024px_ControlNet_diffusers/resolve/main/hed_example.png"
+        ... )
+        >>> prompt = 'a cat with a neon sign that says "Sana"'
+        >>> image = pipe(
+        ...     prompt,
+        ...     control_image=cond_image,
+        ... ).images[0]
+        >>> image.save("output.png")
         ```
 """
 
@@ -186,7 +198,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
+class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using [Sana](https://huggingface.co/papers/2410.10629).
     """
@@ -204,12 +216,18 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         text_encoder: Gemma2PreTrainedModel,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
+        controlnet: SanaControlNetModel,
         scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__()
 
         self.register_modules(
-            tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
+            vae=vae,
+            transformer=transformer,
+            controlnet=controlnet,
+            scheduler=scheduler,
         )
 
         self.vae_scale_factor = (
@@ -632,6 +650,40 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         return caption.strip()
 
+    def prepare_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+
+        return image
+
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -681,6 +733,8 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         timesteps: List[int] = None,
         sigmas: List[float] = None,
         guidance_scale: float = 4.5,
+        control_image: PipelineImageInput = None,
+        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         num_images_per_prompt: Optional[int] = 1,
         height: int = 1024,
         width: int = 1024,
@@ -738,6 +792,18 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+                The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
+                width are passed, `image` is resized accordingly. If multiple ControlNets are specified in `init`,
+                images must be passed as a list such that each element of the list can be correctly batched for input
+                to a single ControlNet.
+            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
+                the corresponding scale as a list.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             height (`int`, *optional*, defaults to self.unet.config.sample_size):
@@ -873,12 +939,33 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-        # 4. Prepare timesteps
+        # 4. Prepare control image
+        if isinstance(self.controlnet, SanaControlNetModel):
+            control_image = self.prepare_image(
+                image=control_image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=self.vae.dtype,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                guess_mode=False,
+            )
+            height, width = control_image.shape[-2:]
+
+            control_image = self.vae.encode(control_image).latent
+            control_image = control_image * self.vae.config.scaling_factor
+
+        else:
+            assert False
+
+        # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
 
-        # 5. Prepare latents.
+        # 6. Prepare latents.
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -891,10 +978,10 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             latents,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
@@ -909,6 +996,18 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
 
+                # controlnet(s) inference
+                controlnet_block_samples = self.controlnet(
+                    latent_model_input,
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=prompt_attention_mask,
+                    timestep=timestep,
+                    return_dict=False,
+                    attention_kwargs=self.attention_kwargs,
+                    controlnet_cond=control_image,
+                    conditioning_scale=controlnet_conditioning_scale,
+                )[0]
+
                 # predict noise model_output
                 noise_pred = self.transformer(
                     latent_model_input,
@@ -917,6 +1016,7 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                     timestep=timestep,
                     return_dict=False,
                     attention_kwargs=self.attention_kwargs,
+                    controlnet_block_samples=controlnet_block_samples,
                 )[0]
                 noise_pred = noise_pred.float()
 
@@ -953,18 +1053,10 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             image = latents
         else:
             latents = latents.to(self.vae.dtype)
-            try:
-                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            except torch.cuda.OutOfMemoryError as e:
-                warnings.warn(
-                    f"{e}. \n"
-                    f"Try to use VAE tiling for large images. For example: \n"
-                    f"pipe.vae.enable_tiling(tile_sample_min_width=512, tile_sample_min_height=512)"
-                )
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
 
-        if not output_type == "latent":
             image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
