@@ -33,6 +33,7 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate,
     require_bitsandbytes_version_greater,
+    require_peft_backend,
     require_torch,
     require_torch_gpu,
     require_transformers_version_greater,
@@ -668,6 +669,7 @@ class SlowBnb4BitFluxTests(Base4bitTests):
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3)
 
+    @require_peft_backend
     def test_lora_loading(self):
         self.pipeline_4bit.load_lora_weights(
             hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
