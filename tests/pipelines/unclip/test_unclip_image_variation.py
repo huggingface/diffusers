@@ -407,6 +407,7 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             pipe.super_res_first.config.sample_size,
             pipe.super_res_first.config.sample_size,
         )
+        generator = torch.Generator(device=device).manual_seed(0)
         super_res_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )

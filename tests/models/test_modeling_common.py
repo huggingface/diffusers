@@ -63,7 +63,7 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator,
     require_torch_accelerator_with_training,
     require_torch_gpu,
-    require_torch_multi_gpu,
+    require_torch_multi_accelerator,
     run_test_in_subprocess,
     torch_all_close,
     torch_device,
@@ -1227,7 +1227,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_multi_gpu
+    @require_torch_multi_accelerator
     def test_model_parallelism(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()

@@ -12,7 +12,7 @@ from diffusers.utils.testing_utils import (
     backend_empty_cache,
     nightly,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     slow,
     torch_device,
 )
@@ -204,7 +204,7 @@ class FluxPipelineFastTests(
 
 
 @nightly
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
@@ -292,7 +292,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
 
 
 @slow
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
@@ -304,12 +304,12 @@ class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         if str(device).startswith("mps"):

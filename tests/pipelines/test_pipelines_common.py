@@ -45,6 +45,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     require_accelerate_version_greater,
     require_accelerator,
     require_hf_hub_version_greater,
@@ -1108,13 +1109,13 @@ class PipelineTesterMixin:
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
@@ -1423,7 +1424,6 @@ class PipelineTesterMixin:
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -1438,6 +1438,7 @@ class PipelineTesterMixin:
 
         generator_device = "cpu"
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1456,6 +1457,7 @@ class PipelineTesterMixin:
             )
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
@@ -1550,12 +1552,14 @@ class PipelineTesterMixin:
 
         generator_device = "cpu"
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
@@ -1613,12 +1617,14 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_model_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()

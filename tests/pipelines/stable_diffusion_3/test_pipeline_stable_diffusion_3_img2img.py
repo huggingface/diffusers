@@ -18,7 +18,7 @@ from diffusers.utils.testing_utils import (
     backend_empty_cache,
     floats_tensor,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     slow,
     torch_device,
 )
@@ -166,7 +166,7 @@ class StableDiffusion3Img2ImgPipelineFastTests(PipelineLatentTesterMixin, unitte
 
 
 @slow
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @pytest.mark.big_gpu_with_torch_cuda
 class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Img2ImgPipeline
@@ -202,11 +202,10 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
         }
 
     def test_sd3_img2img_inference(self):
+        torch.manual_seed(0)
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload(device=torch_device)
-
         inputs = self.get_inputs(torch_device)
-
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
         expected_slice = np.array(
