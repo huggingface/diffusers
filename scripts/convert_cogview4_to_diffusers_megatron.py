@@ -162,7 +162,7 @@ def convert_megatron_transformer_checkpoint_to_diffusers(
     Returns:
         dict: The converted state dictionary compatible with Diffusers.
     """
-    ckpt = torch.load(ckpt_path, map_location="cpu",weights_only=False)
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     mega = ckpt["model"]
 
     new_state_dict = {}
@@ -260,7 +260,7 @@ def convert_cogview4_vae_checkpoint_to_diffusers(ckpt_path, vae_config):
     Returns:
         dict: The converted VAE state dictionary compatible with Diffusers.
     """
-    original_state_dict = torch.load(ckpt_path, map_location="cpu",weights_only=False)["state_dict"]
+    original_state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False)["state_dict"]
     return convert_ldm_vae_checkpoint(original_state_dict, vae_config)
 
 

@@ -50,12 +50,11 @@ EXAMPLE_DOC_STRING = """
         ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         ... )
         >>> prompt = "A bird in space"
-        >>> image = pipe(
-        ...     prompt, control_image=control_image, height=1024, width=1024, guidance_scale=3.5)
-        ... ).images[0]
+        >>> image = pipe(prompt, control_image=control_image, height=1024, width=1024, guidance_scale=3.5).images[0]
         >>> image.save("cogview4-control.png")
         ```
 """
+
 
 # Copied from diffusers.pipelines.cogview4.pipeline_cogview4.calculate_shift
 def calculate_shift(
@@ -101,19 +100,10 @@ def retrieve_timesteps(
         `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
-    accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-    accepts_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-
     if timesteps is not None and sigmas is not None:
-        if not accepts_timesteps and not accepts_sigmas:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep or sigma schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, sigmas=sigmas, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    elif timesteps is not None and sigmas is None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -122,8 +112,9 @@ def retrieve_timesteps(
         scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
-    elif timesteps is None and sigmas is not None:
-        if not accepts_sigmas:
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
                 f" sigmas schedules. Please check whether you are using the correct scheduler."
@@ -182,7 +173,6 @@ class CogView4ControlPipeline(DiffusionPipeline):
     def _get_glm_embeds(
         self,
         prompt: Union[str, List[str]] = None,
-        num_images_per_prompt: int = 1,
         max_sequence_length: int = 1024,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -191,7 +181,6 @@ class CogView4ControlPipeline(DiffusionPipeline):
         dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
 
         text_inputs = self.tokenizer(
             prompt,
@@ -224,9 +213,6 @@ class CogView4ControlPipeline(DiffusionPipeline):
         ).hidden_states[-2]
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         return prompt_embeds
 
     # Copied from diffusers.pipelines.cogview4.pipeline_cogview4.CogView4Pipeline.encode_prompt
@@ -277,8 +263,13 @@ class CogView4ControlPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+
         if prompt_embeds is None:
-            prompt_embeds = self._get_glm_embeds(prompt, num_images_per_prompt, max_sequence_length, device, dtype)
+            prompt_embeds = self._get_glm_embeds(prompt, max_sequence_length, device, dtype)
+
+        seq_len = prompt_embeds.size(1)
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
@@ -296,9 +287,11 @@ class CogView4ControlPipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds = self._get_glm_embeds(
-                negative_prompt, num_images_per_prompt, max_sequence_length, device, dtype
-            )
+            negative_prompt_embeds = self._get_glm_embeds(negative_prompt, max_sequence_length, device, dtype)
+
+            seq_len = negative_prompt_embeds.size(1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         return prompt_embeds, negative_prompt_embeds
 
