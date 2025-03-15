@@ -157,9 +157,6 @@ EXAMPLE_DOC_STRING = """
         >>> from anytext_controlnet import AnyTextControlNetModel
         >>> from diffusers.utils import load_image
 
-        >>> # I chose a font file shared by an HF staff:
-        >>> !wget https://huggingface.co/spaces/ysharma/TranslateQuotesInImageForwards/resolve/main/arial-unicode-ms.ttf
-
         >>> anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
         ...                                                             variant="fp16",)
         >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", font_path="arial-unicode-ms.ttf",
