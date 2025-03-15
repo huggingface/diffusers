@@ -29,8 +29,8 @@ from transformers import GlmModel, PreTrainedTokenizerFast
 
 from diffusers import (
     AutoencoderKL,
-    CogView4Pipeline,
     CogView4ControlPipeline,
+    CogView4Pipeline,
     CogView4Transformer2DModel,
     FlowMatchEulerDiscreteScheduler,
 )
