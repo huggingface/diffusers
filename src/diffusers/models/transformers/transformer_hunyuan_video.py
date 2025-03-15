@@ -29,11 +29,14 @@ from ..cache_utils import CacheMixin
 from ..embeddings import (
     CombinedTimestepGuidanceTextProjEmbeddings,
     CombinedTimestepTextProjEmbeddings,
+    PixArtAlphaTextProjection,
+    TimestepEmbedding,
+    Timesteps,
     get_1d_rotary_pos_embed,
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -171,6 +174,84 @@ class HunyuanVideoAdaNorm(nn.Module):
         gate_msa, gate_mlp = temb.chunk(2, dim=1)
         gate_msa, gate_mlp = gate_msa.unsqueeze(1), gate_mlp.unsqueeze(1)
         return gate_msa, gate_mlp
+
+
+class HunyuanVideoTokenReplaceAdaLayerNormZero(nn.Module):
+    def __init__(self, embedding_dim: int, norm_type: str = "layer_norm", bias: bool = True):
+        super().__init__()
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=bias)
+
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+        elif norm_type == "fp32_layer_norm":
+            self.norm = FP32LayerNorm(embedding_dim, elementwise_affine=False, bias=False)
+        else:
+            raise ValueError(
+                f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm', 'fp32_layer_norm'."
+            )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        emb: torch.Tensor,
+        token_replace_emb: torch.Tensor,
+        first_frame_num_tokens: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        emb = self.linear(self.silu(emb))
+        token_replace_emb = self.linear(self.silu(token_replace_emb))
+
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
+        tr_shift_msa, tr_scale_msa, tr_gate_msa, tr_shift_mlp, tr_scale_mlp, tr_gate_mlp = token_replace_emb.chunk(
+            6, dim=1
+        )
+
+        norm_hidden_states = self.norm(hidden_states)
+        hidden_states_zero = (
+            norm_hidden_states[:, :first_frame_num_tokens] * (1 + tr_scale_msa[:, None]) + tr_shift_msa[:, None]
+        )
+        hidden_states_orig = (
+            norm_hidden_states[:, first_frame_num_tokens:] * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        )
+        hidden_states = torch.cat([hidden_states_zero, hidden_states_orig], dim=1)
+
+        return (
+            hidden_states,
+            gate_msa,
+            shift_mlp,
+            scale_mlp,
+            gate_mlp,
+            tr_gate_msa,
+            tr_shift_mlp,
+            tr_scale_mlp,
+            tr_gate_mlp,
+        )
+
+
+class HunyuanVideoTimestepTextProjEmbeddings(nn.Module):
+    def __init__(self, embedding_dim: int, pooled_projection_dim: int, image_condition_type: Optional[str] = None):
+        super().__init__()
+
+        self.image_condition_type = image_condition_type
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
+
+    def forward(self, timestep: torch.Tensor, pooled_projection: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
+        pooled_projections = self.text_embedder(pooled_projection)
+        conditioning = timesteps_emb + pooled_projections
+
+        token_replace_emb = None
+        if self.image_condition_type == "token_replace":
+            token_replace_timestep = torch.zeros_like(timestep)
+            token_replace_proj = self.time_proj(token_replace_timestep)
+            token_replace_emb = self.timestep_embedder(token_replace_proj)
+            token_replace_emb = token_replace_emb + conditioning
+
+        return conditioning, token_replace_emb
 
 
 class HunyuanVideoIndividualTokenRefinerBlock(nn.Module):
@@ -468,6 +549,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
         temb: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # 1. Input normalization
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
@@ -498,6 +580,101 @@ class HunyuanVideoTransformerBlock(nn.Module):
         context_ff_output = self.ff_context(norm_encoder_hidden_states)
 
         hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output
+        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+
+        return hidden_states, encoder_hidden_states
+
+
+class HunyuanVideoTokenReplaceTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        mlp_ratio: float,
+        qk_norm: str = "rms_norm",
+    ) -> None:
+        super().__init__()
+
+        hidden_size = num_attention_heads * attention_head_dim
+
+        self.norm1 = HunyuanVideoTokenReplaceAdaLayerNormZero(hidden_size, norm_type="layer_norm")
+        self.norm1_context = AdaLayerNormZero(hidden_size, norm_type="layer_norm")
+
+        self.attn = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=None,
+            added_kv_proj_dim=hidden_size,
+            dim_head=attention_head_dim,
+            heads=num_attention_heads,
+            out_dim=hidden_size,
+            context_pre_only=False,
+            bias=True,
+            processor=HunyuanVideoAttnProcessor2_0(),
+            qk_norm=qk_norm,
+            eps=1e-6,
+        )
+
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu-approximate")
+
+        self.norm2_context = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.ff_context = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu-approximate")
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        token_replace_emb: torch.Tensor = None,
+        num_tokens: int = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # 1. Input normalization
+        (
+            norm_hidden_states,
+            gate_msa,
+            shift_mlp,
+            scale_mlp,
+            gate_mlp,
+            tr_gate_msa,
+            tr_shift_mlp,
+            tr_scale_mlp,
+            tr_gate_mlp,
+        ) = self.norm1(hidden_states, temb, token_replace_emb, num_tokens)
+        norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
+            encoder_hidden_states, emb=temb
+        )
+
+        # 2. Joint attention
+        attn_output, context_attn_output = self.attn(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            attention_mask=attention_mask,
+            image_rotary_emb=freqs_cis,
+        )
+
+        # 3. Modulation and residual connection
+        hidden_states_zero = hidden_states[:, :num_tokens] + attn_output[:, :num_tokens] * tr_gate_msa
+        hidden_states_orig = hidden_states[:, num_tokens:] + attn_output[:, num_tokens:] * gate_msa
+        hidden_states = torch.cat([hidden_states_zero, hidden_states_orig], dim=1)
+        encoder_hidden_states = encoder_hidden_states + context_attn_output * c_gate_msa.unsqueeze(1)
+
+        norm_hidden_states = self.norm2(hidden_states)
+        norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
+
+        hidden_states_zero = norm_hidden_states[:, :num_tokens] * (1 + tr_scale_mlp[:, None]) + tr_shift_mlp[:, None]
+        hidden_states_orig = norm_hidden_states[:, num_tokens:] * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        hidden_states = torch.cat([hidden_states_zero, hidden_states_orig], dim=1)
+        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+
+        # 4. Feed-forward
+        ff_output = self.ff(norm_hidden_states)
+        context_ff_output = self.ff_context(norm_encoder_hidden_states)
+
+        hidden_states_zero = hidden_states[:, :num_tokens] + ff_output[:, :num_tokens] * tr_gate_mlp
+        hidden_states_orig = hidden_states[:, num_tokens:] + ff_output[:, num_tokens:] * gate_mlp
+        hidden_states = torch.cat([hidden_states_zero, hidden_states_orig], dim=1)
         encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
 
         return hidden_states, encoder_hidden_states
@@ -570,8 +747,10 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         pooled_projection_dim: int = 768,
         rope_theta: float = 256.0,
         rope_axes_dim: Tuple[int] = (16, 56, 56),
+        image_condition_type: Optional[str] = None,
     ) -> None:
         super().__init__()
+        assert image_condition_type is None or image_condition_type in ["latent_concat", "token_replace"]
 
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
@@ -585,20 +764,32 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         if guidance_embeds:
             self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, pooled_projection_dim)
         else:
-            self.time_text_embed = CombinedTimestepTextProjEmbeddings(inner_dim, pooled_projection_dim)
+            self.time_text_embed = HunyuanVideoTimestepTextProjEmbeddings(
+                inner_dim, pooled_projection_dim, image_condition_type
+            )
 
         # 2. RoPE
         self.rope = HunyuanVideoRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
 
         # 3. Dual stream transformer blocks
-        self.transformer_blocks = nn.ModuleList(
-            [
-                HunyuanVideoTransformerBlock(
-                    num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
-                )
-                for _ in range(num_layers)
-            ]
-        )
+        if image_condition_type == "token_replace":
+            self.transformer_blocks = nn.ModuleList(
+                [
+                    HunyuanVideoTokenReplaceTransformerBlock(
+                        num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
+                    )
+                    for _ in range(num_layers)
+                ]
+            )
+        else:
+            self.transformer_blocks = nn.ModuleList(
+                [
+                    HunyuanVideoTransformerBlock(
+                        num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
+                    )
+                    for _ in range(num_layers)
+                ]
+            )
 
         # 4. Single stream transformer blocks
         self.single_transformer_blocks = nn.ModuleList(
@@ -707,6 +898,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         post_patch_num_frames = num_frames // p_t
         post_patch_height = height // p
         post_patch_width = width // p
+        first_frame_num_tokens = 1 * post_patch_height * post_patch_width
 
         # 1. RoPE
         image_rotary_emb = self.rope(hidden_states)
@@ -715,7 +907,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         if self.config.guidance_embeds:
             temb = self.time_text_embed(timestep, guidance, pooled_projections)
         else:
-            temb = self.time_text_embed(timestep, pooled_projections)
+            temb, token_replace_emb = self.time_text_embed(timestep, pooled_projections)
 
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)
@@ -746,6 +938,8 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                     temb,
                     attention_mask,
                     image_rotary_emb,
+                    token_replace_emb,
+                    first_frame_num_tokens,
                 )
 
             for block in self.single_transformer_blocks:
@@ -761,7 +955,13 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         else:
             for block in self.transformer_blocks:
                 hidden_states, encoder_hidden_states = block(
-                    hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    attention_mask,
+                    image_rotary_emb,
+                    token_replace_emb,
+                    first_frame_num_tokens,
                 )
 
             for block in self.single_transformer_blocks:
