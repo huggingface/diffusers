@@ -399,7 +399,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 256,
-    ):
+        image_embed_interleave: int = 2,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if prompt_embeds is None:
             prompt_embeds, prompt_attention_mask = self._get_llama_prompt_embeds(
                 image,
@@ -409,6 +410,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 device=device,
                 dtype=dtype,
                 max_sequence_length=max_sequence_length,
+                image_embed_interleave=image_embed_interleave,
             )
 
         if pooled_prompt_embeds is None:
@@ -483,6 +485,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        image_condition_type: str = "latent_concat",
     ) -> torch.Tensor:
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -503,7 +506,9 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
 
         image_latents = torch.cat(image_latents, dim=0).to(dtype) * self.vae_scaling_factor
-        image_latents = image_latents.repeat(1, 1, num_latent_frames, 1, 1)
+
+        if image_condition_type == "latent_concat":
+            image_latents = image_latents.repeat(1, 1, num_latent_frames, 1, 1)
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -598,6 +603,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         prompt_template: Dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         max_sequence_length: int = 256,
+        image_embed_interleave: Optional[int] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -706,10 +712,18 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             prompt_template,
         )
 
+        image_condition_type = self.transformer.config.image_condition_type
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_pooled_prompt_embeds is not None
         )
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+        image_embed_interleave = (
+            image_embed_interleave
+            if image_embed_interleave is not None
+            else (
+                2 if image_condition_type == "latent_concat" else 4 if image_condition_type == "token_replace" else 1
+            )
+        )
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
@@ -729,7 +743,12 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         # 3. Prepare latent variables
         vae_dtype = self.vae.dtype
         image_tensor = self.video_processor.preprocess(image, height, width).to(device, vae_dtype)
-        num_channels_latents = (self.transformer.config.in_channels - 1) // 2
+
+        if image_condition_type == "latent_concat":
+            num_channels_latents = (self.transformer.config.in_channels - 1) // 2
+        elif image_condition_type == "token_replace":
+            num_channels_latents = self.transformer.config.in_channels
+
         latents, image_latents = self.prepare_latents(
             image_tensor,
             batch_size * num_videos_per_prompt,
@@ -741,10 +760,12 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             device,
             generator,
             latents,
+            image_condition_type,
         )
-        image_latents[:, :, 1:] = 0
-        mask = image_latents.new_ones(image_latents.shape[0], 1, *image_latents.shape[2:])
-        mask[:, :, 1:] = 0
+        if image_condition_type == "latent_concat":
+            image_latents[:, :, 1:] = 0
+            mask = image_latents.new_ones(image_latents.shape[0], 1, *image_latents.shape[2:])
+            mask[:, :, 1:] = 0
 
         # 4. Encode input prompt
         transformer_dtype = self.transformer.dtype
@@ -759,6 +780,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             prompt_attention_mask=prompt_attention_mask,
             device=device,
             max_sequence_length=max_sequence_length,
+            image_embed_interleave=image_embed_interleave,
         )
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         prompt_attention_mask = prompt_attention_mask.to(transformer_dtype)
@@ -796,9 +818,13 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     continue
 
                 self._current_timestep = t
-                latent_model_input = torch.cat([latents, image_latents, mask], dim=1).to(transformer_dtype)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+                if image_condition_type == "latent_concat":
+                    latent_model_input = torch.cat([latents, image_latents, mask], dim=1).to(transformer_dtype)
+                elif image_condition_type == "token_replace":
+                    latent_model_input = latents.to(transformer_dtype)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -823,7 +849,13 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                if image_condition_type == "latent_concat":
+                    latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                elif image_condition_type == "token_replace":
+                    latents = latents = self.scheduler.step(
+                        noise_pred[:, :, 1:], t, latents[:, :, 1:], return_dict=False
+                    )[0]
+                    latents = torch.cat([image_latents, latents])
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -846,10 +878,14 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
             video = self.vae.decode(latents, return_dict=False)[0]
-            video = video[:, :, 4:, :, :]
+            if image_condition_type == "latent_concat":
+                video = video[:, :, 4:, :, :]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
-            video = latents[:, :, 1:, :, :]
+            if image_condition_type == "latent_concat":
+                video = latents[:, :, 1:, :, :]
+            else:
+                video = latents
 
         # Offload all models
         self.maybe_free_model_hooks()
