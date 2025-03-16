@@ -1,0 +1,6 @@
+transformers==4.47.0
+wandb
+torch
+torchvision
+accelerate==1.2.0
+peft>=0.14.0
