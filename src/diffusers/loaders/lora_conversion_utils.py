@@ -1517,6 +1517,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
     original_state_dict = {k[len("diffusion_model.") :]: v for k, v in state_dict.items()}
 
     num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in original_state_dict})
+    is_i2v_lora = any("k_img" in k for k in original_state_dict) and any("v_img" in k for k in original_state_dict)
 
     for i in range(num_blocks):
         # Self-attention
@@ -1536,13 +1537,15 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
                 f"blocks.{i}.cross_attn.{o}.lora_B.weight"
             )
-        for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
-            converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = original_state_dict.pop(
-                f"blocks.{i}.cross_attn.{o}.lora_A.weight"
-            )
-            converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
-                f"blocks.{i}.cross_attn.{o}.lora_B.weight"
-            )
+
+        if is_i2v_lora:
+            for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
+                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = original_state_dict.pop(
+                    f"blocks.{i}.cross_attn.{o}.lora_A.weight"
+                )
+                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
+                    f"blocks.{i}.cross_attn.{o}.lora_B.weight"
+                )
 
         # FFN
         for o, c in zip(["ffn.0", "ffn.2"], ["net.0.proj", "net.2"]):
