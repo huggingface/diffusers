@@ -13,6 +13,7 @@ accelerate launch ./train_pixart_controlnet_hf.py --mixed_precision="fp16" \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
  --dataset_name=fusing/fill50k \
+ --trust_remote_code \
  --resolution=512 \
  --learning_rate=1e-5 \
  --train_batch_size=1 \
