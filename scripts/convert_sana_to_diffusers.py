@@ -107,7 +107,7 @@ def main(args):
         raise ValueError(f"{args.model_type} is not supported.")
     # Positional embedding interpolation scale.
     interpolation_scale = {512: None, 1024: None, 2048: 1.0, 4096: 2.0}
-    qk_norm = "rms_norm_across_heads" if ("SANA1.5" in args.orig_ckpt_path or "SANA-Sprint" in args.orig_ckpt_path) else None
+    qk_norm = "rms_norm_across_heads" if "SANA1.5" in args.orig_ckpt_path else None
 
     for depth in range(layer_num):
         # Transformer blocks.
