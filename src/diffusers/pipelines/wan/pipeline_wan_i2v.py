@@ -115,7 +115,7 @@ def retrieve_latents(
     generator: Optional[torch.Generator] = None,
     sample_mode: str = "argmax",
 ):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "none":
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
         return (encoder_output.latent_dist.mean - latents_mean) * latents_std
     else:
            raise AttributeError("Could not access latents of provided encoder_output")
