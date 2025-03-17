@@ -276,6 +276,7 @@ else:
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
+            "SCMScheduler",
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
@@ -421,6 +422,7 @@ else:
             "ReduxImageEncoder",
             "SanaPAGPipeline",
             "SanaPipeline",
+            "SanaSCMPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -839,6 +841,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UnCLIPScheduler,
             UniPCMultistepScheduler,
             VQDiffusionScheduler,
+            SCMScheduler,
         )
         from .training_utils import EMAModel
 
@@ -965,6 +968,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ReduxImageEncoder,
             SanaPAGPipeline,
             SanaPipeline,
+            SanaSCMPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
