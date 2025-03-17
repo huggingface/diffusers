@@ -18,7 +18,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-
+from ...image_processor import VaeImageProcessor
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -53,24 +53,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def downscale_height_and_width(height, width, scale_factor=8):
-    new_height = height // scale_factor**2
-    if height % scale_factor**2 != 0:
-        new_height += 1
-    new_width = width // scale_factor**2
-    if width % scale_factor**2 != 0:
-        new_width += 1
-    return new_height * scale_factor, new_width * scale_factor
-
-
-def prepare_image(pil_image):
-    arr = np.array(pil_image.convert("RGB"))
-    arr = arr.astype(np.float32) / 127.5 - 1
-    arr = np.transpose(arr, [2, 0, 1])
-    image = torch.from_numpy(arr).unsqueeze(0)
-    return image
-
-
 class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->movq->unet->movq"
     _callback_tensor_inputs = [
@@ -93,6 +75,13 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
 
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, unet=unet, scheduler=scheduler, movq=movq
+        )
+        movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1) 
+        self.image_processor = VaeImageProcessor(
+            vae_scale_factor = movq_scale_factor,
+            vae_latent_channels = self.movq.config.latent_channels,
+            resample = "bicubic",
+            reducing_gap = 1,
         )
 
     def get_timesteps(self, num_inference_steps, strength, device):
@@ -566,7 +555,7 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
                 f"Input is in incorrect format: {[type(i) for i in image]}. Currently, we only support  PIL image and pytorch tensor"
             )
 
-        image = torch.cat([prepare_image(i) for i in image], dim=0)
+        image = torch.cat([self.image_processor.preprocess(i) for i in image], dim=0)
         image = image.to(dtype=prompt_embeds.dtype, device=device)
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -630,22 +619,11 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
                     xm.mark_step()
 
             # post-processing
-            if output_type not in ["pt", "np", "pil", "latent"]:
-                raise ValueError(
-                    f"Only the output types `pt`, `pil`, `np` and `latent` are supported not output_type={output_type}"
-                )
             if not output_type == "latent":
                 image = self.movq.decode(latents, force_not_quantize=True)["sample"]
-
-                if output_type in ["np", "pil"]:
-                    image = image * 0.5 + 0.5
-                    image = image.clamp(0, 1)
-                    image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-
-                if output_type == "pil":
-                    image = self.numpy_to_pil(image)
             else:
                 image = latents
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
             self.maybe_free_model_hooks()
 
