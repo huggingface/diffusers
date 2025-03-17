@@ -113,9 +113,11 @@ def retrieve_latents(
     latents_mean: torch.Tensor,
     latents_std: torch.Tensor,
     generator: Optional[torch.Generator] = None,
-    sample_mode: str = "sample",
+    sample_mode: str = "none",
 ):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "none":
+        return (encoder_output.latent_dist.mean - latents_mean) * latents_std
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         encoder_output.latent_dist.mean = (encoder_output.latent_dist.mean - latents_mean) * latents_std
         encoder_output.latent_dist.logvar = torch.clamp(
             (encoder_output.latent_dist.logvar - latents_mean) * latents_std, -30.0, 20.0
