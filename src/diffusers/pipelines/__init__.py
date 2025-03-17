@@ -154,7 +154,7 @@ else:
         "CogVideoXFunControlPipeline",
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
-    _import_structure["cogview4"] = ["CogView4Pipeline"]
+    _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["controlnet"].extend(
         [
@@ -216,8 +216,17 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["easyanimate"] = [
+        "EasyAnimatePipeline",
+        "EasyAnimateInpaintPipeline",
+        "EasyAnimateControlPipeline",
+    ]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
-    _import_structure["hunyuan_video"] = ["HunyuanVideoPipeline", "HunyuanSkyreelsImageToVideoPipeline"]
+    _import_structure["hunyuan_video"] = [
+        "HunyuanVideoPipeline",
+        "HunyuanSkyreelsImageToVideoPipeline",
+        "HunyuanVideoImageToVideoPipeline",
+    ]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -256,8 +265,8 @@ else:
     )
     _import_structure["latte"] = ["LattePipeline"]
     _import_structure["ltx"] = ["LTXPipeline", "LTXImageToVideoPipeline"]
-    _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
-    _import_structure["lumina2"] = ["Lumina2Text2ImgPipeline"]
+    _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
+    _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -347,6 +356,7 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
+    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -501,7 +511,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXVideoToVideoPipeline,
         )
         from .cogview3 import CogView3PlusPipeline
-        from .cogview4 import CogView4Pipeline
+        from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
         from .consisid import ConsisIDPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
@@ -545,6 +555,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .easyanimate import (
+            EasyAnimateControlPipeline,
+            EasyAnimateInpaintPipeline,
+            EasyAnimatePipeline,
+        )
         from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
@@ -559,7 +574,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .hunyuan_video import HunyuanSkyreelsImageToVideoPipeline, HunyuanVideoPipeline
+        from .hunyuan_video import (
+            HunyuanSkyreelsImageToVideoPipeline,
+            HunyuanVideoImageToVideoPipeline,
+            HunyuanVideoPipeline,
+        )
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
@@ -600,8 +619,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .ltx import LTXImageToVideoPipeline, LTXPipeline
-        from .lumina import LuminaText2ImgPipeline
-        from .lumina2 import Lumina2Text2ImgPipeline
+        from .lumina import LuminaPipeline, LuminaText2ImgPipeline
+        from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
@@ -690,6 +709,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserPipeline,
             UniDiffuserTextDecoder,
         )
+        from .wan import WanImageToVideoPipeline, WanPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,

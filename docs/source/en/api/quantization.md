@@ -31,6 +31,11 @@ Learn how to quantize models in the [Quantization](../quantization/overview) gui
 ## GGUFQuantizationConfig
 
 [[autodoc]] GGUFQuantizationConfig
+
+## QuantoConfig
+
+[[autodoc]] QuantoConfig
+
 ## TorchAoConfig
 
 [[autodoc]] TorchAoConfig
