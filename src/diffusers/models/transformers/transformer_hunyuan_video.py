@@ -228,8 +228,8 @@ class HunyuanVideoTokenReplaceAdaLayerNormZero(nn.Module):
         )
 
 
-class HunyuanVideoTimestepTextProjEmbeddings(nn.Module):
-    def __init__(self, embedding_dim: int, pooled_projection_dim: int, image_condition_type: Optional[str] = None):
+class HunyuanVideoConditionEmbedding(nn.Module):
+    def __init__(self, embedding_dim: int, pooled_projection_dim: int, guidance_embeds: bool, image_condition_type: Optional[str] = None):
         super().__init__()
 
         self.image_condition_type = image_condition_type
@@ -238,7 +238,11 @@ class HunyuanVideoTimestepTextProjEmbeddings(nn.Module):
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
         self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
 
-    def forward(self, timestep: torch.Tensor, pooled_projection: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        self.guidance_embedder = None
+        if guidance_embeds:
+            self.guidance_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
+    def forward(self, timestep: torch.Tensor, pooled_projection: torch.Tensor, guidance: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
         pooled_projections = self.text_embedder(pooled_projection)
@@ -248,8 +252,13 @@ class HunyuanVideoTimestepTextProjEmbeddings(nn.Module):
         if self.image_condition_type == "token_replace":
             token_replace_timestep = torch.zeros_like(timestep)
             token_replace_proj = self.time_proj(token_replace_timestep)
-            token_replace_emb = self.timestep_embedder(token_replace_proj)
-            token_replace_emb = token_replace_emb + conditioning
+            token_replace_emb = self.timestep_embedder(token_replace_proj.to(dtype=pooled_projection.dtype))
+            token_replace_emb = token_replace_emb + pooled_projections
+
+        if self.guidance_embedder is not None:
+            guidance_proj = self.time_proj(guidance)
+            guidance_emb = self.guidance_embedder(guidance_proj.to(dtype=pooled_projection.dtype))
+            conditioning = conditioning + guidance_emb
 
         return conditioning, token_replace_emb
 
@@ -665,7 +674,7 @@ class HunyuanVideoTokenReplaceTransformerBlock(nn.Module):
 
         hidden_states_zero = norm_hidden_states[:, :num_tokens] * (1 + tr_scale_mlp[:, None]) + tr_shift_mlp[:, None]
         hidden_states_orig = norm_hidden_states[:, num_tokens:] * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-        hidden_states = torch.cat([hidden_states_zero, hidden_states_orig], dim=1)
+        norm_hidden_states = torch.cat([hidden_states_zero, hidden_states_orig], dim=1)
         norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
 
         # 4. Feed-forward
@@ -717,6 +726,10 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             The value of theta to use in the RoPE layer.
         rope_axes_dim (`Tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions of the axes to use in the RoPE layer.
+        image_condition_type (`str`, *optional*, defaults to `None`):
+            The type of image conditioning to use. If `None`, no image conditioning is used. If `latent_concat`, the
+            image is concatenated to the latent stream. If `token_replace`, the image is used to replace first-frame
+            tokens in the latent stream and apply conditioning.
     """
 
     _supports_gradient_checkpointing = True
@@ -761,12 +774,9 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
 
-        if guidance_embeds:
-            self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, pooled_projection_dim)
-        else:
-            self.time_text_embed = HunyuanVideoTimestepTextProjEmbeddings(
-                inner_dim, pooled_projection_dim, image_condition_type
-            )
+        self.time_text_embed = HunyuanVideoConditionEmbedding(
+            inner_dim, pooled_projection_dim, guidance_embeds, image_condition_type
+        )
 
         # 2. RoPE
         self.rope = HunyuanVideoRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
@@ -904,10 +914,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
-        if self.config.guidance_embeds:
-            temb = self.time_text_embed(timestep, guidance, pooled_projections)
-        else:
-            temb, token_replace_emb = self.time_text_embed(timestep, pooled_projections)
+        temb, token_replace_emb = self.time_text_embed(timestep, pooled_projections, guidance)
 
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)

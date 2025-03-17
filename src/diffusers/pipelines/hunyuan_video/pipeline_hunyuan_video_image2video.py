@@ -54,6 +54,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import HunyuanVideoImageToVideoPipeline, HunyuanVideoTransformer3DModel
         >>> from diffusers.utils import load_image, export_to_video
 
+        >>> # Available checkpoints: hunyuanvideo-community/HunyuanVideo-I2V, hunyuanvideo-community/HunyuanVideo-I2V-33ch
         >>> model_id = "hunyuanvideo-community/HunyuanVideo-I2V"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
         ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
@@ -69,7 +70,12 @@ EXAMPLE_DOC_STRING = """
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/guitar-man.png"
         ... )
 
-        >>> output = pipe(image=image, prompt=prompt).frames[0]
+        >>> # If using hunyuanvideo-community/HunyuanVideo-I2V
+        >>> output = pipe(image=image, prompt=prompt, guidance_scale=6.0).frames[0]
+        
+        >>> # If using hunyuanvideo-community/HunyuanVideo-I2V-33ch
+        >>> output = pipe(image=image, prompt=prompt, guidance_scale=1.0, true_cfg_scale=1.0).frames[0]
+        
         >>> export_to_video(output, "output.mp4", fps=15)
         ```
 """
@@ -804,9 +810,14 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             negative_prompt_attention_mask = negative_prompt_attention_mask.to(transformer_dtype)
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(transformer_dtype)
 
-        # 4. Prepare timesteps
+        # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
+
+        # 6. Prepare guidance condition
+        guidance = None
+        if self.transformer.config.guidance_embeds:
+            guidance = torch.tensor([guidance_scale] * latents.shape[0], dtype=transformer_dtype, device=device) * 1000.0
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -824,7 +835,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 if image_condition_type == "latent_concat":
                     latent_model_input = torch.cat([latents, image_latents, mask], dim=1).to(transformer_dtype)
                 elif image_condition_type == "token_replace":
-                    latent_model_input = latents.to(transformer_dtype)
+                    latent_model_input = torch.cat([image_latents, latents[:, :, 1:]], dim=2).to(transformer_dtype)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -832,6 +843,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
                     pooled_projections=pooled_prompt_embeds,
+                    guidance=guidance,
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -843,6 +855,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                         encoder_hidden_states=negative_prompt_embeds,
                         encoder_attention_mask=negative_prompt_attention_mask,
                         pooled_projections=negative_pooled_prompt_embeds,
+                        guidance=guidance,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
@@ -855,7 +868,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     latents = latents = self.scheduler.step(
                         noise_pred[:, :, 1:], t, latents[:, :, 1:], return_dict=False
                     )[0]
-                    latents = torch.cat([image_latents, latents])
+                    latents = torch.cat([image_latents, latents], dim=2)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
