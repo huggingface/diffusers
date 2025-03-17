@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 from huggingface_hub import ModelCard, delete_repo
 from huggingface_hub.utils import is_jinja_available
+from torch._dynamo.utils import counters
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
@@ -45,6 +46,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     require_accelerate_version_greater,
     require_accelerator,
     require_hf_hub_version_greater,
@@ -52,6 +54,7 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     require_transformers_version_greater,
     skip_mps,
+    slow,
     torch_device,
 )
 
@@ -1113,8 +1116,9 @@ class PipelineTesterMixin:
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
+        torch._dynamo.reset()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
@@ -2152,6 +2156,41 @@ class PipelineTesterMixin:
                 (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, UNetControlNetXSModel),
             )
         )
+
+    @require_torch_gpu
+    @slow
+    def test_torch_compile_recompilation(self):
+        inputs = self.get_dummy_inputs()
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components).to(torch_device)
+        if getattr(pipe, "unet", None) is None:
+            pipe.unet = torch.compile(pipe.unet, fullgraph=True)
+        else:
+            pipe.transformer = torch.compile(pipe.transformer, fullgraph=True)
+
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            _ = pipe(**inputs)
+
+    @require_torch_gpu
+    @slow
+    def test_torch_compile_graph_breaks(self):
+        # Inspired by:
+        # https://github.com/pytorch/pytorch/blob/916e8979d3e0d651a9091732ce3e59da32e72b0e/test/dynamo/test_higher_order_ops.py#L138
+        counters.clear()
+
+        inputs = self.get_dummy_inputs()
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components).to(torch_device)
+        if getattr(pipe, "unet", None) is None:
+            pipe.unet = torch.compile(pipe.unet, fullgraph=True)
+        else:
+            pipe.transformer = torch.compile(pipe.transformer, fullgraph=True)
+
+        _ = pipe(**inputs)
+        num_graph_breaks = len(counters["graph_break"].keys())
+        self.assertEqual(num_graph_breaks, 0)
 
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
