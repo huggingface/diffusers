@@ -1283,8 +1283,8 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Get the text embedding for conditioning
-                prompt_embeds = batch["prompt_embeds"]
-                pooled_prompt_embeds = batch["pooled_prompt_embeds"]
+                prompt_embeds = batch["prompt_embeds"].to(dtype=weight_dtype)
+                pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(dtype=weight_dtype)
 
                 # controlnet(s) inference
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)

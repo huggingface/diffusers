@@ -166,8 +166,12 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
 
     # 2. If no dtype modifying hooks are attached, return the dtype of the first floating point parameter/buffer
     last_dtype = None
-    for param in parameter.parameters():
+
+    for name, param in parameter.named_parameters():
         last_dtype = param.dtype
+        if parameter._keep_in_fp32_modules and any(m in name for m in parameter._keep_in_fp32_modules):
+            continue
+
         if param.is_floating_point():
             return param.dtype
 
@@ -866,7 +870,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
@@ -878,6 +882,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+
+        if not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
 
         allow_pickle = False
         if use_safetensors is None:
