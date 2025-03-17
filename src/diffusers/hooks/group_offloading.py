@@ -75,7 +75,7 @@ class ModuleGroup:
 
         if self.stream is not None and self.cpu_param_dict is None:
             raise ValueError("`cpu_param_dict` must be provided when using stream for data transfer.")
-        
+
         if self.record_stream and not self.stream:
             raise ValueError("`record_stream` cannot be True when `stream` is None.")
 
@@ -83,7 +83,7 @@ class ModuleGroup:
         r"""Onloads the group of modules to the onload_device."""
         context = nullcontext() if self.stream is None else torch.cuda.stream(self.stream)
         current_stream = torch.cuda.current_stream() if self.record_stream else None
-        
+
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
             self.stream.synchronize()
@@ -283,7 +283,7 @@ def apply_group_offloading(
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,
-    record_stream: bool = False
+    record_stream: bool = False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -381,7 +381,7 @@ def _apply_group_offloading_block_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
-    record_stream: Optional[bool] = False
+    record_stream: Optional[bool] = False,
 ) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
@@ -482,7 +482,7 @@ def _apply_group_offloading_leaf_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
-    record_stream: Optional[bool] = False
+    record_stream: Optional[bool] = False,
 ) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory

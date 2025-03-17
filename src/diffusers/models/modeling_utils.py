@@ -585,7 +585,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
         apply_group_offloading(
-            self, onload_device, offload_device, offload_type, num_blocks_per_group, non_blocking, use_stream, record_stream
+            self,
+            onload_device,
+            offload_device,
+            offload_type,
+            num_blocks_per_group,
+            non_blocking,
+            use_stream,
+            record_stream,
         )
 
     def save_pretrained(
