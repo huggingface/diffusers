@@ -107,8 +107,9 @@ class ModuleGroup:
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
-        if self.stream is not None and not self.record_stream:
-            torch.cuda.current_stream().synchronize()
+        if self.stream is not None:
+            if not self.record_stream:
+                torch.cuda.current_stream().synchronize()
             for group_module in self.modules:
                 for param in group_module.parameters():
                     param.data = self.cpu_param_dict[param]
