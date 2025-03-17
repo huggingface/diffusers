@@ -154,7 +154,7 @@ else:
         "CogVideoXFunControlPipeline",
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
-    _import_structure["cogview4"] = ["CogView4Pipeline"]
+    _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["controlnet"].extend(
         [
@@ -265,8 +265,8 @@ else:
     )
     _import_structure["latte"] = ["LattePipeline"]
     _import_structure["ltx"] = ["LTXPipeline", "LTXImageToVideoPipeline"]
-    _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
-    _import_structure["lumina2"] = ["Lumina2Text2ImgPipeline"]
+    _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
+    _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -511,7 +511,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXVideoToVideoPipeline,
         )
         from .cogview3 import CogView3PlusPipeline
-        from .cogview4 import CogView4Pipeline
+        from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
         from .consisid import ConsisIDPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
@@ -619,8 +619,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .ltx import LTXImageToVideoPipeline, LTXPipeline
-        from .lumina import LuminaText2ImgPipeline
-        from .lumina2 import Lumina2Text2ImgPipeline
+        from .lumina import LuminaPipeline, LuminaText2ImgPipeline
+        from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
