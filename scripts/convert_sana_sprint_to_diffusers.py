@@ -13,10 +13,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import (
     AutoencoderDC,
-    DPMSolverMultistepScheduler,
-    FlowMatchEulerDiscreteScheduler,
-    SanaPipeline,
+    SCMScheduler,
     SanaTransformer2DModel,
+    SanaSprintPipeline,
 )
 from diffusers.models.modeling_utils import load_model_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
@@ -25,18 +24,9 @@ from diffusers.utils.import_utils import is_accelerate_available
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
 ckpt_ids = [
-    "Efficient-Large-Model/SANA1.5_4.8B_1024px/checkpoints/SANA1.5_4.8B_1024px.pth",
-    "Efficient-Large-Model/Sana_1600M_4Kpx_BF16/checkpoints/Sana_1600M_4Kpx_BF16.pth",
-    "Efficient-Large-Model/Sana_1600M_2Kpx_BF16/checkpoints/Sana_1600M_2Kpx_BF16.pth",
-    "Efficient-Large-Model/Sana_1600M_1024px_MultiLing/checkpoints/Sana_1600M_1024px_MultiLing.pth",
-    "Efficient-Large-Model/Sana_1600M_1024px_BF16/checkpoints/Sana_1600M_1024px_BF16.pth",
-    "Efficient-Large-Model/Sana_1600M_512px_MultiLing/checkpoints/Sana_1600M_512px_MultiLing.pth",
-    "Efficient-Large-Model/Sana_1600M_1024px/checkpoints/Sana_1600M_1024px.pth",
-    "Efficient-Large-Model/Sana_1600M_512px/checkpoints/Sana_1600M_512px.pth",
-    "Efficient-Large-Model/Sana_600M_1024px/checkpoints/Sana_600M_1024px_MultiLing.pth",
-    "Efficient-Large-Model/Sana_600M_512px/checkpoints/Sana_600M_512px_MultiLing.pth",
+    "Efficient-Large-Model/SANA-Sprint",
 ]
-# https://github.com/NVlabs/Sana/blob/main/scripts/inference.py
+# https://github.com/NVlabs/Sana/blob/main/scripts/inference_scm.py
 
 
 def main(args):
@@ -90,24 +80,13 @@ def main(args):
     # y norm
     converted_state_dict["caption_norm.weight"] = state_dict.pop("attention_y_norm.weight")
 
-    # scheduler
-    if args.image_size == 4096:
-        flow_shift = 6.0
-    else:
-        flow_shift = 3.0
-
     # model config
     if args.model_type == "SanaMS_1600M_P1_D20":
         layer_num = 20
     elif args.model_type == "SanaMS_600M_P1_D28":
         layer_num = 28
-    elif args.model_type == "SanaMS_4800M_P1_D60":
-        layer_num = 60
     else:
         raise ValueError(f"{args.model_type} is not supported.")
-    # Positional embedding interpolation scale.
-    interpolation_scale = {512: None, 1024: None, 2048: 1.0, 4096: 2.0}
-    qk_norm = "rms_norm_across_heads" if ("SANA1.5" in args.orig_ckpt_path or "SANA-Sprint" in args.orig_ckpt_path) else None
 
     for depth in range(layer_num):
         # Transformer blocks.
@@ -121,12 +100,11 @@ def main(args):
         converted_state_dict[f"transformer_blocks.{depth}.attn1.to_q.weight"] = q
         converted_state_dict[f"transformer_blocks.{depth}.attn1.to_k.weight"] = k
         converted_state_dict[f"transformer_blocks.{depth}.attn1.to_v.weight"] = v
-        if qk_norm is not None:
-            converted_state_dict[f"transformer_blocks.{depth}.attn1.norm_q.weight"] = state_dict.pop(
-                f"blocks.{depth}.attn.q_norm.weight"
-            )
-            converted_state_dict[f"transformer_blocks.{depth}.attn1.norm_k.weight"] = state_dict.pop(
-                f"blocks.{depth}.attn.k_norm.weight"
+        converted_state_dict[f"transformer_blocks.{depth}.attn1.norm_q.weight"] = state_dict.pop(
+            f"blocks.{depth}.attn.q_norm.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{depth}.attn1.norm_k.weight"] = state_dict.pop(
+            f"blocks.{depth}.attn.k_norm.weight"
             )
         # Projection.
         converted_state_dict[f"transformer_blocks.{depth}.attn1.to_out.0.weight"] = state_dict.pop(
@@ -165,13 +143,12 @@ def main(args):
         converted_state_dict[f"transformer_blocks.{depth}.attn2.to_k.bias"] = k_bias
         converted_state_dict[f"transformer_blocks.{depth}.attn2.to_v.weight"] = v
         converted_state_dict[f"transformer_blocks.{depth}.attn2.to_v.bias"] = v_bias
-        if qk_norm is not None:
-            converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_q.weight"] = state_dict.pop(
-                f"blocks.{depth}.cross_attn.q_norm.weight"
-            )
-            converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_k.weight"] = state_dict.pop(
-                f"blocks.{depth}.cross_attn.k_norm.weight"
-            )
+        converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_q.weight"] = state_dict.pop(
+            f"blocks.{depth}.cross_attn.q_norm.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_k.weight"] = state_dict.pop(
+            f"blocks.{depth}.cross_attn.k_norm.weight"
+        )
 
         converted_state_dict[f"transformer_blocks.{depth}.attn2.to_out.0.weight"] = state_dict.pop(
             f"blocks.{depth}.cross_attn.proj.weight"
@@ -203,8 +180,8 @@ def main(args):
             patch_size=1,
             norm_elementwise_affine=False,
             norm_eps=1e-6,
-            interpolation_scale=interpolation_scale[args.image_size],
-            qk_norm=qk_norm,
+            interpolation_scale=None,
+            qk_norm="rms_norm_across_heads",
         )
 
     if is_accelerate_available():
@@ -251,18 +228,9 @@ def main(args):
         ).get_decoder()
 
         # Scheduler
-        if args.scheduler_type == "flow-dpm_solver":
-            scheduler = DPMSolverMultistepScheduler(
-                flow_shift=flow_shift,
-                use_flow_sigmas=True,
-                prediction_type="flow_prediction",
-            )
-        elif args.scheduler_type == "flow-euler":
-            scheduler = FlowMatchEulerDiscreteScheduler(shift=flow_shift)
-        else:
-            raise ValueError(f"Scheduler type {args.scheduler_type} is not supported")
+        scheduler = SCMScheduler()
 
-        pipe = SanaPipeline(
+        pipe = SanaSprintPipeline(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
             transformer=transformer,
@@ -289,15 +257,15 @@ if __name__ == "__main__":
         "--image_size",
         default=1024,
         type=int,
-        choices=[512, 1024, 2048, 4096],
+        choices=[1024],
         required=False,
-        help="Image size of pretrained model, 512, 1024, 2048 or 4096.",
+        help="Image size of pretrained model 1024.",
     )
     parser.add_argument(
-        "--model_type", default="SanaMS_1600M_P1_D20", type=str, choices=["SanaMS_1600M_P1_D20", "SanaMS_600M_P1_D28", "SanaMS_4800M_P1_D60"]
+        "--model_type", default="SanaMS_1600M_P1_D20", type=str, choices=["SanaMS_1600M_P1_D20", "SanaMS_600M_P1_D28"]
     )
     parser.add_argument(
-        "--scheduler_type", default="flow-dpm_solver", type=str, choices=["flow-dpm_solver", "flow-euler"]
+        "--num_inference_steps", default=2, type=int, required=False, help="Number of timesteps for the scheduler."
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
     parser.add_argument("--save_full_pipeline", action="store_true", help="save all the pipelien elemets in one.")
@@ -321,14 +289,6 @@ if __name__ == "__main__":
             "cross_attention_head_dim": 72,
             "cross_attention_dim": 1152,
             "num_layers": 28,
-        },
-        "SanaMS_4800M_P1_D60": {
-            "num_attention_heads": 70,
-            "attention_head_dim": 32,
-            "num_cross_attention_heads": 20,
-            "cross_attention_head_dim": 112,
-            "cross_attention_dim": 2240,
-            "num_layers": 60,
         },
     }
 
