@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
 from typing import Dict, List, Optional, Set, Tuple
 
 import torch
@@ -56,7 +56,7 @@ class ModuleGroup:
         buffers: Optional[List[torch.Tensor]] = None,
         non_blocking: bool = False,
         stream: Optional[torch.cuda.Stream] = None,
-        cpu_param_dict: Optional[Dict[torch.nn.Parameter, torch.Tensor]] = None,
+        cpu_param_dict=None,
         onload_self: bool = True,
     ) -> None:
         self.modules = modules
@@ -64,15 +64,58 @@ class ModuleGroup:
         self.onload_device = onload_device
         self.offload_leader = offload_leader
         self.onload_leader = onload_leader
-        self.parameters = parameters
-        self.buffers = buffers
+        self.parameters = parameters or []
+        self.buffers = buffers or []
         self.non_blocking = non_blocking or stream is not None
         self.stream = stream
-        self.cpu_param_dict = cpu_param_dict
         self.onload_self = onload_self
 
-        if self.stream is not None and self.cpu_param_dict is None:
-            raise ValueError("cpu_param_dict must be provided when using stream for data transfer.")
+        # Store original CPU tensors - this avoids needing to keep pinned memory around
+        # We only collect parameters from modules here, explicit parameters will be handled separately
+        self.cpu_param_dict = {}
+        self._collect_cpu_parameters()
+
+    def _collect_cpu_parameters(self):
+        """Collect and store original CPU tensors for all parameters."""
+        # Store module parameters
+        for module in self.modules:
+            for param in module.parameters():
+                self.cpu_param_dict[param] = param.data
+
+        # Store explicit parameters
+        if self.parameters:
+            for param in self.parameters:
+                self.cpu_param_dict[param] = param.data
+
+    @contextmanager
+    def _pin_memory(self):
+        """
+        Context manager to temporarily pin memory for parameters.
+        Pinned memory only exists within this context and is automatically
+        released when the context exits.
+        """
+        if self.stream is not None:
+            try:
+                # Create temporary pinned versions of parameters
+                pinned_dict = {}
+
+                # Pin parameters that need to be transferred
+                for param, cpu_tensor in self.cpu_param_dict.items():
+                    # Only pin if the parameter is on CPU (avoid re-pinning)
+                    if cpu_tensor.device.type == 'cpu' and not cpu_tensor.is_pinned():
+                        pinned_dict[param] = cpu_tensor.pin_memory()
+                    else:
+                        pinned_dict[param] = cpu_tensor
+
+                # Yield the pinned dictionary for use
+                yield pinned_dict
+            finally:
+                # Clear pinned dictionary when done - pinned memory will be
+                # garbage collected when no more references exist
+                pinned_dict = None
+        else:
+            # No pinning needed
+            yield None
 
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
@@ -82,29 +125,69 @@ class ModuleGroup:
             self.stream.synchronize()
 
         with context:
-            for group_module in self.modules:
-                group_module.to(self.onload_device, non_blocking=self.non_blocking)
-            if self.parameters is not None:
-                for param in self.parameters:
-                    param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
-            if self.buffers is not None:
-                for buffer in self.buffers:
-                    buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+            if self.stream is not None:
+                # Use the context manager to temporarily pin memory
+                with self._pin_memory() as pinned_dict:
+                    # Move module parameters using pinned memory
+                    for module in self.modules:
+                        for param in module.parameters():
+                            if param in pinned_dict:
+                                param.data = pinned_dict[param].to(
+                                    self.onload_device, non_blocking=True
+                                )
+
+                    # Move explicit parameters
+                    if self.parameters:
+                        for param in self.parameters:
+                            if param in pinned_dict:
+                                param.data = pinned_dict[param].to(
+                                    self.onload_device, non_blocking=True
+                                )
+
+                    # Move buffers (typically small, so just use standard transfer)
+                    if self.buffers:
+                        for buffer in self.buffers:
+                            buffer.data = buffer.data.to(self.onload_device, non_blocking=True)
+            else:
+                # Standard transfer for non-stream case
+                for module in self.modules:
+                    module.to(self.onload_device, non_blocking=self.non_blocking)
+                if self.parameters:
+                    for param in self.parameters:
+                        param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+                if self.buffers:
+                    for buffer in self.buffers:
+                        buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
         if self.stream is not None:
             torch.cuda.current_stream().synchronize()
-            for group_module in self.modules:
-                for param in group_module.parameters():
-                    param.data = self.cpu_param_dict[param]
+
+            # Restore original CPU tensors for module parameters
+            for module in self.modules:
+                for param in module.parameters():
+                    if param in self.cpu_param_dict:
+                        param.data = self.cpu_param_dict[param]
+
+            # Restore original CPU tensors for explicit parameters
+            if self.parameters:
+                for param in self.parameters:
+                    if param in self.cpu_param_dict:
+                        param.data = self.cpu_param_dict[param]
+
+            # Standard offloading for buffers
+            if self.buffers:
+                for buffer in self.buffers:
+                    buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
         else:
-            for group_module in self.modules:
-                group_module.to(self.offload_device, non_blocking=self.non_blocking)
-            if self.parameters is not None:
+            # Standard offloading for all components
+            for module in self.modules:
+                module.to(self.offload_device, non_blocking=self.non_blocking)
+            if self.parameters:
                 for param in self.parameters:
                     param.data = param.data.to(self.offload_device, non_blocking=self.non_blocking)
-            if self.buffers is not None:
+            if self.buffers:
                 for buffer in self.buffers:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
 
@@ -387,9 +470,11 @@ def _apply_group_offloading_block_level(
     # Create a pinned CPU parameter dict for async data transfer if streams are to be used
     cpu_param_dict = None
     if stream is not None:
+        """
         for param in module.parameters():
             param.data = param.data.cpu().pin_memory()
         cpu_param_dict = {param: param.data for param in module.parameters()}
+        """
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -486,9 +571,11 @@ def _apply_group_offloading_leaf_level(
     # Create a pinned CPU parameter dict for async data transfer if streams are to be used
     cpu_param_dict = None
     if stream is not None:
+        """
         for param in module.parameters():
             param.data = param.data.cpu().pin_memory()
         cpu_param_dict = {param: param.data for param in module.parameters()}
+        """
 
     # Create module groups for leaf modules and apply group offloading hooks
     modules_with_group_offloading = set()
