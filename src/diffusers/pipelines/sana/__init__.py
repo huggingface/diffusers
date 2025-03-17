@@ -23,7 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_sana"] = ["SanaPipeline"]
-    _import_structure["pipeline_sana_scm"] = ["SanaSCMPipeline"]
+    _import_structure["pipeline_sana_scm"] = ["SanaSprintPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -34,7 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_sana import SanaPipeline
-        from .pipeline_sana_scm import SanaSCMPipeline
+        from .pipeline_sana_scm import SanaSprintPipeline
 else:
     import sys
 
