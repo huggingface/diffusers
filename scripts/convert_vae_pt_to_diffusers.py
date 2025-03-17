@@ -52,7 +52,11 @@ def custom_convert_ldm_vae_checkpoint(checkpoint, config):
     }
 
     for i in range(num_down_blocks):
-        resnets = [key for key in down_blocks[i] if f"down.{i}" in key and f"down.{i}.downsample" not in key and "attn" not in key]
+        resnets = [
+            key
+            for key in down_blocks[i]
+            if f"down.{i}" in key and f"down.{i}.downsample" not in key and "attn" not in key
+        ]
         attentions = [key for key in down_blocks[i] if f"down.{i}.attn" in key]
 
         if f"encoder.down.{i}.downsample.conv.weight" in vae_state_dict:
@@ -89,11 +93,11 @@ def custom_convert_ldm_vae_checkpoint(checkpoint, config):
     for i in range(num_up_blocks):
         block_id = num_up_blocks - 1 - i
         resnets = [
-            key for key in up_blocks[block_id] if f"up.{block_id}" in key and f"up.{block_id}.upsample" not in key and "attn" not in key
+            key
+            for key in up_blocks[block_id]
+            if f"up.{block_id}" in key and f"up.{block_id}.upsample" not in key and "attn" not in key
         ]
-        attentions = [
-            key for key in up_blocks[block_id] if f"up.{block_id}.attn" in key
-        ]
+        attentions = [key for key in up_blocks[block_id] if f"up.{block_id}.attn" in key]
 
         if f"decoder.up.{block_id}.upsample.conv.weight" in vae_state_dict:
             new_checkpoint[f"decoder.up_blocks.{i}.upsamplers.0.conv.weight"] = vae_state_dict[
