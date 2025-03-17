@@ -117,7 +117,8 @@ def retrieve_latents(
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "none":
         return (encoder_output.latent_dist.mean - latents_mean) * latents_std
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+    else:
+           raise AttributeError("Could not access latents of provided encoder_output")
         encoder_output.latent_dist.mean = (encoder_output.latent_dist.mean - latents_mean) * latents_std
         encoder_output.latent_dist.logvar = torch.clamp(
             (encoder_output.latent_dist.logvar - latents_mean) * latents_std, -30.0, 20.0
