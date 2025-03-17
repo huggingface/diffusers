@@ -2160,11 +2160,11 @@ class PipelineTesterMixin:
     @require_torch_gpu
     @slow
     def test_torch_compile_recompilation(self):
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(torch_device)
         components = self.get_dummy_components()
 
         pipe = self.pipeline_class(**components).to(torch_device)
-        if getattr(pipe, "unet", None) is None:
+        if getattr(pipe, "unet", None) is not None:
             pipe.unet = torch.compile(pipe.unet, fullgraph=True)
         else:
             pipe.transformer = torch.compile(pipe.transformer, fullgraph=True)
@@ -2179,11 +2179,11 @@ class PipelineTesterMixin:
         # https://github.com/pytorch/pytorch/blob/916e8979d3e0d651a9091732ce3e59da32e72b0e/test/dynamo/test_higher_order_ops.py#L138
         counters.clear()
 
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(torch_device)
         components = self.get_dummy_components()
 
         pipe = self.pipeline_class(**components).to(torch_device)
-        if getattr(pipe, "unet", None) is None:
+        if getattr(pipe, "unet", None) is not None:
             pipe.unet = torch.compile(pipe.unet, fullgraph=True)
         else:
             pipe.transformer = torch.compile(pipe.transformer, fullgraph=True)
