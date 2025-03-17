@@ -56,6 +56,7 @@ class ModuleGroup:
         buffers: Optional[List[torch.Tensor]] = None,
         non_blocking: bool = False,
         stream: Optional[torch.cuda.Stream] = None,
+        record_stream: Optional[bool] = False,
         cpu_param_dict: Optional[Dict[torch.nn.Parameter, torch.Tensor]] = None,
         onload_self: bool = True,
     ) -> None:
@@ -68,15 +69,21 @@ class ModuleGroup:
         self.buffers = buffers
         self.non_blocking = non_blocking or stream is not None
         self.stream = stream
+        self.record_stream = record_stream
         self.cpu_param_dict = cpu_param_dict
         self.onload_self = onload_self
 
         if self.stream is not None and self.cpu_param_dict is None:
-            raise ValueError("cpu_param_dict must be provided when using stream for data transfer.")
+            raise ValueError("`cpu_param_dict` must be provided when using stream for data transfer.")
+        
+        if self.record_stream and not self.stream:
+            raise ValueError("`record_stream` cannot be True when `stream` is None.")
 
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
         context = nullcontext() if self.stream is None else torch.cuda.stream(self.stream)
+        current_stream = torch.cuda.current_stream() if self.record_stream else None
+        
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
             self.stream.synchronize()
@@ -84,16 +91,23 @@ class ModuleGroup:
         with context:
             for group_module in self.modules:
                 group_module.to(self.onload_device, non_blocking=self.non_blocking)
+                if self.record_stream:
+                    for param in group_module.parameters():
+                        param.data.record_stream(current_stream)
             if self.parameters is not None:
                 for param in self.parameters:
                     param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+                    if self.record_stream:
+                        param.data.record_stream(current_stream)
             if self.buffers is not None:
                 for buffer in self.buffers:
                     buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+                    if self.record_stream:
+                        buffer.data.record_stream(current_stream)
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
-        if self.stream is not None:
+        if self.stream is not None and not self.record_stream:
             torch.cuda.current_stream().synchronize()
             for group_module in self.modules:
                 for param in group_module.parameters():
@@ -268,6 +282,7 @@ def apply_group_offloading(
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,
+    record_stream: bool = False
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -314,6 +329,7 @@ def apply_group_offloading(
         use_stream (`bool`, defaults to `False`):
             If True, offloading and onloading is done asynchronously using a CUDA stream. This can be useful for
             overlapping computation and data transfer.
+        record_stream: TODO
 
     Example:
         ```python
@@ -349,10 +365,10 @@ def apply_group_offloading(
             raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
 
         _apply_group_offloading_block_level(
-            module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream
+            module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream, record_stream
         )
     elif offload_type == "leaf_level":
-        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream)
+        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream, record_stream)
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
 
@@ -364,6 +380,7 @@ def _apply_group_offloading_block_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
+    record_stream: Optional[bool] = False
 ) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
@@ -382,6 +399,7 @@ def _apply_group_offloading_block_level(
         stream (`torch.cuda.Stream`, *optional*):
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
+        record_stream: TODO
     """
 
     # Create a pinned CPU parameter dict for async data transfer if streams are to be used
@@ -411,6 +429,7 @@ def _apply_group_offloading_block_level(
                 onload_leader=current_modules[0],
                 non_blocking=non_blocking,
                 stream=stream,
+                record_stream=record_stream,
                 cpu_param_dict=cpu_param_dict,
                 onload_self=stream is None,
             )
@@ -448,6 +467,7 @@ def _apply_group_offloading_block_level(
         buffers=buffers,
         non_blocking=False,
         stream=None,
+        record_stream=False,
         cpu_param_dict=None,
         onload_self=True,
     )
@@ -461,6 +481,7 @@ def _apply_group_offloading_leaf_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
+    record_stream: Optional[bool] = False
 ) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
@@ -481,6 +502,7 @@ def _apply_group_offloading_leaf_level(
         stream (`torch.cuda.Stream`, *optional*):
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
+        record_stream: TODO
     """
 
     # Create a pinned CPU parameter dict for async data transfer if streams are to be used
@@ -503,6 +525,7 @@ def _apply_group_offloading_leaf_level(
             onload_leader=submodule,
             non_blocking=non_blocking,
             stream=stream,
+            record_stream=record_stream,
             cpu_param_dict=cpu_param_dict,
             onload_self=True,
         )
@@ -548,6 +571,7 @@ def _apply_group_offloading_leaf_level(
             buffers=buffers,
             non_blocking=non_blocking,
             stream=stream,
+            record_stream=record_stream,
             cpu_param_dict=cpu_param_dict,
             onload_self=True,
         )
@@ -567,6 +591,7 @@ def _apply_group_offloading_leaf_level(
             buffers=None,
             non_blocking=False,
             stream=None,
+            record_stream=False,
             cpu_param_dict=None,
             onload_self=True,
         )
