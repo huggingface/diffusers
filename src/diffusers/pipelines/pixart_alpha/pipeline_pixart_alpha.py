@@ -941,8 +941,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
                 # compute previous image: x_t -> x_t-1
                 if num_inference_steps == 1:
-                    # For DMD one step sampling: https://arxiv.org/abs/2311.18828
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).pred_original_sample
+                    try:
+                        # For LCM one step sampling
+                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).denoised
+                    except:
+                        # For DMD one step sampling: https://arxiv.org/abs/2311.18828
+                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).pred_original_sample
                 else:
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
