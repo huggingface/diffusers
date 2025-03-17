@@ -113,7 +113,7 @@ def retrieve_latents(
     latents_mean: torch.Tensor,
     latents_std: torch.Tensor,
     generator: Optional[torch.Generator] = None,
-    sample_mode: str = "none",
+    sample_mode: str = "argmax",
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "none":
         return (encoder_output.latent_dist.mean - latents_mean) * latents_std
