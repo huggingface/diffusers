@@ -78,7 +78,7 @@ else:
     XLA_AVAILABLE = False
 
 from .multicontrolnet import MultiControlNetModel
-from .safety_checker import StableDiffusionSafetyChecker # # thesea modified for safty checker
+from .safety_checker import StableDiffusionSafetyChecker # thesea modified for safty checker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -1605,7 +1605,7 @@ class StableDiffusionXLControlNetPipeline(
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=image,
-                    cross_attention_kwargs=self.cross_attention_kwargs, # thesea modified for text prompt mask
+                    cross_attention_kwargs=self.cross_attention_kwargs, # thesea modified for text prompt mask for accepting mask para
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
