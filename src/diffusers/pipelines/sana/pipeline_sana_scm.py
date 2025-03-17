@@ -186,9 +186,9 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class SanaSCMPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
+class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
-    Pipeline for text-to-image generation using [Sana](https://huggingface.co/papers/2410.10629).
+    Pipeline for text-to-image generation using [SANA-Sprint](https://huggingface.co/papers/2503.09641).
     """
 
     # fmt: off
