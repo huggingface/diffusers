@@ -1,12 +1,12 @@
 import inspect
 from typing import Callable, Dict, List, Optional, Union
 
-import numpy as np
 import PIL
 import PIL.Image
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...loaders import StableDiffusionLoraLoaderMixin
 from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
@@ -18,7 +18,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...image_processor import VaeImageProcessor
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -76,12 +76,12 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, unet=unet, scheduler=scheduler, movq=movq
         )
-        movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1) 
+        movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(
-            vae_scale_factor = movq_scale_factor,
-            vae_latent_channels = self.movq.config.latent_channels,
-            resample = "bicubic",
-            reducing_gap = 1,
+            vae_scale_factor=movq_scale_factor,
+            vae_latent_channels=self.movq.config.latent_channels,
+            resample="bicubic",
+            reducing_gap=1,
         )
 
     def get_timesteps(self, num_inference_steps, strength, device):

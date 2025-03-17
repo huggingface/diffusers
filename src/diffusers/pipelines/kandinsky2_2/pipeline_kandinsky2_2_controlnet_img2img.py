@@ -14,11 +14,10 @@
 
 from typing import Callable, List, Optional, Union
 
-import numpy as np
 import PIL.Image
 import torch
-from PIL import Image
 
+from ...image_processor import VaeImageProcessor
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -27,7 +26,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...image_processor import VaeImageProcessor
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -136,12 +135,12 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
-        movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1) 
+        movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(
-            vae_scale_factor = movq_scale_factor,
-            vae_latent_channels = self.movq.config.latent_channels,
-            resample = "bicubic",
-            reducing_gap = 1,
+            vae_scale_factor=movq_scale_factor,
+            vae_latent_channels=self.movq.config.latent_channels,
+            resample="bicubic",
+            reducing_gap=1,
         )
 
     # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_img2img.KandinskyImg2ImgPipeline.get_timesteps

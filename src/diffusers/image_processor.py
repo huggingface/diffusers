@@ -499,7 +499,11 @@ class VaeImageProcessor(ConfigMixin):
             raise ValueError(f"Only PIL image input is supported for resize_mode {resize_mode}")
         if isinstance(image, PIL.Image.Image):
             if resize_mode == "default":
-                image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample], reducing_gap=self.config.reducing_gap)
+                image = image.resize(
+                    (width, height),
+                    resample=PIL_INTERPOLATION[self.config.resample],
+                    reducing_gap=self.config.reducing_gap,
+                )
             elif resize_mode == "fill":
                 image = self._resize_and_fill(image, width, height)
             elif resize_mode == "crop":
