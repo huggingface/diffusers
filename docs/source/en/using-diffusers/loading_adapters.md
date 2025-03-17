@@ -194,6 +194,62 @@ Currently, [`~loaders.StableDiffusionLoraLoaderMixin.set_adapters`] only support
 
 </Tip>
 
+### Hot swapping LoRA adapters
+
+A common use case when serving multiple adapters is to load one adapter first, generate images, then load another adapter, generate more images, load another adapter, etc. This workflow would normally require calling [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] and [`~loaders.StableDiffusionLoraLoaderMixin.set_adapters`] and possibly [`~loaders.peft.PeftAdapterMixin.delete_adapters`] to save on memory. Those are quite a few steps. Morever, if the model is compiled using `torch.compile`, performing these steps will result in recompilation, which takes time.
+
+To better support this common workflow, diffusers offers the option to "hot swap" a LoRA adapter. This requires an adapter to already be loaded. Then, a new adapter can be hot swapped for the existing adapter, i.e. the weights are swapped in-place. This is more convenient, doesn't accumulate memory, and does not require recompilation, at least in some circumstances.
+
+In general, hot swapping can be accomplished by passing `hotswap=True` when loading the LoRA adapter:
+
+```python
+pipe = ...
+# load adapter 1 as normal
+pipeline.load_lora_weights(file_name_adapter_1)
+# generate some images with adapter 1
+...
+# now hot swap the 2nd adapter
+pipeline.load_lora_weights(file_name_adapter_2, hotswap=True, adapter_name="default_0")
+# generate images with adapter 2
+```
+
+Notice that we passed `adapter_name="default_0"`. This is the default adapter name given by diffusers and it is important that we indicate the name of the existing adapter. If you loaded the first adapter under a different name, pass that name instead.
+
+<Tip warning={true}>
+
+Hot swapping is currently not supported for the text encoder. If the LoRA adapter targets the text encoder, don't use this feature.
+
+</Tip>
+
+Now when it comes to compiled models, the same code as above may also work without triggering recompilation, but only if the second adapter targets the exact same ranks, has the exact same LoRA ranks and also scales. For most adapters, this is not the case. Therefore, it is necessary to go through one more step, as shown in this snippet:
+
+```python
+pipe = ...
+# call this extra method
+pipe.enable_lora_hotswap(target_rank=max_rank)
+# now load adapter 1
+pipe.load_lora_weights(file_name_adapter_1)
+# now compile the unet of the pipeline
+pipe.unet = torch.compile(pipeline.unet, ...)
+# generate some images with adapter 1
+...
+# now hot swap adapter 2
+pipeline.load_lora_weights(file_name_adapter_2, hotswap=True, adapter_name="default_0")
+# generate images with adapter 2
+```
+
+By calling the [`~loaders.lora_base.LoraBaseMixin.enable_lora_hotswap`] method, diffusers makes it possible to hot swap the LoRA adapter without triggering recompilation. For this to work, call the method _before_ loading the first adapter. Also note that, as always, `torch.compile` has to be called _after_ loading the first adapter.
+
+The `target_rank=max_rank` argument is important to let diffusers know what will be the maximum rank among all LoRA adapters that will be loaded. So if you have one adapter with rank 8 and another with rank 16, pass `target_rank=16`. By default, this value is 128. If in doubt, prefer a higher value.
+
+Even after following these steps, there can be situations that will result in recompilation. Most notably, if the swapped in adapters targets more layers than the initial adapter, recompilation is needed. Try to load the adapter that targets most layers first. Read more about the limitations of hot swapping in the [PEFT documentation on hot swapping](https://huggingface.co/docs/peft/main/en/package_reference/hotswap#peft.utils.hotswap.hotswap_adapter).
+
+<Tip>
+
+To detect if the model was recompiled, move your code inside the `with torch._dynamo.config.patch(error_on_recompile=True)` context manager. If you detect recompilation despite following all the steps above, please open an issue on the [diffusers GitHub repository](https://github.com/huggingface/diffusers/issues) with a reproducer.
+
+</Tip>
+
 ### Kohya and TheLastBen
 
 Other popular LoRA trainers from the community include those by [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). These trainers create different LoRA checkpoints than those trained by 🤗 Diffusers, but they can still be loaded in the same way.
