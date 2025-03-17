@@ -362,7 +362,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
 
-        image = self.image_processor.postprocess(image, output_type=output_type)
+        image = self.image_processor.postprocess(image, output_type)
 
         if not return_dict:
             return (image,)

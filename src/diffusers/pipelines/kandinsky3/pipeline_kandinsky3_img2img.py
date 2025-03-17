@@ -623,7 +623,7 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
                 image = self.movq.decode(latents, force_not_quantize=True)["sample"]
             else:
                 image = latents
-            image = self.image_processor.postprocess(image, output_type=output_type)
+            image = self.image_processor.postprocess(image, output_type)
 
             self.maybe_free_model_hooks()
 

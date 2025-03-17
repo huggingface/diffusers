@@ -370,7 +370,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
             image = self.movq.decode(latents, force_not_quantize=True)["sample"]
         else:
             image = latents
-        image = self.image_processor.postprocess(image, output_type=output_type)
+        image = self.image_processor.postprocess(image, output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
