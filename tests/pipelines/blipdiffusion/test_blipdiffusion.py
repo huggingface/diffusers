@@ -21,7 +21,8 @@ from transformers import CLIPTokenizer
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config
 from transformers.models.clip.configuration_clip import CLIPTextConfig
 
-from diffusers import AutoencoderKL, BlipDiffusionPipeline, PNDMScheduler, UNet2DConditionModel
+from diffusers import AutoencoderKL, PNDMScheduler, UNet2DConditionModel
+from diffusers.pipelines.deprecated import BlipDiffusionPipeline
 from diffusers.pipelines.deprecated.blip_diffusion.blip_image_processing import BlipImageProcessor
 from diffusers.pipelines.deprecated.blip_diffusion.modeling_blip2 import Blip2QFormerModel
 from diffusers.pipelines.deprecated.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel

@@ -105,6 +105,7 @@ else:
             "VQDiffusionPipeline",
             "AltDiffusionPipeline",
             "AltDiffusionImg2ImgPipeline",
+            "BlipDiffusionPipeline" "BlipDiffusionControlNetPipeline",
             "CycleDiffusionPipeline",
             "StableDiffusionInpaintPipelineLegacy",
             "StableDiffusionPix2PixZeroPipeline",

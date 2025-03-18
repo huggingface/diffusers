@@ -23,11 +23,11 @@ from transformers.models.clip.configuration_clip import CLIPTextConfig
 
 from diffusers import (
     AutoencoderKL,
-    BlipDiffusionControlNetPipeline,
     ControlNetModel,
     PNDMScheduler,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.deprecated import BlipDiffusionControlNetPipeline
 from diffusers.pipelines.deprecated.blip_diffusion.blip_image_processing import BlipImageProcessor
 from diffusers.pipelines.deprecated.blip_diffusion.modeling_blip2 import Blip2QFormerModel
 from diffusers.pipelines.deprecated.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
