@@ -74,15 +74,37 @@ VAE_091_RENAME_DICT = {
     "last_scale_shift_table": "scale_shift_table",
 }
 
+VAE_095_RENAME_DICT = {
+    # decoder
+    "up_blocks.0": "mid_block",
+    "up_blocks.1": "up_blocks.0.upsamplers.0",
+    "up_blocks.2": "up_blocks.0",
+    "up_blocks.3": "up_blocks.1.upsamplers.0",
+    "up_blocks.4": "up_blocks.1",
+    "up_blocks.5": "up_blocks.2.upsamplers.0",
+    "up_blocks.6": "up_blocks.2",
+    "up_blocks.7": "up_blocks.3.upsamplers.0",
+    "up_blocks.8": "up_blocks.3",
+    # encoder
+    "down_blocks.0": "down_blocks.0",
+    "down_blocks.1": "down_blocks.0.downsamplers.0",
+    "down_blocks.2": "down_blocks.1",
+    "down_blocks.3": "down_blocks.1.downsamplers.0",
+    "down_blocks.4": "down_blocks.2",
+    "down_blocks.5": "down_blocks.2.downsamplers.0",
+    "down_blocks.6": "down_blocks.3",
+    "down_blocks.7": "down_blocks.3.downsamplers.0",
+    "down_blocks.8": "mid_block",
+    # common
+    "last_time_embedder": "time_embedder",
+    "last_scale_shift_table": "scale_shift_table",
+}
+
 VAE_SPECIAL_KEYS_REMAP = {
     "per_channel_statistics.channel": remove_keys_,
     "per_channel_statistics.mean-of-means": remove_keys_,
     "per_channel_statistics.mean-of-stds": remove_keys_,
     "model.diffusion_model": remove_keys_,
-}
-
-VAE_091_SPECIAL_KEYS_REMAP = {
-    "timestep_scale_multiplier": remove_keys_,
 }
 
 
@@ -104,12 +126,16 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
 def convert_transformer(
     ckpt_path: str,
     dtype: torch.dtype,
+    version: str = "0.9.0",
 ):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(load_file(ckpt_path))
+    config = {}
+    if version == "0.9.5":
+        config["_use_causal_rope_fix"] = True
     with init_empty_weights():
-        transformer = LTXVideoTransformer3DModel()
+        transformer = LTXVideoTransformer3DModel(**config)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -161,12 +187,19 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "out_channels": 3,
             "latent_channels": 128,
             "block_out_channels": (128, 256, 512, 512),
+            "down_block_types": (
+                "LTXVideoDownBlock3D",
+                "LTXVideoDownBlock3D",
+                "LTXVideoDownBlock3D",
+                "LTXVideoDownBlock3D",
+            ),
             "decoder_block_out_channels": (128, 256, 512, 512),
             "layers_per_block": (4, 3, 3, 3, 4),
             "decoder_layers_per_block": (4, 3, 3, 3, 4),
             "spatio_temporal_scaling": (True, True, True, False),
             "decoder_spatio_temporal_scaling": (True, True, True, False),
             "decoder_inject_noise": (False, False, False, False, False),
+            "downsample_type": ("conv", "conv", "conv", "conv"),
             "upsample_residual": (False, False, False, False),
             "upsample_factor": (1, 1, 1, 1),
             "patch_size": 4,
@@ -183,12 +216,19 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "out_channels": 3,
             "latent_channels": 128,
             "block_out_channels": (128, 256, 512, 512),
+            "down_block_types": (
+                "LTXVideoDownBlock3D",
+                "LTXVideoDownBlock3D",
+                "LTXVideoDownBlock3D",
+                "LTXVideoDownBlock3D",
+            ),
             "decoder_block_out_channels": (256, 512, 1024),
             "layers_per_block": (4, 3, 3, 3, 4),
             "decoder_layers_per_block": (5, 6, 7, 8),
             "spatio_temporal_scaling": (True, True, True, False),
             "decoder_spatio_temporal_scaling": (True, True, True),
             "decoder_inject_noise": (True, True, True, False),
+            "downsample_type": ("conv", "conv", "conv", "conv"),
             "upsample_residual": (True, True, True),
             "upsample_factor": (2, 2, 2),
             "timestep_conditioning": True,
@@ -200,7 +240,38 @@ def get_vae_config(version: str) -> Dict[str, Any]:
             "decoder_causal": False,
         }
         VAE_KEYS_RENAME_DICT.update(VAE_091_RENAME_DICT)
-        VAE_SPECIAL_KEYS_REMAP.update(VAE_091_SPECIAL_KEYS_REMAP)
+    elif version == "0.9.5":
+        config = {
+            "in_channels": 3,
+            "out_channels": 3,
+            "latent_channels": 128,
+            "block_out_channels": (128, 256, 512, 1024, 2048),
+            "down_block_types": (
+                "LTXVideo095DownBlock3D",
+                "LTXVideo095DownBlock3D",
+                "LTXVideo095DownBlock3D",
+                "LTXVideo095DownBlock3D",
+            ),
+            "decoder_block_out_channels": (256, 512, 1024),
+            "layers_per_block": (4, 6, 6, 2, 2),
+            "decoder_layers_per_block": (5, 5, 5, 5),
+            "spatio_temporal_scaling": (True, True, True, True),
+            "decoder_spatio_temporal_scaling": (True, True, True),
+            "decoder_inject_noise": (False, False, False, False),
+            "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+            "upsample_residual": (True, True, True),
+            "upsample_factor": (2, 2, 2),
+            "timestep_conditioning": True,
+            "patch_size": 4,
+            "patch_size_t": 1,
+            "resnet_norm_eps": 1e-6,
+            "scaling_factor": 1.0,
+            "encoder_causal": True,
+            "decoder_causal": False,
+            "spatial_compression_ratio": 32,
+            "temporal_compression_ratio": 8,
+        }
+        VAE_KEYS_RENAME_DICT.update(VAE_095_RENAME_DICT)
     return config
 
 
@@ -223,7 +294,7 @@ def get_args():
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="fp32", help="Torch dtype to save the model in.")
     parser.add_argument(
-        "--version", type=str, default="0.9.0", choices=["0.9.0", "0.9.1"], help="Version of the LTX model"
+        "--version", type=str, default="0.9.0", choices=["0.9.0", "0.9.1", "0.9.5"], help="Version of the LTX model"
     )
     return parser.parse_args()
 
@@ -277,14 +348,17 @@ if __name__ == "__main__":
         for param in text_encoder.parameters():
             param.data = param.data.contiguous()
 
-        scheduler = FlowMatchEulerDiscreteScheduler(
-            use_dynamic_shifting=True,
-            base_shift=0.95,
-            max_shift=2.05,
-            base_image_seq_len=1024,
-            max_image_seq_len=4096,
-            shift_terminal=0.1,
-        )
+        if args.version == "0.9.5":
+            scheduler = FlowMatchEulerDiscreteScheduler(use_dynamic_shifting=False)
+        else:
+            scheduler = FlowMatchEulerDiscreteScheduler(
+                use_dynamic_shifting=True,
+                base_shift=0.95,
+                max_shift=2.05,
+                base_image_seq_len=1024,
+                max_image_seq_len=4096,
+                shift_terminal=0.1,
+            )
 
         pipe = LTXPipeline(
             scheduler=scheduler,
