@@ -528,56 +528,51 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             )
 
         # TODO: alphas.
-        if any("final_layer" in k for k in sds_sd):
+        def assign_remaining_weights(assignments, source):
             for lora_key in ["lora_A", "lora_B"]:
                 orig_lora_key = "lora_down" if lora_key == "lora_A" else "lora_up"
-                # Notice the swap.
-                ait_sd[f"norm_out.linear.{lora_key}.weight"] = swap_scale_shift(
-                    sds_sd.pop(f"lora_unet_final_layer_adaLN_modulation_1.{orig_lora_key}.weight")
-                )
-                ait_sd[f"proj_out.{lora_key}.weight"] = sds_sd.pop(
-                    f"lora_unet_final_layer_linear.{orig_lora_key}.weight"
-                )
+                for target_fmt, source_fmt, transform in assignments:
+                    target_key = target_fmt.format(lora_key=lora_key)
+                    source_key = source_fmt.format(orig_lora_key=orig_lora_key)
+                    value = source.pop(source_key)
+                    if transform:
+                        value = transform(value)
+                    ait_sd[target_key] = value
 
         if any("guidance_in" in k for k in sds_sd):
-            for lora_key in ["lora_A", "lora_B"]:
-                orig_lora_key = "lora_down" if lora_key == "lora_A" else "lora_up"
-                ait_sd[f"time_text_embed.guidance_embedder.linear_1.{lora_key}.weight"] = sds_sd.pop(
-                    f"lora_unet_guidance_in_in_layer.{orig_lora_key}.weight"
-                )
-                ait_sd[f"time_text_embed.guidance_embedder.linear_2.{lora_key}.weight"] = sds_sd.pop(
-                    f"lora_unet_guidance_in_out_layer.{orig_lora_key}.weight"
-                )
+            assign_remaining_weights([
+                ("time_text_embed.guidance_embedder.linear_1.{lora_key}.weight", "lora_unet_guidance_in_in_layer.{orig_lora_key}.weight", None),
+                ("time_text_embed.guidance_embedder.linear_2.{lora_key}.weight", "lora_unet_guidance_in_out_layer.{orig_lora_key}.weight", None),
+            ], sds_sd)
 
         if any("img_in" in k for k in sds_sd):
-            for lora_key in ["lora_A", "lora_B"]:
-                orig_lora_key = "lora_down" if lora_key == "lora_A" else "lora_up"
-                ait_sd[f"x_embedder.{lora_key}.weight"] = sds_sd.pop(f"lora_unet_img_in.{orig_lora_key}.weight")
+            assign_remaining_weights([
+                ("x_embedder.{lora_key}.weight", "lora_unet_img_in.{orig_lora_key}.weight", None),
+            ], sds_sd)
 
         if any("txt_in" in k for k in sds_sd):
-            for lora_key in ["lora_A", "lora_B"]:
-                orig_lora_key = "lora_down" if lora_key == "lora_A" else "lora_up"
-                ait_sd[f"context_embedder.{lora_key}.weight"] = sds_sd.pop(f"lora_unet_txt_in.{orig_lora_key}.weight")
+            assign_remaining_weights([
+                ("context_embedder.{lora_key}.weight", "lora_unet_txt_in.{orig_lora_key}.weight", None),
+            ], sds_sd)
 
-        if any("time_in" in k for k in state_dict):
-            for lora_key in ["lora_A", "lora_B"]:
-                orig_lora_key = "lora_down" if lora_key == "lora_A" else "lora_up"
-                ait_sd[f"time_text_embed.timestep_embedder.linear_1.{lora_key}.weight"] = sds_sd.pop(
-                    f"lora_unet_time_in_in_layer.{orig_lora_key}.weight"
-                )
-                ait_sd[f"time_text_embed.timestep_embedder.linear_2.{lora_key}.weight"] = sds_sd.pop(
-                    f"lora_unet_time_in_out_layer.{orig_lora_key}.weight"
-                )
+        if any("time_in" in k for k in sds_sd):
+            assign_remaining_weights([
+                ("time_text_embed.timestep_embedder.linear_1.{lora_key}.weight", "lora_unet_time_in_in_layer.{orig_lora_key}.weight", None),
+                ("time_text_embed.timestep_embedder.linear_2.{lora_key}.weight", "lora_unet_time_in_out_layer.{orig_lora_key}.weight", None),
+            ], sds_sd)
 
         if any("vector_in" in k for k in sds_sd):
-            for lora_key in ["lora_A", "lora_B"]:
-                orig_lora_key = "lora_down" if lora_key == "lora_A" else "lora_up"
-                ait_sd[f"time_text_embed.text_embedder.linear_1.{lora_key}.weight"] = sds_sd.pop(
-                    f"lora_unet_vector_in_in_layer.{orig_lora_key}.weight"
-                )
-                ait_sd[f"time_text_embed.text_embedder.linear_2.{lora_key}.weight"] = sds_sd.pop(
-                    f"lora_unet_vector_in_out_layer.{orig_lora_key}.weight"
-                )
+            assign_remaining_weights([
+                ("time_text_embed.text_embedder.linear_1.{lora_key}.weight", "lora_unet_vector_in_in_layer.{orig_lora_key}.weight", None),
+                ("time_text_embed.text_embedder.linear_2.{lora_key}.weight", "lora_unet_vector_in_out_layer.{orig_lora_key}.weight", None),
+            ], sds_sd)
+
+        if any("final_layer" in k for k in sds_sd):
+            # Notice the swap in processing for "final_layer".
+            assign_remaining_weights([
+                ("norm_out.linear.{lora_key}.weight", "lora_unet_final_layer_adaLN_modulation_1.{orig_lora_key}.weight", swap_scale_shift),
+                ("proj_out.{lora_key}.weight", "lora_unet_final_layer_linear.{orig_lora_key}.weight", None),
+            ], sds_sd)
 
         remaining_keys = list(sds_sd.keys())
         te_state_dict = {}
@@ -752,24 +747,23 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
     # ComfyUI.
     state_dict = {k.replace("diffusion_model.", "lora_unet_"): v for k, v in state_dict.items()}
     state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te_"): v for k, v in state_dict.items()}
-    has_t5xxl = any(k.startswith("text_encoders.t5xxl.transformer.") for k in state_dict)
 
-    if any("position_embedding" in k for k in state_dict):
+    has_position_embedding = any("position_embedding" in k for k in state_dict)
+    if has_position_embedding:
         zero_status_pe = state_dict_all_zero(state_dict, "position_embedding")
         if zero_status_pe:
             logger.info(
                 "The `position_embedding` LoRA params are all zeros which make them ineffective. "
                 "So, we will purge them out of the curret state dict to make loading possible."
             )
-            current_pe_lora_keys = [k for k in state_dict if "position_embedding" in k]
-            for k in current_pe_lora_keys:
-                state_dict.pop(k)
+            state_dict = {k: v for k, v in state_dict.items() if "position_embedding" not in k}
         else:
             raise NotImplementedError(
                 "The state_dict has position_embedding LoRA params and we currently do not support them. "
                 "Open an issue if you need this supported - https://github.com/huggingface/diffusers/issues/new."
             )
 
+    has_t5xxl = any(k.startswith("text_encoders.t5xxl.transformer.") for k in state_dict)
     if has_t5xxl:
         zero_status_t5 = state_dict_all_zero(state_dict, "text_encoders.t5xxl")
         if zero_status_t5:
@@ -784,8 +778,8 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             )
         state_dict = {k: v for k, v in state_dict.items() if not k.startswith("text_encoders.t5xxl.transformer.")}
 
-    any_diffb_keys = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
-    if any_diffb_keys:
+    has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
+    if has_diffb:
         zero_status_diff_b = state_dict_all_zero(state_dict, "diff_b")
         if zero_status_diff_b:
             logger.info(
@@ -800,8 +794,8 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
             )
         state_dict = {k: v for k, v in state_dict.items() if "diff_b" not in k}
 
-    any_norm_diff_keys = any("norm" in k and "diff" in k for k in state_dict)
-    if any_norm_diff_keys:
+    has_norm_diff = any("norm" in k and "diff" in k for k in state_dict)
+    if has_norm_diff:
         zero_status_diff = state_dict_all_zero(state_dict, "diff")
         if zero_status_diff:
             logger.info(
