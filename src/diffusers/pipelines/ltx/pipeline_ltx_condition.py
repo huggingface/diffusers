@@ -48,10 +48,10 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXConditionPipeline, LTXVideoCondition
         >>> from diffusers.utils import export_to_video, load_video, load_image
-        >>> 
+
         >>> pipe = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.1", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> 
+
         >>> # Load input image and video
         >>> video = load_video(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input-vid.mp4"
@@ -59,7 +59,7 @@ EXAMPLE_DOC_STRING = """
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input.jpg"
         ... )
-        >>> 
+
         >>> # Create conditioning objects
         >>> condition1 = LTXVideoCondition(
         ...     image=image,
@@ -69,10 +69,10 @@ EXAMPLE_DOC_STRING = """
         ...     video=video,
         ...     frame_index=80,
         ... )
-        >>> 
+
         >>> prompt = "The video depicts a long, straight highway stretching into the distance, flanked by metal guardrails. The road is divided into multiple lanes, with a few vehicles visible in the far distance. The surrounding landscape features dry, grassy fields on one side and rolling hills on the other. The sky is mostly clear with a few scattered clouds, suggesting a bright, sunny day. And then the camera switch to a winding mountain road covered in snow, with a single vehicle traveling along it. The road is flanked by steep, rocky cliffs and sparse vegetation. The landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the solitude and beauty of a winter drive through a mountainous region."
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
-        >>> 
+
         >>> # Generate video
         >>> generator = torch.Generator("cuda").manual_seed(0)
         >>> video = pipe(
@@ -85,7 +85,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=40,
         ...     generator=generator,
         ... ).frames[0]
-        >>> 
+
         >>> export_to_video(video, "output.mp4", fps=24)
         ```
 """
