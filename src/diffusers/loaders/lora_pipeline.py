@@ -4255,22 +4255,23 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         transformer: torch.nn.Module,
         state_dict,
     ):
-        num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict})
-        is_i2v_lora = any("k_img" in k for k in state_dict) and any("v_img" in k for k in state_dict)
-        if not is_i2v_lora:
-            return state_dict
+        if any(k.startswith("blocks.") for k in state_dict):
+            num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict})
+            is_i2v_lora = any("k_img" in k for k in state_dict) and any("v_img" in k for k in state_dict)
+            if not is_i2v_lora:
+                return state_dict
 
-        if transformer.config.image_dim is None:
-            return state_dict
+            if transformer.config.image_dim is None:
+                return state_dict
 
-        for i in range(num_blocks):
-            for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
-                state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
-                    state_dict[f"blocks.{i}.attn2.{o.replace('_img', '')}.lora_A.weight"]
-                )
-                state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
-                    state_dict[f"blocks.{i}.attn2.{o.replace('_img', '')}.lora_B.weight"]
-                )
+            for i in range(num_blocks):
+                for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
+                    state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
+                        state_dict[f"blocks.{i}.attn2.{o.replace('_img', '')}.lora_A.weight"]
+                    )
+                    state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
+                        state_dict[f"blocks.{i}.attn2.{o.replace('_img', '')}.lora_B.weight"]
+                    )
 
         return state_dict
 
