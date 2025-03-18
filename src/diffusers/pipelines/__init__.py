@@ -146,7 +146,6 @@ else:
         "AudioLDM2ProjectionModel",
         "AudioLDM2UNet2DConditionModel",
     ]
-    _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -158,7 +157,6 @@ else:
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["controlnet"].extend(
         [
-            "BlipDiffusionControlNetPipeline",
             "StableDiffusionControlNetImg2ImgPipeline",
             "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionControlNetPipeline",
@@ -503,7 +501,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
         )
         from .aura_flow import AuraFlowPipeline
-        from .blip_diffusion import BlipDiffusionPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
@@ -514,7 +511,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
         from .consisid import ConsisIDPipeline
         from .controlnet import (
-            BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionControlNetPipeline,
@@ -544,6 +540,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .deprecated import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
+            BlipDiffusionControlNetPipeline,
+            BlipDiffusionPipeline,
             CycleDiffusionPipeline,
             StableDiffusionInpaintPipelineLegacy,
             StableDiffusionModelEditingPipeline,
