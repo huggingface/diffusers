@@ -921,14 +921,12 @@ class LTXVideoDecoder3d(nn.Module):
         timestep_conditioning: bool = False,
         upsample_residual: Tuple[bool, ...] = (False, False, False, False),
         upsample_factor: Tuple[bool, ...] = (1, 1, 1, 1),
-        timestep_scale_multiplier: float = 1.0,
     ) -> None:
         super().__init__()
 
         self.patch_size = patch_size
         self.patch_size_t = patch_size_t
         self.out_channels = out_channels * patch_size**2
-        self.timestep_scale_multiplier = timestep_scale_multiplier
 
         block_out_channels = tuple(reversed(block_out_channels))
         spatio_temporal_scaling = tuple(reversed(spatio_temporal_scaling))
@@ -983,7 +981,9 @@ class LTXVideoDecoder3d(nn.Module):
         # timestep embedding
         self.time_embedder = None
         self.scale_shift_table = None
+        self.timestep_scale_multiplier = None
         if timestep_conditioning:
+            self.timestep_scale_multiplier = nn.Parameter(torch.tensor(1000.0, dtype=torch.float32))
             self.time_embedder = PixArtAlphaCombinedTimestepSizeEmbeddings(output_channel * 2, 0)
             self.scale_shift_table = nn.Parameter(torch.randn(2, output_channel) / output_channel**0.5)
 
@@ -992,7 +992,7 @@ class LTXVideoDecoder3d(nn.Module):
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.conv_in(hidden_states)
 
-        if temb is not None:
+        if self.timestep_scale_multiplier is not None:
             temb = temb * self.timestep_scale_multiplier
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -1107,7 +1107,6 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         decoder_causal: bool = False,
         spatial_compression_ratio: int = None,
         temporal_compression_ratio: int = None,
-        timestep_scale_multiplier: float = 1.0,
     ) -> None:
         super().__init__()
 
@@ -1138,7 +1137,6 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             inject_noise=decoder_inject_noise,
             upsample_residual=upsample_residual,
             upsample_factor=upsample_factor,
-            timestep_scale_multiplier=timestep_scale_multiplier,
         )
 
         latents_mean = torch.zeros((latent_channels,), requires_grad=False)

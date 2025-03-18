@@ -46,26 +46,46 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTXConditionPipeline
-        >>> from diffusers.utils import export_to_video, load_image
-
-        >>> pipe = LTXConditionPipeline.from_pretrained("YiYiXu/ltx-95", torch_dtype=torch.bfloat16)
+        >>> from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXConditionPipeline, LTXVideoCondition
+        >>> from diffusers.utils import export_to_video, load_video, load_image
+        >>> 
+        >>> pipe = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.1", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/images/8.png"
+        >>> 
+        >>> # Load input image and video
+        >>> video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input-vid.mp4"
         ... )
-        >>> prompt = "A young girl stands calmly in the foreground, looking directly at the camera, as a house fire rages in the background. Flames engulf the structure, with smoke billowing into the air. Firefighters in protective gear rush to the scene, a fire truck labeled '38' visible behind them. The girl's neutral expression contrasts sharply with the chaos of the fire, creating a poignant and emotionally charged scene."
-        >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
-
-        >>> video = pipe(
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input.jpg"
+        ... )
+        >>> 
+        >>> # Create conditioning objects
+        >>> condition1 = LTXVideoCondition(
         ...     image=image,
+        ...     frame_index=0,
+        ... )
+        >>> condition2 = LTXVideoCondition(
+        ...     video=video,
+        ...     frame_index=80,
+        ... )
+        >>> 
+        >>> prompt = "The video depicts a long, straight highway stretching into the distance, flanked by metal guardrails. The road is divided into multiple lanes, with a few vehicles visible in the far distance. The surrounding landscape features dry, grassy fields on one side and rolling hills on the other. The sky is mostly clear with a few scattered clouds, suggesting a bright, sunny day. And then the camera switch to a winding mountain road covered in snow, with a single vehicle traveling along it. The road is flanked by steep, rocky cliffs and sparse vegetation. The landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the solitude and beauty of a winter drive through a mountainous region."
+        >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
+        >>> 
+        >>> # Generate video
+        >>> generator = torch.Generator("cuda").manual_seed(0)
+        >>> video = pipe(
+        ...     conditions=[condition1, condition2],
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
-        ...     width=704,
-        ...     height=480,
+        ...     width=768,
+        ...     height=512,
         ...     num_frames=161,
-        ...     num_inference_steps=50,
+        ...     num_inference_steps=40,
+        ...     generator=generator,
         ... ).frames[0]
+        >>> 
         >>> export_to_video(video, "output.mp4", fps=24)
         ```
 """
