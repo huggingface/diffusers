@@ -56,7 +56,7 @@ class ModuleGroup:
         buffers: Optional[List[torch.Tensor]] = None,
         non_blocking: bool = False,
         stream: Optional[torch.cuda.Stream] = None,
-        cpu_param_dict=None,
+        low_cpu_mem_usage=False,
         onload_self: bool = True,
     ) -> None:
         self.modules = modules
@@ -69,53 +69,30 @@ class ModuleGroup:
         self.non_blocking = non_blocking or stream is not None
         self.stream = stream
         self.onload_self = onload_self
+        self.low_cpu_mem_usage = low_cpu_mem_usage
 
-        # Store original CPU tensors - this avoids needing to keep pinned memory around
-        # We only collect parameters from modules here, explicit parameters will be handled separately
         self.cpu_param_dict = {}
-        self._collect_cpu_parameters()
-
-    def _collect_cpu_parameters(self):
-        """Collect and store original CPU tensors for all parameters."""
-        # Store module parameters
         for module in self.modules:
             for param in module.parameters():
-                self.cpu_param_dict[param] = param.data
-
-        # Store explicit parameters
-        if self.parameters:
-            for param in self.parameters:
-                self.cpu_param_dict[param] = param.data
+                if self.low_cpu_mem_usage:
+                    self.cpu_param_dict[param] = param.data.cpu()
+                else:
+                    self.cpu_param_dict[param] = param.data.cpu().pin_memory()
 
     @contextmanager
     def _pin_memory(self):
-        """
-        Context manager to temporarily pin memory for parameters.
-        Pinned memory only exists within this context and is automatically
-        released when the context exits.
-        """
-        if self.stream is not None:
-            try:
-                # Create temporary pinned versions of parameters
-                pinned_dict = {}
+        pinned_dict = {}
+        try:
+            for param, tensor in self.cpu_param_dict.items():
+                if not tensor.is_pinned():
+                    pinned_dict[param] = tensor.pin_memory()
+                else:
+                    pinned_dict[param] = tensor
 
-                # Pin parameters that need to be transferred
-                for param, cpu_tensor in self.cpu_param_dict.items():
-                    # Only pin if the parameter is on CPU (avoid re-pinning)
-                    if cpu_tensor.device.type == 'cpu' and not cpu_tensor.is_pinned():
-                        pinned_dict[param] = cpu_tensor.pin_memory()
-                    else:
-                        pinned_dict[param] = cpu_tensor
+            yield pinned_dict
 
-                # Yield the pinned dictionary for use
-                yield pinned_dict
-            finally:
-                # Clear pinned dictionary when done - pinned memory will be
-                # garbage collected when no more references exist
-                pinned_dict = None
-        else:
-            # No pinning needed
-            yield None
+        finally:
+            pinned_dict = None
 
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
@@ -126,9 +103,7 @@ class ModuleGroup:
 
         with context:
             if self.stream is not None:
-                # Use the context manager to temporarily pin memory
                 with self._pin_memory() as pinned_dict:
-                    # Move module parameters using pinned memory
                     for module in self.modules:
                         for param in module.parameters():
                             if param in pinned_dict:
@@ -136,18 +111,15 @@ class ModuleGroup:
                                     self.onload_device, non_blocking=True
                                 )
 
-                    # Move explicit parameters
-                    if self.parameters:
-                        for param in self.parameters:
-                            if param in pinned_dict:
-                                param.data = pinned_dict[param].to(
-                                    self.onload_device, non_blocking=True
-                                )
+                if self.parameters:
+                    for param in self.parameters:
+                        param.data = param.data.to(
+                            self.onload_device, non_blocking=True
+                        )
 
-                    # Move buffers (typically small, so just use standard transfer)
-                    if self.buffers:
-                        for buffer in self.buffers:
-                            buffer.data = buffer.data.to(self.onload_device, non_blocking=True)
+                if self.buffers:
+                    for buffer in self.buffers:
+                        buffer.data = buffer.data.to(self.onload_device, non_blocking=True)
             else:
                 # Standard transfer for non-stream case
                 for module in self.modules:
@@ -164,24 +136,20 @@ class ModuleGroup:
         if self.stream is not None:
             torch.cuda.current_stream().synchronize()
 
-            # Restore original CPU tensors for module parameters
             for module in self.modules:
                 for param in module.parameters():
                     if param in self.cpu_param_dict:
                         param.data = self.cpu_param_dict[param]
 
-            # Restore original CPU tensors for explicit parameters
             if self.parameters:
                 for param in self.parameters:
                     if param in self.cpu_param_dict:
                         param.data = self.cpu_param_dict[param]
 
-            # Standard offloading for buffers
             if self.buffers:
                 for buffer in self.buffers:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
         else:
-            # Standard offloading for all components
             for module in self.modules:
                 module.to(self.offload_device, non_blocking=self.non_blocking)
             if self.parameters:
@@ -351,6 +319,7 @@ def apply_group_offloading(
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,
+    low_cpu_mem_usage=False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -432,10 +401,10 @@ def apply_group_offloading(
             raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
 
         _apply_group_offloading_block_level(
-            module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream
+            module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream, low_cpu_mem_usage
         )
     elif offload_type == "leaf_level":
-        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream)
+        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream, low_cpu_mem_usage)
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
 
@@ -447,6 +416,7 @@ def _apply_group_offloading_block_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
+    low_cpu_mem_usage: bool = False,
 ) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
@@ -466,15 +436,6 @@ def _apply_group_offloading_block_level(
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
     """
-
-    # Create a pinned CPU parameter dict for async data transfer if streams are to be used
-    cpu_param_dict = None
-    if stream is not None:
-        """
-        for param in module.parameters():
-            param.data = param.data.cpu().pin_memory()
-        cpu_param_dict = {param: param.data for param in module.parameters()}
-        """
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -496,7 +457,7 @@ def _apply_group_offloading_block_level(
                 onload_leader=current_modules[0],
                 non_blocking=non_blocking,
                 stream=stream,
-                cpu_param_dict=cpu_param_dict,
+                low_cpu_mem_usage=low_cpu_mem_usage,
                 onload_self=stream is None,
             )
             matched_module_groups.append(group)
@@ -533,7 +494,6 @@ def _apply_group_offloading_block_level(
         buffers=buffers,
         non_blocking=False,
         stream=None,
-        cpu_param_dict=None,
         onload_self=True,
     )
     next_group = matched_module_groups[0] if len(matched_module_groups) > 0 else None
@@ -546,6 +506,7 @@ def _apply_group_offloading_leaf_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
+    low_cpu_mem_usage: bool = False,
 ) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
@@ -590,7 +551,7 @@ def _apply_group_offloading_leaf_level(
             onload_leader=submodule,
             non_blocking=non_blocking,
             stream=stream,
-            cpu_param_dict=cpu_param_dict,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
         )
         _apply_group_offloading_hook(submodule, group, None)
@@ -635,7 +596,7 @@ def _apply_group_offloading_leaf_level(
             buffers=buffers,
             non_blocking=non_blocking,
             stream=stream,
-            cpu_param_dict=cpu_param_dict,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
         )
         _apply_group_offloading_hook(parent_module, group, None)
@@ -654,7 +615,7 @@ def _apply_group_offloading_leaf_level(
             buffers=None,
             non_blocking=False,
             stream=None,
-            cpu_param_dict=None,
+            low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
         )
         _apply_lazy_group_offloading_hook(module, unmatched_group, None)
