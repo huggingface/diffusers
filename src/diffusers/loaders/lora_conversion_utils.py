@@ -540,39 +540,85 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                     ait_sd[target_key] = value
 
         if any("guidance_in" in k for k in sds_sd):
-            assign_remaining_weights([
-                ("time_text_embed.guidance_embedder.linear_1.{lora_key}.weight", "lora_unet_guidance_in_in_layer.{orig_lora_key}.weight", None),
-                ("time_text_embed.guidance_embedder.linear_2.{lora_key}.weight", "lora_unet_guidance_in_out_layer.{orig_lora_key}.weight", None),
-            ], sds_sd)
+            assign_remaining_weights(
+                [
+                    (
+                        "time_text_embed.guidance_embedder.linear_1.{lora_key}.weight",
+                        "lora_unet_guidance_in_in_layer.{orig_lora_key}.weight",
+                        None,
+                    ),
+                    (
+                        "time_text_embed.guidance_embedder.linear_2.{lora_key}.weight",
+                        "lora_unet_guidance_in_out_layer.{orig_lora_key}.weight",
+                        None,
+                    ),
+                ],
+                sds_sd,
+            )
 
         if any("img_in" in k for k in sds_sd):
-            assign_remaining_weights([
-                ("x_embedder.{lora_key}.weight", "lora_unet_img_in.{orig_lora_key}.weight", None),
-            ], sds_sd)
+            assign_remaining_weights(
+                [
+                    ("x_embedder.{lora_key}.weight", "lora_unet_img_in.{orig_lora_key}.weight", None),
+                ],
+                sds_sd,
+            )
 
         if any("txt_in" in k for k in sds_sd):
-            assign_remaining_weights([
-                ("context_embedder.{lora_key}.weight", "lora_unet_txt_in.{orig_lora_key}.weight", None),
-            ], sds_sd)
+            assign_remaining_weights(
+                [
+                    ("context_embedder.{lora_key}.weight", "lora_unet_txt_in.{orig_lora_key}.weight", None),
+                ],
+                sds_sd,
+            )
 
         if any("time_in" in k for k in sds_sd):
-            assign_remaining_weights([
-                ("time_text_embed.timestep_embedder.linear_1.{lora_key}.weight", "lora_unet_time_in_in_layer.{orig_lora_key}.weight", None),
-                ("time_text_embed.timestep_embedder.linear_2.{lora_key}.weight", "lora_unet_time_in_out_layer.{orig_lora_key}.weight", None),
-            ], sds_sd)
+            assign_remaining_weights(
+                [
+                    (
+                        "time_text_embed.timestep_embedder.linear_1.{lora_key}.weight",
+                        "lora_unet_time_in_in_layer.{orig_lora_key}.weight",
+                        None,
+                    ),
+                    (
+                        "time_text_embed.timestep_embedder.linear_2.{lora_key}.weight",
+                        "lora_unet_time_in_out_layer.{orig_lora_key}.weight",
+                        None,
+                    ),
+                ],
+                sds_sd,
+            )
 
         if any("vector_in" in k for k in sds_sd):
-            assign_remaining_weights([
-                ("time_text_embed.text_embedder.linear_1.{lora_key}.weight", "lora_unet_vector_in_in_layer.{orig_lora_key}.weight", None),
-                ("time_text_embed.text_embedder.linear_2.{lora_key}.weight", "lora_unet_vector_in_out_layer.{orig_lora_key}.weight", None),
-            ], sds_sd)
+            assign_remaining_weights(
+                [
+                    (
+                        "time_text_embed.text_embedder.linear_1.{lora_key}.weight",
+                        "lora_unet_vector_in_in_layer.{orig_lora_key}.weight",
+                        None,
+                    ),
+                    (
+                        "time_text_embed.text_embedder.linear_2.{lora_key}.weight",
+                        "lora_unet_vector_in_out_layer.{orig_lora_key}.weight",
+                        None,
+                    ),
+                ],
+                sds_sd,
+            )
 
         if any("final_layer" in k for k in sds_sd):
             # Notice the swap in processing for "final_layer".
-            assign_remaining_weights([
-                ("norm_out.linear.{lora_key}.weight", "lora_unet_final_layer_adaLN_modulation_1.{orig_lora_key}.weight", swap_scale_shift),
-                ("proj_out.{lora_key}.weight", "lora_unet_final_layer_linear.{orig_lora_key}.weight", None),
-            ], sds_sd)
+            assign_remaining_weights(
+                [
+                    (
+                        "norm_out.linear.{lora_key}.weight",
+                        "lora_unet_final_layer_adaLN_modulation_1.{orig_lora_key}.weight",
+                        swap_scale_shift,
+                    ),
+                    ("proj_out.{lora_key}.weight", "lora_unet_final_layer_linear.{orig_lora_key}.weight", None),
+                ],
+                sds_sd,
+            )
 
         remaining_keys = list(sds_sd.keys())
         te_state_dict = {}
