@@ -69,8 +69,6 @@ DIFFUSERS_TO_PEFT = {
     ".lora_linear_layer.down": ".lora_A",
     "text_projection.lora.down.weight": "text_projection.lora_A.weight",
     "text_projection.lora.up.weight": "text_projection.lora_B.weight",
-    "position_embedding.lora.down.weight": "position_embedding.lora_embedding_A",
-    "position_embedding.lora.up.weight": "position_embedding.lora_embedding_B",
 }
 
 DIFFUSERS_OLD_TO_PEFT = {
