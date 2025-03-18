@@ -73,7 +73,18 @@ class ModuleGroup:
 
         self.cpu_param_dict = {}
         for module in self.modules:
-            self.cpu_param_dict.update(_get_cpu_param_dict(module, self.low_cpu_mem_usage))
+            for param in module.parameters():
+                self.cpu_param_dict[param] = (
+                    param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
+                )
+
+        for param in self.parameters:
+            self.cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
+
+        for buffer in self.buffers:
+            self.cpu_param_dict[buffer] = (
+                buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
+            )
 
     @contextmanager
     def _pinned_memory_tensors(self):
@@ -100,20 +111,30 @@ class ModuleGroup:
         with context:
             if self.stream is not None:
                 with self._pinned_memory_tensors() as pinned_memory:
-                    for module in self.modules:
-                        for param in module.parameters():
+                    for group_module in self.modules:
+                        for param in group_module.parameters():
                             param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
+
+                    if self.parameters is not None:
+                        for param in self.parameters:
+                            param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
+
+                    if self.buffers is not None:
+                        for buffer in self.buffers:
+                            buffer.data = pinned_memory[buffer].to(self.onload_device, non_blocking=self.non_blocking)
+
             else:
                 for group_module in self.modules:
                     for param in group_module.parameters():
                         param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
 
-            if self.parameters is not None:
-                for param in self.parameters:
-                    param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
-            if self.buffers is not None:
-                for buffer in self.buffers:
-                    buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+                if self.parameters is not None:
+                    for param in self.parameters:
+                        param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+
+                if self.buffers is not None:
+                    for buffer in self.buffers:
+                        buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
@@ -631,7 +652,7 @@ def _apply_lazy_group_offloading_hook(
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
 
 
-def _get_cpu_param_dict(
+def _assign_cpu_param_dict(
     module: torch.nn.Module, low_cpu_mem_usage: bool = False
 ) -> Dict[torch.nn.Parameter, torch.Tensor]:
     cpu_param_dict = {}
