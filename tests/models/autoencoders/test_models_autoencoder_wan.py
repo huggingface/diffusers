@@ -62,9 +62,14 @@ class AutoencoderKLWanTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    @unittest.skip("Gradient checkpointing has not been implemented yet")
     def test_gradient_checkpointing_is_applied(self):
-        pass
+        expected_set = {
+            "WanDecoder3d",
+            "WanEncoder3d",
+            "WanMidBlock",
+            "WanUpBlock",
+        }
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     @unittest.skip("Test not supported")
     def test_forward_with_norm_groups(self):
