@@ -652,19 +652,6 @@ def _apply_lazy_group_offloading_hook(
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
 
 
-def _assign_cpu_param_dict(
-    module: torch.nn.Module, low_cpu_mem_usage: bool = False
-) -> Dict[torch.nn.Parameter, torch.Tensor]:
-    cpu_param_dict = {}
-    for param in module.parameters():
-        cpu_param_dict[param] = param.data.cpu() if low_cpu_mem_usage else param.data.cpu().pin_memory()
-
-    for buffer in module.buffers():
-        cpu_param_dict[buffer] = buffer.data.cpu() if low_cpu_mem_usage else buffer.data.cpu().pin_memory()
-
-    return cpu_param_dict
-
-
 def _gather_parameters_with_no_group_offloading_parent(
     module: torch.nn.Module, modules_with_group_offloading: Set[str]
 ) -> List[torch.nn.Parameter]:
