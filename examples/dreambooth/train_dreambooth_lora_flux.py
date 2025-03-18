@@ -184,6 +184,7 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     autocast_ctx = torch.autocast(accelerator.device.type)
 
+    # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
     prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
         pipeline_args["prompt"], prompt_2=pipeline_args["prompt"]
     )

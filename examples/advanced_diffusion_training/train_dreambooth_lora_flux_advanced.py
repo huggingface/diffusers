@@ -230,6 +230,7 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     autocast_ctx = torch.autocast(accelerator.device.type)
 
+    # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
     prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
         pipeline_args["prompt"], prompt_2=pipeline_args["prompt"]
     )
@@ -2194,16 +2195,25 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     if not freeze_text_encoder:
-                        if args.train_text_encoder:
+                        if args.train_text_encoder: # text encoder tuning
                             params_to_clip = itertools.chain(transformer.parameters(), text_encoder_one.parameters())
                         elif pure_textual_inversion:
-                            params_to_clip = itertools.chain(
-                                text_encoder_one.parameters(), text_encoder_two.parameters()
-                            )
+                            if args.enable_t5_ti:
+                                params_to_clip = itertools.chain(
+                                    text_encoder_one.parameters(), text_encoder_two.parameters()
+                                )
+                            else:
+                                params_to_clip = itertools.chain(
+                                    text_encoder_one.parameters()
+                                )
                         else:
-                            params_to_clip = itertools.chain(
-                                transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()
-                            )
+                            if args.enable_t5_ti:
+                                params_to_clip = itertools.chain(
+                                    transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()
+                                )
+                            else:
+                                params_to_clip = itertools.chain(transformer.parameters(),
+                                                                 text_encoder_one.parameters())
                     else:
                         params_to_clip = itertools.chain(transformer.parameters())
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
@@ -2260,8 +2270,11 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
-                if freeze_text_encoder:
+                if freeze_text_encoder: # no text encoder one, two optimizations
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
+                    text_encoder_one.to(weight_dtype)
+                    text_encoder_two.to(weight_dtype)
+
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -2286,9 +2299,6 @@ def main(args):
 
                 if freeze_text_encoder:
                     del text_encoder_one, text_encoder_two
-                    free_memory()
-                elif args.train_text_encoder:
-                    del text_encoder_two
                     free_memory()
 
     # Save the lora layers
