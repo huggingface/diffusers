@@ -77,6 +77,10 @@ class ModuleGroup:
                 self.cpu_param_dict[param] = (
                     param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
                 )
+            for buffer in module.buffers():
+                self.cpu_param_dict[buffer] = (
+                    buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
+                )
 
         for param in self.parameters:
             self.cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
@@ -126,6 +130,8 @@ class ModuleGroup:
             else:
                 for group_module in self.modules:
                     for param in group_module.parameters():
+                        param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+                    for param in group_module.buffers():
                         param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
 
                 if self.parameters is not None:
