@@ -76,7 +76,7 @@ class ModuleGroup:
         if self.stream is not None and self.cpu_param_dict is None:
             raise ValueError("`cpu_param_dict` must be provided when using stream for data transfer.")
 
-        if self.record_stream and not self.stream:
+        if self.stream is None and self.record_stream:
             raise ValueError("`record_stream` cannot be True when `stream` is None.")
 
     def onload_(self):
