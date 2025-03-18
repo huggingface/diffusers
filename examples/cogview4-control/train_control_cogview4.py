@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import functools
-import gc
+import copy
 import logging
 import math
 import os
@@ -27,8 +26,6 @@ from pathlib import Path
 import accelerate
 import numpy as np
 import torch
-import torch.nn.functional as F
-import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -39,21 +36,22 @@ from packaging import version
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
 from diffusers import (
     AutoencoderKL,
-    ControlNetModel,
-    DDPMScheduler,
-    StableDiffusionXLControlNetPipeline,
-    UNet2DConditionModel,
-    UniPCMultistepScheduler,
+    CogView4ControlPipeline,
+    CogView4Transformer2DModel,
+    FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
+from diffusers.training_utils import (
+    compute_density_for_timestep_sampling,
+    compute_loss_weighting_for_sd3,
+    free_memory,
+)
+from diffusers.utils import check_min_version, is_wandb_available, load_image, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
-from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
@@ -64,48 +62,36 @@ if is_wandb_available():
 check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
-if is_torch_npu_available():
-    torch.npu.config.allow_internal_format = False
+
+NORM_LAYER_PREFIXES = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
 
 
-def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step, is_final_validation=False):
+def encode_images(pixels: torch.Tensor, vae: torch.nn.Module, weight_dtype):
+    pixel_latents = vae.encode(pixels.to(vae.dtype)).latent_dist.sample()
+    pixel_latents = (pixel_latents - vae.config.shift_factor) * vae.config.scaling_factor
+    return pixel_latents.to(weight_dtype)
+
+
+def log_validation(cogview4_transformer, args, accelerator, weight_dtype, step, is_final_validation=False):
     logger.info("Running validation... ")
 
     if not is_final_validation:
-        controlnet = accelerator.unwrap_model(controlnet)
-        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+        cogview4_transformer = accelerator.unwrap_model(cogview4_transformer)
+        pipeline = CogView4ControlPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            vae=vae,
-            unet=unet,
-            controlnet=controlnet,
-            revision=args.revision,
-            variant=args.variant,
+            transformer=cogview4_transformer,
             torch_dtype=weight_dtype,
         )
     else:
-        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
-        if args.pretrained_vae_model_name_or_path is not None:
-            vae = AutoencoderKL.from_pretrained(args.pretrained_vae_model_name_or_path, torch_dtype=weight_dtype)
-        else:
-            vae = AutoencoderKL.from_pretrained(
-                args.pretrained_model_name_or_path, subfolder="vae", torch_dtype=weight_dtype
-            )
-
-        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+        transformer = CogView4Transformer2DModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
+        pipeline = CogView4ControlPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            vae=vae,
-            controlnet=controlnet,
-            revision=args.revision,
-            variant=args.variant,
+            transformer=transformer,
             torch_dtype=weight_dtype,
         )
 
-    pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
-    pipeline = pipeline.to(accelerator.device)
+    pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
-
-    if args.enable_xformers_memory_efficient_attention:
-        pipeline.enable_xformers_memory_efficient_attention()
 
     if args.seed is None:
         generator = None
@@ -130,10 +116,11 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
     if is_final_validation or torch.backends.mps.is_available():
         autocast_ctx = nullcontext()
     else:
-        autocast_ctx = torch.autocast(accelerator.device.type)
+        autocast_ctx = torch.autocast(accelerator.device.type, weight_dtype)
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
-        validation_image = Image.open(validation_image).convert("RGB")
+        validation_image = load_image(validation_image)
+        # maybe need to inference on 1024 to get a good image
         validation_image = validation_image.resize((args.resolution, args.resolution))
 
         images = []
@@ -141,10 +128,17 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         for _ in range(args.num_validation_images):
             with autocast_ctx:
                 image = pipeline(
-                    prompt=validation_prompt, image=validation_image, num_inference_steps=20, generator=generator
+                    prompt=validation_prompt,
+                    control_image=validation_image,
+                    num_inference_steps=50,
+                    guidance_scale=args.guidance_scale,
+                    max_sequence_length=args.max_sequence_length,
+                    generator=generator,
+                    height=args.resolution,
+                    width=args.resolution,
                 ).images[0]
+            image = image.resize((args.resolution, args.resolution))
             images.append(image)
-
         image_logs.append(
             {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
         )
@@ -156,25 +150,20 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
                 images = log["images"]
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
-
-                formatted_images = [np.asarray(validation_image)]
-
+                formatted_images = []
+                formatted_images.append(np.asarray(validation_image))
                 for image in images:
                     formatted_images.append(np.asarray(image))
-
                 formatted_images = np.stack(formatted_images)
-
                 tracker.writer.add_images(validation_prompt, formatted_images, step, dataformats="NHWC")
+
         elif tracker.name == "wandb":
             formatted_images = []
-
             for log in image_logs:
                 images = log["images"]
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
-
-                formatted_images.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
-
+                formatted_images.append(wandb.Image(validation_image, caption="Conditioning"))
                 for image in images:
                     image = wandb.Image(image, caption=validation_prompt)
                     formatted_images.append(image)
@@ -184,30 +173,8 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
             logger.warning(f"image logging not implemented for {tracker.name}")
 
         del pipeline
-        gc.collect()
-        torch.cuda.empty_cache()
-
+        free_memory()
         return image_logs
-
-
-def import_model_class_from_model_name_or_path(
-    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
-):
-    text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
-    )
-    model_class = text_encoder_config.architectures[0]
-
-    if model_class == "CLIPTextModel":
-        from transformers import CLIPTextModel
-
-        return CLIPTextModel
-    elif model_class == "CLIPTextModelWithProjection":
-        from transformers import CLIPTextModelWithProjection
-
-        return CLIPTextModelWithProjection
-    else:
-        raise ValueError(f"{model_class} is not supported.")
 
 
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
@@ -225,27 +192,31 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     model_description = f"""
-# controlnet-{repo_id}
+# cogview4-control-{repo_id}
 
-These are controlnet weights trained on {base_model} with new type of conditioning.
+These are Control weights trained on {base_model} with new type of conditioning.
 {img_str}
+
+## License
+
+Please adhere to the licensing terms as described [here](https://huggingface.co/THUDM/CogView4-6b/blob/main/LICENSE.md)
 """
 
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++",
+        license="other",
         base_model=base_model,
         model_description=model_description,
         inference=True,
     )
 
     tags = [
-        "stable-diffusion-xl",
-        "stable-diffusion-xl-diffusers",
+        "cogview4",
+        "cogview4-diffusers",
         "text-to-image",
         "diffusers",
-        "controlnet",
+        "control",
         "diffusers-training",
     ]
     model_card = populate_model_card(model_card, tags=tags)
@@ -254,26 +225,13 @@ These are controlnet weights trained on {base_model} with new type of conditioni
 
 
 def parse_args(input_args=None):
-    parser = argparse.ArgumentParser(description="Simple example of a ControlNet training script.")
+    parser = argparse.ArgumentParser(description="Simple example of a CogView4 Control training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
-    )
-    parser.add_argument(
-        "--pretrained_vae_model_name_or_path",
-        type=str,
-        default=None,
-        help="Path to an improved VAE to stabilize training. For more details check out: https://github.com/huggingface/diffusers/pull/4038.",
-    )
-    parser.add_argument(
-        "--controlnet_model_name_or_path",
-        type=str,
-        default=None,
-        help="Path to pretrained controlnet model or model identifier from huggingface.co/models."
-        " If not specified controlnet weights are initialized from unet.",
     )
     parser.add_argument(
         "--variant",
@@ -289,15 +247,9 @@ def parse_args(input_args=None):
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--tokenizer_name",
-        type=str,
-        default=None,
-        help="Pretrained tokenizer name or path if not the same as model_name",
-    )
-    parser.add_argument(
         "--output_dir",
         type=str,
-        default="controlnet-model",
+        default="cogview4-control",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -310,23 +262,14 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--resolution",
         type=int,
-        default=512,
+        default=1024,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
         ),
     )
     parser.add_argument(
-        "--crops_coords_top_left_h",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
-        "--crops_coords_top_left_w",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
+        "--max_sequence_length", type=int, default=128, help="The maximum sequence length for the prompt."
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -364,6 +307,12 @@ def parse_args(input_args=None):
             "Whether training should be resumed from a previous checkpoint. Use a path saved by"
             ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
         ),
+    )
+    parser.add_argument(
+        "--proportion_empty_prompts",
+        type=float,
+        default=0,
+        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -410,6 +359,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
+
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
@@ -469,21 +419,6 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
-    parser.add_argument(
-        "--enable_npu_flash_attention", action="store_true", help="Whether or not to use npu flash attention."
-    )
-    parser.add_argument(
-        "--set_grads_to_none",
-        action="store_true",
-        help=(
-            "Save more memory by using setting grads to None instead of zero. Be aware, that this changes certain"
-            " behaviors, so disable this argument if it causes any problems. More info:"
-            " https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
-        ),
-    )
-    parser.add_argument(
         "--dataset_name",
         type=str,
         default=None,
@@ -500,23 +435,13 @@ def parse_args(input_args=None):
         help="The config of the Dataset, leave as None if there's only one config.",
     )
     parser.add_argument(
-        "--train_data_dir",
-        type=str,
-        default=None,
-        help=(
-            "A folder containing the training data. Folder contents must follow the structure described in"
-            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
-            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
-        ),
-    )
-    parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
     )
     parser.add_argument(
         "--conditioning_image_column",
         type=str,
         default="conditioning_image",
-        help="The column of the dataset containing the controlnet conditioning image.",
+        help="The column of the dataset containing the control conditioning image.",
     )
     parser.add_argument(
         "--caption_column",
@@ -524,6 +449,7 @@ def parse_args(input_args=None):
         default="text",
         help="The column of the dataset containing a caption or a list of captions.",
     )
+    parser.add_argument("--log_dataset_samples", action="store_true", help="Whether to log somple dataset samples.")
     parser.add_argument(
         "--max_train_samples",
         type=int,
@@ -532,12 +458,6 @@ def parse_args(input_args=None):
             "For debugging purposes or quicker training, truncate the number of training examples to this "
             "value if set."
         ),
-    )
-    parser.add_argument(
-        "--proportion_empty_prompts",
-        type=float,
-        default=0,
-        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
     )
     parser.add_argument(
         "--validation_prompt",
@@ -556,7 +476,7 @@ def parse_args(input_args=None):
         default=None,
         nargs="+",
         help=(
-            "A set of paths to the controlnet conditioning image be evaluated every `--validation_steps`"
+            "A set of paths to the control conditioning image be evaluated every `--validation_steps`"
             " and logged to `--report_to`. Provide either a matching number of `--validation_prompt`s, a"
             " a single `--validation_prompt` to be used with all `--validation_image`s, or a single"
             " `--validation_image` that will be used with all `--validation_prompt`s."
@@ -565,7 +485,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--num_validation_images",
         type=int,
-        default=4,
+        default=1,
         help="Number of images to be generated for each `--validation_image`, `--validation_prompt` pair",
     )
     parser.add_argument(
@@ -581,11 +501,62 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--tracker_project_name",
         type=str,
-        default="sd_xl_train_controlnet",
+        default="cogview4_train_control",
         help=(
             "The `project_name` argument passed to Accelerator.init_trackers for"
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
+    )
+    parser.add_argument(
+        "--jsonl_for_train",
+        type=str,
+        default=None,
+        help="Path to the jsonl file containing the training data.",
+    )
+    parser.add_argument(
+        "--only_target_transformer_blocks",
+        action="store_true",
+        help="If we should only target the transformer blocks to train along with the input layer (`x_embedder`).",
+    )
+    parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=3.5,
+        help="the guidance scale used for transformer.",
+    )
+
+    parser.add_argument(
+        "--upcast_before_saving",
+        action="store_true",
+        help=(
+            "Whether to upcast the trained transformer layers to float32 before saving (at the end of training). "
+            "Defaults to precision dtype used for training to save memory"
+        ),
+    )
+
+    parser.add_argument(
+        "--weighting_scheme",
+        type=str,
+        default="none",
+        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none"],
+        help=('We default to the "none" weighting scheme for uniform sampling and uniform loss'),
+    )
+    parser.add_argument(
+        "--logit_mean", type=float, default=0.0, help="mean to use when using the `'logit_normal'` weighting scheme."
+    )
+    parser.add_argument(
+        "--logit_std", type=float, default=1.0, help="std to use when using the `'logit_normal'` weighting scheme."
+    )
+    parser.add_argument(
+        "--mode_scale",
+        type=float,
+        default=1.29,
+        help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
+    )
+    parser.add_argument(
+        "--offload",
+        action="store_true",
+        help="Whether to offload the VAE and the text encoders to CPU when they are not used.",
     )
 
     if input_args is not None:
@@ -593,8 +564,11 @@ def parse_args(input_args=None):
     else:
         args = parser.parse_args()
 
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Specify either `--dataset_name` or `--train_data_dir`")
+    if args.dataset_name is None and args.jsonl_for_train is None:
+        raise ValueError("Specify either `--dataset_name` or `--jsonl_for_train`")
+
+    if args.dataset_name is not None and args.jsonl_for_train is not None:
+        raise ValueError("Specify only one of `--dataset_name` or `--jsonl_for_train`")
 
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
@@ -619,35 +593,25 @@ def parse_args(input_args=None):
 
     if args.resolution % 8 != 0:
         raise ValueError(
-            "`--resolution` must be divisible by 8 for consistently sized encoded images between the VAE and the controlnet encoder."
+            "`--resolution` must be divisible by 8 for consistently sized encoded images between the VAE and the cogview4 transformer."
         )
 
     return args
 
 
 def get_train_dataset(args, accelerator):
-    # Get the datasets: you can either provide your own training and evaluation files (see below)
-    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
-
-    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-    # download the dataset.
+    dataset = None
     if args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
-            data_dir=args.train_data_dir,
         )
-    else:
-        if args.train_data_dir is not None:
-            dataset = load_dataset(
-                args.train_data_dir,
-                cache_dir=args.cache_dir,
-            )
-        # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
-
+    if args.jsonl_for_train is not None:
+        # load from json
+        dataset = load_dataset("json", data_files=args.jsonl_for_train, cache_dir=args.cache_dir)
+        dataset = dataset.flatten_indices()
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
     column_names = dataset["train"].column_names
@@ -690,74 +654,35 @@ def get_train_dataset(args, accelerator):
     return train_dataset
 
 
-# Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
-    prompt_embeds_list = []
-
-    captions = []
-    for caption in prompt_batch:
-        if random.random() < proportion_empty_prompts:
-            captions.append("")
-        elif isinstance(caption, str):
-            captions.append(caption)
-        elif isinstance(caption, (list, np.ndarray)):
-            # take a random caption if there are multiple
-            captions.append(random.choice(caption) if is_train else caption[0])
-
-    with torch.no_grad():
-        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-            text_inputs = tokenizer(
-                captions,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            prompt_embeds = text_encoder(
-                text_input_ids.to(text_encoder.device),
-                output_hidden_states=True,
-            )
-
-            # We are only ALWAYS interested in the pooled output of the final text encoder
-            pooled_prompt_embeds = prompt_embeds[0]
-            prompt_embeds = prompt_embeds.hidden_states[-2]
-            bs_embed, seq_len, _ = prompt_embeds.shape
-            prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
-            prompt_embeds_list.append(prompt_embeds)
-
-    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
-    pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
-    return prompt_embeds, pooled_prompt_embeds
-
-
 def prepare_train_dataset(dataset, accelerator):
     image_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
+            transforms.Resize((args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
-
-    conditioning_image_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
-            transforms.ToTensor(),
+            transforms.Lambda(lambda x: x * 2 - 1),
         ]
     )
 
     def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[args.image_column]]
+        images = [
+            (image.convert("RGB") if not isinstance(image, str) else Image.open(image).convert("RGB"))
+            for image in examples[args.image_column]
+        ]
         images = [image_transforms(image) for image in images]
 
-        conditioning_images = [image.convert("RGB") for image in examples[args.conditioning_image_column]]
-        conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
-
+        conditioning_images = [
+            (image.convert("RGB") if not isinstance(image, str) else Image.open(image).convert("RGB"))
+            for image in examples[args.conditioning_image_column]
+        ]
+        conditioning_images = [image_transforms(image) for image in conditioning_images]
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
+
+        is_caption_list = isinstance(examples[args.caption_column][0], list)
+        if is_caption_list:
+            examples["captions"] = [max(example, key=len) for example in examples[args.caption_column]]
+        else:
+            examples["captions"] = list(examples[args.caption_column])
 
         return examples
 
@@ -770,21 +695,10 @@ def prepare_train_dataset(dataset, accelerator):
 def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-
     conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
     conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
-
-    prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
-
-    add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
-    add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
-
-    return {
-        "pixel_values": pixel_values,
-        "conditioning_pixel_values": conditioning_pixel_values,
-        "prompt_ids": prompt_ids,
-        "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
-    }
+    captions = [example["captions"] for example in examples]
+    return {"pixel_values": pixel_values, "conditioning_pixel_values": conditioning_pixel_values, "captions": captions}
 
 
 def main(args):
@@ -794,7 +708,7 @@ def main(args):
             " Please use `huggingface-cli login` to authenticate with the Hub."
         )
 
-    logging_dir = Path(args.output_dir, args.logging_dir)
+    logging_out_dir = Path(args.output_dir, args.logging_dir)
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
         # due to pytorch#99272, MPS does not yet support bfloat16.
@@ -802,7 +716,7 @@ def main(args):
             "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
         )
 
-    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=str(logging_out_dir))
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -811,17 +725,20 @@ def main(args):
         project_config=accelerator_project_config,
     )
 
-    # Disable AMP for MPS.
+    # Disable AMP for MPS. A technique for accelerating machine learning computations on iOS and macOS devices.
     if torch.backends.mps.is_available():
+        logger.info("MPS is enabled. Disabling AMP.")
         accelerator.native_amp = False
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
+        # DEBUG, INFO, WARNING, ERROR, CRITICAL
         level=logging.INFO,
     )
     logger.info(accelerator.state, main_process_only=False)
+
     if accelerator.is_local_main_process:
         transformers.utils.logging.set_verbosity_warning()
         diffusers.utils.logging.set_verbosity_info()
@@ -843,57 +760,70 @@ def main(args):
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
-    # Load the tokenizers
-    tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer",
-        revision=args.revision,
-        use_fast=False,
-    )
-    tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer_2",
-        revision=args.revision,
-        use_fast=False,
-    )
-
-    # import correct text encoder classes
-    text_encoder_cls_one = import_model_class_from_model_name_or_path(
-        args.pretrained_model_name_or_path, args.revision
-    )
-    text_encoder_cls_two = import_model_class_from_model_name_or_path(
-        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_2"
-    )
-
-    # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
-    )
-    text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
-    )
-    vae_path = (
-        args.pretrained_model_name_or_path
-        if args.pretrained_vae_model_name_or_path is None
-        else args.pretrained_vae_model_name_or_path
-    )
+    # Load models. We will load the text encoders later in a pipeline to compute
+    # embeddings.
     vae = AutoencoderKL.from_pretrained(
-        vae_path,
-        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
         revision=args.revision,
         variant=args.variant,
     )
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+    cogview4_transformer = CogView4Transformer2DModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        revision=args.revision,
+        variant=args.variant,
+    )
+    logger.info("All models loaded successfully")
+
+    noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="scheduler",
+    )
+    noise_scheduler_copy = copy.deepcopy(noise_scheduler)
+    if not args.only_target_transformer_blocks:
+        cogview4_transformer.requires_grad_(True)
+    vae.requires_grad_(False)
+
+    # cast down and move to the CPU
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # let's not move the VAE to the GPU yet.
+    vae.to(dtype=torch.float32)  # keep the VAE in float32.
+
+    # enable image inputs
+    with torch.no_grad():
+        patch_size = cogview4_transformer.config.patch_size
+        initial_input_channels = cogview4_transformer.config.in_channels * patch_size**2
+        new_linear = torch.nn.Linear(
+            cogview4_transformer.patch_embed.proj.in_features * 2,
+            cogview4_transformer.patch_embed.proj.out_features,
+            bias=cogview4_transformer.patch_embed.proj.bias is not None,
+            dtype=cogview4_transformer.dtype,
+            device=cogview4_transformer.device,
+        )
+        new_linear.weight.zero_()
+        new_linear.weight[:, :initial_input_channels].copy_(cogview4_transformer.patch_embed.proj.weight)
+        if cogview4_transformer.patch_embed.proj.bias is not None:
+            new_linear.bias.copy_(cogview4_transformer.patch_embed.proj.bias)
+        cogview4_transformer.patch_embed.proj = new_linear
+
+    assert torch.all(cogview4_transformer.patch_embed.proj.weight[:, initial_input_channels:].data == 0)
+    cogview4_transformer.register_to_config(
+        in_channels=cogview4_transformer.config.in_channels * 2, out_channels=cogview4_transformer.config.in_channels
     )
 
-    if args.controlnet_model_name_or_path:
-        logger.info("Loading existing controlnet weights")
-        controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
-    else:
-        logger.info("Initializing controlnet weights from unet")
-        controlnet = ControlNetModel.from_unet(unet)
+    if args.only_target_transformer_blocks:
+        cogview4_transformer.patch_embed.proj.requires_grad_(True)
+        for name, module in cogview4_transformer.named_modules():
+            if "transformer_blocks" in name:
+                module.requires_grad_(True)
+            else:
+                module.requirs_grad_(False)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -902,76 +832,40 @@ def main(args):
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+
         def save_model_hook(models, weights, output_dir):
             if accelerator.is_main_process:
-                i = len(weights) - 1
+                for model in models:
+                    if isinstance(unwrap_model(model), type(unwrap_model(cogview4_transformer))):
+                        model = unwrap_model(model)
+                        model.save_pretrained(os.path.join(output_dir, "transformer"))
+                    else:
+                        raise ValueError(f"unexpected save model: {model.__class__}")
 
-                while len(weights) > 0:
-                    weights.pop()
-                    model = models[i]
-
-                    sub_dir = "controlnet"
-                    model.save_pretrained(os.path.join(output_dir, sub_dir))
-
-                    i -= 1
+                    # make sure to pop weight so that corresponding model is not saved again
+                    if weights:
+                        weights.pop()
 
         def load_model_hook(models, input_dir):
-            while len(models) > 0:
-                # pop models so that they are not loaded again
-                model = models.pop()
+            transformer_ = None
 
-                # load diffusers style into model
-                load_model = ControlNetModel.from_pretrained(input_dir, subfolder="controlnet")
-                model.register_to_config(**load_model.config)
+            if not accelerator.distributed_type == DistributedType.DEEPSPEED:
+                while len(models) > 0:
+                    model = models.pop()
 
-                model.load_state_dict(load_model.state_dict())
-                del load_model
+                    if isinstance(unwrap_model(model), type(unwrap_model(cogview4_transformer))):
+                        transformer_ = model  # noqa: F841
+                    else:
+                        raise ValueError(f"unexpected save model: {unwrap_model(model).__class__}")
+
+            else:
+                transformer_ = CogView4Transformer2DModel.from_pretrained(input_dir, subfolder="transformer")  # noqa: F841
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
 
-    vae.requires_grad_(False)
-    unet.requires_grad_(False)
-    text_encoder_one.requires_grad_(False)
-    text_encoder_two.requires_grad_(False)
-    controlnet.train()
-
-    if args.enable_npu_flash_attention:
-        if is_torch_npu_available():
-            logger.info("npu flash attention enabled.")
-            unet.enable_npu_flash_attention()
-        else:
-            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu devices.")
-
-    if args.enable_xformers_memory_efficient_attention:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warning(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            unet.enable_xformers_memory_efficient_attention()
-            controlnet.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
-
     if args.gradient_checkpointing:
-        controlnet.enable_gradient_checkpointing()
-        unet.enable_gradient_checkpointing()
-
-    # Check that all trainable models are in full precision
-    low_precision_error_string = (
-        " Please make sure to always have all model weights in full float32 precision when starting training - even if"
-        " doing mixed precision training, copy of the weights should still be float32."
-    )
-
-    if unwrap_model(controlnet).dtype != torch.float32:
-        raise ValueError(
-            f"Controlnet loaded as datatype {unwrap_model(controlnet).dtype}. {low_precision_error_string}"
-        )
+        cogview4_transformer.enable_gradient_checkpointing()
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -996,85 +890,18 @@ def main(args):
     else:
         optimizer_class = torch.optim.AdamW
 
-    # Optimizer creation
-    params_to_optimize = controlnet.parameters()
+    # Optimization parameters
     optimizer = optimizer_class(
-        params_to_optimize,
+        cogview4_transformer.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
 
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-
-    # Move vae, unet and text_encoder to device and cast to weight_dtype
-    # The VAE is in float32 to avoid NaN losses.
-    if args.pretrained_vae_model_name_or_path is not None:
-        vae.to(accelerator.device, dtype=weight_dtype)
-    else:
-        vae.to(accelerator.device, dtype=torch.float32)
-    unet.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-
-    # Here, we compute not just the text embeddings but also the additional embeddings
-    # needed for the SD XL UNet to operate.
-    def compute_embeddings(batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
-        original_size = (args.resolution, args.resolution)
-        target_size = (args.resolution, args.resolution)
-        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
-        prompt_batch = batch[args.caption_column]
-
-        prompt_embeds, pooled_prompt_embeds = encode_prompt(
-            prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
-        )
-        add_text_embeds = pooled_prompt_embeds
-
-        # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        add_time_ids = list(original_size + crops_coords_top_left + target_size)
-        add_time_ids = torch.tensor([add_time_ids])
-
-        prompt_embeds = prompt_embeds.to(accelerator.device)
-        add_text_embeds = add_text_embeds.to(accelerator.device)
-        add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
-        add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
-        unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-
-        return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
-
-    # Let's first compute all the embeddings so that we can free up the text encoders
-    # from memory.
-    text_encoders = [text_encoder_one, text_encoder_two]
-    tokenizers = [tokenizer_one, tokenizer_two]
+    # Prepare dataset and dataloader.
     train_dataset = get_train_dataset(args, accelerator)
-    compute_embeddings_fn = functools.partial(
-        compute_embeddings,
-        text_encoders=text_encoders,
-        tokenizers=tokenizers,
-        proportion_empty_prompts=args.proportion_empty_prompts,
-    )
-    with accelerator.main_process_first():
-        from datasets.fingerprint import Hasher
-
-        # fingerprint used by the cache for the other processes to load the result
-        # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
-        new_fingerprint = Hasher.hash(args)
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-
-    del text_encoders, tokenizers
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    # Then get the training dataset ready to be passed to the dataloader.
     train_dataset = prepare_train_dataset(train_dataset, accelerator)
-
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
@@ -1085,7 +912,6 @@ def main(args):
 
     # Scheduler and math around the number of training steps.
     # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
-    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
         len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
         num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
@@ -1098,15 +924,14 @@ def main(args):
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=num_warmup_steps_for_scheduler,
-        num_training_steps=num_training_steps_for_scheduler,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
-
     # Prepare everything with our `accelerator`.
-    controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        controlnet, optimizer, train_dataloader, lr_scheduler
+    cogview4_transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        cogview4_transformer, optimizer, train_dataloader, lr_scheduler
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -1147,6 +972,12 @@ def main(args):
     global_step = 0
     first_epoch = 0
 
+    # Create a pipeline for text encoding. We will move this pipeline to GPU/CPU as needed.
+    text_encoding_pipeline = CogView4ControlPipeline.from_pretrained(
+        args.pretrained_model_name_or_path, transformer=None, vae=None, torch_dtype=weight_dtype
+    )
+    tokenizer = text_encoding_pipeline.tokenizer
+
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
@@ -1159,13 +990,11 @@ def main(args):
             path = dirs[-1] if len(dirs) > 0 else None
 
         if path is None:
-            accelerator.print(
-                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
-            )
+            logger.info(f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run.")
             args.resume_from_checkpoint = None
             initial_global_step = 0
         else:
-            accelerator.print(f"Resuming from checkpoint {path}")
+            logger.info(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
@@ -1173,6 +1002,32 @@ def main(args):
             first_epoch = global_step // num_update_steps_per_epoch
     else:
         initial_global_step = 0
+
+    if accelerator.is_main_process and args.report_to == "wandb" and args.log_dataset_samples:
+        logger.info("Logging some dataset samples.")
+        formatted_images = []
+        formatted_control_images = []
+        all_prompts = []
+        for i, batch in enumerate(train_dataloader):
+            images = (batch["pixel_values"] + 1) / 2
+            control_images = (batch["conditioning_pixel_values"] + 1) / 2
+            prompts = batch["captions"]
+
+            if len(formatted_images) > 10:
+                break
+
+            for img, control_img, prompt in zip(images, control_images, prompts):
+                formatted_images.append(img)
+                formatted_control_images.append(control_img)
+                all_prompts.append(prompt)
+
+        logged_artifacts = []
+        for img, control_img, prompt in zip(formatted_images, formatted_control_images, all_prompts):
+            logged_artifacts.append(wandb.Image(control_img, caption="Conditioning"))
+            logged_artifacts.append(wandb.Image(img, caption=prompt))
+
+        wandb_tracker = [tracker for tracker in accelerator.trackers if tracker.name == "wandb"]
+        wandb_tracker[0].log({"dataset_samples": logged_artifacts})
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),
@@ -1182,74 +1037,115 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
-    image_logs = None
     for epoch in range(first_epoch, args.num_train_epochs):
+        cogview4_transformer.train()
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(controlnet):
+            with accelerator.accumulate(cogview4_transformer):
                 # Convert images to latent space
-                if args.pretrained_vae_model_name_or_path is not None:
-                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
-                else:
-                    pixel_values = batch["pixel_values"]
-                latents = vae.encode(pixel_values).latent_dist.sample()
-                latents = latents * vae.config.scaling_factor
-                if args.pretrained_vae_model_name_or_path is None:
-                    latents = latents.to(weight_dtype)
+                # vae encode
+                prompts = batch["captions"]
+                attention_mask = tokenizer(
+                    prompts,
+                    padding="longest",  # not use max length
+                    max_length=args.max_sequence_length,
+                    truncation=True,
+                    add_special_tokens=True,
+                    return_tensors="pt",
+                ).attention_mask.float()
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
+                pixel_latents = encode_images(batch["pixel_values"], vae.to(accelerator.device), weight_dtype)
+                control_latents = encode_images(
+                    batch["conditioning_pixel_values"], vae.to(accelerator.device), weight_dtype
+                )
+                if args.offload:
+                    vae.cpu()
 
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
-
-                # Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents.float(), noise.float(), timesteps).to(
-                    dtype=weight_dtype
+                # for weighting schemes where we sample timesteps non-uniformly
+                bsz = pixel_latents.shape[0]
+                noise = torch.randn_like(pixel_latents, device=accelerator.device, dtype=weight_dtype)
+                u = compute_density_for_timestep_sampling(
+                    weighting_scheme=args.weighting_scheme,
+                    batch_size=bsz,
+                    logit_mean=args.logit_mean,
+                    logit_std=args.logit_std,
+                    mode_scale=args.mode_scale,
                 )
 
-                # ControlNet conditioning.
-                controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
-                down_block_res_samples, mid_block_res_sample = controlnet(
-                    noisy_latents,
-                    timesteps,
-                    encoder_hidden_states=batch["prompt_ids"],
-                    added_cond_kwargs=batch["unet_added_conditions"],
-                    controlnet_cond=controlnet_image,
-                    return_dict=False,
+                # Add noise according for cogview4
+                indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
+                timesteps = noise_scheduler_copy.timesteps[indices].to(device=pixel_latents.device)
+                sigmas = noise_scheduler_copy.sigmas[indices].to(device=pixel_latents.device)
+                captions = batch["captions"]
+                image_seq_lens = torch.tensor(
+                    pixel_latents.shape[2] * pixel_latents.shape[3] // patch_size**2,
+                    dtype=pixel_latents.dtype,
+                    device=pixel_latents.device,
+                )  # H * W  / VAE patch_size
+                mu = torch.sqrt(image_seq_lens / 256)
+                mu = mu * 0.75 + 0.25
+                scale_factors = mu / (mu + (1 / sigmas - 1) ** 1.0).to(
+                    dtype=pixel_latents.dtype, device=pixel_latents.device
                 )
+                scale_factors = scale_factors.view(len(batch["captions"]), 1, 1, 1)
+                noisy_model_input = (1.0 - scale_factors) * pixel_latents + scale_factors * noise
+                concatenated_noisy_model_input = torch.cat([noisy_model_input, control_latents], dim=1)
+                text_encoding_pipeline = text_encoding_pipeline.to("cuda")
 
-                # Predict the noise residual
-                model_pred = unet(
-                    noisy_latents,
-                    timesteps,
-                    encoder_hidden_states=batch["prompt_ids"],
-                    added_cond_kwargs=batch["unet_added_conditions"],
-                    down_block_additional_residuals=[
-                        sample.to(dtype=weight_dtype) for sample in down_block_res_samples
-                    ],
-                    mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
+                with torch.no_grad():
+                    (
+                        prompt_embeds,
+                        pooled_prompt_embeds,
+                    ) = text_encoding_pipeline.encode_prompt(captions, "")
+                original_size = (args.resolution, args.resolution)
+                original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
+
+                target_size = (args.resolution, args.resolution)
+                target_size = torch.tensor([target_size], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
+
+                target_size = target_size.repeat(len(batch["captions"]), 1)
+                original_size = original_size.repeat(len(batch["captions"]), 1)
+                crops_coords_top_left = torch.tensor([(0, 0)], dtype=prompt_embeds.dtype, device=prompt_embeds.device)
+                crops_coords_top_left = crops_coords_top_left.repeat(len(batch["captions"]), 1)
+
+                # this could be optimized by not having to do any text encoding and just
+                # doing zeros on specified shapes for `prompt_embeds` and `pooled_prompt_embeds`
+                if args.proportion_empty_prompts and random.random() < args.proportion_empty_prompts:
+                    # Here, we directly pass 16 pad tokens from pooled_prompt_embeds to prompt_embeds.
+                    prompt_embeds = pooled_prompt_embeds
+                if args.offload:
+                    text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+                # Predict.
+                noise_pred_cond = cogview4_transformer(
+                    hidden_states=concatenated_noisy_model_input,
+                    encoder_hidden_states=prompt_embeds,
+                    timestep=timesteps,
+                    original_size=original_size,
+                    target_size=target_size,
+                    crop_coords=crops_coords_top_left,
                     return_dict=False,
+                    attention_mask=attention_mask,
                 )[0]
+                # these weighting schemes use a uniform timestep sampling
+                # and instead post-weight the loss
+                weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
+                # flow-matching loss
+                target = noise - pixel_latents
 
-                # Get the target for loss depending on the prediction type
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
+                weighting = weighting.view(len(batch["captions"]), 1, 1, 1)
+                loss = torch.mean(
+                    (weighting.float() * (noise_pred_cond.float() - target.float()) ** 2).reshape(target.shape[0], -1),
+                    1,
+                )
+                loss = loss.mean()
                 accelerator.backward(loss)
+
                 if accelerator.sync_gradients:
-                    params_to_clip = controlnet.parameters()
+                    params_to_clip = cogview4_transformer.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -1285,9 +1181,7 @@ def main(args):
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         image_logs = log_validation(
-                            vae=vae,
-                            unet=unet,
-                            controlnet=controlnet,
+                            cogview4_transformer=cogview4_transformer,
                             args=args,
                             accelerator=accelerator,
                             weight_dtype=weight_dtype,
@@ -1304,17 +1198,21 @@ def main(args):
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        controlnet = unwrap_model(controlnet)
-        controlnet.save_pretrained(args.output_dir)
+        cogview4_transformer = unwrap_model(cogview4_transformer)
+        if args.upcast_before_saving:
+            cogview4_transformer.to(torch.float32)
+        cogview4_transformer.save_pretrained(args.output_dir)
+
+        del cogview4_transformer
+        del text_encoding_pipeline
+        del vae
+        free_memory()
 
         # Run a final round of validation.
-        # Setting `vae`, `unet`, and `controlnet` to None to load automatically from `args.output_dir`.
         image_logs = None
         if args.validation_prompt is not None:
             image_logs = log_validation(
-                vae=None,
-                unet=None,
-                controlnet=None,
+                cogview4_transformer=None,
                 args=args,
                 accelerator=accelerator,
                 weight_dtype=weight_dtype,
@@ -1333,7 +1231,7 @@ def main(args):
                 repo_id=repo_id,
                 folder_path=args.output_dir,
                 commit_message="End of training",
-                ignore_patterns=["step_*", "epoch_*"],
+                ignore_patterns=["step_*", "epoch_*", "checkpoint-*"],
             )
 
     accelerator.end_training()
