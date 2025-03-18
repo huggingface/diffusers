@@ -21,8 +21,7 @@ import torch
 from transformers import AutoTokenizer, GlmModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import VaeImageProcessor
-from ...loaders import CogView4LoraLoaderMixin
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKL, CogView4Transformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -44,18 +43,20 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import CogView4Pipeline
+        >>> from diffusers import CogView4ControlPipeline
 
-        >>> pipe = CogView4Pipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16)
-        >>> pipe.to("cuda")
-
-        >>> prompt = "A photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
-        >>> image.save("output.png")
+        >>> pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B-Control", torch_dtype=torch.bfloat16)
+        >>> control_image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+        ... )
+        >>> prompt = "A bird in space"
+        >>> image = pipe(prompt, control_image=control_image, height=1024, width=1024, guidance_scale=3.5).images[0]
+        >>> image.save("cogview4-control.png")
         ```
 """
 
 
+# Copied from diffusers.pipelines.cogview4.pipeline_cogview4.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -67,6 +68,7 @@ def calculate_shift(
     return mu
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -98,19 +100,10 @@ def retrieve_timesteps(
         `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
-    accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-    accepts_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-
     if timesteps is not None and sigmas is not None:
-        if not accepts_timesteps and not accepts_sigmas:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep or sigma schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, sigmas=sigmas, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    elif timesteps is not None and sigmas is None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -119,8 +112,9 @@ def retrieve_timesteps(
         scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
-    elif timesteps is None and sigmas is not None:
-        if not accepts_sigmas:
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
                 f" sigmas schedules. Please check whether you are using the correct scheduler."
@@ -134,7 +128,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
+class CogView4ControlPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using CogView4.
 
@@ -175,6 +169,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    # Copied from diffusers.pipelines.cogview4.pipeline_cogview4.CogView4Pipeline._get_glm_embeds
     def _get_glm_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -220,6 +215,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.cogview4.pipeline_cogview4.CogView4Pipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -317,6 +313,40 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
 
+    def prepare_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0, output_size=image.shape[0] * repeat_by)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+
+        return image
+
     def check_inputs(
         self,
         prompt,
@@ -361,16 +391,10 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             )
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape[0] != negative_prompt_embeds.shape[0]:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same batch size when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} and `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
-            if prompt_embeds.shape[-1] != negative_prompt_embeds.shape[-1]:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same dimension when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} and `negative_prompt_embeds`"
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
 
@@ -407,6 +431,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -563,7 +588,24 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         )
 
         # Prepare latents
-        latent_channels = self.transformer.config.in_channels
+        latent_channels = self.transformer.config.in_channels // 2
+
+        control_image = self.prepare_image(
+            image=control_image,
+            width=width,
+            height=height,
+            batch_size=batch_size * num_images_per_prompt,
+            num_images_per_prompt=num_images_per_prompt,
+            device=device,
+            dtype=self.vae.dtype,
+        )
+        height, width = control_image.shape[-2:]
+
+        vae_shift_factor = 0
+
+        control_image = self.vae.encode(control_image).latent_dist.sample()
+        control_image = (control_image - vae_shift_factor) * self.vae.config.scaling_factor
+
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
@@ -588,6 +630,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         image_seq_len = ((height // self.vae_scale_factor) * (width // self.vae_scale_factor)) // (
             self.transformer.config.patch_size**2
         )
+
         timesteps = (
             np.linspace(self.scheduler.config.num_train_timesteps, 1.0, num_inference_steps)
             if timesteps is None
@@ -605,7 +648,6 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             self.scheduler, num_inference_steps, device, timesteps, sigmas, mu=mu
         )
         self._num_timesteps = len(timesteps)
-
         # Denoising loop
         transformer_dtype = self.transformer.dtype
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -616,7 +658,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     continue
 
                 self._current_timestep = t
-                latent_model_input = latents.to(transformer_dtype)
+                latent_model_input = torch.cat([latents, control_image], dim=1).to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
@@ -648,7 +690,6 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
                 else:
                     noise_pred = noise_pred_cond
-
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 # call the callback, if provided
