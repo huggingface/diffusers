@@ -2247,6 +2247,9 @@ def main(args):
 
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
+                        if args.train_text_encoder_ti:
+                            embedding_handler.save_embeddings(
+                                f"{args.output_dir}/{Path(args.output_dir).name}_emb_checkpoint_{global_step}.safetensors")
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
