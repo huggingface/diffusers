@@ -4275,7 +4275,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
         return state_dict
 
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights with T2V LoRA->I2V LoRA option
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
     ):
