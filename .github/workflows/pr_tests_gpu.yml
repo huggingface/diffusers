@@ -177,6 +177,7 @@ jobs:
 
   torch_cuda_tests:
     name: Torch CUDA Tests
+    needs: [check_code_quality, check_repository_consistency]
     runs-on:
       group: aws-g4dn-2xlarge
     container:
@@ -245,7 +246,7 @@ jobs:
 
   run_examples_tests:
     name: Examples PyTorch CUDA tests on Ubuntu
-        pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+    needs: [check_code_quality, check_repository_consistency]
     runs-on:
       group: aws-g4dn-2xlarge
 
@@ -264,6 +265,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
         python -m uv pip install -e [quality,test,training]
 
     - name: Environment
