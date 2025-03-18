@@ -71,24 +71,28 @@ class ModuleGroup:
         self.onload_self = onload_self
         self.low_cpu_mem_usage = low_cpu_mem_usage
 
-        self.cpu_param_dict = {}
+        self.cpu_param_dict = self._init_cpu_param_dict()
+
+    def _init_cpu_param_dict(self):
+        cpu_param_dict = {}
+        if self.stream is None:
+            return cpu_param_dict
+
         for module in self.modules:
             for param in module.parameters():
-                self.cpu_param_dict[param] = (
-                    param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
-                )
+                cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
             for buffer in module.buffers():
-                self.cpu_param_dict[buffer] = (
+                cpu_param_dict[buffer] = (
                     buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
                 )
 
         for param in self.parameters:
-            self.cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
+            cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
 
         for buffer in self.buffers:
-            self.cpu_param_dict[buffer] = (
-                buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
-            )
+            cpu_param_dict[buffer] = buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
+
+        return cpu_param_dict
 
     @contextmanager
     def _pinned_memory_tensors(self):
@@ -118,29 +122,27 @@ class ModuleGroup:
                     for group_module in self.modules:
                         for param in group_module.parameters():
                             param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
-
-                    if self.parameters is not None:
-                        for param in self.parameters:
-                            param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
-
-                    if self.buffers is not None:
-                        for buffer in self.buffers:
+                        for buffer in group_module.buffers():
                             buffer.data = pinned_memory[buffer].to(self.onload_device, non_blocking=self.non_blocking)
+
+                    for param in self.parameters:
+                        param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
+
+                    for buffer in self.buffers:
+                        buffer.data = pinned_memory[buffer].to(self.onload_device, non_blocking=self.non_blocking)
 
             else:
                 for group_module in self.modules:
                     for param in group_module.parameters():
                         param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
-                    for param in group_module.buffers():
-                        param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
-
-                if self.parameters is not None:
-                    for param in self.parameters:
-                        param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
-
-                if self.buffers is not None:
-                    for buffer in self.buffers:
+                    for buffer in group_module.buffers():
                         buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+
+                for param in self.parameters:
+                    param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+
+                for buffer in self.buffers:
+                    buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
@@ -149,21 +151,18 @@ class ModuleGroup:
             for group_module in self.modules:
                 for param in group_module.parameters():
                     param.data = self.cpu_param_dict[param]
-            if self.parameters is not None:
-                for param in self.parameters:
-                    param.data = self.cpu_param_dict[param]
-            if self.buffers is not None:
-                for buffer in self.buffers:
-                    buffer.data = self.cpu_param_dict[buffer]
+            for param in self.parameters:
+                param.data = self.cpu_param_dict[param]
+            for buffer in self.buffers:
+                buffer.data = self.cpu_param_dict[buffer]
+
         else:
-            for module in self.modules:
-                module.to(self.offload_device, non_blocking=self.non_blocking)
-            if self.parameters:
-                for param in self.parameters:
-                    param.data = param.data.to(self.offload_device, non_blocking=self.non_blocking)
-            if self.buffers:
-                for buffer in self.buffers:
-                    buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
+            for group_module in self.modules:
+                group_module.to(self.offload_device, non_blocking=self.non_blocking)
+            for param in self.parameters:
+                param.data = param.data.to(self.offload_device, non_blocking=self.non_blocking)
+            for buffer in self.buffers:
+                buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
 
 
 class GroupOffloadingHook(ModelHook):
