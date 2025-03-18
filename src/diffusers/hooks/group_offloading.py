@@ -90,10 +90,15 @@ class ModuleGroup:
 
         with context:
             for group_module in self.modules:
-                group_module.to(self.onload_device, non_blocking=self.non_blocking)
-                if self.record_stream:
-                    for param in group_module.parameters():
+                for param in group_module.parameters():
+                    param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+                    if self.record_stream:
                         param.data.record_stream(current_stream)
+                for buffer in group_module.buffers():
+                    buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+                    if self.record_stream:
+                        buffer.data.record_stream(current_stream)
+            
             if self.parameters is not None:
                 for param in self.parameters:
                     param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
@@ -113,6 +118,12 @@ class ModuleGroup:
             for group_module in self.modules:
                 for param in group_module.parameters():
                     param.data = self.cpu_param_dict[param]
+            if self.parameters is not None:
+                for param in self.parameters:
+                    param.data = self.cpu_param_dict[param]
+            if self.buffers is not None:
+                for buffer in self.buffers:
+                    buffer.data = self.cpu_param_dict[buffer]
         else:
             for group_module in self.modules:
                 group_module.to(self.offload_device, non_blocking=self.non_blocking)
@@ -406,9 +417,7 @@ def _apply_group_offloading_block_level(
     # Create a pinned CPU parameter dict for async data transfer if streams are to be used
     cpu_param_dict = None
     if stream is not None:
-        for param in module.parameters():
-            param.data = param.data.cpu().pin_memory()
-        cpu_param_dict = {param: param.data for param in module.parameters()}
+        cpu_param_dict = _get_pinned_cpu_param_dict(module)
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -509,9 +518,7 @@ def _apply_group_offloading_leaf_level(
     # Create a pinned CPU parameter dict for async data transfer if streams are to be used
     cpu_param_dict = None
     if stream is not None:
-        for param in module.parameters():
-            param.data = param.data.cpu().pin_memory()
-        cpu_param_dict = {param: param.data for param in module.parameters()}
+        cpu_param_dict = _get_pinned_cpu_param_dict(module)
 
     # Create module groups for leaf modules and apply group offloading hooks
     modules_with_group_offloading = set()
@@ -628,6 +635,17 @@ def _apply_lazy_group_offloading_hook(
 
     lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook()
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
+
+
+def _get_pinned_cpu_param_dict(module: torch.nn.Module) -> Dict[torch.nn.Parameter, torch.Tensor]:
+    cpu_param_dict = {}
+    for param in module.parameters():
+        param.data = param.data.cpu().pin_memory()
+        cpu_param_dict[param] = param.data
+    for buffer in module.buffers():
+        buffer.data = buffer.data.cpu().pin_memory()
+        cpu_param_dict[buffer] = buffer.data
+    return cpu_param_dict
 
 
 def _gather_parameters_with_no_group_offloading_parent(
