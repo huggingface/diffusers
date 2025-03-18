@@ -4250,7 +4250,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         return state_dict
 
     @classmethod
-    def maybe_expand_t2v_lora_for_i2v(
+    def _maybe_expand_t2v_lora_for_i2v(
         cls,
         transformer: torch.nn.Module,
         state_dict,
