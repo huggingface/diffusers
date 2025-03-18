@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from contextlib import nullcontext, contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Dict, List, Optional, Set, Tuple
 
 import torch
@@ -102,9 +102,7 @@ class ModuleGroup:
                 with self._pinned_memory_tensors() as pinned_memory:
                     for module in self.modules:
                         for param in module.parameters():
-                            param.data = pinned_memory[param].to(
-                                self.onload_device, non_blocking=self.non_blocking
-                            )
+                            param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
             else:
                 for group_module in self.modules:
                     for param in group_module.parameters():
@@ -392,7 +390,9 @@ def apply_group_offloading(
             module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream, low_cpu_mem_usage
         )
     elif offload_type == "leaf_level":
-        _apply_group_offloading_leaf_level(module, offload_device, onload_device, non_blocking, stream, low_cpu_mem_usage)
+        _apply_group_offloading_leaf_level(
+            module, offload_device, onload_device, non_blocking, stream, low_cpu_mem_usage
+        )
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
 
@@ -424,11 +424,6 @@ def _apply_group_offloading_block_level(
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
     """
-
-    # Create a pinned CPU parameter dict for async data transfer if streams are to be used
-    cpu_param_dict = None
-    if stream is not None:
-        cpu_param_dict = _get_pinned_cpu_param_dict(module)
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -521,11 +516,6 @@ def _apply_group_offloading_leaf_level(
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
     """
-
-    # Create a pinned CPU parameter dict for async data transfer if streams are to be used
-    cpu_param_dict = None
-    if stream is not None:
-        cpu_param_dict = _get_pinned_cpu_param_dict(module)
 
     # Create module groups for leaf modules and apply group offloading hooks
     modules_with_group_offloading = set()
@@ -641,19 +631,15 @@ def _apply_lazy_group_offloading_hook(
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
 
 
-def _get_cpu_param_dict(module: torch.nn.Module, low_cpu_mem_usage: bool = False) -> Dict[torch.nn.Parameter, torch.Tensor]:
+def _get_cpu_param_dict(
+    module: torch.nn.Module, low_cpu_mem_usage: bool = False
+) -> Dict[torch.nn.Parameter, torch.Tensor]:
     cpu_param_dict = {}
     for param in module.parameters():
-        if low_cpu_mem_usage:
-            cpu_param_dict[param] = param.data.cpu()
-        else:
-            cpu_param_dict[param] = param.data.cpu().pin_memory()
+        cpu_param_dict[param] = param.data.cpu() if low_cpu_mem_usage else param.data.cpu().pin_memory()
 
     for buffer in module.buffers():
-        if low_cpu_mem_usage:
-            cpu_param_dict[buffer] = buffer.data.cpu()
-        else:
-            cpu_param_dict[buffer] = buffer.data.cpu().pin_memory()
+        cpu_param_dict[buffer] = buffer.data.cpu() if low_cpu_mem_usage else buffer.data.cpu().pin_memory()
 
     return cpu_param_dict
 
