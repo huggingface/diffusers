@@ -18,18 +18,18 @@ import PIL.Image
 import torch
 from transformers import CLIPTokenizer
 
-from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
-from ...schedulers import PNDMScheduler
-from ...utils import (
+from ....models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ....schedulers import PNDMScheduler
+from ....utils import (
     is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
-from ...utils.torch_utils import randn_tensor
+from ....utils.torch_utils import randn_tensor
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..blip_diffusion.blip_image_processing import BlipImageProcessor
 from ..blip_diffusion.modeling_blip2 import Blip2QFormerModel
 from ..blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 if is_torch_xla_available():
