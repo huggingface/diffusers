@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXConditionPipeline, LTXVideoCondition
         >>> from diffusers.utils import export_to_video, load_video, load_image
 
-        >>> pipe = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.1", torch_dtype=torch.bfloat16)
+        >>> pipe = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.5", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> # Load input image and video
