@@ -228,10 +228,19 @@ def log_validation(
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
-    autocast_ctx = nullcontext()
+    autocast_ctx = torch.autocast(accelerator.device.type)
 
-    with autocast_ctx:
-        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+    prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+        pipeline_args["prompt"], prompt_2=pipeline_args["prompt"]
+    )
+    images = []
+    for _ in range(args.num_validation_images):
+        with autocast_ctx:
+            image = pipeline(
+                    prompt_embeds=prompt_embeds,
+                    pooled_prompt_embeds=pooled_prompt_embeds,
+                    generator=generator).images[0]
+            images.append(image)
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
