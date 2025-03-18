@@ -4251,9 +4251,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     def maybe_expand_t2v_lora_for_i2v(
-            cls,
-            transformer: torch.nn.Module,
-            state_dict,
+        cls,
+        transformer: torch.nn.Module,
+        state_dict,
     ):
         num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict})
         is_i2v_lora = any("k_img" in k for k in state_dict) and any("v_img" in k for k in state_dict)
@@ -4313,9 +4313,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         state_dict = self._maybe_expand_t2v_lora_for_i2v(
-                        transformer = getattr(self, self.transformer_name) if not hasattr(self,
-                                                               "transformer") else self.transformer,
-                        state_dict = state_dict)
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            state_dict=state_dict,
+        )
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
