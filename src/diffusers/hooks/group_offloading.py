@@ -73,14 +73,10 @@ class ModuleGroup:
 
         self.cpu_param_dict = {}
         for module in self.modules:
-            for param in module.parameters():
-                if self.low_cpu_mem_usage:
-                    self.cpu_param_dict[param] = param.data.cpu()
-                else:
-                    self.cpu_param_dict[param] = param.data.cpu().pin_memory()
+            self.cpu_param_dict.update(_get_cpu_param_dict(module, self.low_cpu_mem_usage))
 
     @contextmanager
-    def _pin_memory(self):
+    def _pinned_memory_tensors(self):
         pinned_dict = {}
         try:
             for param, tensor in self.cpu_param_dict.items():
@@ -103,52 +99,37 @@ class ModuleGroup:
 
         with context:
             if self.stream is not None:
-                with self._pin_memory() as pinned_dict:
+                with self._pinned_memory_tensors() as pinned_memory:
                     for module in self.modules:
                         for param in module.parameters():
-                            if param in pinned_dict:
-                                param.data = pinned_dict[param].to(
-                                    self.onload_device, non_blocking=True
-                                )
-
-                if self.parameters:
-                    for param in self.parameters:
-                        param.data = param.data.to(
-                            self.onload_device, non_blocking=True
-                        )
-
-                if self.buffers:
-                    for buffer in self.buffers:
-                        buffer.data = buffer.data.to(self.onload_device, non_blocking=True)
+                            param.data = pinned_memory[param].to(
+                                self.onload_device, non_blocking=self.non_blocking
+                            )
             else:
-                # Standard transfer for non-stream case
-                for module in self.modules:
-                    module.to(self.onload_device, non_blocking=self.non_blocking)
-                if self.parameters:
-                    for param in self.parameters:
+                for group_module in self.modules:
+                    for param in group_module.parameters():
                         param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
-                if self.buffers:
-                    for buffer in self.buffers:
-                        buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+
+            if self.parameters is not None:
+                for param in self.parameters:
+                    param.data = param.data.to(self.onload_device, non_blocking=self.non_blocking)
+            if self.buffers is not None:
+                for buffer in self.buffers:
+                    buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
         if self.stream is not None:
             torch.cuda.current_stream().synchronize()
-
-            for module in self.modules:
-                for param in module.parameters():
-                    if param in self.cpu_param_dict:
-                        param.data = self.cpu_param_dict[param]
-
-            if self.parameters:
+            for group_module in self.modules:
+                for param in group_module.parameters():
+                    param.data = self.cpu_param_dict[param]
+            if self.parameters is not None:
                 for param in self.parameters:
-                    if param in self.cpu_param_dict:
-                        param.data = self.cpu_param_dict[param]
-
-            if self.buffers:
+                    param.data = self.cpu_param_dict[param]
+            if self.buffers is not None:
                 for buffer in self.buffers:
-                    buffer.data = buffer.data.to(self.offload_device, non_blocking=self.non_blocking)
+                    buffer.data = self.cpu_param_dict[buffer]
         else:
             for module in self.modules:
                 module.to(self.offload_device, non_blocking=self.non_blocking)
@@ -223,6 +204,13 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         self._layer_execution_tracker_module_names = set()
 
     def initialize_hook(self, module):
+        def make_execution_order_update_callback(current_name, current_submodule):
+            def callback():
+                logger.debug(f"Adding {current_name} to the execution order")
+                self.execution_order.append((current_name, current_submodule))
+
+            return callback
+
         # To every submodule that contains a group offloading hook (at this point, no prefetching is enabled for any
         # of the groups), we add a layer execution tracker hook that will be used to determine the order in which the
         # layers are executed during the forward pass.
@@ -234,14 +222,8 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
             group_offloading_hook = registry.get_hook(_GROUP_OFFLOADING)
 
             if group_offloading_hook is not None:
-
-                def make_execution_order_update_callback(current_name, current_submodule):
-                    def callback():
-                        logger.debug(f"Adding {current_name} to the execution order")
-                        self.execution_order.append((current_name, current_submodule))
-
-                    return callback
-
+                # For the first forward pass, we have to load in a blocking manner
+                group_offloading_hook.group.non_blocking = False
                 layer_tracker_hook = LayerExecutionTrackerHook(make_execution_order_update_callback(name, submodule))
                 registry.register_hook(layer_tracker_hook, _LAYER_EXECUTION_TRACKER)
                 self._layer_execution_tracker_module_names.add(name)
@@ -271,6 +253,7 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         # Remove the layer execution tracker hooks from the submodules
         base_module_registry = module._diffusers_hook
         registries = [submodule._diffusers_hook for _, submodule in self.execution_order]
+        group_offloading_hooks = [registry.get_hook(_GROUP_OFFLOADING) for registry in registries]
 
         for i in range(num_executed):
             registries[i].remove_hook(_LAYER_EXECUTION_TRACKER, recurse=False)
@@ -278,8 +261,13 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
         # Remove the current lazy prefetch group offloading hook so that it doesn't interfere with the next forward pass
         base_module_registry.remove_hook(_LAZY_PREFETCH_GROUP_OFFLOADING, recurse=False)
 
-        # Apply lazy prefetching by setting required attributes
-        group_offloading_hooks = [registry.get_hook(_GROUP_OFFLOADING) for registry in registries]
+        # LazyPrefetchGroupOffloadingHook is only used with streams, so we know that non_blocking should be True.
+        # We disable non_blocking for the first forward pass, but need to enable it for the subsequent passes to
+        # see the benefits of prefetching.
+        for hook in group_offloading_hooks:
+            hook.group.non_blocking = True
+
+        # Set required attributes for prefetching
         if num_executed > 0:
             base_module_group_offloading_hook = base_module_registry.get_hook(_GROUP_OFFLOADING)
             base_module_group_offloading_hook.next_group = group_offloading_hooks[0].group
@@ -437,6 +425,11 @@ def _apply_group_offloading_block_level(
             for overlapping computation and data transfer.
     """
 
+    # Create a pinned CPU parameter dict for async data transfer if streams are to be used
+    cpu_param_dict = None
+    if stream is not None:
+        cpu_param_dict = _get_pinned_cpu_param_dict(module)
+
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
     unmatched_modules = []
@@ -532,11 +525,7 @@ def _apply_group_offloading_leaf_level(
     # Create a pinned CPU parameter dict for async data transfer if streams are to be used
     cpu_param_dict = None
     if stream is not None:
-        """
-        for param in module.parameters():
-            param.data = param.data.cpu().pin_memory()
-        cpu_param_dict = {param: param.data for param in module.parameters()}
-        """
+        cpu_param_dict = _get_pinned_cpu_param_dict(module)
 
     # Create module groups for leaf modules and apply group offloading hooks
     modules_with_group_offloading = set()
@@ -650,6 +639,23 @@ def _apply_lazy_group_offloading_hook(
 
     lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook()
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
+
+
+def _get_cpu_param_dict(module: torch.nn.Module, low_cpu_mem_usage: bool = False) -> Dict[torch.nn.Parameter, torch.Tensor]:
+    cpu_param_dict = {}
+    for param in module.parameters():
+        if low_cpu_mem_usage:
+            cpu_param_dict[param] = param.data.cpu()
+        else:
+            cpu_param_dict[param] = param.data.cpu().pin_memory()
+
+    for buffer in module.buffers():
+        if low_cpu_mem_usage:
+            cpu_param_dict[buffer] = buffer.data.cpu()
+        else:
+            cpu_param_dict[buffer] = buffer.data.cpu().pin_memory()
+
+    return cpu_param_dict
 
 
 def _gather_parameters_with_no_group_offloading_parent(
