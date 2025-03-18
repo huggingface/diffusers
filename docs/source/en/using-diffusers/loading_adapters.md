@@ -194,13 +194,13 @@ Currently, [`~loaders.StableDiffusionLoraLoaderMixin.set_adapters`] only support
 
 </Tip>
 
-### Hot swapping LoRA adapters
+### Hotswapping LoRA adapters
 
-A common use case when serving multiple adapters is to load one adapter first, generate images, then load another adapter, generate more images, load another adapter, etc. This workflow would normally require calling [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] and [`~loaders.StableDiffusionLoraLoaderMixin.set_adapters`] and possibly [`~loaders.peft.PeftAdapterMixin.delete_adapters`] to save on memory. Those are quite a few steps. Morever, if the model is compiled using `torch.compile`, performing these steps will result in recompilation, which takes time.
+A common use case when serving multiple adapters is to load one adapter first, generate images, load another adapter, generate more images, load another adapter, etc. This workflow normally requires calling [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`], [`~loaders.StableDiffusionLoraLoaderMixin.set_adapters`], and possibly [`~loaders.peft.PeftAdapterMixin.delete_adapters`] to save memory. Moreover, if the model is compiled using `torch.compile`, performing these steps requires recompilation, which takes time.
 
-To better support this common workflow, diffusers offers the option to "hot swap" a LoRA adapter. This requires an adapter to already be loaded. Then, a new adapter can be hot swapped for the existing adapter, i.e. the weights are swapped in-place. This is more convenient, doesn't accumulate memory, and does not require recompilation, at least in some circumstances.
+To better support this common workflow, you can "hotswap" a LoRA adapter, to avoid accumulating memory and in some cases, recompilation. It requires an adapter to already be loaded, and the new adapter weights are swapped in-place for the existing adapter.
 
-In general, hot swapping can be accomplished by passing `hotswap=True` when loading the LoRA adapter:
+Pass `hotswap=True` when loading a LoRA adapter to enable this feature. It is important to indicate the name of the existing adapter, (`default_0` is the default adapter name), to be swapped. If you loaded the first adapter with a different name, use that name instead.
 
 ```python
 pipe = ...
@@ -213,15 +213,14 @@ pipeline.load_lora_weights(file_name_adapter_2, hotswap=True, adapter_name="defa
 # generate images with adapter 2
 ```
 
-Notice that we passed `adapter_name="default_0"`. This is the default adapter name given by diffusers and it is important that we indicate the name of the existing adapter. If you loaded the first adapter under a different name, pass that name instead.
 
 <Tip warning={true}>
 
-Hot swapping is currently not supported for the text encoder. If the LoRA adapter targets the text encoder, don't use this feature.
+Hotswapping is not currently supported for LoRA adapters that target the text encoder.
 
 </Tip>
 
-Now when it comes to compiled models, the same code as above may also work without triggering recompilation, but only if the second adapter targets the exact same ranks, has the exact same LoRA ranks and also scales. For most adapters, this is not the case. Therefore, it is necessary to go through one more step, as shown in this snippet:
+For compiled models, it is often (though not always if the second adapter targets identical LoRA ranks and scales) necessary to call [`~loaders.lora_base.LoraBaseMixin.enable_lora_hotswap`] to avoid recompilation. Use [`~loaders.lora_base.LoraBaseMixin.enable_lora_hotswap`] _before_ loading the first adapter, and `torch.compile` should be called _after_ loading the first adapter.
 
 ```python
 pipe = ...
@@ -238,15 +237,13 @@ pipeline.load_lora_weights(file_name_adapter_2, hotswap=True, adapter_name="defa
 # generate images with adapter 2
 ```
 
-By calling the [`~loaders.lora_base.LoraBaseMixin.enable_lora_hotswap`] method, diffusers makes it possible to hot swap the LoRA adapter without triggering recompilation. For this to work, call the method _before_ loading the first adapter. Also note that, as always, `torch.compile` has to be called _after_ loading the first adapter.
+The `target_rank=max_rank` argument is important for setting the maximum rank among all LoRA adapters that will be loaded. If you have one adapter with rank 8 and another with rank 16, pass `target_rank=16`. You should use a higher value if in doubt. By default, this value is 128.
 
-The `target_rank=max_rank` argument is important to let diffusers know what will be the maximum rank among all LoRA adapters that will be loaded. So if you have one adapter with rank 8 and another with rank 16, pass `target_rank=16`. By default, this value is 128. If in doubt, prefer a higher value.
-
-Even after following these steps, there can be situations that will result in recompilation. Most notably, if the swapped in adapters targets more layers than the initial adapter, recompilation is needed. Try to load the adapter that targets most layers first. Read more about the limitations of hot swapping in the [PEFT documentation on hot swapping](https://huggingface.co/docs/peft/main/en/package_reference/hotswap#peft.utils.hotswap.hotswap_adapter).
+However, there can be situations where recompilation is unavoidable. For example, if the hotswapped adapter targets more layers than the initial adapter, then recompilation is triggered. Try to load the adapter that targets the most layers first. Refer to the PEFT docs on [hotswapping](https://huggingface.co/docs/peft/main/en/package_reference/hotswap#peft.utils.hotswap.hotswap_adapter) for more details about the limitations of this feature.
 
 <Tip>
 
-To detect if the model was recompiled, move your code inside the `with torch._dynamo.config.patch(error_on_recompile=True)` context manager. If you detect recompilation despite following all the steps above, please open an issue on the [diffusers GitHub repository](https://github.com/huggingface/diffusers/issues) with a reproducer.
+Move your code inside the `with torch._dynamo.config.patch(error_on_recompile=True)` context manager to detect if a model was recompiled. If you detect recompilation despite following all the steps above, please open an issue with [Diffusers](https://github.com/huggingface/diffusers/issues) with a reproducible example.
 
 </Tip>
 
