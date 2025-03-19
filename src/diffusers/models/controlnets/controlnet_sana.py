@@ -40,6 +40,8 @@ class SanaControlNetOutput(BaseOutput):
 
 class SanaControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["SanaTransformerBlock", "PatchEmbed"]
+    _skip_layerwise_casting_patterns = ["patch_embed", "norm"]
 
     @register_to_config
     def __init__(
