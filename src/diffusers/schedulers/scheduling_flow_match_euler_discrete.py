@@ -377,6 +377,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_tmax: float = float("inf"),
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
+        per_token_timesteps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[FlowMatchEulerDiscreteSchedulerOutput, Tuple]:
         """
@@ -397,6 +398,8 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 Scaling factor for noise added to the sample.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
+            per_token_timesteps (`torch.Tensor`, *optional*):
+                The timesteps for each token in the sample.
             return_dict (`bool`):
                 Whether or not to return a
                 [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or tuple.
@@ -427,16 +430,26 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
 
-        sigma = self.sigmas[self.step_index]
-        sigma_next = self.sigmas[self.step_index + 1]
+        if per_token_timesteps is not None:
+            per_token_sigmas = per_token_timesteps / self.config.num_train_timesteps
 
-        prev_sample = sample + (sigma_next - sigma) * model_output
+            sigmas = self.sigmas[:, None, None]
+            lower_mask = sigmas < per_token_sigmas[None] - 1e-6
+            lower_sigmas = lower_mask * sigmas
+            lower_sigmas, _ = lower_sigmas.max(dim=0)
+            dt = (per_token_sigmas - lower_sigmas)[..., None]
+        else:
+            sigma = self.sigmas[self.step_index]
+            sigma_next = self.sigmas[self.step_index + 1]
+            dt = sigma_next - sigma
 
-        # Cast sample back to model compatible dtype
-        prev_sample = prev_sample.to(model_output.dtype)
+        prev_sample = sample + dt * model_output
 
         # upon completion increase step index by one
         self._step_index += 1
+        if per_token_timesteps is None:
+            # Cast sample back to model compatible dtype
+            prev_sample = prev_sample.to(model_output.dtype)
 
         if not return_dict:
             return (prev_sample,)
