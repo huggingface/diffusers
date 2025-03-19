@@ -15,7 +15,6 @@
 # DISCLAIMER: This code is strongly influenced by https://github.com/pesser/pytorch_diffusion
 # and https://github.com/hojonathanho/diffusion
 
-import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -25,11 +24,9 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..schedulers.scheduling_utils import SchedulerMixin
 from ..utils import BaseOutput, logging
-from ..utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
 
 
 @dataclass
@@ -37,6 +34,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class SCMSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's `step` function output.
+
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
@@ -53,9 +51,9 @@ class SCMSchedulerOutput(BaseOutput):
 class SCMScheduler(SchedulerMixin, ConfigMixin):
     """
     `SCMScheduler` extends the denoising procedure introduced in denoising diffusion probabilistic models (DDPMs) with
-    non-Markovian guidance.
-    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
-    methods the library implements for all schedulers such as loading and saving.
+    non-Markovian guidance. This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass
+    documentation for the generic methods the library implements for all schedulers such as loading and saving.
+
     Args:
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
@@ -140,6 +138,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
+
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
@@ -161,16 +160,22 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise ValueError(f"Unsupported timesteps type: {type(timesteps)}")
         elif self.config.intermediate_timesteps and num_inference_steps == 2:
-            self.timesteps = torch.tensor([self.config.max_timesteps, self.config.intermediate_timesteps, 0], device=device).float()
+            self.timesteps = torch.tensor(
+                [self.config.max_timesteps, self.config.intermediate_timesteps, 0], device=device
+            ).float()
         elif self.config.intermediate_timesteps:
-            self.timesteps = torch.linspace(self.config.max_timesteps, 0, num_inference_steps + 1, device=device).float()
-            warnings.warn(
+            self.timesteps = torch.linspace(
+                self.config.max_timesteps, 0, num_inference_steps + 1, device=device
+            ).float()
+            logger.warning(
                 f"Intermediate timesteps for SCM is not supported when num_inference_steps != 2. "
                 f"Reset timesteps to {self.timesteps} default max_timesteps"
             )
         else:
             # max_timesteps=arctan(80/0.5)=1.56454 is the default from sCM paper, we choose a different value here
-            self.timesteps = torch.linspace(self.config.max_timesteps, 0, num_inference_steps + 1, device=device).float()
+            self.timesteps = torch.linspace(
+                self.config.max_timesteps, 0, num_inference_steps + 1, device=device
+            ).float()
 
         print(f"Set timesteps: {self.timesteps}")
 
@@ -186,6 +191,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
+
         Args:
             model_output (`torch.FloatTensor`):
                 The direct output from learned diffusion model.
@@ -222,7 +228,10 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         # 5. Sample z ~ N(0, I), For MultiStep Inference
         # Noise is not used for one-step sampling.
         if len(self.timesteps) > 1:
-            noise = torch.randn(model_output.shape, device=model_output.device, generator=generator) * self.config.sigma_data
+            noise = (
+                torch.randn(model_output.shape, device=model_output.device, generator=generator)
+                * self.config.sigma_data
+            )
             prev_sample = torch.cos(t) * pred_x0 + torch.sin(t) * noise
         else:
             prev_sample = pred_x0
@@ -234,4 +243,3 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
 
     def __len__(self):
         return self.config.num_train_timesteps
-
