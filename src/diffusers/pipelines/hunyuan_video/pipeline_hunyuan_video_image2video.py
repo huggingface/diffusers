@@ -72,10 +72,10 @@ EXAMPLE_DOC_STRING = """
 
         >>> # If using hunyuanvideo-community/HunyuanVideo-I2V
         >>> output = pipe(image=image, prompt=prompt, guidance_scale=6.0).frames[0]
-        
+
         >>> # If using hunyuanvideo-community/HunyuanVideo-I2V-33ch
         >>> output = pipe(image=image, prompt=prompt, guidance_scale=1.0, true_cfg_scale=1.0).frames[0]
-        
+
         >>> export_to_video(output, "output.mp4", fps=15)
         ```
 """
@@ -506,15 +506,14 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         image = image.unsqueeze(2)  # [B, C, 1, H, W]
         if isinstance(generator, list):
             image_latents = [
-                retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
+                retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i], "argmax")
+                for i in range(batch_size)
             ]
         else:
-            image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
+            image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator, "argmax") for img in image]
 
         image_latents = torch.cat(image_latents, dim=0).to(dtype) * self.vae_scaling_factor
-
-        if image_condition_type == "latent_concat":
-            image_latents = image_latents.repeat(1, 1, num_latent_frames, 1, 1)
+        image_latents = image_latents.repeat(1, 1, num_latent_frames, 1, 1)
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -523,6 +522,9 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
         t = torch.tensor([0.999]).to(device=device)
         latents = latents * t + image_latents * (1 - t)
+
+        if image_condition_type == "token_replace":
+            image_latents = image_latents[:, :, :1]
 
         return latents, image_latents
 
@@ -817,7 +819,9 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         # 6. Prepare guidance condition
         guidance = None
         if self.transformer.config.guidance_embeds:
-            guidance = torch.tensor([guidance_scale] * latents.shape[0], dtype=transformer_dtype, device=device) * 1000.0
+            guidance = (
+                torch.tensor([guidance_scale] * latents.shape[0], dtype=transformer_dtype, device=device) * 1000.0
+            )
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -889,7 +893,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
+            latents = latents.to(self.vae.dtype) / self.vae_scaling_factor
             video = self.vae.decode(latents, return_dict=False)[0]
             if image_condition_type == "latent_concat":
                 video = video[:, :, 4:, :, :]
