@@ -4256,7 +4256,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         state_dict,
     ):
 
-        if transformer.config.image_dim is not None:
+        if transformer.config.image_dim is None:
             return state_dict
 
         if any(k.startswith("transformer.blocks.") for k in state_dict):
