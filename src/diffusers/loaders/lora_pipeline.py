@@ -4268,11 +4268,11 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
             for i in range(num_blocks):
                 for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
-                    state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
-                        state_dict[f"blocks.{i}.attn2.{o.replace('_img', '')}.lora_A.weight"]
+                    state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_A.weight"] = torch.zeros_like(
+                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_A.weight"]
                     )
-                    state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
-                        state_dict[f"blocks.{i}.attn2.{o.replace('_img', '')}.lora_B.weight"]
+                    state_dict[f"transformer.blocks.{i}.attn2.{c}.lora_B.weight"] = torch.zeros_like(
+                        state_dict[f"transformer.blocks.{i}.attn2.to_k.lora_B.weight"]
                     )
 
         return state_dict
