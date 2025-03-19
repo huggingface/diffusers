@@ -1602,7 +1602,7 @@ def main(args):
                 )
 
                 # handle guidance
-                if accelerator.unwrap_model(transformer).config.guidance_embeds:
+                if unwrap_model(transformer).config.guidance_embeds:
                     guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
@@ -1728,9 +1728,9 @@ def main(args):
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
-                    text_encoder=accelerator.unwrap_model(text_encoder_one, keep_fp32_wrapper=False),
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_two, keep_fp32_wrapper=False),
-                    transformer=accelerator.unwrap_model(transformer, keep_fp32_wrapper=False),
+                    text_encoder=unwrap_model(text_encoder_one, keep_fp32_wrapper=False),
+                    text_encoder_2=unwrap_model(text_encoder_two, keep_fp32_wrapper=False),
+                    transformer=unwrap_model(transformer, keep_fp32_wrapper=False),
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
