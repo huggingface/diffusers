@@ -37,7 +37,7 @@ from torch import Tensor, nn
 from typing_extensions import Self
 
 from .. import __version__
-from ..hooks import apply_group_offloading, apply_layerwise_casting
+from ..hooks import apply_group_offloading
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
