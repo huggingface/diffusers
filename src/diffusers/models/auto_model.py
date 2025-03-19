@@ -25,11 +25,11 @@ from ..pipelines.stable_audio.modeling_stable_audio import StableAudioProjection
 from ..pipelines.stable_diffusion.clip_image_project_model import CLIPImageProjection
 from ..pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from ..pipelines.unclip.text_proj import UnCLIPTextProjModel
-from ..pipelines.unidiffuser.modeling_text_decoder import UniDiffuserTextDecoder
 from ..pipelines.unidiffuser.modeling_uvit import UniDiffuserModel, UTransformer2DModel
 from ..pipelines.wuerstchen.modeling_paella_vq_model import PaellaVQModel
 from ..pipelines.wuerstchen.modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 from ..pipelines.wuerstchen.modeling_wuerstchen_prior import WuerstchenPrior
+from ..utils.import_utils import is_transformers_available
 from .adapter import MultiAdapter, T2IAdapter
 from .autoencoders.autoencoder_asym_kl import AsymmetricAutoencoderKL
 from .autoencoders.autoencoder_dc import AutoencoderDC
@@ -89,6 +89,9 @@ from .unets.unet_spatio_temporal_condition import UNetSpatioTemporalConditionMod
 from .unets.unet_stable_cascade import StableCascadeUNet
 from .unets.uvit_2d import UVit2DModel
 
+
+if is_transformers_available():
+    from ..pipelines.unidiffuser.modeling_text_decoder import UniDiffuserTextDecoder
 
 AUTO_MODEL_MAPPING = OrderedDict(
     [
@@ -167,7 +170,6 @@ AUTO_MODEL_MAPPING = OrderedDict(
         ("clip-image-projection", CLIPImageProjection),
         ("stable-unclip-image-normalizer", StableUnCLIPImageNormalizer),
         ("unclip-text-proj", UnCLIPTextProjModel),
-        ("unidiffuser-text-decoder", UniDiffuserTextDecoder),
         ("utransformer-2d", UTransformer2DModel),
         ("unidiffuser", UniDiffuserModel),
         ("paella-vq", PaellaVQModel),
@@ -175,6 +177,10 @@ AUTO_MODEL_MAPPING = OrderedDict(
         ("wuerstchen-prior", WuerstchenPrior),
     ]
 )
+
+
+if is_transformers_available():
+    AUTO_MODEL_MAPPING["unidiffuser-text-decoder"] = UniDiffuserTextDecoder
 
 
 SUPPORTED_TASKS_MAPPINGS = [AUTO_MODEL_MAPPING]
