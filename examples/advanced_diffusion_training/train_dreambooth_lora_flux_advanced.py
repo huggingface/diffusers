@@ -662,12 +662,11 @@ def parse_args(input_args=None):
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
-    parser.add_argument(
-        "--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for transformer params"
-    )
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for transformer params")
     parser.add_argument(
         "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
     )
+
     parser.add_argument(
         "--lora_layers",
         type=str,
@@ -677,6 +676,7 @@ def parse_args(input_args=None):
             'E.g. - "to_k,to_q,to_v,to_out.0" will result in lora training of attention layers only. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/README_flux.md'
         ),
     )
+
     parser.add_argument(
         "--adam_epsilon",
         type=float,
@@ -747,6 +747,15 @@ def parse_args(input_args=None):
             "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
             " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
             " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
+        ),
+    )
+    parser.add_argument(
+        "--upcast_before_saving",
+        action="store_true",
+        default=False,
+        help=(
+            "Whether to upcast the trained transformer layers to float32 before saving (at the end of training). "
+            "Defaults to precision dtype used for training to save memory"
         ),
     )
     parser.add_argument(
@@ -1158,7 +1167,7 @@ def tokenize_prompt(tokenizer, prompt, max_sequence_length, add_special_tokens=F
     return text_input_ids
 
 
-def _get_t5_prompt_embeds(
+def _encode_prompt_with_t5(
     text_encoder,
     tokenizer,
     max_sequence_length=512,
@@ -1199,7 +1208,7 @@ def _get_t5_prompt_embeds(
     return prompt_embeds
 
 
-def _get_clip_prompt_embeds(
+def _encode_prompt_with_clip(
     text_encoder,
     tokenizer,
     prompt: str,
@@ -1249,32 +1258,31 @@ def encode_prompt(
     text_input_ids_list=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
-    batch_size = len(prompt)
     dtype = text_encoders[0].dtype
 
-    pooled_prompt_embeds = _get_clip_prompt_embeds(
+    pooled_prompt_embeds = _encode_prompt_with_clip(
         text_encoder=text_encoders[0],
         tokenizer=tokenizers[0],
         prompt=prompt,
         device=device if device is not None else text_encoders[0].device,
         num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[0] if text_input_ids_list is not None else None,
+        text_input_ids=text_input_ids_list[0] if text_input_ids_list else None,
     )
 
-    prompt_embeds = _get_t5_prompt_embeds(
+    prompt_embeds = _encode_prompt_with_t5(
         text_encoder=text_encoders[1],
         tokenizer=tokenizers[1],
         max_sequence_length=max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
         device=device if device is not None else text_encoders[1].device,
-        text_input_ids=text_input_ids_list[1] if text_input_ids_list is not None else None,
+        text_input_ids=text_input_ids_list[1] if text_input_ids_list else None,
     )
 
-    text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
-    text_ids = text_ids.repeat(num_images_per_prompt, 1, 1)
+    text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
     return prompt_embeds, pooled_prompt_embeds, text_ids
+
 
 def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
@@ -1527,7 +1535,6 @@ def main(args):
         target_modules=target_modules,
     )
     transformer.add_adapter(transformer_lora_config)
-
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
@@ -1635,7 +1642,6 @@ def main(args):
         cast_training_params(models, dtype=torch.float32)
 
     transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
-
     if args.train_text_encoder:
         text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
     # if we use textual inversion, we freeze all parameters except for the token embeddings
@@ -1736,6 +1742,7 @@ def main(args):
             optimizer_class = bnb.optim.AdamW8bit
         else:
             optimizer_class = torch.optim.AdamW
+
         optimizer = optimizer_class(
             params_to_optimize,
             betas=(args.adam_beta1, args.adam_beta2),
@@ -2102,7 +2109,7 @@ def main(args):
                 model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
-                vae_scale_factor = 2 ** (len(vae_config_block_out_channels))
+                vae_scale_factor = 2 ** (len(vae_config_block_out_channels) - 1)
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
@@ -2141,7 +2148,7 @@ def main(args):
                 )
 
                 # handle guidance
-                if transformer.config.guidance_embeds:
+                if accelerator.unwrap_model(transformer).config.guidance_embeds:
                     guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
@@ -2280,7 +2287,6 @@ def main(args):
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
                     text_encoder_one.to(weight_dtype)
                     text_encoder_two.to(weight_dtype)
-
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -2300,18 +2306,21 @@ def main(args):
                     epoch=epoch,
                     torch_dtype=weight_dtype,
                 )
-                images = None
-                del pipeline
-
-                if freeze_text_encoder:
+                if not freeze_text_encoder:
                     del text_encoder_one, text_encoder_two
                     free_memory()
+
+                images = None
+                del pipeline
 
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        transformer = transformer.to(weight_dtype)
+        if args.upcast_before_saving:
+            transformer.to(torch.float32)
+        else:
+            transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         if args.train_text_encoder:
@@ -2353,8 +2362,8 @@ def main(args):
                 accelerator=accelerator,
                 pipeline_args=pipeline_args,
                 epoch=epoch,
-                torch_dtype=weight_dtype,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         save_model_card(
@@ -2377,6 +2386,7 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+
         images = None
         del pipeline
 
