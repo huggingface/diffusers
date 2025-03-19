@@ -951,13 +951,20 @@ def main(args):
                     logits_fake = discriminator(reconstructions)
                     disc_loss = hinge_d_loss if args.disc_loss == "hinge" else vanilla_d_loss
                     disc_factor = args.disc_factor if global_step >= args.disc_start else 0.0
-                    disc_loss = disc_factor * disc_loss(logits_real, logits_fake)
+                    d_loss = disc_factor * disc_loss(logits_real, logits_fake)
                     logs = {
-                        "disc_loss": disc_loss.detach().mean().item(),
+                        "disc_loss": d_loss.detach().mean().item(),
                         "logits_real": logits_real.detach().mean().item(),
                         "logits_fake": logits_fake.detach().mean().item(),
                         "disc_lr": disc_lr_scheduler.get_last_lr()[0],
                     }
+                    accelerator.backward(d_loss)
+                    if accelerator.sync_gradients:
+                        params_to_clip = discriminator.parameters()
+                        accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                    disc_optimizer.step()
+                    disc_lr_scheduler.step()
+                    disc_optimizer.zero_grad(set_to_none=args.set_grads_to_none)
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 progress_bar.update(1)
