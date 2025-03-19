@@ -231,9 +231,10 @@ def log_validation(
     autocast_ctx = torch.autocast(accelerator.device.type)
 
     # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
-    prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
-        pipeline_args["prompt"], prompt_2=pipeline_args["prompt"]
-    )
+    with torch.no_grad():
+        prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+            pipeline_args["prompt"], prompt_2=pipeline_args["prompt"]
+        )
     images = []
     for _ in range(args.num_validation_images):
         with autocast_ctx:
@@ -2044,6 +2045,11 @@ def main(args):
                 pivoted_tr = True
 
         for step, batch in enumerate(train_dataloader):
+            models_to_accumulate = [transformer]
+            if not freeze_text_encoder:
+                models_to_accumulate.extend([text_encoder_one])
+                if args.enable_t5_ti:
+                    models_to_accumulate.extend([text_encoder_two])
             if pivoted_te:
                 # stopping optimization of text_encoder params
                 optimizer.param_groups[te_idx]["lr"] = 0.0
@@ -2052,7 +2058,7 @@ def main(args):
                 logger.info(f"PIVOT TRANSFORMER {epoch}")
                 optimizer.param_groups[0]["lr"] = 0.0
 
-            with accelerator.accumulate(transformer):
+            with accelerator.accumulate(models_to_accumulate):
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
