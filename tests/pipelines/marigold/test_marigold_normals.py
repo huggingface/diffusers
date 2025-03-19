@@ -1,5 +1,5 @@
-# Copyright 2024 Marigold authors, PRS ETH Zurich. All rights reserved.
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2023-2025 Marigold Team, ETH Zürich. All rights reserved.
+# Copyright 2024-2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 # limitations under the License.
 # --------------------------------------------------------------------------
 # More information and citation instructions are available on the
-# Marigold project website: https://marigoldmonodepth.github.io
+# Marigold project website: https://marigoldcomputervision.github.io
 # --------------------------------------------------------------------------
 import gc
 import random
@@ -32,11 +32,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
+    torch_device,
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -285,17 +287,17 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def _test_marigold_normals(
         self,
@@ -314,8 +316,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
             from_pretrained_kwargs["torch_dtype"] = torch.float16
 
         pipe = MarigoldNormalsPipeline.from_pretrained(model_id, **from_pretrained_kwargs)
-        if device == "cuda":
-            pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(generator_seed)
@@ -342,7 +343,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f32_cpu_G0_S1_P32_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=False,
-            device="cpu",
+            device=torch_device,
             generator_seed=0,
             expected_slice=np.array([0.8971, 0.8971, 0.8971, 0.8971, 0.8971, 0.8971, 0.8971, 0.8971, 0.8971]),
             num_inference_steps=1,
@@ -355,7 +356,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f32_cuda_G0_S1_P768_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=False,
-            device="cuda",
+            device=torch_device,
             generator_seed=0,
             expected_slice=np.array([0.7980, 0.7952, 0.7914, 0.7931, 0.7871, 0.7816, 0.7844, 0.7710, 0.7601]),
             num_inference_steps=1,
@@ -368,7 +369,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P768_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
-            device="cuda",
+            device=torch_device,
             generator_seed=0,
             expected_slice=np.array([0.7979, 0.7949, 0.7915, 0.7930, 0.7871, 0.7817, 0.7842, 0.7710, 0.7603]),
             num_inference_steps=1,
@@ -381,7 +382,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f16_cuda_G2024_S1_P768_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
-            device="cuda",
+            device=torch_device,
             generator_seed=2024,
             expected_slice=np.array([0.8428, 0.8428, 0.8433, 0.8369, 0.8325, 0.8315, 0.8271, 0.8135, 0.8057]),
             num_inference_steps=1,
@@ -394,7 +395,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f16_cuda_G0_S2_P768_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
-            device="cuda",
+            device=torch_device,
             generator_seed=0,
             expected_slice=np.array([0.7095, 0.7095, 0.7104, 0.7070, 0.7051, 0.7061, 0.7017, 0.6938, 0.6914]),
             num_inference_steps=2,
@@ -407,7 +408,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P512_E1_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
-            device="cuda",
+            device=torch_device,
             generator_seed=0,
             expected_slice=np.array([0.7168, 0.7163, 0.7163, 0.7080, 0.7061, 0.7046, 0.7031, 0.7007, 0.6987]),
             num_inference_steps=1,
@@ -420,7 +421,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P768_E3_B1_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
-            device="cuda",
+            device=torch_device,
             generator_seed=0,
             expected_slice=np.array([0.7114, 0.7124, 0.7144, 0.7085, 0.7070, 0.7080, 0.7051, 0.6958, 0.6924]),
             num_inference_steps=1,
@@ -434,7 +435,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P768_E4_B2_M1(self):
         self._test_marigold_normals(
             is_fp16=True,
-            device="cuda",
+            device=torch_device,
             generator_seed=0,
             expected_slice=np.array([0.7412, 0.7441, 0.7490, 0.7383, 0.7388, 0.7437, 0.7329, 0.7271, 0.7300]),
             num_inference_steps=1,
@@ -448,7 +449,7 @@ class MarigoldNormalsPipelineIntegrationTests(unittest.TestCase):
     def test_marigold_normals_einstein_f16_cuda_G0_S1_P512_E1_B1_M0(self):
         self._test_marigold_normals(
             is_fp16=True,
-            device="cuda",
+            device=torch_device,
             generator_seed=0,
             expected_slice=np.array([0.7188, 0.7144, 0.7134, 0.7178, 0.7207, 0.7222, 0.7231, 0.7041, 0.6987]),
             num_inference_steps=1,

@@ -103,7 +103,7 @@ class AllegroTemporalConvLayer(nn.Module):
         if self.down_sample:
             identity = hidden_states[:, :, ::2]
         elif self.up_sample:
-            identity = hidden_states.repeat_interleave(2, dim=2)
+            identity = hidden_states.repeat_interleave(2, dim=2, output_size=hidden_states.shape[2] * 2)
         else:
             identity = hidden_states
 

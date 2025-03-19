@@ -60,29 +60,8 @@ if is_transformers_available():
 
 if is_torch_available():
     import torch
-    import torch.nn as nn
 
-    class LoRALayer(nn.Module):
-        """Wraps a linear layer with LoRA-like adapter - Used for testing purposes only
-
-        Taken from
-        https://github.com/huggingface/transformers/blob/566302686a71de14125717dea9a6a45b24d42b37/tests/quantization/bnb/test_8bit.py#L62C5-L78C77
-        """
-
-        def __init__(self, module: nn.Module, rank: int):
-            super().__init__()
-            self.module = module
-            self.adapter = nn.Sequential(
-                nn.Linear(module.in_features, rank, bias=False),
-                nn.Linear(rank, module.out_features, bias=False),
-            )
-            small_std = (2.0 / (5 * min(module.in_features, module.out_features))) ** 0.5
-            nn.init.normal_(self.adapter[0].weight, std=small_std)
-            nn.init.zeros_(self.adapter[1].weight)
-            self.adapter.to(module.weight.device)
-
-        def forward(self, input, *args, **kwargs):
-            return self.module(input, *args, **kwargs) + self.adapter(input)
+    from ..utils import LoRALayer, get_memory_consumption_stat
 
 
 if is_bitsandbytes_available():
@@ -101,6 +80,8 @@ class Base8bitTests(unittest.TestCase):
 
     # This was obtained on audace so the number might slightly change
     expected_rel_difference = 1.94
+
+    expected_memory_saving_ratio = 0.7
 
     prompt = "a beautiful sunset amidst the mountains."
     num_inference_steps = 10
@@ -138,12 +119,14 @@ class BnB8bitBasicTests(Base8bitTests):
         )
         mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         self.model_8bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config
+            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config, device_map=torch_device
         )
 
     def tearDown(self):
-        del self.model_fp16
-        del self.model_8bit
+        if hasattr(self, "model_fp16"):
+            del self.model_fp16
+        if hasattr(self, "model_8bit"):
+            del self.model_8bit
 
         gc.collect()
         torch.cuda.empty_cache()
@@ -182,6 +165,28 @@ class BnB8bitBasicTests(Base8bitTests):
         linear = get_some_linear_layer(self.model_8bit)
         self.assertTrue(linear.weight.__class__ == bnb.nn.Int8Params)
 
+    def test_model_memory_usage(self):
+        # Delete to not let anything interfere.
+        del self.model_8bit, self.model_fp16
+
+        # Re-instantiate.
+        inputs = self.get_dummy_inputs()
+        inputs = {
+            k: v.to(device=torch_device, dtype=torch.float16) for k, v in inputs.items() if not isinstance(v, bool)
+        }
+        model_fp16 = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", torch_dtype=torch.float16
+        ).to(torch_device)
+        unquantized_model_memory = get_memory_consumption_stat(model_fp16, inputs)
+        del model_fp16
+
+        config = BitsAndBytesConfig(load_in_8bit=True)
+        model_8bit = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", quantization_config=config, torch_dtype=torch.float16
+        )
+        quantized_model_memory = get_memory_consumption_stat(model_8bit, inputs)
+        assert unquantized_model_memory / quantized_model_memory >= self.expected_memory_saving_ratio
+
     def test_original_dtype(self):
         r"""
         A simple test to check if the model succesfully stores the original dtype
@@ -200,7 +205,7 @@ class BnB8bitBasicTests(Base8bitTests):
 
         mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         model = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config
+            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config, device_map=torch_device
         )
 
         for name, module in model.named_modules():
@@ -242,13 +247,13 @@ class BnB8bitBasicTests(Base8bitTests):
         """
         config = BitsAndBytesConfig(load_in_8bit=True, llm_int8_skip_modules=["proj_out"])
         model_8bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=config
+            self.model_name, subfolder="transformer", quantization_config=config, device_map=torch_device
         )
         linear = get_some_linear_layer(model_8bit)
         self.assertTrue(linear.weight.dtype == torch.int8)
         self.assertTrue(isinstance(linear, bnb.nn.Linear8bitLt))
 
-        self.assertTrue(isinstance(model_8bit.proj_out, nn.Linear))
+        self.assertTrue(isinstance(model_8bit.proj_out, torch.nn.Linear))
         self.assertTrue(model_8bit.proj_out.weight.dtype != torch.int8)
 
     def test_config_from_pretrained(self):
@@ -319,6 +324,7 @@ class Bnb8bitDeviceTests(Base8bitTests):
             "Efficient-Large-Model/Sana_1600M_4Kpx_BF16_diffusers",
             subfolder="transformer",
             quantization_config=mixed_int8_config,
+            device_map=torch_device,
         )
 
     def tearDown(self):
@@ -343,7 +349,7 @@ class BnB8bitTrainingTests(Base8bitTests):
 
         mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         self.model_8bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config
+            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config, device_map=torch_device
         )
 
     def test_training(self):
@@ -387,7 +393,7 @@ class SlowBnb8bitTests(Base8bitTests):
 
         mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         model_8bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config
+            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config, device_map=torch_device
         )
         self.pipeline_8bit = DiffusionPipeline.from_pretrained(
             self.model_name, transformer=model_8bit, torch_dtype=torch.float16
@@ -415,7 +421,10 @@ class SlowBnb8bitTests(Base8bitTests):
 
     def test_model_cpu_offload_raises_warning(self):
         model_8bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=BitsAndBytesConfig(load_in_8bit=True)
+            self.model_name,
+            subfolder="transformer",
+            quantization_config=BitsAndBytesConfig(load_in_8bit=True),
+            device_map=torch_device,
         )
         pipeline_8bit = DiffusionPipeline.from_pretrained(
             self.model_name, transformer=model_8bit, torch_dtype=torch.float16
@@ -430,7 +439,10 @@ class SlowBnb8bitTests(Base8bitTests):
 
     def test_moving_to_cpu_throws_warning(self):
         model_8bit = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=BitsAndBytesConfig(load_in_8bit=True)
+            self.model_name,
+            subfolder="transformer",
+            quantization_config=BitsAndBytesConfig(load_in_8bit=True),
+            device_map=torch_device,
         )
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         logger.setLevel(30)
@@ -483,6 +495,7 @@ class SlowBnb8bitTests(Base8bitTests):
             subfolder="transformer",
             quantization_config=transformer_8bit_config,
             torch_dtype=torch.float16,
+            device_map=torch_device,
         )
         text_encoder_3_8bit_config = BnbConfig(load_in_8bit=True)
         text_encoder_3_8bit = T5EncoderModel.from_pretrained(
@@ -490,6 +503,7 @@ class SlowBnb8bitTests(Base8bitTests):
             subfolder="text_encoder_3",
             quantization_config=text_encoder_3_8bit_config,
             torch_dtype=torch.float16,
+            device_map=torch_device,
         )
         # CUDA device placement works.
         pipeline_8bit = DiffusionPipeline.from_pretrained(
@@ -503,6 +517,99 @@ class SlowBnb8bitTests(Base8bitTests):
         _ = pipeline_8bit("table", max_sequence_length=20, num_inference_steps=2)
 
         del pipeline_8bit
+
+    def test_device_map(self):
+        """
+        Test if the quantized model is working properly with "auto"
+        pu/disk offloading doesn't work with bnb.
+        """
+
+        def get_dummy_tensor_inputs(device=None, seed: int = 0):
+            batch_size = 1
+            num_latent_channels = 4
+            num_image_channels = 3
+            height = width = 4
+            sequence_length = 48
+            embedding_dim = 32
+
+            torch.manual_seed(seed)
+            hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(
+                device, dtype=torch.bfloat16
+            )
+
+            torch.manual_seed(seed)
+            encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(
+                device, dtype=torch.bfloat16
+            )
+
+            torch.manual_seed(seed)
+            pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(device, dtype=torch.bfloat16)
+
+            torch.manual_seed(seed)
+            text_ids = torch.randn((sequence_length, num_image_channels)).to(device, dtype=torch.bfloat16)
+
+            torch.manual_seed(seed)
+            image_ids = torch.randn((height * width, num_image_channels)).to(device, dtype=torch.bfloat16)
+
+            timestep = torch.tensor([1.0]).to(device, dtype=torch.bfloat16).expand(batch_size)
+
+            return {
+                "hidden_states": hidden_states,
+                "encoder_hidden_states": encoder_hidden_states,
+                "pooled_projections": pooled_prompt_embeds,
+                "txt_ids": text_ids,
+                "img_ids": image_ids,
+                "timestep": timestep,
+            }
+
+        inputs = get_dummy_tensor_inputs(torch_device)
+        expected_slice = np.array(
+            [
+                0.33789062,
+                -0.04736328,
+                -0.00256348,
+                -0.23144531,
+                -0.49804688,
+                0.4375,
+                -0.15429688,
+                -0.65234375,
+                0.44335938,
+            ]
+        )
+
+        # non sharded
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        quantized_model = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/tiny-flux-pipe",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+        )
+
+        weight = quantized_model.transformer_blocks[0].ff.net[2].weight
+        self.assertTrue(isinstance(weight, bnb.nn.modules.Int8Params))
+
+        output = quantized_model(**inputs)[0]
+        output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+
+        # sharded
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        quantized_model = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/tiny-flux-sharded",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+        )
+
+        weight = quantized_model.transformer_blocks[0].ff.net[2].weight
+        self.assertTrue(isinstance(weight, bnb.nn.modules.Int8Params))
+        output = quantized_model(**inputs)[0]
+        output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+
+        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
 
 @require_transformers_version_greater("4.44.0")
@@ -579,7 +686,7 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
             load_in_8bit=True,
         )
         self.model_0 = SD3Transformer2DModel.from_pretrained(
-            self.model_name, subfolder="transformer", quantization_config=quantization_config
+            self.model_name, subfolder="transformer", quantization_config=quantization_config, device_map=torch_device
         )
 
     def tearDown(self):
