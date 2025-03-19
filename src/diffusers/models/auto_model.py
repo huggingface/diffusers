@@ -17,19 +17,6 @@ from collections import OrderedDict
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
-from ..pipelines.audioldm2.modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
-from ..pipelines.deepfloyd_if.watermark import IFWatermarker
-from ..pipelines.flux.modeling_flux import ReduxImageEncoder
-from ..pipelines.shap_e.renderer import MLPNeRSTFModel, ShapEParamsProjModel, ShapERenderer
-from ..pipelines.stable_audio.modeling_stable_audio import StableAudioProjectionModel
-from ..pipelines.stable_diffusion.clip_image_project_model import CLIPImageProjection
-from ..pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-from ..pipelines.unclip.text_proj import UnCLIPTextProjModel
-from ..pipelines.unidiffuser.modeling_uvit import UniDiffuserModel, UTransformer2DModel
-from ..pipelines.wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from ..pipelines.wuerstchen.modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
-from ..pipelines.wuerstchen.modeling_wuerstchen_prior import WuerstchenPrior
-from ..utils.import_utils import is_transformers_available
 from .adapter import MultiAdapter, T2IAdapter
 from .autoencoders.autoencoder_asym_kl import AsymmetricAutoencoderKL
 from .autoencoders.autoencoder_dc import AutoencoderDC
@@ -89,9 +76,6 @@ from .unets.unet_spatio_temporal_condition import UNetSpatioTemporalConditionMod
 from .unets.unet_stable_cascade import StableCascadeUNet
 from .unets.uvit_2d import UVit2DModel
 
-
-if is_transformers_available():
-    from ..pipelines.unidiffuser.modeling_text_decoder import UniDiffuserTextDecoder
 
 AUTO_MODEL_MAPPING = OrderedDict(
     [
@@ -159,29 +143,8 @@ AUTO_MODEL_MAPPING = OrderedDict(
         ("unet-spatio-temporal", UNetSpatioTemporalConditionModel),
         ("stable-cascade-unet", StableCascadeUNet),
         ("uvit-2d", UVit2DModel),
-        ("audioldm2-projection", AudioLDM2ProjectionModel),
-        ("audioldm2-unet-2d", AudioLDM2UNet2DConditionModel),
-        ("if-watermarker", IFWatermarker),
-        ("redux-image-encoder", ReduxImageEncoder),
-        ("mlp-nerstf", MLPNeRSTFModel),
-        ("shap-e-params-proj", ShapEParamsProjModel),
-        ("shap-e-renderer", ShapERenderer),
-        ("stable-audio-projection", StableAudioProjectionModel),
-        ("clip-image-projection", CLIPImageProjection),
-        ("stable-unclip-image-normalizer", StableUnCLIPImageNormalizer),
-        ("unclip-text-proj", UnCLIPTextProjModel),
-        ("utransformer-2d", UTransformer2DModel),
-        ("unidiffuser", UniDiffuserModel),
-        ("paella-vq", PaellaVQModel),
-        ("wuerstchen-diffnext", WuerstchenDiffNeXt),
-        ("wuerstchen-prior", WuerstchenPrior),
     ]
 )
-
-
-if is_transformers_available():
-    AUTO_MODEL_MAPPING["unidiffuser-text-decoder"] = UniDiffuserTextDecoder
-
 
 SUPPORTED_TASKS_MAPPINGS = [AUTO_MODEL_MAPPING]
 
