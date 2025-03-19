@@ -627,6 +627,7 @@ def main(args):
         ema_vae = EMAModel(vae.parameters(), model_cls=AutoencoderKL, model_config=vae.config)
     perceptual_loss = lpips.LPIPS(net="vgg").eval()
     discriminator = NLayerDiscriminator(input_nc=3, n_layers=3, use_actnorm=False).apply(weights_init)
+    discriminator = torch.nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
 
     # Taken from [Sayak Paul's Diffusers PR #6511](https://github.com/huggingface/diffusers/pull/6511/files)
     def unwrap_model(model):
