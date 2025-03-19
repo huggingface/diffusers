@@ -4255,13 +4255,15 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         transformer: torch.nn.Module,
         state_dict,
     ):
-        if any(k.startswith("blocks.") for k in state_dict):
+
+        if transformer.config.image_dim is not None:
+            return state_dict
+
+        if any(k.startswith("transformer.blocks.") for k in state_dict):
             num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in state_dict})
             is_i2v_lora = any("add_k_proj" in k for k in state_dict) and any("add_v_proj" in k for k in state_dict)
-            if is_i2v_lora:
-                return state_dict
 
-            if transformer.config.image_dim is None:
+            if is_i2v_lora:
                 return state_dict
 
             for i in range(num_blocks):
