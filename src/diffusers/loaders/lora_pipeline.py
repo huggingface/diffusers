@@ -1978,6 +1978,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                         "The checkpoint seems to have been quantized with `bitsandbytes` (4bits). Install `bitsandbytes` to load quantized checkpoints."
                     )
                 elif is_bnb_4bit_quantized:
+                    weight_on_cpu = False
+                    if not module.weight.is_cuda:
+                        weight_on_cpu = True
+                    module_weight = dequantize_bnb_weight(
+                        module.weight.cuda() if weight_on_cpu else module.weight,
+                        state=module.weight.quant_state,
+                        dtype=transformer.dtype,
+                    ).data
+                    if weight_on_cpu:
+                        module_weight = module_weight.cpu()
                     module_weight = dequantize_bnb_weight(module.weight, state=module.weight.quant_state).data
                 else:
                     module_weight = module.weight.data
