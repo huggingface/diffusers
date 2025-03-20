@@ -258,6 +258,7 @@ def main(args):
             "norm_elementwise_affine": False,
             "norm_eps": 1e-6,
             "interpolation_scale": interpolation_scale[args.image_size],
+        }
 
         # Add qk_norm parameter for Sana Sprint
         if args.model_type in ["SanaSprint_1600M_P1_D20", "SanaSprint_600M_P1_D28"]:
