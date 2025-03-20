@@ -306,7 +306,6 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         return prompt_embeds, prompt_attention_mask
 
-
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],

@@ -101,11 +101,11 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
     @property
     def step_index(self):
         return self._step_index
-    
+
     @property
     def begin_index(self):
         return self._begin_index
-    
+
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
     def set_begin_index(self, begin_index: int = 0):
         """
@@ -147,16 +147,16 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
 
         if timesteps is not None and len(timesteps) != num_inference_steps + 1:
             raise ValueError("If providing custom timesteps, `timesteps` must be of length `num_inference_steps + 1`.")
-        
+
         if timesteps is not None and max_timesteps is not None:
             raise ValueError("If providing custom timesteps, `max_timesteps` should not be provided.")
-        
+
         if timesteps is None and max_timesteps is None:
             raise ValueError("Should provide either `timesteps` or `max_timesteps`.")
-        
+
         if intermediate_timesteps is not None and num_inference_steps != 2:
             raise ValueError("Intermediate timesteps for SCM is not supported when num_inference_steps != 2.")
-    
+
         self.num_inference_steps = num_inference_steps
 
         if timesteps is not None:
@@ -167,16 +167,12 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise ValueError(f"Unsupported timesteps type: {type(timesteps)}")
         elif intermediate_timesteps is not None:
-            self.timesteps = torch.tensor(
-                [max_timesteps, intermediate_timesteps, 0], device=device
-            ).float()
+            self.timesteps = torch.tensor([max_timesteps, intermediate_timesteps, 0], device=device).float()
         else:
             # max_timesteps=arctan(80/0.5)=1.56454 is the default from sCM paper, we choose a different value here
-            self.timesteps = torch.linspace(
-                max_timesteps, 0, num_inference_steps + 1, device=device
-            ).float()
+            self.timesteps = torch.linspace(max_timesteps, 0, num_inference_steps + 1, device=device).float()
         print(f"Set timesteps: {self.timesteps}")
-        
+
         self._step_index = None
         self._begin_index = None
 
@@ -236,10 +232,10 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
-        
+
         if self.step_index is None:
             self._init_step_index(timestep)
-        
+
         # 2. compute alphas, betas
         t = self.timesteps[self.step_index + 1]
         s = self.timesteps[self.step_index]
@@ -262,7 +258,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             prev_sample = torch.cos(t) * pred_x0 + torch.sin(t) * noise
         else:
             prev_sample = pred_x0
-        
+
         self._step_index += 1
 
         if not return_dict:

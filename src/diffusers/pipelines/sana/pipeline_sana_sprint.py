@@ -196,7 +196,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     # fmt: on
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
         self,
@@ -307,7 +307,6 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         return prompt_embeds, prompt_attention_mask
 
-
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -361,13 +360,6 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             if self.text_encoder is not None and USE_PEFT_BACKEND:
                 scale_lora_layers(self.text_encoder, lora_scale)
 
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
-
         if getattr(self, "tokenizer", None) is not None:
             self.tokenizer.padding_side = "right"
 
@@ -394,7 +386,6 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
         prompt_attention_mask = prompt_attention_mask.view(bs_embed, -1)
         prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
-
 
         if self.text_encoder is not None:
             if isinstance(self, SanaLoraLoaderMixin) and USE_PEFT_BACKEND:
@@ -461,16 +452,15 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         if timesteps is not None and len(timesteps) != num_inference_steps + 1:
             raise ValueError("If providing custom timesteps, `timesteps` must be of length `num_inference_steps + 1`.")
-        
+
         if timesteps is not None and max_timesteps is not None:
             raise ValueError("If providing custom timesteps, `max_timesteps` should not be provided.")
-        
+
         if timesteps is None and max_timesteps is None:
             raise ValueError("Should provide either `timesteps` or `max_timesteps`.")
-        
+
         if intermediate_timesteps is not None and num_inference_steps != 2:
             raise ValueError("Intermediate timesteps for SCM is not supported when num_inference_steps != 2.")
-
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
@@ -692,10 +682,6 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
             num_inference_steps (`int`, *optional*, defaults to 20):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -733,11 +719,6 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             prompt_attention_mask (`torch.Tensor`, *optional*): Pre-generated attention mask for text embeddings.
-            negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
-                provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
-            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
-                Pre-generated attention mask for negative text embeddings.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -842,7 +823,13 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas=None, max_timesteps=max_timesteps, intermediate_timesteps=intermediate_timesteps
+            self.scheduler,
+            num_inference_steps,
+            device,
+            timesteps,
+            sigmas=None,
+            max_timesteps=max_timesteps,
+            intermediate_timesteps=intermediate_timesteps,
         )
         if hasattr(self.scheduler, "set_begin_index"):
             self.scheduler.set_begin_index(0)
@@ -919,7 +906,6 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
