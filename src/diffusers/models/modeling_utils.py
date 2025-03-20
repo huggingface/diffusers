@@ -889,9 +889,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
             )
 
-        if quantization_config is not None and torch_dtype is not None:
-            torch_dtype = None
-
         allow_pickle = False
         if use_safetensors is None:
             use_safetensors = True

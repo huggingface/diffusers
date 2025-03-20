@@ -266,9 +266,6 @@ class FromOriginalModelMixin:
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
             )
 
-        if quantization_config is not None and torch_dtype is not None:
-            torch_dtype = None
-
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
         else:
