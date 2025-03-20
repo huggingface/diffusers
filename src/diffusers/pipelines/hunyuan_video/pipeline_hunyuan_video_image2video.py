@@ -441,6 +441,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         prompt_template=None,
+        true_cfg_scale=1.0,
+        guidance_scale=1.0,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -478,6 +480,13 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 raise ValueError(
                     f"`prompt_template` has to contain a key `template` but only found {prompt_template.keys()}"
                 )
+
+        if true_cfg_scale > 1.0 and guidance_scale > 1.0:
+            logger.warning(
+                "Both `true_cfg_scale` and `guidance_scale` are greater than 1.0. This will result in both "
+                "classifier-free guidance and embedded-guidance to be applied. This is not recommended "
+                "as it may lead to higher memory usage, slower inference and potentially worse results."
+            )
 
     def prepare_latents(
         self,
@@ -718,6 +727,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             prompt_embeds,
             callback_on_step_end_tensor_inputs,
             prompt_template,
+            true_cfg_scale,
+            guidance_scale,
         )
 
         image_condition_type = self.transformer.config.image_condition_type
