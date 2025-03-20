@@ -21,8 +21,15 @@ import numpy as np
 import pytest
 import safetensors.torch
 from huggingface_hub import hf_hub_download
+from PIL import Image
 
-from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
+from diffusers import (
+    BitsAndBytesConfig,
+    DiffusionPipeline,
+    FluxControlPipeline,
+    FluxTransformer2DModel,
+    SD3Transformer2DModel,
+)
 from diffusers.utils import is_accelerate_version, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -702,10 +709,7 @@ class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
         gc.collect()
         torch.cuda.empty_cache()
 
-        self.pipeline_4bit = DiffusionPipeline.from_pretrained(
-            "eramth/flux-4bit",
-            torch_dtype=torch.float16,
-        )
+        self.pipeline_4bit = FluxControlPipeline.from_pretrained("eramth/flux-4bit", torch_dtype=torch.float16)
         self.pipeline_4bit.enable_model_cpu_offload()
 
     def tearDown(self):
@@ -719,6 +723,7 @@ class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
 
         output = self.pipeline_4bit(
             prompt=self.prompt,
+            control_image=Image.new(mode="RGB", size=(256, 256)),
             height=256,
             width=256,
             max_sequence_length=64,
@@ -727,8 +732,7 @@ class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
             generator=torch.Generator().manual_seed(42),
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        # TODO: update slice
-        expected_slice = np.array([0.5347, 0.5342, 0.5283, 0.5093, 0.4988, 0.5093, 0.5044, 0.5015, 0.4946])
+        expected_slice = np.array([0.1636, 0.1675, 0.1982, 0.1743, 0.1809, 0.1936, 0.1743, 0.2095, 0.2139])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3, msg=f"{out_slice=} != {expected_slice=}")
