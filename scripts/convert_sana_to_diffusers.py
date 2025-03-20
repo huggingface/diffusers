@@ -136,12 +136,12 @@ def main(args):
         raise ValueError(f"{args.model_type} is not supported.")
     # Positional embedding interpolation scale.
     interpolation_scale = {512: None, 1024: None, 2048: 1.0, 4096: 2.0}
-    qk_norm = "rms_norm_across_heads" if args.model_type in [
-            "SanaMS1.5_1600M_P1_D20",
-            "SanaMS1.5_4800M_P1_D60",
-            "SanaSprint_600M_P1_D28",
-            "SanaSprint_1600M_P1_D20"
-        ] else None
+    qk_norm = (
+        "rms_norm_across_heads"
+        if args.model_type
+        in ["SanaMS1.5_1600M_P1_D20", "SanaMS1.5_4800M_P1_D60", "SanaSprint_600M_P1_D28", "SanaSprint_1600M_P1_D20"]
+        else None
+    )
 
     for depth in range(layer_num):
         # Transformer blocks.
@@ -313,7 +313,6 @@ def main(args):
 
         # Choose the appropriate pipeline and scheduler based on model type
         if args.model_type in ["SanaSprint_1600M_P1_D20", "SanaSprint_600M_P1_D28"]:
-
             # Force SCM Scheduler for Sana Sprint regardless of scheduler_type
             if args.scheduler_type != "scm":
                 print(
@@ -387,7 +386,13 @@ if __name__ == "__main__":
         "--model_type",
         default="SanaMS_1600M_P1_D20",
         type=str,
-        choices=["SanaMS_1600M_P1_D20", "SanaMS_600M_P1_D28", "SanaMS_4800M_P1_D60", "SanaSprint_1600M_P1_D20", "SanaSprint_600M_P1_D28"],
+        choices=[
+            "SanaMS_1600M_P1_D20",
+            "SanaMS_600M_P1_D28",
+            "SanaMS_4800M_P1_D60",
+            "SanaSprint_1600M_P1_D20",
+            "SanaSprint_600M_P1_D28",
+        ],
     )
     parser.add_argument(
         "--scheduler_type",
@@ -419,7 +424,7 @@ if __name__ == "__main__":
             "cross_attention_dim": 1152,
             "num_layers": 28,
         },
-          "SanaMS1.5_1600M_P1_D20": {
+        "SanaMS1.5_1600M_P1_D20": {
             "num_attention_heads": 70,
             "attention_head_dim": 32,
             "num_cross_attention_heads": 20,
