@@ -300,20 +300,11 @@ def main(args):
 
             # SCM Scheduler for Sana Sprint
             scheduler_config = {
-                "beta_end": 0.02,
-                "beta_schedule": "linear",
-                "beta_start": 0.0001,
-                "clip_sample": True,
-                "clip_sample_range": 1.0,
-                "dynamic_thresholding_ratio": 0.995,
                 "num_train_timesteps": 1000,
                 "prediction_type": "trigflow",
-                "rescale_betas_zero_snr": False,
-                "sample_max_value": 1.0,
-                "set_alpha_to_one": True,
-                "steps_offset": 0,
-                "thresholding": False,
-                "timestep_spacing": "leading",
+                "max_timesteps": 1.57080,
+                "intermediate_timesteps": 1.3,
+                "sigma_data": 0.5,
             }
             scheduler = SCMScheduler(**scheduler_config)
             pipe = SanaSprintPipeline(
