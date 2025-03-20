@@ -246,8 +246,8 @@ class SanaControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         # 2. Transformer blocks
         block_res_samples = ()
-        for block in self.transformer_blocks:
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            for block in self.transformer_blocks:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
@@ -258,7 +258,9 @@ class SanaControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     post_patch_height,
                     post_patch_width,
                 )
-            else:
+                block_res_samples = block_res_samples + (hidden_states,)
+        else:
+            for block in self.transformer_blocks:
                 hidden_states = block(
                     hidden_states,
                     attention_mask,
@@ -268,7 +270,7 @@ class SanaControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     post_patch_height,
                     post_patch_width,
                 )
-            block_res_samples = block_res_samples + (hidden_states,)
+                block_res_samples = block_res_samples + (hidden_states,)
 
         # 3. ControlNet blocks
         controlnet_block_res_samples = ()

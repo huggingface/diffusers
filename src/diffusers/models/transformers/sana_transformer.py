@@ -434,8 +434,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         encoder_hidden_states = self.caption_norm(encoder_hidden_states)
 
         # 2. Transformer blocks
-        for index_block, block in enumerate(self.transformer_blocks):
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            for index_block, block in enumerate(self.transformer_blocks):
                 hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
@@ -446,8 +446,11 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     post_patch_height,
                     post_patch_width,
                 )
+                if controlnet_block_samples is not None and 0 < index_block <= len(controlnet_block_samples):
+                    hidden_states = hidden_states + controlnet_block_samples[index_block - 1]
 
-            else:
+        else:
+            for index_block, block in enumerate(self.transformer_blocks):
                 hidden_states = block(
                     hidden_states,
                     attention_mask,
@@ -457,8 +460,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     post_patch_height,
                     post_patch_width,
                 )
-            if controlnet_block_samples is not None and 0 < index_block <= len(controlnet_block_samples):
-                hidden_states = hidden_states + controlnet_block_samples[index_block - 1]
+                if controlnet_block_samples is not None and 0 < index_block <= len(controlnet_block_samples):
+                    hidden_states = hidden_states + controlnet_block_samples[index_block - 1]
 
         # 3. Normalization
         hidden_states = self.norm_out(hidden_states, embedded_timestep, self.scale_shift_table)
