@@ -72,7 +72,7 @@ def _maybe_raise_error_for_ambiguity(config):
         substring_matches = [mod for mod in target_modules if key in mod and mod != key]
 
         if exact_matches and substring_matches:
-            if not is_peft_version(">=", "0.14.1"):
+            if is_peft_version("<", "0.14.1"):
                 raise ValueError(
                     "There are ambiguous keys present in this LoRA. To load it, please update your `peft` installation - `pip install -U peft`."
                 )
