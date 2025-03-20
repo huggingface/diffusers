@@ -802,12 +802,13 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 "The `position_embedding` LoRA params are all zeros which make them ineffective. "
                 "So, we will purge them out of the curret state dict to make loading possible."
             )
-            state_dict = {k: v for k, v in state_dict.items() if "position_embedding" not in k}
+
         else:
-            raise NotImplementedError(
+            logger.info(
                 "The state_dict has position_embedding LoRA params and we currently do not support them. "
                 "Open an issue if you need this supported - https://github.com/huggingface/diffusers/issues/new."
             )
+        state_dict = {k: v for k, v in state_dict.items() if "position_embedding" not in k}
 
     has_t5xxl = any(k.startswith("text_encoders.t5xxl.transformer.") for k in state_dict)
     if has_t5xxl:
