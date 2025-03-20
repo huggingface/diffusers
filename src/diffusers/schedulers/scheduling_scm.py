@@ -59,10 +59,6 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             The number of diffusion steps to train the model.
         prediction_type (`str`, defaults to `trigflow`):
             Prediction type of the scheduler function. Currently only supports "trigflow".
-        max_timesteps (`float`, defaults to 1.57080):
-            The maximum timestep value used in the diffusion process.
-        intermediate_timesteps (`float`, *optional*, defaults to 1.3):
-            The intermediate timestep value used when num_inference_steps=2.
         sigma_data (`float`, defaults to 0.5):
             The standard deviation of the noise added during multi-step inference.
     """
@@ -220,9 +216,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
             return_dict (`bool`, *optional*, defaults to `True`):
-                itself. Useful for methods such as [`CycleDiffusion`].
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~schedulers.scheduling_lcm.LCMSchedulerOutput`] or `tuple`.
+                Whether or not to return a [`~schedulers.scheduling_scm.SCMSchedulerOutput`] or `tuple`.
         Returns:
             [`~schedulers.scheduling_utils.SCMSchedulerOutput`] or `tuple`:
                 If return_dict is `True`, [`~schedulers.scheduling_scm.SCMSchedulerOutput`] is returned, otherwise a

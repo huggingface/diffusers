@@ -97,12 +97,6 @@ class SanaModulatedNorm(nn.Module):
 
 
 class SanaCombinedTimestepGuidanceEmbeddings(nn.Module):
-    """
-    For Sana.
-
-    Reference:
-    """
-
     def __init__(self, embedding_dim):
         super().__init__()
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
