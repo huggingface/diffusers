@@ -38,6 +38,7 @@ jobs:
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install pandas peft
+          python -m uv pip uninstall transformers && python -m uv pip install transformers==4.48.0
       - name: Environment
         run: |
           python utils/print_env.py

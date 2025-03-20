@@ -23,6 +23,7 @@ from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import FeedForward
 from ..attention_processor import Attention
+from ..cache_utils import CacheMixin
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -126,7 +127,8 @@ class CogView4AttnProcessor:
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        text_seq_length = encoder_hidden_states.size(1)
+        batch_size, text_seq_length, embed_dim = encoder_hidden_states.shape
+        batch_size, image_seq_length, embed_dim = hidden_states.shape
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         # 1. QKV projections
@@ -156,6 +158,15 @@ class CogView4AttnProcessor:
             )
 
         # 4. Attention
+        if attention_mask is not None:
+            text_attention_mask = attention_mask.float().to(query.device)
+            actual_text_seq_length = text_attention_mask.size(1)
+            new_attention_mask = torch.zeros((batch_size, text_seq_length + image_seq_length), device=query.device)
+            new_attention_mask[:, :actual_text_seq_length] = text_attention_mask
+            new_attention_mask = new_attention_mask.unsqueeze(2)
+            attention_mask_matrix = new_attention_mask @ new_attention_mask.transpose(1, 2)
+            attention_mask = (attention_mask_matrix > 0).unsqueeze(1).to(query.dtype)
+
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
@@ -203,6 +214,8 @@ class CogView4TransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> torch.Tensor:
         # 1. Timestep conditioning
         (
@@ -223,6 +236,8 @@ class CogView4TransformerBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            attention_mask=attention_mask,
+            **kwargs,
         )
         hidden_states = hidden_states + attn_hidden_states * gate_msa.unsqueeze(1)
         encoder_hidden_states = encoder_hidden_states + attn_encoder_hidden_states * c_gate_msa.unsqueeze(1)
@@ -289,7 +304,7 @@ class CogView4RotaryPosEmbed(nn.Module):
         return (freqs.cos(), freqs.sin())
 
 
-class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, CacheMixin):
     r"""
     Args:
         patch_size (`int`, defaults to `2`):
@@ -386,6 +401,8 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         crop_coords: torch.Tensor,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
+        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
@@ -421,11 +438,11 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb
+                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_mask, **kwargs
                 )
             else:
                 hidden_states, encoder_hidden_states = block(
-                    hidden_states, encoder_hidden_states, temb, image_rotary_emb
+                    hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_mask, **kwargs
                 )
 
         # 4. Output norm & projection
