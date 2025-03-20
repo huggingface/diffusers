@@ -893,7 +893,12 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         image_condition_type: Optional[str] = None,
     ) -> None:
         super().__init__()
-        assert image_condition_type is None or image_condition_type in ["latent_concat", "token_replace"]
+
+        supported_image_condition_types = ["latent_concat", "token_replace"]
+        if image_condition_type is not None and image_condition_type not in supported_image_condition_types:
+            raise ValueError(
+                f"Invalid `image_condition_type` ({image_condition_type}). Supported ones are: {supported_image_condition_types}"
+            )
 
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
