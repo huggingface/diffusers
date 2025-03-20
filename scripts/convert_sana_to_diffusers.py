@@ -76,6 +76,7 @@ def main(args):
     converted_state_dict["caption_projection.linear_2.bias"] = state_dict.pop("y_embedder.y_proj.fc2.bias")
 
     # Handle different time embedding structure based on model type
+
     if args.model_type in ["SanaSprint_1600M_P1_D20", "SanaSprint_600M_P1_D28"]:
         # For Sana Sprint, the time embedding structure is different
         converted_state_dict["time_embed.timestep_embedder.linear_1.weight"] = state_dict.pop(
@@ -170,6 +171,15 @@ def main(args):
             f"blocks.{depth}.attn.proj.bias"
         )
 
+        # Add Q/K normalization for self-attention (attn1) - needed for Sana Sprint
+        if args.model_type == "SanaSprint_1600M_P1_D20":
+            converted_state_dict[f"transformer_blocks.{depth}.attn1.norm_q.weight"] = state_dict.pop(
+                f"blocks.{depth}.attn.q_norm.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{depth}.attn1.norm_k.weight"] = state_dict.pop(
+                f"blocks.{depth}.attn.k_norm.weight"
+            )
+
         # Feed-forward.
         converted_state_dict[f"transformer_blocks.{depth}.ff.conv_inverted.weight"] = state_dict.pop(
             f"blocks.{depth}.mlp.inverted_conv.conv.weight"
@@ -208,6 +218,15 @@ def main(args):
                 f"blocks.{depth}.cross_attn.k_norm.weight"
             )
 
+        # Add Q/K normalization for cross-attention (attn2) - needed for Sana Sprint
+        if args.model_type == "SanaSprint_1600M_P1_D20":
+            converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_q.weight"] = state_dict.pop(
+                f"blocks.{depth}.cross_attn.q_norm.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_k.weight"] = state_dict.pop(
+                f"blocks.{depth}.cross_attn.k_norm.weight"
+            )
+
         converted_state_dict[f"transformer_blocks.{depth}.attn2.to_out.0.weight"] = state_dict.pop(
             f"blocks.{depth}.cross_attn.proj.weight"
         )
@@ -239,8 +258,6 @@ def main(args):
             "norm_elementwise_affine": False,
             "norm_eps": 1e-6,
             "interpolation_scale": interpolation_scale[args.image_size],
-            "qk_norm": qknorm,
-        }
 
         # Add qk_norm parameter for Sana Sprint
         if args.model_type in ["SanaSprint_1600M_P1_D20", "SanaSprint_600M_P1_D28"]:
@@ -295,6 +312,7 @@ def main(args):
 
         # Choose the appropriate pipeline and scheduler based on model type
         if args.model_type in ["SanaSprint_1600M_P1_D20", "SanaSprint_600M_P1_D28"]:
+
             # Force SCM Scheduler for Sana Sprint regardless of scheduler_type
             if args.scheduler_type != "scm":
                 print(
@@ -371,7 +389,6 @@ if __name__ == "__main__":
         default="SanaMS_1600M_P1_D20",
         type=str,
         choices=["SanaMS_1600M_P1_D20", "SanaMS_600M_P1_D28", "SanaMS_4800M_P1_D60", "SanaSprint_1600M_P1_D20", "SanaSprint_600M_P1_D28"],
-
     )
     parser.add_argument(
         "--scheduler_type",
@@ -419,14 +436,6 @@ if __name__ == "__main__":
             "cross_attention_dim": 2240,
             "num_layers": 60,
         },
-        "SanaSprint_1600M_P1_D20": {
-            "num_attention_heads": 70,
-            "attention_head_dim": 32,
-            "num_cross_attention_heads": 20,
-            "cross_attention_head_dim": 112,
-            "cross_attention_dim": 2240,
-            "num_layers": 20,
-        },
         "SanaSprint_600M_P1_D28": {
             "num_attention_heads": 36,
             "attention_head_dim": 32,
@@ -434,6 +443,14 @@ if __name__ == "__main__":
             "cross_attention_head_dim": 72,
             "cross_attention_dim": 1152,
             "num_layers": 28,
+        },
+        "SanaSprint_1600M_P1_D20": {
+            "num_attention_heads": 70,
+            "attention_head_dim": 32,
+            "num_cross_attention_heads": 20,
+            "cross_attention_head_dim": 112,
+            "cross_attention_dim": 2240,
+            "num_layers": 20,
         },
     }
 

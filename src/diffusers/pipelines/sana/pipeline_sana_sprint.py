@@ -936,14 +936,17 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 )[0]
 
                 # YiYi TODO: refator this out
-                noise_pred = ((1 - 2 * scm_timestep) * latent_model_input + (1 - 2 * scm_timestep + 2 * scm_timestep**2) * noise_pred) / torch.sqrt(
-                    scm_timestep**2 + (1 - scm_timestep) ** 2
-                )
-                # YiYi TODO: check if this can be refatored into scheduler 
+                noise_pred = (
+                    (1 - 2 * scm_timestep) * latent_model_input
+                    + (1 - 2 * scm_timestep + 2 * scm_timestep**2) * noise_pred
+                ) / torch.sqrt(scm_timestep**2 + (1 - scm_timestep) ** 2)
+                # YiYi TODO: check if this can be refatored into scheduler
                 noise_pred = noise_pred.float() * self.scheduler.config.sigma_data
 
                 # compute previous image: x_t -> x_t-1
-                latents, denoised = self.scheduler.step(noise_pred, i, timestep, latents, **extra_step_kwargs, return_dict=False)
+                latents, denoised = self.scheduler.step(
+                    noise_pred, i, timestep, latents, **extra_step_kwargs, return_dict=False
+                )
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}

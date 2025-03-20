@@ -15,6 +15,7 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -23,16 +24,13 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
-    AttnProcessor2_0,
     SanaLinearAttnProcessor2_0,
 )
-from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
+from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle, RMSNorm
-from ..embeddings import TimestepEmbedding, Timesteps
 
-import torch.nn.functional as F
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -127,7 +125,6 @@ class SanaCombinedTimestepGuidanceEmbeddings(nn.Module):
         return self.linear(self.silu(conditioning)), conditioning
 
 
-
 class SanaAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
@@ -144,7 +141,6 @@ class SanaAttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
@@ -193,6 +189,7 @@ class SanaAttnProcessor2_0:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
+
 
 class SanaTransformerBlock(nn.Module):
     r"""
