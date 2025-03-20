@@ -23,12 +23,12 @@
 
 [CogVideoX](https://huggingface.co/papers/2408.06072) is a large diffusion transformer model - available in 2B and 5B parameters - designed to generate longer and more consistent videos from text. This model uses a 3D causal variational autoencoder to more efficiently process video data by reducing sequence length (and associated training compute) and preventing flickering in generated videos. An "expert" transformer with adaptive LayerNorm improves alignment between text and video, and 3D full attention helps accurately capture motion and time in generated videos.
 
-You can find all the original CogVideoX checkpoints under the [CogVideoX collection](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce).
+You can find all the original CogVideoX checkpoints under the CogVideoX [collection](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce).
 
 > [!TIP]
 > Click on the CogVideoX models in the right sidebar for more examples of how to use CogVideoX for other video generation tasks.
 
-The example below demonstrates how to generate a video with CogVideoX, optimized for memory or inference speed.
+The example below demonstrates how to generate a video optimized for memory or inference speed.
 
 <hfoptions id="usage">
 <hfoption id="memory">
@@ -164,6 +164,7 @@ export_to_video(video, "output.mp4", fps=8)
   )
   pipeline.to("cuda")
 
+  # load LoRA weights
   pipeline.load_lora_weights("finetrainers/CogVideoX-1.5-crush-smol-v0", adapter_name="crush-lora")
   pipeline.set_adapters("crush-lora", 0.9)
 
