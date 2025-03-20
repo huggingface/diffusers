@@ -371,8 +371,9 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 lora_load_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
                 self.assertTrue(
-                    "The provided state dict contains normalization layers in addition to LoRA layers"
-                    in cap_logger.out
+                    cap_logger.out.startswith(
+                        "The provided state dict contains normalization layers in addition to LoRA layers"
+                    )
                 )
                 self.assertTrue(len(pipe.transformer._transformer_norm_layers) > 0)
 
@@ -391,7 +392,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.load_lora_weights(norm_state_dict)
 
         self.assertTrue(
-            "Unsupported keys found in state dict when trying to load normalization layers" in cap_logger.out
+            cap_logger.out.startswith("Unsupported keys found in state dict when trying to load normalization layers")
         )
 
     def test_lora_parameter_expanded_shapes(self):

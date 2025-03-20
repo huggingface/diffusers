@@ -21,15 +21,7 @@ import PIL.Image
 import torch
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.utils.constants import (
-    DECODE_ENDPOINT_FLUX,
-    DECODE_ENDPOINT_HUNYUAN_VIDEO,
-    DECODE_ENDPOINT_SD_V1,
-    DECODE_ENDPOINT_SD_XL,
-)
-from diffusers.utils.remote_utils import (
-    remote_decode,
-)
+from diffusers.utils.remote_utils import remote_decode
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     slow,
@@ -40,6 +32,11 @@ from diffusers.video_processor import VideoProcessor
 
 
 enable_full_determinism()
+
+ENDPOINT_SD_V1 = "https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud/"
+ENDPOINT_SD_XL = "https://x2dmsqunjd6k9prw.us-east-1.aws.endpoints.huggingface.cloud/"
+ENDPOINT_FLUX = "https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud/"
+ENDPOINT_HUNYUAN_VIDEO = "https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud/"
 
 
 class RemoteAutoencoderKLMixin:
@@ -353,7 +350,7 @@ class RemoteAutoencoderKLSDv1Tests(
         512,
         512,
     )
-    endpoint = DECODE_ENDPOINT_SD_V1
+    endpoint = ENDPOINT_SD_V1
     dtype = torch.float16
     scaling_factor = 0.18215
     shift_factor = None
@@ -377,7 +374,7 @@ class RemoteAutoencoderKLSDXLTests(
         1024,
         1024,
     )
-    endpoint = DECODE_ENDPOINT_SD_XL
+    endpoint = ENDPOINT_SD_XL
     dtype = torch.float16
     scaling_factor = 0.13025
     shift_factor = None
@@ -401,7 +398,7 @@ class RemoteAutoencoderKLFluxTests(
         1024,
         1024,
     )
-    endpoint = DECODE_ENDPOINT_FLUX
+    endpoint = ENDPOINT_FLUX
     dtype = torch.bfloat16
     scaling_factor = 0.3611
     shift_factor = 0.1159
@@ -428,7 +425,7 @@ class RemoteAutoencoderKLFluxPackedTests(
     )
     height = 1024
     width = 1024
-    endpoint = DECODE_ENDPOINT_FLUX
+    endpoint = ENDPOINT_FLUX
     dtype = torch.bfloat16
     scaling_factor = 0.3611
     shift_factor = 0.1159
@@ -456,7 +453,7 @@ class RemoteAutoencoderKLHunyuanVideoTests(
         320,
         512,
     )
-    endpoint = DECODE_ENDPOINT_HUNYUAN_VIDEO
+    endpoint = ENDPOINT_HUNYUAN_VIDEO
     dtype = torch.float16
     scaling_factor = 0.476986
     processor_cls = VideoProcessor
@@ -507,7 +504,7 @@ class RemoteAutoencoderKLSDv1SlowTests(
     RemoteAutoencoderKLSlowTestMixin,
     unittest.TestCase,
 ):
-    endpoint = DECODE_ENDPOINT_SD_V1
+    endpoint = ENDPOINT_SD_V1
     dtype = torch.float16
     scaling_factor = 0.18215
     shift_factor = None
@@ -518,7 +515,7 @@ class RemoteAutoencoderKLSDXLSlowTests(
     RemoteAutoencoderKLSlowTestMixin,
     unittest.TestCase,
 ):
-    endpoint = DECODE_ENDPOINT_SD_XL
+    endpoint = ENDPOINT_SD_XL
     dtype = torch.float16
     scaling_factor = 0.13025
     shift_factor = None
@@ -530,7 +527,7 @@ class RemoteAutoencoderKLFluxSlowTests(
     unittest.TestCase,
 ):
     channels = 16
-    endpoint = DECODE_ENDPOINT_FLUX
+    endpoint = ENDPOINT_FLUX
     dtype = torch.bfloat16
     scaling_factor = 0.3611
     shift_factor = 0.1159

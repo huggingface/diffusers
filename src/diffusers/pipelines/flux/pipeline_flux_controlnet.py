@@ -63,7 +63,6 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import FluxControlNetPipeline
         >>> from diffusers import FluxControlNetModel
 
-        >>> base_model = "black-forest-labs/FLUX.1-dev"
         >>> controlnet_model = "InstantX/FLUX.1-dev-controlnet-canny"
         >>> controlnet = FluxControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
         >>> pipe = FluxControlNetPipeline.from_pretrained(

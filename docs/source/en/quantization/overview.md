@@ -36,6 +36,5 @@ Diffusers currently supports the following quantization methods.
 - [BitsandBytes](./bitsandbytes)
 - [TorchAO](./torchao)
 - [GGUF](./gguf)
-- [Quanto](./quanto.md)
 
 [This resource](https://huggingface.co/docs/transformers/main/en/quantization/overview#when-to-use-what) provides a good overview of the pros and cons of different quantization techniques.
