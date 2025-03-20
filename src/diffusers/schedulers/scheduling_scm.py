@@ -75,8 +75,6 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_train_timesteps: int = 1000,
         prediction_type: str = "trigflow",
-        max_timesteps: float = 1.57080,
-        intermediate_timesteps: Optional[float] = 1.3,
         sigma_data: float = 0.5,
     ):
         """
@@ -87,10 +85,6 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps to train the model.
             prediction_type (`str`, defaults to `trigflow`):
                 Prediction type of the scheduler function. Currently only supports "trigflow".
-            max_timesteps (`float`, defaults to 1.57080):
-                The maximum timestep value used in the diffusion process.
-            intermediate_timesteps (`float`, *optional*, defaults to 1.3):
-                The intermediate timestep value used when num_inference_steps=2.
             sigma_data (`float`, defaults to 0.5):
                 The standard deviation of the noise added during multi-step inference.
         """
@@ -101,11 +95,35 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
 
+        self._step_index = None
+        self._begin_index = None
+
+    @property
+    def step_index(self):
+        return self._step_index
+    
+    @property
+    def begin_index(self):
+        return self._begin_index
+    
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
+
     def set_timesteps(
         self,
         num_inference_steps: int,
         timesteps: torch.Tensor = None,
         device: Union[str, torch.device] = None,
+        max_timesteps: float = 1.57080,
+        intermediate_timesteps: float = 1.3,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -113,6 +131,12 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
+            timesteps (`torch.Tensor`, *optional*):
+                Custom timesteps to use for the denoising process.
+            max_timesteps (`float`, defaults to 1.57080):
+                The maximum timestep value used in the SCM scheduler.
+            intermediate_timesteps (`float`, *optional*, defaults to 1.3):
+                The intermediate timestep value used in SCM scheduler (only used when num_inference_steps=2).
         """
         if num_inference_steps > self.config.num_train_timesteps:
             raise ValueError(
@@ -121,39 +145,68 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
                 f" maximal {self.config.num_train_timesteps} timesteps."
             )
 
+        if timesteps is not None and len(timesteps) != num_inference_steps + 1:
+            raise ValueError("If providing custom timesteps, `timesteps` must be of length `num_inference_steps + 1`.")
+        
+        if timesteps is not None and max_timesteps is not None:
+            raise ValueError("If providing custom timesteps, `max_timesteps` should not be provided.")
+        
+        if timesteps is None and max_timesteps is None:
+            raise ValueError("Should provide either `timesteps` or `max_timesteps`.")
+        
+        if intermediate_timesteps is not None and num_inference_steps != 2:
+            raise ValueError("Intermediate timesteps for SCM is not supported when num_inference_steps != 2.")
+    
         self.num_inference_steps = num_inference_steps
 
-        if timesteps is not None and len(timesteps) == num_inference_steps + 1:
+        if timesteps is not None:
             if isinstance(timesteps, list):
                 self.timesteps = torch.tensor(timesteps, device=device).float()
             elif isinstance(timesteps, torch.Tensor):
                 self.timesteps = timesteps.to(device).float()
             else:
                 raise ValueError(f"Unsupported timesteps type: {type(timesteps)}")
-        elif self.config.intermediate_timesteps and num_inference_steps == 2:
+        elif intermediate_timesteps is not None:
             self.timesteps = torch.tensor(
-                [self.config.max_timesteps, self.config.intermediate_timesteps, 0], device=device
+                [max_timesteps, intermediate_timesteps, 0], device=device
             ).float()
-        elif self.config.intermediate_timesteps:
-            self.timesteps = torch.linspace(
-                self.config.max_timesteps, 0, num_inference_steps + 1, device=device
-            ).float()
-            logger.warning(
-                f"Intermediate timesteps for SCM is not supported when num_inference_steps != 2. "
-                f"Reset timesteps to {self.timesteps} default max_timesteps"
-            )
         else:
             # max_timesteps=arctan(80/0.5)=1.56454 is the default from sCM paper, we choose a different value here
             self.timesteps = torch.linspace(
-                self.config.max_timesteps, 0, num_inference_steps + 1, device=device
+                max_timesteps, 0, num_inference_steps + 1, device=device
             ).float()
-
         print(f"Set timesteps: {self.timesteps}")
+        
+        self._step_index = None
+        self._begin_index = None
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
+
+        indices = (schedule_timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        pos = 1 if len(indices) > 1 else 0
+
+        return indices[pos].item()
 
     def step(
         self,
         model_output: torch.FloatTensor,
-        timeindex: int,
         timestep: float,
         sample: torch.FloatTensor,
         generator: torch.Generator = None,
@@ -183,10 +236,13 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
-
+        
+        if self.step_index is None:
+            self._init_step_index(timestep)
+        
         # 2. compute alphas, betas
-        t = self.timesteps[timeindex + 1]
-        s = self.timesteps[timeindex]
+        t = self.timesteps[self.step_index + 1]
+        s = self.timesteps[self.step_index]
 
         # 4. Different Parameterization:
         parameterization = self.config.prediction_type
@@ -206,6 +262,8 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             prev_sample = torch.cos(t) * pred_x0 + torch.sin(t) * noise
         else:
             prev_sample = pred_x0
+        
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample, pred_x0)

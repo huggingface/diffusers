@@ -359,6 +359,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         norm_eps: float = 1e-6,
         interpolation_scale: Optional[int] = None,
         guidance_embeds: bool = False,
+        guidance_embeds_scale: float = 0.1,
         qk_norm: Optional[str] = None,
     ) -> None:
         super().__init__()

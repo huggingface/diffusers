@@ -302,8 +302,6 @@ def main(args):
             scheduler_config = {
                 "num_train_timesteps": 1000,
                 "prediction_type": "trigflow",
-                "max_timesteps": 1.57080,
-                "intermediate_timesteps": 1.3,
                 "sigma_data": 0.5,
             }
             scheduler = SCMScheduler(**scheduler_config)
