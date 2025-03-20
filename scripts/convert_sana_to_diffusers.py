@@ -137,12 +137,12 @@ def main(args):
     # Positional embedding interpolation scale.
     interpolation_scale = {512: None, 1024: None, 2048: 1.0, 4096: 2.0}
     qk_norm = "rms_norm_across_heads" if args.model_type in [
-            "SanaMS1.5_1600M_P1_D20", 
-            "SanaMS1.5_4800M_P1_D60", 
-            "SanaSprint_600M_P1_D28", 
+            "SanaMS1.5_1600M_P1_D20",
+            "SanaMS1.5_4800M_P1_D60",
+            "SanaSprint_600M_P1_D28",
             "SanaSprint_1600M_P1_D20"
         ] else None
-    
+
     for depth in range(layer_num):
         # Transformer blocks.
         converted_state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = state_dict.pop(
