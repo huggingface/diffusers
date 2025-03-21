@@ -24,6 +24,7 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..schedulers.scheduling_utils import SchedulerMixin
 from ..utils import BaseOutput, logging
+from ..utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -246,7 +247,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         # Noise is not used for one-step sampling.
         if len(self.timesteps) > 1:
             noise = (
-                torch.randn(model_output.shape, device=model_output.device, generator=generator)
+                randn_tensor(model_output.shape, device=model_output.device, generator=generator)
                 * self.config.sigma_data
             )
             prev_sample = torch.cos(t) * pred_x0 + torch.sin(t) * noise

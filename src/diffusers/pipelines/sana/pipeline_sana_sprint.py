@@ -869,7 +869,11 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 latents_model_input = latents / self.scheduler.config.sigma_data
 
                 scm_timestep = torch.sin(timestep) / (torch.cos(timestep) + torch.sin(timestep))
-                latent_model_input = latents_model_input * torch.sqrt(scm_timestep**2 + (1 - scm_timestep) ** 2)
+
+                scm_timestep_expanded = scm_timestep.view(-1, 1, 1, 1)
+                latent_model_input = latents_model_input * torch.sqrt(
+                    scm_timestep_expanded**2 + (1 - scm_timestep_expanded) ** 2
+                )
                 latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
                 # predict noise model_output
@@ -884,9 +888,9 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 )[0]
 
                 noise_pred = (
-                    (1 - 2 * scm_timestep) * latent_model_input
-                    + (1 - 2 * scm_timestep + 2 * scm_timestep**2) * noise_pred
-                ) / torch.sqrt(scm_timestep**2 + (1 - scm_timestep) ** 2)
+                    (1 - 2 * scm_timestep_expanded) * latent_model_input
+                    + (1 - 2 * scm_timestep_expanded + 2 * scm_timestep_expanded**2) * noise_pred
+                ) / torch.sqrt(scm_timestep_expanded**2 + (1 - scm_timestep_expanded) ** 2)
                 noise_pred = noise_pred.float() * self.scheduler.config.sigma_data
 
                 # compute previous image: x_t -> x_t-1
