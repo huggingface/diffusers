@@ -817,7 +817,7 @@ class LattePipeline(DiffusionPipeline):
 
                 # predict noise model_output
                 noise_pred = self.transformer(
-                    latent_model_input,
+                    hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=current_timestep,
                     enable_temporal_attentions=enable_temporal_attentions,
