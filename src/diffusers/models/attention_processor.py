@@ -2384,6 +2384,18 @@ class FluxAttnProcessor2_0:
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
             encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
 
+            img_encoder_hidden_states_query_proj = copy.deepcopy(encoder_hidden_states_query_proj)
+            img_encoder_hidden_states_key_proj = copy.deepcopy(encoder_hidden_states_key_proj)
+            img_encoder_hidden_states_value_proj = copy.deepcopy(encoder_hidden_states_value_proj)
+
+            encoder_hidden_states_query_proj[:,512:,:] = 0
+            encoder_hidden_states_key_proj[:,512:,:] = 0
+            encoder_hidden_states_value_proj[:,512:,:] = 0
+
+            img_encoder_hidden_states_query_proj[:,0:512,:] = 0
+            img_encoder_hidden_states_key_proj[:,0:512,:] = 0
+            img_encoder_hidden_states_value_proj[:,0:512,:] = 0
+
             encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
                 batch_size, -1, attn.heads, head_dim
             ).transpose(1, 2)
@@ -2394,15 +2406,31 @@ class FluxAttnProcessor2_0:
                 batch_size, -1, attn.heads, head_dim
             ).transpose(1, 2)
 
+            img_encoder_hidden_states_query_proj = img_encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            img_encoder_hidden_states_key_proj = img_encoder_hidden_states_key_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            img_encoder_hidden_states_value_proj = img_encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+
             if attn.norm_added_q is not None:
                 encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+                img_encoder_hidden_states_query_proj = attn.norm_added_q(img_encoder_hidden_states_query_proj)
             if attn.norm_added_k is not None:
                 encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+                img_encoder_hidden_states_key_proj = attn.norm_added_k(img_encoder_hidden_states_key_proj)
 
             # attention
             query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
             value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+
+            img_query = torch.cat([img_encoder_hidden_states_query_proj, query], dim=2)
+            img_key = torch.cat([img_encoder_hidden_states_key_proj, key], dim=2)
+            img_value = torch.cat([img_encoder_hidden_states_value_proj, value], dim=2)
 
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
@@ -2411,11 +2439,16 @@ class FluxAttnProcessor2_0:
             key = apply_rotary_emb(key, image_rotary_emb)
 
         if encoder_hidden_states is not None:
-            print(f'key={key.shape}, query={query.shape}, value={value.shape}')
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
-        else:   
+
+            img_hidden_states = F.scaled_dot_product_attention(
+                img_query, img_key, img_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
+
+            hidden_states += img_hidden_states
+        else:
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
