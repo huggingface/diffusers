@@ -13,7 +13,6 @@ import torch
 import torch.nn as nn
 from huggingface_hub import ModelCard, delete_repo
 from huggingface_hub.utils import is_jinja_available
-from torch._dynamo.utils import counters
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
@@ -2159,7 +2158,7 @@ class PipelineTesterMixin:
 
     @require_torch_gpu
     @slow
-    def test_torch_compile_recompilation(self):
+    def test_torch_compile_recompilation_and_graph_break(self):
         inputs = self.get_dummy_inputs(torch_device)
         components = self.get_dummy_components()
 
@@ -2171,26 +2170,6 @@ class PipelineTesterMixin:
 
         with torch._dynamo.config.patch(error_on_recompile=True):
             _ = pipe(**inputs)
-
-    @require_torch_gpu
-    @slow
-    def test_torch_compile_graph_breaks(self):
-        # Inspired by:
-        # https://github.com/pytorch/pytorch/blob/916e8979d3e0d651a9091732ce3e59da32e72b0e/test/dynamo/test_higher_order_ops.py#L138
-        counters.clear()
-
-        inputs = self.get_dummy_inputs(torch_device)
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components).to(torch_device)
-        if getattr(pipe, "unet", None) is not None:
-            pipe.unet = torch.compile(pipe.unet, fullgraph=True)
-        else:
-            pipe.transformer = torch.compile(pipe.transformer, fullgraph=True)
-
-        _ = pipe(**inputs)
-        num_graph_breaks = len(counters["graph_break"].keys())
-        self.assertEqual(num_graph_breaks, 0)
 
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
