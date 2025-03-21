@@ -2380,21 +2380,11 @@ class FluxAttnProcessor2_0:
         # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
         if encoder_hidden_states is not None:
             # `context` projections.
+            print(f'encoder_hidden_states shape={encoder_hidden_states.shape}')
             encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
             encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-            img_encoder_hidden_states_query_proj = copy.deepcopy(encoder_hidden_states_query_proj)
-            img_encoder_hidden_states_key_proj = copy.deepcopy(encoder_hidden_states_key_proj)
-            img_encoder_hidden_states_value_proj = copy.deepcopy(encoder_hidden_states_value_proj)
-
-            encoder_hidden_states_query_proj[:,512:,:] = 0
-            encoder_hidden_states_key_proj[:,512:,:] = 0
-            encoder_hidden_states_value_proj[:,512:,:] = 0
-
-            img_encoder_hidden_states_query_proj[:,0:512,:] = 0
-            img_encoder_hidden_states_key_proj[:,0:512,:] = 0
-            img_encoder_hidden_states_value_proj[:,0:512,:] = 0
+            print(f'encoder_hidden_states_query_proj before view shape={encoder_hidden_states_query_proj.shape}')
 
             encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
                 batch_size, -1, attn.heads, head_dim
@@ -2406,59 +2396,30 @@ class FluxAttnProcessor2_0:
                 batch_size, -1, attn.heads, head_dim
             ).transpose(1, 2)
 
-            img_encoder_hidden_states_query_proj = img_encoder_hidden_states_query_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            img_encoder_hidden_states_key_proj = img_encoder_hidden_states_key_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
-            img_encoder_hidden_states_value_proj = img_encoder_hidden_states_value_proj.view(
-                batch_size, -1, attn.heads, head_dim
-            ).transpose(1, 2)
+            print(f'encoder_hidden_states_query_proj after view shape={encoder_hidden_states_query_proj.shape}')
 
             if attn.norm_added_q is not None:
                 encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-                img_encoder_hidden_states_query_proj = attn.norm_added_q(img_encoder_hidden_states_query_proj)
             if attn.norm_added_k is not None:
                 encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-                img_encoder_hidden_states_key_proj = attn.norm_added_k(img_encoder_hidden_states_key_proj)
 
             # attention
-            txt_query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-            txt_key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            txt_value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-            img_query = torch.cat([img_encoder_hidden_states_query_proj, query], dim=2)
-            img_key = torch.cat([img_encoder_hidden_states_key_proj, key], dim=2)
-            img_value = torch.cat([img_encoder_hidden_states_value_proj, value], dim=2)
+            print(f'query before cat shape={query.shape}')
+            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+            print(f'query after cat shape={query.shape}')
 
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
 
-            if encoder_hidden_states is not None:
-                txt_query = apply_rotary_emb(txt_query, image_rotary_emb)
-                txt_key = apply_rotary_emb(txt_key, image_rotary_emb)
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+            print(f'query after apply_rotary_emb shape={query.shape}')
 
-                img_query = apply_rotary_emb(img_query, image_rotary_emb)
-                img_key = apply_rotary_emb(img_key, image_rotary_emb)
-            else:
-                query = apply_rotary_emb(query, image_rotary_emb)
-                key = apply_rotary_emb(key, image_rotary_emb)
-
-        if encoder_hidden_states is not None:
-            hidden_states = F.scaled_dot_product_attention(
-                txt_query, txt_key, txt_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
-
-            img_hidden_states = F.scaled_dot_product_attention(
-                img_query, img_key, img_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
-
-            hidden_states += img_hidden_states
-        else:
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
