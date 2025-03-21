@@ -37,7 +37,6 @@ from torch import Tensor, nn
 from typing_extensions import Self
 
 from .. import __version__
-from ..hooks import apply_group_offloading
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -571,6 +570,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             ... )
             ```
         """
+        from ..hooks import apply_group_offloading
+
         if getattr(self, "enable_tiling", None) is not None and getattr(self, "use_tiling", False) and use_stream:
             msg = (
                 "Applying group offloading on autoencoders, with CUDA streams, may not work as expected if the first "
