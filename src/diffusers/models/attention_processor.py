@@ -2357,6 +2357,8 @@ class FluxAttnProcessor2_0:
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
+        txt_mask: Optional[torch.Tensor] = None, # thesea modification for text prompt mask
+        img_mask: Optional[torch.Tensor] = None, # thesea modification for ip mask
     ) -> torch.FloatTensor:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         
@@ -2461,7 +2463,27 @@ class FluxAttnProcessor2_0:
 
             print(f'txt_hidden_states after shape={txt_hidden_states.shape}')
             print(f'img_hidden_states after shape={img_hidden_states.shape}')
-            hidden_states = torch.cat([txt_hidden_states, img_hidden_states],dim=1)
+
+            txt_mask_downsample = IPAdapterMaskProcessor.downsample(
+                txt_mask,
+                batch_size,
+                hidden_states.shape[1],
+                hidden_states.shape[2],
+            ) 
+            txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
+
+            img_mask_downsample = IPAdapterMaskProcessor.downsample(
+                img_mask,
+                batch_size,
+                hidden_states.shape[1],
+                hidden_states.shape[2],
+            )
+            img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
+            
+            masked_txt_hidden_states = txt_hidden_states[:,0:hidden_states.shape[1],:] * txt_mask_downsample
+            masked_img_hidden_states = img_hidden_states[:,0:hidden_states.shape[1],:] * img_mask_downsample
+            
+            hidden_states = torch.cat([masked_txt_hidden_states + masked_img_hidden_states, txt_hidden_states[:,hidden_states.shape[1]:,:], img_hidden_states[:,hidden_states.shape[1]:,:]],dim=1)
         else:
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
