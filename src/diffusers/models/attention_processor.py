@@ -2435,11 +2435,15 @@ class FluxAttnProcessor2_0:
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
 
-            txt_query = apply_rotary_emb(txt_query, image_rotary_emb)
-            txt_key = apply_rotary_emb(txt_key, image_rotary_emb)
+            if encoder_hidden_states is not None:
+                txt_query = apply_rotary_emb(txt_query, image_rotary_emb)
+                txt_key = apply_rotary_emb(txt_key, image_rotary_emb)
 
-            img_query = apply_rotary_emb(img_query, image_rotary_emb)
-            img_key = apply_rotary_emb(img_key, image_rotary_emb)
+                img_query = apply_rotary_emb(img_query, image_rotary_emb)
+                img_key = apply_rotary_emb(img_key, image_rotary_emb)
+            else:
+                query = apply_rotary_emb(query, image_rotary_emb)
+                key = apply_rotary_emb(key, image_rotary_emb)
 
         if encoder_hidden_states is not None:
             hidden_states = F.scaled_dot_product_attention(
