@@ -2383,7 +2383,7 @@ class FluxAttnProcessor2_0:
             encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
             encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-            
+
             encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
                 batch_size, -1, attn.heads, head_dim
             ).transpose(1, 2)
@@ -2400,11 +2400,6 @@ class FluxAttnProcessor2_0:
                 encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
 
             # attention
-
-            #img_query = torch.cat([encoder_hidden_states_query_proj[:,512:,:], query[:,512:,:]], dim=2)
-            #img_key = torch.cat([encoder_hidden_states_key_proj[:,512:,:], key[:,512:,:]], dim=2)
-            #img_value = torch.cat([encoder_hidden_states_value_proj[:,512:,:], value[:,512:,:]], dim=2), [:,0:512,:]
-
             query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
             value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
