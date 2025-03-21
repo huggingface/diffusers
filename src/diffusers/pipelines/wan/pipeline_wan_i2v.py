@@ -108,6 +108,7 @@ def prompt_clean(text):
     return text
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
 ):
@@ -385,13 +386,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
         video_condition = video_condition.to(device=device, dtype=dtype)
 
-        if isinstance(generator, list):
-            latent_condition = [retrieve_latents(self.vae.encode(video_condition), g) for g in generator]
-            latents = latent_condition = torch.cat(latent_condition)
-        else:
-            latent_condition = retrieve_latents(self.vae.encode(video_condition), generator)
-            latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
-
         latents_mean = (
             torch.tensor(self.vae.config.latents_mean)
             .view(1, self.vae.config.z_dim, 1, 1, 1)
@@ -400,6 +394,15 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
             latents.device, latents.dtype
         )
+
+        if isinstance(generator, list):
+            latent_condition = [
+                retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
+            ]
+            latent_condition = torch.cat(latent_condition)
+        else:
+            latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
+            latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
 
         latent_condition = (latent_condition - latents_mean) * latents_std
 

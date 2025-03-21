@@ -37,6 +37,7 @@ from .single_file_utils import (
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
+    convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     convert_wan_transformer_to_diffusers,
@@ -117,6 +118,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "Lumina2Transformer2DModel": {
         "checkpoint_mapping_fn": convert_lumina2_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "SanaTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_sana_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
     "WanTransformer3DModel": {
@@ -250,12 +255,12 @@ class FromOriginalModelMixin:
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
         config_revision = kwargs.pop("config_revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        torch_dtype = kwargs.pop("torch_dtype", None)
         quantization_config = kwargs.pop("quantization_config", None)
         device = kwargs.pop("device", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
-        if not isinstance(torch_dtype, torch.dtype):
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
             logger.warning(
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."

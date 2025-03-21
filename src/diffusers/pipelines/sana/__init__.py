@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_sana"] = ["SanaPipeline"]
     _import_structure["pipeline_sana_controlnet"] = ["SanaControlNetPipeline"]
+    _import_structure["pipeline_sana_sprint"] = ["SanaSprintPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -35,6 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_sana import SanaPipeline
         from .pipeline_sana_controlnet import SanaControlNetPipeline
+        from .pipeline_sana_sprint import SanaSprintPipeline
 else:
     import sys
 

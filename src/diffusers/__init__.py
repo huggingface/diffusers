@@ -6,14 +6,19 @@ from .utils import (
     DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
+    is_accelerate_available,
+    is_bitsandbytes_available,
     is_flax_available,
+    is_gguf_available,
     is_k_diffusion_available,
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
+    is_optimum_quanto_available,
     is_scipy_available,
     is_sentencepiece_available,
     is_torch_available,
+    is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
 )
@@ -32,7 +37,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
-    "quantizers.quantization_config": ["BitsAndBytesConfig", "GGUFQuantizationConfig", "TorchAoConfig"],
+    "quantizers.quantization_config": [],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -53,6 +58,54 @@ _import_structure = {
         "logging",
     ],
 }
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_bitsandbytes_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_bitsandbytes_objects
+
+    _import_structure["utils.dummy_bitsandbytes_objects"] = [
+        name for name in dir(dummy_bitsandbytes_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("BitsAndBytesConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_gguf_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_gguf_objects
+
+    _import_structure["utils.dummy_gguf_objects"] = [
+        name for name in dir(dummy_gguf_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("GGUFQuantizationConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_torchao_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torchao_objects
+
+    _import_structure["utils.dummy_torchao_objects"] = [
+        name for name in dir(dummy_torchao_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("TorchAoConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_optimum_quanto_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_optimum_quanto_objects
+
+    _import_structure["utils.dummy_optimum_quanto_objects"] = [
+        name for name in dir(dummy_optimum_quanto_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("QuantoConfig")
 
 try:
     if not is_onnx_available():
@@ -78,8 +131,10 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["hooks"].extend(
         [
+            "FasterCacheConfig",
             "HookRegistry",
             "PyramidAttentionBroadcastConfig",
+            "apply_faster_cache",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -219,6 +274,7 @@ else:
             "RePaintScheduler",
             "SASolverScheduler",
             "SchedulerMixin",
+            "SCMScheduler",
             "ScoreSdeVeScheduler",
             "TCDScheduler",
             "UnCLIPScheduler",
@@ -293,6 +349,7 @@ else:
             "CogVideoXPipeline",
             "CogVideoXVideoToVideoPipeline",
             "CogView3PlusPipeline",
+            "CogView4ControlPipeline",
             "CogView4Pipeline",
             "ConsisIDPipeline",
             "CycleDiffusionPipeline",
@@ -349,9 +406,12 @@ else:
             "LDMTextToImagePipeline",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+            "LTXConditionPipeline",
             "LTXImageToVideoPipeline",
             "LTXPipeline",
+            "Lumina2Pipeline",
             "Lumina2Text2ImgPipeline",
+            "LuminaPipeline",
             "LuminaText2ImgPipeline",
             "MarigoldDepthPipeline",
             "MarigoldIntrinsicsPipeline",
@@ -368,6 +428,7 @@ else:
             "SanaControlNetPipeline",
             "SanaPAGPipeline",
             "SanaPipeline",
+            "SanaSprintPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -601,7 +662,38 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
-    from .quantizers.quantization_config import BitsAndBytesConfig, GGUFQuantizationConfig, TorchAoConfig
+
+    try:
+        if not is_bitsandbytes_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_bitsandbytes_objects import *
+    else:
+        from .quantizers.quantization_config import BitsAndBytesConfig
+
+    try:
+        if not is_gguf_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_gguf_objects import *
+    else:
+        from .quantizers.quantization_config import GGUFQuantizationConfig
+
+    try:
+        if not is_torchao_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torchao_objects import *
+    else:
+        from .quantizers.quantization_config import TorchAoConfig
+
+    try:
+        if not is_optimum_quanto_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_optimum_quanto_objects import *
+    else:
+        from .quantizers.quantization_config import QuantoConfig
 
     try:
         if not is_onnx_available():
@@ -617,7 +709,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .hooks import HookRegistry, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+        from .hooks import (
+            FasterCacheConfig,
+            HookRegistry,
+            PyramidAttentionBroadcastConfig,
+            apply_faster_cache,
+            apply_pyramid_attention_broadcast,
+        )
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -751,6 +849,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             RePaintScheduler,
             SASolverScheduler,
             SchedulerMixin,
+            SCMScheduler,
             ScoreSdeVeScheduler,
             TCDScheduler,
             UnCLIPScheduler,
@@ -806,6 +905,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXPipeline,
             CogVideoXVideoToVideoPipeline,
             CogView3PlusPipeline,
+            CogView4ControlPipeline,
             CogView4Pipeline,
             ConsisIDPipeline,
             CycleDiffusionPipeline,
@@ -862,9 +962,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+            LTXConditionPipeline,
             LTXImageToVideoPipeline,
             LTXPipeline,
+            Lumina2Pipeline,
             Lumina2Text2ImgPipeline,
+            LuminaPipeline,
             LuminaText2ImgPipeline,
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
@@ -881,6 +984,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaControlNetPipeline,
             SanaPAGPipeline,
             SanaPipeline,
+            SanaSprintPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
