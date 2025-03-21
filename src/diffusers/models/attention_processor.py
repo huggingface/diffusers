@@ -2382,7 +2382,7 @@ class FluxAttnProcessor2_0:
             # `context` projections.
             img_encoder_hidden_states = copy.deepcopy(encoder_hidden_states)
 
-            encoder_hidden_states[:,512:,:] = 0
+            #encoder_hidden_states[:,512:,:] = 0
             encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
             encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
@@ -2403,7 +2403,7 @@ class FluxAttnProcessor2_0:
                 encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
 
             # for img embeds
-            img_encoder_hidden_states[:,0:512,:] = 0
+            #img_encoder_hidden_states[:,0:512,:] = 0
             img_encoder_hidden_states_query_proj = attn.add_q_proj(img_encoder_hidden_states)
             img_encoder_hidden_states_key_proj = attn.add_k_proj(img_encoder_hidden_states)
             img_encoder_hidden_states_value_proj = attn.add_v_proj(img_encoder_hidden_states)
@@ -2422,6 +2422,14 @@ class FluxAttnProcessor2_0:
                 img_encoder_hidden_states_query_proj = attn.norm_added_q(img_encoder_hidden_states_query_proj)
             if attn.norm_added_k is not None:
                 img_encoder_hidden_states_key_proj = attn.norm_added_k(img_encoder_hidden_states_key_proj)
+
+            encoder_hidden_states_query_proj[:,512:,:] = 0
+            encoder_hidden_states_key_proj[:,512:,:] = 0
+            encoder_hidden_states_value_proj[:,512:,:] = 0
+            
+            img_encoder_hidden_states_query_proj[:,0:512,:] = 0
+            img_encoder_hidden_states_key_proj[:,0:512,:] = 0
+            img_encoder_hidden_states_value_proj[:,0:512,:] = 0
 
             encoder_hidden_states_query_proj += img_encoder_hidden_states_query_proj
             encoder_hidden_states_key_proj += img_encoder_hidden_states_key_proj
