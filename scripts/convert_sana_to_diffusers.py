@@ -126,9 +126,9 @@ def main(args):
         flow_shift = 3.0
 
     # model config
-    if args.model_type == "SanaMS_1600M_P1_D20" or args.model_type == "SanaSprint_1600M_P1_D20":
+    if args.model_type in ["SanaMS_1600M_P1_D20", "SanaSprint_1600M_P1_D20", "SanaMS1.5_1600M_P1_D20"]:
         layer_num = 20
-    elif args.model_type == "SanaMS_600M_P1_D28":
+    elif args.model_type in ["SanaMS_600M_P1_D28", "SanaSprint_600M_P1_D28"]:
         layer_num = 28
     elif args.model_type == "SanaMS_4800M_P1_D60":
         layer_num = 60
