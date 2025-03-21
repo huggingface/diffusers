@@ -1,7 +1,8 @@
-accelerate>=0.16.0
+accelerate>=0.31.0
 torchvision
-transformers>=4.25.1
+transformers>=4.41.2
 ftfy
 tensorboard
 Jinja2
-peft==0.7.0
+peft>=0.11.1
+sentencepiece
