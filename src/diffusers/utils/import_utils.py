@@ -187,6 +187,9 @@ _gguf_available, _gguf_version = _is_package_available("gguf")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
 _torchao_available, _torchao_version = _is_package_available("torchao")
+_pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_available("pytorch_retinaface")
+_better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
+_nltk_available, _nltk_version = _is_package_available("nltk")
 
 _optimum_quanto_available = importlib.util.find_spec("optimum") is not None
 if _optimum_quanto_available:
@@ -331,6 +334,18 @@ def is_optimum_quanto_available():
 
 def is_timm_available():
     return _timm_available
+
+
+def is_pytorch_retinaface_available():
+    return _pytorch_retinaface_available
+
+
+def is_better_profanity_available():
+    return _better_profanity_available
+
+
+def is_nltk_available():
+    return _nltk_available
 
 
 # docstyle-ignore
@@ -481,6 +496,22 @@ QUANTO_IMPORT_ERROR = """
 install optimum-quanto`
 """
 
+# docstyle-ignore
+PYTORCH_RETINAFACE_IMPORT_ERROR = """
+{0} requires the pytorch_retinaface library but it was not found in your environment. You can install it with pip: `pip install pytorch_retinaface`
+"""
+
+# docstyle-ignore
+BETTER_PROFANITY_IMPORT_ERROR = """
+{0} requires the better_profanity library but it was not found in your environment. You can install it with pip: `pip install better_profanity`
+"""
+
+# docstyle-ignore
+NLTK_IMPORT_ERROR = """
+{0} requires the nltk library but it was not found in your environment. You can install it with pip: `pip install nltk`
+"""
+
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -509,6 +540,9 @@ BACKENDS_MAPPING = OrderedDict(
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
         ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
+        ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
+        ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
+        ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
     ]
 )
 
