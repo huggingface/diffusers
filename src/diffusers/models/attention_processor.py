@@ -2410,21 +2410,9 @@ class FluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        if encoder_hidden_states is not None:
-            print(f'key={key.shape}, query={query.shape}, value={value.shape}')
-            img_hidden_states = F.scaled_dot_product_attention(
-                query[:,512:,:], key[:,512:,:], value[:,512:,:], attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
-            print(f'img_hidden_states shape={img_hidden_states.shape}')
-            hidden_states = F.scaled_dot_product_attention(
-                query[:,0:512,:], key[:,0:512,:], value[:,0:512,:], attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
-            print(f'hidden_states shape={hidden_states.shape}')
-            hidden_states = torch.cat([hidden_states, img_hidden_states], dim=1)
-        else:
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
