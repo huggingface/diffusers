@@ -514,6 +514,12 @@ def apply_faster_cache(module: torch.nn.Module, config: FasterCacheConfig) -> No
     ```
     """
 
+    logger.warning(
+        "FasterCache is a purely experimental feature and may not work as expected. Not all models support FasterCache. "
+        "The API is subject to change in future releases, with no guarantee of backward compatibility. Please report any issues at "
+        "https://github.com/huggingface/diffusers/issues."
+    )
+
     if config.attention_weight_callback is None:
         # If the user has not provided a weight callback, we default to 0.5 for all timesteps.
         # In the paper, they recommend using a gradually increasing weight from 0 to 1 as the inference progresses, but
