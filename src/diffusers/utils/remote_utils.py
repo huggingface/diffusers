@@ -80,13 +80,6 @@ def check_inputs_decode(
         and not isinstance(processor, (VaeImageProcessor, VideoProcessor))
     ):
         raise ValueError("`processor` is required.")
-    if do_scaling and scaling_factor is None:
-        deprecate(
-            "do_scaling",
-            "1.0.0",
-            "`do_scaling` is deprecated, pass `scaling_factor` and `shift_factor` if required.",
-            standard_warn=False,
-        )
 
 
 def postprocess_decode(

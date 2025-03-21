@@ -48,6 +48,7 @@ Hybrid Inference offers a fast and simple way to offload local generation requir
 
 ## Changelog
 
+- March 11 2025: Added Wan 2.1 VAE decode
 - March 10 2025: Added VAE encode
 - March 2 2025: Initial release with VAE decoding
 
