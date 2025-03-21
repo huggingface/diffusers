@@ -165,7 +165,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         model.eval()
 
         # Keep generator on CPU for non-CUDA devices to compare outputs with CPU result tensors
-        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
+        generator_device = "cpu" if not torch_device.startswith(torch_device) else torch_device
         if torch_device != "mps":
             generator = torch.Generator(device=generator_device).manual_seed(0)
         else:
@@ -263,7 +263,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         return model
 
     def get_generator(self, seed=0):
-        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
+        generator_device = "cpu" if not torch_device.startswith(torch_device) else torch_device
         if torch_device != "mps":
             return torch.Generator(device=generator_device).manual_seed(seed)
         return torch.manual_seed(seed)
