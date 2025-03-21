@@ -118,7 +118,7 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> pipe.to("cuda")
 
-        >>> image = pipe(prompt='a cyberpunk cat with a neon sign that says "Sana"')[0]
+        >>> image = pipe(prompt='a tiny astronaut hatching from an egg on the moon')[0]
         >>> image[0].save("output.png")
         ```
 """
