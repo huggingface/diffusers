@@ -2424,9 +2424,9 @@ class FluxAttnProcessor2_0:
                 img_encoder_hidden_states_key_proj = attn.norm_added_k(img_encoder_hidden_states_key_proj)
 
             # attention
-            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+            txt_query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
+            txt_key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
+            txt_value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
 
             img_query = torch.cat([img_encoder_hidden_states_query_proj, query], dim=2)
             img_key = torch.cat([img_encoder_hidden_states_key_proj, key], dim=2)
@@ -2435,12 +2435,15 @@ class FluxAttnProcessor2_0:
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
 
-            query = apply_rotary_emb(query, image_rotary_emb)
-            key = apply_rotary_emb(key, image_rotary_emb)
+            txt_query = apply_rotary_emb(txt_query, image_rotary_emb)
+            txt_key = apply_rotary_emb(txt_key, image_rotary_emb)
+
+            img_query = apply_rotary_emb(img_query, image_rotary_emb)
+            img_key = apply_rotary_emb(img_key, image_rotary_emb)
 
         if encoder_hidden_states is not None:
             hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                txt_query, txt_key, txt_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
 
             img_hidden_states = F.scaled_dot_product_attention(
