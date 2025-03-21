@@ -144,6 +144,7 @@ class CosmosPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _optional_components = ["safety_checker"]
 
     def __init__(
         self,
@@ -174,6 +175,7 @@ class CosmosPipeline(DiffusionPipeline):
             scheduler=scheduler,
             safety_checker=safety_checker,
         )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
         self.vae_scale_factor_temporal = (
             self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 8
@@ -487,7 +489,6 @@ class CosmosPipeline(DiffusionPipeline):
         device = self._execution_device
 
         if self.safety_checker is not None:
-            breakpoint()
             self.safety_checker.to(device)
             if prompt is not None:
                 prompt_list = [prompt] if isinstance(prompt, str) else prompt

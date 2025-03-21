@@ -106,6 +106,9 @@ class CosmosVideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            # We cannot run the Cosmos Guardrail for fast tests due to the large model size
+            "safety_checker": None,
+            "requires_safety_checker": False,
         }
         return components
 
@@ -151,6 +154,13 @@ class CosmosVideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         expected_video = torch.randn(9, 3, 32, 32)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
+
+    def test_components_function(self):
+        init_components = self.get_dummy_components()
+        init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float))}
+        pipe = self.pipeline_class(**init_components, requires_safety_checker=False)
+        self.assertTrue(hasattr(pipe, "components"))
+        self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
