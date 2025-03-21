@@ -990,6 +990,9 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
 
 
 def _custom_replace(key: str, substrings: List[str]) -> str:
+    # Replaces the "."s with "_"s upto the `substrings`.
+    # Example:
+    # lora_unet.foo.bar.lora_A.weight -> lora_unet_foo_bar.lora_A.weight
     pattern = "(" + "|".join(re.escape(sub) for sub in substrings) + ")"
 
     match = re.search(pattern, key)
