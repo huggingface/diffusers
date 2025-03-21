@@ -2385,6 +2385,7 @@ class FluxAttnProcessor2_0:
             encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states[:,0:512,:])
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states[:,0:512,:])
             encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states[:,0:512,:])
+            print(f'encoder_hidden_states_query_proj shape={encoder_hidden_states_query_proj.shape}')
 
             encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
                 batch_size, -1, attn.heads, head_dim
