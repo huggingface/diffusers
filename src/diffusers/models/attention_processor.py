@@ -2367,6 +2367,7 @@ class FluxAttnProcessor2_0:
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
+        print(f'attn.heads = {attn.heads}')
 
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
