@@ -171,15 +171,6 @@ def main(args):
             f"blocks.{depth}.attn.proj.bias"
         )
 
-        # Add Q/K normalization for self-attention (attn1) - needed for Sana Sprint
-        if args.model_type == "SanaSprint_1600M_P1_D20":
-            converted_state_dict[f"transformer_blocks.{depth}.attn1.norm_q.weight"] = state_dict.pop(
-                f"blocks.{depth}.attn.q_norm.weight"
-            )
-            converted_state_dict[f"transformer_blocks.{depth}.attn1.norm_k.weight"] = state_dict.pop(
-                f"blocks.{depth}.attn.k_norm.weight"
-            )
-
         # Feed-forward.
         converted_state_dict[f"transformer_blocks.{depth}.ff.conv_inverted.weight"] = state_dict.pop(
             f"blocks.{depth}.mlp.inverted_conv.conv.weight"
@@ -211,15 +202,6 @@ def main(args):
         converted_state_dict[f"transformer_blocks.{depth}.attn2.to_v.bias"] = v_bias
         if qk_norm is not None:
             # Add Q/K normalization for cross-attention (attn2) - needed for Sana-Sprint and Sana-1.5
-            converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_q.weight"] = state_dict.pop(
-                f"blocks.{depth}.cross_attn.q_norm.weight"
-            )
-            converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_k.weight"] = state_dict.pop(
-                f"blocks.{depth}.cross_attn.k_norm.weight"
-            )
-
-        # Add Q/K normalization for cross-attention (attn2) - needed for Sana Sprint
-        if args.model_type == "SanaSprint_1600M_P1_D20":
             converted_state_dict[f"transformer_blocks.{depth}.attn2.norm_q.weight"] = state_dict.pop(
                 f"blocks.{depth}.cross_attn.q_norm.weight"
             )
@@ -261,6 +243,13 @@ def main(args):
         }
 
         # Add qk_norm parameter for Sana Sprint
+        if args.model_type in [
+            "SanaMS1.5_1600M_P1_D20",
+            "SanaMS1.5_4800M_P1_D60",
+            "SanaSprint_600M_P1_D28",
+            "SanaSprint_1600M_P1_D20",
+        ]:
+            transformer_kwargs["qk_norm"] = "rms_norm_across_heads"
         if args.model_type in ["SanaSprint_1600M_P1_D20", "SanaSprint_600M_P1_D28"]:
             transformer_kwargs["guidance_embeds"] = True
 
