@@ -2420,9 +2420,11 @@ class FluxAttnProcessor2_0:
             img_hidden_states = F.scaled_dot_product_attention(
                 query[:,512:,:], key[:,512:,:], value[:,512:,:], attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
+            print(f'img_hidden_states shape={img_hidden_states.shape}')
             hidden_states = F.scaled_dot_product_attention(
                 query[:,0:512,:], key[:,0:512,:], value[:,0:512,:], attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
+            print(f'hidden_states shape={hidden_states.shape}')
             hidden_states = torch.cat([hidden_states, img_hidden_states], dim=1)
         else:
             hidden_states = F.scaled_dot_product_attention(
