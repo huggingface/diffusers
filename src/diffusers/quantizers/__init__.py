@@ -13,22 +13,20 @@
 # limitations under the License.
 
 import inspect
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from ..utils import is_transformers_available, logging
 from .auto import DiffusersAutoQuantizer
 from .base import DiffusersQuantizer
+from .quantization_config import QuantizationConfigMixin as DiffQuantConfigMixin
 
 
-if TYPE_CHECKING:
-    from .quantization_config import QuantizationConfigMixin as DiffQuantConfigMixin
+try:
+    from transformers.utils.quantization_config import QuantizationConfigMixin as TransformersQuantConfigMixin
+except ImportError:
 
-    try:
-        from transformers.utils.quantization_config import QuantizationConfigMixin as TransformersQuantConfigMixin
-    except ImportError:
-
-        class TransformersQuantConfigMixin:
-            pass
+    class TransformersQuantConfigMixin:
+        pass
 
 
 logger = logging.get_logger(__name__)
