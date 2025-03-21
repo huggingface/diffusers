@@ -443,6 +443,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         image_embeds = self.image_embedder(image_latents).image_embeds
         image_embeds = image_embeds.to(device=device)
+        print(f'image_embeds shape={image_embeds.shape}')
 
         # 3. Prepare (dummy) text embeddings
         if hasattr(self, "text_encoder") and self.text_encoder is not None:
@@ -471,18 +472,22 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             # pooled_prompt_embeds is 768, clip text encoder hidden size
             pooled_prompt_embeds = torch.zeros((batch_size, 768), device=device, dtype=image_embeds.dtype)
 
+        print(f'prompt_embeds shape before cat={prompt_embeds.shape}')
         # scale & concatenate image and text embeddings
         prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
+        print(f'prompt_embeds shape after cat={prompt_embeds.shape}')
 
         prompt_embeds *= torch.tensor(prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None, None]
         pooled_prompt_embeds *= torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[
             :, None
         ]
 
+        print(f'prompt_embeds shape before sum={prompt_embeds.shape}')
         # weighted sum
         prompt_embeds = torch.sum(prompt_embeds, dim=0, keepdim=True)
         pooled_prompt_embeds = torch.sum(pooled_prompt_embeds, dim=0, keepdim=True)
 
+        print(f'prompt_embeds shape after sum={prompt_embeds.shape}')
         # Offload all models
         self.maybe_free_model_hooks()
 
