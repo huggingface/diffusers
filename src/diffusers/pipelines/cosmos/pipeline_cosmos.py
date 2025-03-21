@@ -15,6 +15,7 @@
 import inspect
 from typing import Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
@@ -25,6 +26,7 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .cosmos_guardrail import CosmosSafetyChecker
 from .pipeline_output import CosmosPipelineOutput
 
 
@@ -150,8 +152,19 @@ class CosmosPipeline(DiffusionPipeline):
         transformer: CosmosTransformer3DModel,
         vae: AutoencoderKLCosmos,
         scheduler: EDMEulerScheduler,
+        safety_checker: CosmosSafetyChecker = None,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
+
+        if requires_safety_checker and safety_checker is None:
+            safety_checker = CosmosSafetyChecker()
+        if safety_checker is None:
+            logger.warning(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. This "
+                f"is in violation of the [NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
+                f"Please ensure that you are compliant with the license agreement."
+            )
 
         self.register_modules(
             vae=vae,
@@ -159,6 +172,7 @@ class CosmosPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
             scheduler=scheduler,
+            safety_checker=safety_checker,
         )
 
         self.vae_scale_factor_temporal = (
@@ -472,6 +486,19 @@ class CosmosPipeline(DiffusionPipeline):
 
         device = self._execution_device
 
+        if self.safety_checker is not None:
+            breakpoint()
+            self.safety_checker.to(device)
+            if prompt is not None:
+                prompt_list = [prompt] if isinstance(prompt, str) else prompt
+                for p in prompt_list:
+                    if not self.safety_checker.check_text_safety(p):
+                        raise ValueError(
+                            f"Cosmos Guardrail detected unsafe text in the prompt: {p}. Please ensure that the "
+                            f"prompt abides by the NVIDIA Open Model License Agreement."
+                        )
+            self.safety_checker.to("cpu")
+
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -602,7 +629,21 @@ class CosmosPipeline(DiffusionPipeline):
             else:
                 latents = latents / self.scheduler.config.sigma_data
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
-            video = self.video_processor.postprocess_video(video, output_type=output_type)
+
+            if self.safety_checker is not None:
+                self.safety_checker.to(device)
+                video = self.video_processor.postprocess_video(video, output_type="np")
+                video = (video * 255).astype(np.uint8)
+                video_batch = []
+                for vid in video:
+                    vid = self.safety_checker.check_video_safety(vid)
+                    video_batch.append(vid)
+                video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
+                video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
+                video = self.video_processor.postprocess_video(video, output_type=output_type)
+                self.safety_checker.to("cpu")
+            else:
+                video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
 

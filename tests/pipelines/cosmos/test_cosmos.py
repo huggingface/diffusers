@@ -105,6 +105,9 @@ class CosmosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            # We cannot run the Cosmos Guardrail for fast tests due to the large model size
+            "safety_checker": None,
+            "requires_safety_checker": False,
         }
         return components
 
