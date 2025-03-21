@@ -274,6 +274,8 @@
         title: SparseControlNetModel
       - local: api/models/controlnet_union
         title: ControlNetUnionModel
+      - local: api/models/controlnet_sana
+        title: SanaControlNetModel
       title: ControlNets
     - sections:
       - local: api/models/allegro_transformer3d
@@ -416,6 +418,8 @@
       title: ControlNet with Stable Diffusion 3
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
+    - local: api/pipelines/controlnet_sana
+      title: ControlNet-Sana
     - local: api/pipelines/controlnetxs
       title: ControlNet-XS
     - local: api/pipelines/controlnetxs_sdxl
