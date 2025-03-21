@@ -2359,7 +2359,7 @@ class FluxAttnProcessor2_0:
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        print(f'encoder_hidden_states shape={encoder_hidden_states.shape}')
+        
         # `sample` projections.
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
@@ -2379,6 +2379,8 @@ class FluxAttnProcessor2_0:
 
         # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
         if encoder_hidden_states is not None:
+            print(f'encoder_hidden_states shape={encoder_hidden_states.shape}')
+            encoder_hidden_states = encoder_hidden_states[:,0:512,:]
             # `context` projections.
             encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
             encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
