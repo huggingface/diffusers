@@ -2414,6 +2414,8 @@ class FluxAttnProcessor2_0:
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
 
+            cos, sin = image_rotary_emb
+            print(f'cos shape={cos.shape}, sin shape={sin.shape}')
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
             print(f'query after apply_rotary_emb shape={query.shape}')
