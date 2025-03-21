@@ -2,6 +2,21 @@
 from ..utils import DummyObject, requires_backends
 
 
+class FasterCacheConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class HookRegistry(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -30,6 +45,10 @@ class PyramidAttentionBroadcastConfig(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
+
+
+def apply_faster_cache(*args, **kwargs):
+    requires_backends(apply_faster_cache, ["torch"])
 
 
 def apply_pyramid_attention_broadcast(*args, **kwargs):

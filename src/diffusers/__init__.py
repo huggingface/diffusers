@@ -131,8 +131,10 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["hooks"].extend(
         [
+            "FasterCacheConfig",
             "HookRegistry",
             "PyramidAttentionBroadcastConfig",
+            "apply_faster_cache",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -703,7 +705,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .hooks import HookRegistry, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+        from .hooks import (
+            FasterCacheConfig,
+            HookRegistry,
+            PyramidAttentionBroadcastConfig,
+            apply_faster_cache,
+            apply_pyramid_attention_broadcast,
+        )
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
