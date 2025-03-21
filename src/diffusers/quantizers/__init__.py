@@ -40,7 +40,7 @@ class PipelineQuantizationConfig:
     def __init__(
         self,
         quant_backend: str = None,
-        quant_kwargs: Dict[str, Union[str, float, int]] = None,
+        quant_kwargs: Dict[str, Union[str, float, int, dict]] = None,
         modules_to_quantize: Optional[List[str]] = None,
         quant_mapping: Dict[str, Union[DiffQuantConfigMixin, "TransformersQuantConfigMixin"]] = None,
     ):
