@@ -2460,8 +2460,8 @@ class FluxAttnProcessor2_0:
                 if img_mask is not None:
                     cos, sin = image_rotary_emb
                     #print(f'cos shape={cos.shape}, sin shape={sin.shape}')
-                    txt_query = apply_rotary_emb(txt_query, (torch.cat(cos[0:512,:], cos[1241:,:]), torch.cat(sin[0:512,:], sin[1241:,:]))) 
-                    txt_key = apply_rotary_emb(txt_key,     (torch.cat(cos[0:512,:], cos[1241:,:]), torch.cat(sin[0:512,:], sin[1241:,:])))
+                    txt_query = apply_rotary_emb(txt_query, (torch.cat([cos[0:512,:], cos[1241:,:]], dim = 0), torch.cat([sin[0:512,:], sin[1241:,:]],dim=0))) 
+                    txt_key = apply_rotary_emb(txt_key,     (torch.cat([cos[0:512,:], cos[1241:,:]], dim = 0), torch.cat([sin[0:512,:], sin[1241:,:]],dim=0))) 
 
                     img_query = apply_rotary_emb(img_query, (cos[512:,:],sin[512:,:])) 
                     img_key = apply_rotary_emb(img_key,     (cos[512:,:],sin[512:,:]))
