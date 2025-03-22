@@ -335,7 +335,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
 
             else:
-                print(f'controlnet_flux joint_attention_kwargs={joint_attention_kwargs.keys()}')
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
