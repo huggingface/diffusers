@@ -443,8 +443,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         image_embeds = self.image_embedder(image_latents).image_embeds
         image_embeds = image_embeds.to(device=device)
-        print(f'image_embeds shape={image_embeds.shape}')
-
+    
         # 3. Prepare (dummy) text embeddings
         if hasattr(self, "text_encoder") and self.text_encoder is not None:
             (
