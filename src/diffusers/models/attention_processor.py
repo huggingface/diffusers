@@ -2473,7 +2473,7 @@ class FluxAttnProcessor2_0:
                     hidden_states.shape[2],
                 ) 
                 txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
-                masked_txt_hidden_states = txt_hidden_states[:,encoder_hidden_states.shape[1]:,:] * txt_mask_downsample
+                masked_txt_hidden_states = txt_hidden_states[:,512,:] * txt_mask_downsample
             
             img_mask_downsample = IPAdapterMaskProcessor.downsample(
                 img_mask[0],
@@ -2483,7 +2483,7 @@ class FluxAttnProcessor2_0:
             )
             img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
             
-            masked_img_hidden_states = img_hidden_states[:,encoder_hidden_states.shape[1]:,:] * img_mask_downsample
+            masked_img_hidden_states = img_hidden_states[:,729:,:] * img_mask_downsample
             
             if txt_mask is not None:
                 hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + ip_scale * masked_img_hidden_states],dim=1)
