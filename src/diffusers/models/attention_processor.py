@@ -2359,6 +2359,7 @@ class FluxAttnProcessor2_0:
         image_rotary_emb: Optional[torch.Tensor] = None,
         txt_mask: Optional[torch.Tensor] = None, # thesea modification for text prompt mask
         img_mask: Optional[torch.Tensor] = None, # thesea modification for ip mask
+        ip_scale: Optional[int] = None, # thesea modification for ip mask
     ) -> torch.FloatTensor:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         
@@ -2464,26 +2465,31 @@ class FluxAttnProcessor2_0:
             print(f'txt_hidden_states after shape={txt_hidden_states.shape}')
             print(f'img_hidden_states after shape={img_hidden_states.shape}')
 
-            txt_mask_downsample = IPAdapterMaskProcessor.downsample(
-                txt_mask,
-                batch_size,
-                hidden_states.shape[1],
-                hidden_states.shape[2],
-            ) 
-            txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
-
+            if txt_mask is not None:
+                txt_mask_downsample = IPAdapterMaskProcessor.downsample(
+                    txt_mask[0],
+                    batch_size,
+                    hidden_states.shape[1],
+                    hidden_states.shape[2],
+                ) 
+                txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
+                masked_txt_hidden_states = txt_hidden_states[:,encoder_hidden_states.shape[1]:,:] * txt_mask_downsample
+            
             img_mask_downsample = IPAdapterMaskProcessor.downsample(
-                img_mask,
+                img_mask[0],
                 batch_size,
                 hidden_states.shape[1],
                 hidden_states.shape[2],
             )
             img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
             
-            masked_txt_hidden_states = txt_hidden_states[:,encoder_hidden_states.shape[1]:,:] * txt_mask_downsample
             masked_img_hidden_states = img_hidden_states[:,encoder_hidden_states.shape[1]:,:] * img_mask_downsample
             
-            hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + masked_img_hidden_states],dim=1)
+            if txt_mask is not None:
+                hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + ip_scale * masked_img_hidden_states],dim=1)
+            else:
+                hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], txt_hidden_states[:,encoder_hidden_states.shape[1]:,:] + ip_scale * masked_img_hidden_states],dim=1)
+            
             print(f'txt_hidden_states[:,:-hidden_states.shape[1],:] shape={txt_hidden_states[:,:-hidden_states.shape[1],:].shape}')
             print(f'img_hidden_states[:,:-hidden_states.shape[1],:] shape={img_hidden_states[:,:-hidden_states.shape[1],:].shape}')
             print(f'hidden_states shape={hidden_states.shape}')
