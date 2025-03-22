@@ -2436,14 +2436,18 @@ class FluxAttnProcessor2_0:
 
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
+            
+            if encoder_hidden_states is not None:
+                cos, sin = image_rotary_emb
+                #print(f'cos shape={cos.shape}, sin shape={sin.shape}')
+                txt_query = apply_rotary_emb(txt_query, (cos[0:4608,:], sin[0:4608,:])) #image_rotary_emb
+                txt_key = apply_rotary_emb(txt_key, (cos[0:4608,:], sin[0:4608,:]))
 
-            cos, sin = image_rotary_emb
-            #print(f'cos shape={cos.shape}, sin shape={sin.shape}')
-            txt_query = apply_rotary_emb(txt_query, (cos[0:4608,:], sin[0:4608,:])) #image_rotary_emb
-            txt_key = apply_rotary_emb(txt_key, (cos[0:4608,:], sin[0:4608,:]))
-
-            img_query = apply_rotary_emb(img_query, (torch.cat([cos[0:4096,:], cos[4608:,:]], dim=0), torch.cat([sin[0:4096,:], sin[4608:,:]], dim=0))) #image_rotary_emb
-            img_key = apply_rotary_emb(img_key, (torch.cat([cos[0:4096,:], cos[4608:,:]], dim=0), torch.cat([sin[0:4096,:], sin[4608:,:]], dim=0)))
+                img_query = apply_rotary_emb(img_query, (torch.cat([cos[0:4096,:], cos[4608:,:]], dim=0), torch.cat([sin[0:4096,:], sin[4608:,:]], dim=0))) #image_rotary_emb
+                img_key = apply_rotary_emb(img_key, (torch.cat([cos[0:4096,:], cos[4608:,:]], dim=0), torch.cat([sin[0:4096,:], sin[4608:,:]], dim=0)))
+            else:
+                query = apply_rotary_emb(query, image_rotary_emb)
+                key = apply_rotary_emb(key, image_rotary_emb)
 
         if encoder_hidden_states is not None: 
             txt_hidden_states = F.scaled_dot_product_attention(
