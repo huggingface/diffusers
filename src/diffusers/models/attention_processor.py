@@ -15,6 +15,7 @@ import inspect
 import math
 from typing import Callable, List, Optional, Tuple, Union
 import copy
+import numpy as np
 
 import torch
 import torch.nn.functional as F
@@ -2362,7 +2363,8 @@ class FluxAttnProcessor2_0:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         
         if img_mask is not None:
-            txt_mask = ~ img_mask
+            txt_mask = ~ np.array(img_mask, dtype=bool) 
+            txt_mask = txt_mask.astype(np.uint8)
         else:
             txt_mask = None
 
