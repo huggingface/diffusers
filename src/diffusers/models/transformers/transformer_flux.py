@@ -147,6 +147,7 @@ class FluxTransformerBlock(nn.Module):
             encoder_hidden_states, emb=temb
         )
         joint_attention_kwargs = joint_attention_kwargs or {}
+        print(f'joint_attention_kwargs={joint_attention_kwargs.keys()}')
         # Attention.
         attention_outputs = self.attn(
             hidden_states=norm_hidden_states,
