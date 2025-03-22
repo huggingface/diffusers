@@ -25,6 +25,8 @@
     title: Working with big models
   title: Tutorials
 - sections:
+  - local: using-dffusers/modular
+    title: Modular Diffusers
   - local: using-diffusers/loading
     title: Load pipelines
   - local: using-diffusers/custom_pipeline_overview
