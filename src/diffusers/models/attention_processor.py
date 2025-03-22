@@ -2477,7 +2477,7 @@ class FluxAttnProcessor2_0:
                     hidden_states.shape[2],
                 ) 
                 txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
-                masked_txt_hidden_states = txt_hidden_states[:,512,:] * txt_mask_downsample
+                masked_txt_hidden_states = txt_hidden_states[:,512:,:] * txt_mask_downsample
             
             img_mask_downsample = IPAdapterMaskProcessor.downsample(
                 img_mask[0],
