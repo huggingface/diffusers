@@ -2489,6 +2489,7 @@ class FluxAttnProcessor2_0:
             
             masked_img_hidden_states = img_hidden_states[:,729:,:] * img_mask_downsample
             
+            print(f'hidden_states.shape={hidden_states.shape}')
             if txt_mask is not None:
                 hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + ip_scale * masked_img_hidden_states],dim=1)
             else:
