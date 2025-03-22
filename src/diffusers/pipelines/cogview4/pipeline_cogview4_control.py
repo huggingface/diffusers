@@ -523,7 +523,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
+                Whether or not to return a [`~pipelines.pipeline_CogView4.CogView4PipelineOutput`] instead
                 of a plain tuple.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
@@ -540,8 +540,6 @@ class CogView4ControlPipeline(DiffusionPipeline):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, defaults to `224`):
                 Maximum sequence length in encoded prompt. Can be set to other values but may lead to poorer results.
-
-        Examples:
 
         Returns:
             [`~pipelines.cogview4.pipeline_CogView4.CogView4PipelineOutput`] or `tuple`:
