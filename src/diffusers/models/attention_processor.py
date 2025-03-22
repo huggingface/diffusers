@@ -2505,8 +2505,6 @@ class FluxAttnProcessor2_0:
                 img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
                 masked_img_hidden_states = img_hidden_states[:,729:,:] * img_mask_downsample
                 
-                print(f'txt_hidden_states[:,:-hidden_states.shape[1],:] shape={txt_hidden_states[:,:-hidden_states.shape[1],:].shape}')
-                print(f'img_hidden_states[:,:-hidden_states.shape[1],:] shape={img_hidden_states[:,:-hidden_states.shape[1],:].shape}')
                 hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + masked_img_hidden_states],dim=1)
             else:
                 hidden_states = F.scaled_dot_product_attention(
