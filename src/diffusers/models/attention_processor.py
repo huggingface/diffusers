@@ -2359,15 +2359,10 @@ class FluxAttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
         img_mask: Optional[torch.Tensor] = None, # thesea modification for ip mask
+        txt_mask: Optional[torch.Tensor] = None, # thesea modification for ip mask
     ) -> torch.FloatTensor:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         
-        if img_mask is not None:
-            txt_mask = ~ np.array(img_mask, dtype=bool) 
-            txt_mask = txt_mask.astype(np.uint8)
-        else:
-            txt_mask = None
-
         # `sample` projections.
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
