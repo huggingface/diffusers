@@ -314,7 +314,6 @@ def main(args):
 
             # SCM Scheduler for Sana Sprint
             scheduler_config = {
-                "num_train_timesteps": 1000,
                 "prediction_type": "trigflow",
                 "sigma_data": 0.5,
             }
@@ -378,7 +377,8 @@ if __name__ == "__main__":
         choices=[
             "SanaMS_1600M_P1_D20",
             "SanaMS_600M_P1_D28",
-            "SanaMS_4800M_P1_D60",
+            "SanaMS1.5_1600M_P1_D20",
+            "SanaMS1.5_4800M_P1_D60",
             "SanaSprint_1600M_P1_D20",
             "SanaSprint_600M_P1_D28",
         ],
@@ -421,7 +421,7 @@ if __name__ == "__main__":
             "cross_attention_dim": 2240,
             "num_layers": 20,
         },
-        "SanaMS1.5__4800M_P1_D60": {
+        "SanaMS1.5_4800M_P1_D60": {
             "num_attention_heads": 70,
             "attention_head_dim": 32,
             "num_cross_attention_heads": 20,
