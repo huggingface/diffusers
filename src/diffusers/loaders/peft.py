@@ -123,18 +123,20 @@ def _maybe_adjust_config_for_control_lora(config):
     modules_to_save = []
 
     for module in target_modules_before:
-        if "base_layer" in module:
-            continue
-        elif "modules_to_save" in module:
-            base_name = module.split(".modules_to_save.", 1)[0]
-            modules_to_save.append(base_name)
-        else:
+        if module.endswith("weight"):
             base_name = ".".join(module.split(".")[:-1])
-            if base_name and base_name not in modules_to_save:
-                target_modules.append(module)
+            modules_to_save.append(base_name)
+        elif module.endswith("bias"):
+            base_name = ".".join(module.split(".")[:-1])
+            if ".".join([base_name, "weight"]) in target_modules_before:
+                modules_to_save.append(base_name)
+            else:
+                target_modules.append(base_name)
+        else:
+            target_modules.append(module)
 
-    config["target_modules"] = target_modules
-    config["modules_to_save"] = modules_to_save
+    config["target_modules"] = list(set(target_modules))
+    config["modules_to_save"] = list(set(modules_to_save))
 
     return config
 
@@ -299,6 +301,9 @@ class PeftAdapterMixin:
             lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
             if is_control_lora:
                 lora_config_kwargs = _maybe_adjust_config_for_control_lora(lora_config_kwargs)
+            import json
+            with open("lora_config_kwargs.json", "w") as f:
+                json.dump(lora_config_kwargs, f, indent=2)
 
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
