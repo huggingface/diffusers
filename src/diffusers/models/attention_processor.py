@@ -2495,7 +2495,10 @@ class FluxAttnProcessor2_0:
                     hidden_states.shape[2],
                 ) 
                 txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
+                txt_mask_downsample[txt_mask_downsample>=0.5] *= 1.0/img_ratio
+
                 masked_txt_hidden_states = txt_hidden_states[:,512:,:] * txt_mask_downsample
+
                 
                 img_mask_downsample = IPAdapterMaskProcessor.downsample(
                     img_mask[0],
@@ -2504,9 +2507,10 @@ class FluxAttnProcessor2_0:
                     hidden_states.shape[2],
                 )
                 img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
+                txt_mask_downsample[txt_mask_downsample<=0.5] *= img_ratio
                 masked_img_hidden_states = img_hidden_states[:,729:,:] * img_mask_downsample
                 
-                hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states * (2.0 - img_ratio)+ masked_img_hidden_states * img_ratio],dim=1)
+                hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + masked_img_hidden_states],dim=1)
             else:
                 hidden_states = F.scaled_dot_product_attention(
                     query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
