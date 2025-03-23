@@ -1,8 +1,6 @@
 # Generating images using Flux and PyTorch/XLA
 
-The `flux_inference` script shows how to do image generation using Flux on TPU devices using PyTorch/XLA. It uses the pallas kernel for flash attention for faster generation.
-
-It has been tested on [Trillium](https://cloud.google.com/blog/products/compute/introducing-trillium-6th-gen-tpus) TPU versions. No other TPU types have been tested.
+The `flux_inference` script shows how to do image generation using Flux on TPU devices using PyTorch/XLA. It uses the pallas kernel for flash attention for faster generation using custom flash block sizes for better performance on [Trillium](https://cloud.google.com/blog/products/compute/introducing-trillium-6th-gen-tpus) TPU versions. No other TPU types have been tested.
 
 ## Create TPU
 
@@ -23,20 +21,23 @@ Verify that PyTorch and PyTorch/XLA were installed correctly:
 python3 -c "import torch; import torch_xla;"
 ```
 
-Install dependencies
+Clone the diffusers repo and install dependencies
 
 ```bash
+git clone https://github.com/huggingface/diffusers.git
+cd diffusers
 pip install transformers accelerate sentencepiece structlog
-pushd ../../..
 pip install .
-popd
+cd examples/research_projects/pytorch_xla/inference/flux/
 ```
 
 ## Run the inference job
 
 ### Authenticate
 
-Run the following command to authenticate your token in order to download Flux weights.
+**Gated Model**
+
+As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
 huggingface-cli login
