@@ -189,11 +189,14 @@ def retrieve_timesteps(
     elif sigmas is not None:
         accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accept_sigmas:
-            raise ValueError(
+            print(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" sigmas schedules. Please check whether you are using the correct scheduler."
+                f" sigmas schedules. Please check whether you are using the correct scheduler. The pipeline"
+                f" will continue without setting sigma values"
             )
-        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+            scheduler.set_timesteps(num_inference_steps, device=device)
+        else:
+            scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
     else:
@@ -651,6 +654,12 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
+        
+        if self.do_spatio_temporal_guidance:
+            for i in stg_applied_layers_idx:
+                self.transformer.transformer_blocks[i].forward = types.MethodType(
+                    forward_with_stg, self.transformer.transformer_blocks[i]
+                )
 
         device = self._execution_device
 
@@ -722,12 +731,6 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                if self.do_spatio_temporal_guidance:
-                    for i in stg_applied_layers_idx:
-                        self.transformer.transformer_blocks[i].forward = types.MethodType(
-                            forward_without_stg, self.transformer.transformer_blocks[i]
-                        )
-
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
@@ -740,11 +743,6 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                 )[0]
 
                 if self.do_spatio_temporal_guidance:
-                    for i in stg_applied_layers_idx:
-                        self.transformer.transformer_blocks[i].forward = types.MethodType(
-                            forward_with_stg, self.transformer.transformer_blocks[i]
-                        )
-
                     noise_pred_perturb = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
