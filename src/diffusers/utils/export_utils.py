@@ -3,7 +3,7 @@ import random
 import struct
 import tempfile
 from contextlib import contextmanager
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -139,8 +139,31 @@ def _legacy_export_to_video(
 
 
 def export_to_video(
-    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 10
+    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]],
+    output_video_path: str = None,
+    fps: int = 10,
+    quality: float = 5.0,
+    bitrate: Optional[int] = None,
+    macro_block_size: Optional[int] = 16,
 ) -> str:
+    """
+    quality:
+        Video output quality. Default is 5. Uses variable bit rate. Highest quality is 10, lowest is 0. Set to None to
+        prevent variable bitrate flags to FFMPEG so you can manually specify them using output_params instead.
+        Specifying a fixed bitrate using `bitrate` disables this parameter.
+
+    bitrate:
+        Set a constant bitrate for the video encoding. Default is None causing `quality` parameter to be used instead.
+        Better quality videos with smaller file sizes will result from using the `quality` variable bitrate parameter
+        rather than specifiying a fixed bitrate with this parameter.
+
+    macro_block_size:
+        Size constraint for video. Width and height, must be divisible by this number. If not divisible by this number
+        imageio will tell ffmpeg to scale the image up to the next closest size divisible by this number. Most codecs
+        are compatible with a macroblock size of 16 (default), some can go smaller (4, 8). To disable this automatic
+        feature set it to None or 1, however be warned many players can't decode videos that are odd in size and some
+        codecs will produce poor results or fail. See https://en.wikipedia.org/wiki/Macroblock.
+    """
     # TODO: Dhruv. Remove by Diffusers release 0.33.0
     # Added to prevent breaking existing code
     if not is_imageio_available():
@@ -177,7 +200,9 @@ def export_to_video(
     elif isinstance(video_frames[0], PIL.Image.Image):
         video_frames = [np.array(frame) for frame in video_frames]
 
-    with imageio.get_writer(output_video_path, fps=fps) as writer:
+    with imageio.get_writer(
+        output_video_path, fps=fps, quality=quality, bitrate=bitrate, macro_block_size=macro_block_size
+    ) as writer:
         for frame in video_frames:
             writer.append_data(frame)
 
