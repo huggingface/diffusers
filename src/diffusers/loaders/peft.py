@@ -301,9 +301,6 @@ class PeftAdapterMixin:
             lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
             if is_control_lora:
                 lora_config_kwargs = _maybe_adjust_config_for_control_lora(lora_config_kwargs)
-            import json
-            with open("lora_config_kwargs.json", "w") as f:
-                json.dump(lora_config_kwargs, f, indent=2)
 
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
