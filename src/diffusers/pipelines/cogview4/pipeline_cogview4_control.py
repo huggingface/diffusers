@@ -540,6 +540,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, defaults to `224`):
                 Maximum sequence length in encoded prompt. Can be set to other values but may lead to poorer results.
+        Examples:
 
         Returns:
             [`~pipelines.cogview4.pipeline_CogView4.CogView4PipelineOutput`] or `tuple`:
