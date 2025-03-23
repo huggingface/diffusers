@@ -2514,6 +2514,7 @@ class FluxAttnProcessor2_0:
                 ) 
 
                 img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
+                img_mask_downsample_2 = img_mask_downsample_2.to(dtype=query.dtype, device=query.device)
                 img_mask_downsample[img_mask_downsample < 1.0] *= img_ratio
                 masked_img_hidden_states = img_hidden_states[:,729:,:] * img_mask_downsample
                 
