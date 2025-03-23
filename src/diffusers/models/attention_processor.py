@@ -2503,9 +2503,16 @@ class FluxAttnProcessor2_0:
                     hidden_states.shape[2],
                 )
                 img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
+                
                 unique_vals = torch.unique(img_mask_downsample)
+                print(f'img_mask before unique_vals: {unique_vals}')  
 
-                print(f'img_mask unique_vals: {unique_vals}')  
+                indices = (img_mask_downsample > 0) & (img_mask_downsample < 1)
+                img_mask_downsample[indices] = 0
+
+                unique_vals = torch.unique(img_mask_downsample)
+                print(f'img_mask after unique_vals: {unique_vals}')  
+
                 masked_img_hidden_states = img_hidden_states[:,729:,:] * img_mask_downsample
                 
                 hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + masked_img_hidden_states],dim=1)
