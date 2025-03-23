@@ -194,7 +194,7 @@ def retrieve_timesteps(
                 f" sigmas schedules. Please check whether you are using the correct scheduler. The pipeline"
                 f" will continue without setting sigma values"
             )
-            scheduler.set_timesteps(num_inference_steps, device=device)
+            scheduler.set_timesteps(num_inference_steps=num_inference_steps, device=device, **kwargs)
         else:
             scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
         timesteps = scheduler.timesteps
@@ -727,7 +727,7 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
                 if self.do_spatio_temporal_guidance:
                     for stg_idx in stg_applied_layers_idx:
-                        self.transformer.transformer_blocks[i].forward = types.MethodType(
+                        self.transformer.transformer_blocks[stg_idx].forward = types.MethodType(
                             forward_without_stg, self.transformer.transformer_blocks[stg_idx]
                         )
 
@@ -744,7 +744,7 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
 
                 if self.do_spatio_temporal_guidance:
                     for stg_idx in stg_applied_layers_idx:
-                        self.transformer.transformer_blocks[i].forward = types.MethodType(
+                        self.transformer.transformer_blocks[stg_idx].forward = types.MethodType(
                             forward_with_stg, self.transformer.transformer_blocks[stg_idx]
                         )
 
