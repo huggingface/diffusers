@@ -461,10 +461,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             composed_image = Image.fromarray(composed_image.astype(np.uint8))
             image_latents = self.encode_image(composed_image, device, 1)
         else:
+            image = image.convert('RGB')
             image_latents = self.encode_image(image, device, 1)
 
         image_embeds = self.image_embedder(image_latents).image_embeds
-        print(f'image_embeds shape={image_embeds.shape}, batch_size={batch_size}')
         image_embeds = image_embeds.to(device=device)
     
         # 3. Prepare (dummy) text embeddings
