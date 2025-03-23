@@ -14,6 +14,7 @@
 
 
 from typing import List, Optional, Union
+import numpy as np
 
 import torch
 from PIL import Image
@@ -379,6 +380,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
+        product_ratio: Optional[float] = None,
         return_dict: bool = True,
     ):
         r"""
@@ -426,7 +428,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         if image is not None and isinstance(image, Image.Image):
             batch_size = 1
         elif image is not None and isinstance(image, list):
-            batch_size = len(image)
+            batch_size = 1 #len(image)
         else:
             batch_size = image.shape[0]
         if prompt is not None and isinstance(prompt, str):
@@ -439,7 +441,27 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. Prepare image embeddings
-        image_latents = self.encode_image(image, device, 1)
+        if isinstance(image, list) and product_ratio is not None:
+            image[1] = image[1].convert('RGBA')
+
+            rgba_np = np.array(image[1])
+            product_mask = rgba_np[:, :, 3]
+            product_mask = product_mask > 0
+            product_mask = np.stack((product_mask,)*3, axis=-1)
+
+            img = Image.new('RGBA', image[1].size, (255, 255, 255, 255)) 
+            img.paste(image[1], mask=image[1].split()[3])
+            img = img.convert('RGB')
+            product_image_array = np.asarray(img)
+
+            background_image_array = np.asarray(image[0].convert("RGB"))
+            background_mask = ~product_mask
+
+            composed_image = product_image_array * product_mask * product_ratio + background_image_array * product_mask * (1.0 - product_ratio) + background_image_array * background_mask
+            composed_image = Image.fromarray(composed_image.astype(np.uint8))
+            image_latents = self.encode_image(composed_image, device, 1)
+        else:
+            image_latents = self.encode_image(image, device, 1)
 
         image_embeds = self.image_embedder(image_latents).image_embeds
         image_embeds = image_embeds.to(device=device)
