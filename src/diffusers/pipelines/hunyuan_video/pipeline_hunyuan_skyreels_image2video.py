@@ -139,11 +139,14 @@ def retrieve_timesteps(
     elif sigmas is not None:
         accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accept_sigmas:
-            raise ValueError(
+            print(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" sigmas schedules. Please check whether you are using the correct scheduler."
+                f" sigmas schedules. Please check whether you are using the correct scheduler. The pipeline"
+                f" will continue without setting sigma values"
             )
-        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+            scheduler.set_timesteps(num_inference_steps, device=device)
+        else:
+            scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
     else:
