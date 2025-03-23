@@ -2507,7 +2507,7 @@ class FluxAttnProcessor2_0:
                 unique_vals = torch.unique(img_mask_downsample)
                 print(f'img_mask before unique_vals: {unique_vals}')  
 
-                indices = (img_mask_downsample > 0) & (img_mask_downsample < 1)
+                indices = (img_mask_downsample != 0.0) & (img_mask_downsample != 1.0)
                 img_mask_downsample[indices] = 0
 
                 unique_vals = torch.unique(img_mask_downsample)
