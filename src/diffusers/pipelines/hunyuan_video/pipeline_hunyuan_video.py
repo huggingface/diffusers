@@ -128,7 +128,7 @@ def retrieve_timesteps(
     elif sigmas is not None:
         accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accept_sigmas:
-            print(
+            logger.warning(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
                 f" sigmas schedules. Please check whether you are using the correct scheduler. The pipeline"
                 f" will continue without setting sigma values"
