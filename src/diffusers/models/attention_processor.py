@@ -2495,7 +2495,7 @@ class FluxAttnProcessor2_0:
                     hidden_states.shape[2],
                 ) 
                 txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
-                txt_mask_downsample[txt_mask_downsample>=0.5] *= 1.0/img_ratio
+                txt_mask_downsample[txt_mask_downsample>=0.5] *= (2.0 - img_ratio)
 
                 masked_txt_hidden_states = txt_hidden_states[:,512:,:] * txt_mask_downsample
 
