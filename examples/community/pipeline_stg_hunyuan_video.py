@@ -724,7 +724,7 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                 latent_model_input = latents.to(transformer_dtype)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                
+
                 if self.do_spatio_temporal_guidance:
                     for stg_idx in stg_applied_layers_idx:
                         self.transformer.transformer_blocks[i].forward = types.MethodType(
@@ -747,7 +747,7 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                         self.transformer.transformer_blocks[i].forward = types.MethodType(
                             forward_with_stg, self.transformer.transformer_blocks[stg_idx]
                         )
-                    
+
                     noise_pred_perturb = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
