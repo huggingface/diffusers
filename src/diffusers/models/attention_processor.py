@@ -2360,7 +2360,6 @@ class FluxAttnProcessor2_0:
         image_rotary_emb: Optional[torch.Tensor] = None,
         img_mask: Optional[torch.Tensor] = None, # thesea modification for ip mask
         txt_mask: Optional[torch.Tensor] = None, # thesea modification for ip mask
-        img_ratio: Optional[float] = None, # thesea modification for ip mask
     ) -> torch.FloatTensor:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         
@@ -2383,6 +2382,7 @@ class FluxAttnProcessor2_0:
 
         # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
         if encoder_hidden_states is not None:
+            # theseam modified
             if img_mask is not None:
                 # `context` projections.
                 encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states[:,0:512,:])
@@ -2457,6 +2457,7 @@ class FluxAttnProcessor2_0:
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
             
+            # theseam modified
             if encoder_hidden_states is not None:
                 if img_mask is not None:
                     cos, sin = image_rotary_emb
@@ -2474,6 +2475,7 @@ class FluxAttnProcessor2_0:
                 key = apply_rotary_emb(key, image_rotary_emb)
 
         if encoder_hidden_states is not None: 
+            # theseam modified
             if img_mask is not None:
                 txt_hidden_states = F.scaled_dot_product_attention(
                     txt_query, txt_key, txt_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
@@ -2495,10 +2497,8 @@ class FluxAttnProcessor2_0:
                     hidden_states.shape[2],
                 ) 
                 txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
-                txt_mask_downsample[txt_mask_downsample < 1.0] *= (2.0 - img_ratio)
                 masked_txt_hidden_states = txt_hidden_states[:,512:,:] * txt_mask_downsample
 
-                
                 img_mask_downsample = IPAdapterMaskProcessor.downsample(
                     img_mask[0],
                     batch_size,
@@ -2506,19 +2506,10 @@ class FluxAttnProcessor2_0:
                     hidden_states.shape[2],
                 )
 
-                img_mask_downsample_2 = IPAdapterMaskProcessor.downsample(
-                    img_mask[0],
-                    batch_size,
-                    729,
-                    hidden_states.shape[2],
-                ) 
-
                 img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
-                img_mask_downsample_2 = img_mask_downsample_2.to(dtype=query.dtype, device=query.device)
-                img_mask_downsample[img_mask_downsample < 1.0] *= img_ratio
                 masked_img_hidden_states = img_hidden_states[:,729:,:] * img_mask_downsample
                 
-                hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:] * img_mask_downsample_2, masked_txt_hidden_states + masked_img_hidden_states],dim=1)
+                hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + masked_img_hidden_states],dim=1)
             else:
                 hidden_states = F.scaled_dot_product_attention(
                     query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
