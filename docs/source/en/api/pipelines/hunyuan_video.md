@@ -22,7 +22,7 @@
 
 [HunyuanVideo](https://huggingface.co/papers/2412.03603) is a 13B diffusion transformer model designed to be competitive with closed-source video foundation models and enable wider community access. This model uses a "dual-stream to single-stream" architecture to separately process the video and text tokens first, before concatenating and feeding them to the transformer to fuse the multimodal information. A pretrained multimodal large language model (MLLM) is used as the encoder because it has better image-text alignment, better image detail description and reasoning, and it can be used as a zero-shot learner if system instructions are added to user prompts. Finally, HunyuanVideo uses a 3D causal variational autoencoder to more efficiently process video data at the original resolution and frame rate.
 
-You can find all the original HunyuanVideo checkpoints under the Tencent [organization](https://huggingface.co/tencent).
+You can find all the original HunyuanVideo checkpoints under the [Tencent](https://huggingface.co/tencent) organization.
 
 > [!TIP]
 > The examples below use a checkpoint from [hunyuanvideo-community](https://huggingface.co/hunyuanvideo-community) because the weights are stored in a layout compatible with Diffusers.
@@ -63,6 +63,8 @@ export_to_video(video, "output.mp4", fps=15)
 
 </hfoptions>
 <hfoption id="inference speed">
+
+Compilation is slow the first time but subsequent calls to the pipeline are faster.
 
 ```py
 import torch
