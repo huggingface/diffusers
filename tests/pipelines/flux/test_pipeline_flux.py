@@ -7,16 +7,24 @@ import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
+from diffusers import (
+    AutoencoderKL,
+    FasterCacheConfig,
+    FlowMatchEulerDiscreteScheduler,
+    FluxPipeline,
+    FluxTransformer2DModel,
+)
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     nightly,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     slow,
     torch_device,
 )
 
 from ..test_pipelines_common import (
+    FasterCacheTesterMixin,
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
@@ -26,7 +34,11 @@ from ..test_pipelines_common import (
 
 
 class FluxPipelineFastTests(
-    unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin, PyramidAttentionBroadcastTesterMixin
+    unittest.TestCase,
+    PipelineTesterMixin,
+    FluxIPAdapterTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    FasterCacheTesterMixin,
 ):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
@@ -35,6 +47,15 @@ class FluxPipelineFastTests(
     # there is no xformers processor for Flux
     test_xformers_attention = False
     test_layerwise_casting = True
+    test_group_offloading = True
+
+    faster_cache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
+        is_guidance_distilled=True,
+    )
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -135,30 +156,6 @@ class FluxPipelineFastTests(
         # For some reasons, they don't show large differences
         assert max_diff > 1e-6
 
-    def test_flux_prompt_embeds(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-
-        output_with_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        (prompt_embeds, pooled_prompt_embeds, text_ids) = pipe.encode_prompt(
-            prompt,
-            prompt_2=None,
-            device=torch_device,
-            max_sequence_length=inputs["max_sequence_length"],
-        )
-        output_with_embeds = pipe(
-            prompt_embeds=prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            **inputs,
-        ).images[0]
-
-        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
-
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -226,7 +223,7 @@ class FluxPipelineFastTests(
 
 
 @nightly
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
@@ -235,12 +232,12 @@ class FluxPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         generator = torch.Generator(device="cpu").manual_seed(seed)
@@ -314,7 +311,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
 
 
 @slow
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
@@ -326,12 +323,12 @@ class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         if str(device).startswith("mps"):

@@ -23,7 +23,9 @@ from safetensors import safe_open
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
+    _get_detailed_type,
     _get_model_file,
+    _is_valid_type,
     is_accelerate_available,
     is_torch_version,
     is_transformers_available,
@@ -213,7 +215,8 @@ class IPAdapterMixin:
                             low_cpu_mem_usage=low_cpu_mem_usage,
                             cache_dir=cache_dir,
                             local_files_only=local_files_only,
-                        ).to(self.device, dtype=self.dtype)
+                            torch_dtype=self.dtype,
+                        ).to(self.device)
                         self.register_modules(image_encoder=image_encoder)
                     else:
                         raise ValueError(
@@ -524,8 +527,9 @@ class FluxIPAdapterMixin:
                                 low_cpu_mem_usage=low_cpu_mem_usage,
                                 cache_dir=cache_dir,
                                 local_files_only=local_files_only,
+                                dtype=image_encoder_dtype,
                             )
-                            .to(self.device, dtype=image_encoder_dtype)
+                            .to(self.device)
                             .eval()
                         )
                         self.register_modules(image_encoder=image_encoder)
@@ -577,29 +581,36 @@ class FluxIPAdapterMixin:
         pipeline.set_ip_adapter_scale(ip_strengths)
         ```
         """
-        transformer = self.transformer
-        if not isinstance(scale, list):
-            scale = [[scale] * transformer.config.num_layers]
-        elif isinstance(scale, list) and isinstance(scale[0], int) or isinstance(scale[0], float):
-            if len(scale) != transformer.config.num_layers:
-                raise ValueError(f"Expected list of {transformer.config.num_layers} scales, got {len(scale)}.")
+
+        scale_type = Union[int, float]
+        num_ip_adapters = self.transformer.encoder_hid_proj.num_ip_adapters
+        num_layers = self.transformer.config.num_layers
+
+        # Single value for all layers of all IP-Adapters
+        if isinstance(scale, scale_type):
+            scale = [scale for _ in range(num_ip_adapters)]
+        # List of per-layer scales for a single IP-Adapter
+        elif _is_valid_type(scale, List[scale_type]) and num_ip_adapters == 1:
             scale = [scale]
+        # Invalid scale type
+        elif not _is_valid_type(scale, List[Union[scale_type, List[scale_type]]]):
+            raise TypeError(f"Unexpected type {_get_detailed_type(scale)} for scale.")
 
-        scale_configs = scale
+        if len(scale) != num_ip_adapters:
+            raise ValueError(f"Cannot assign {len(scale)} scales to {num_ip_adapters} IP-Adapters.")
 
-        key_id = 0
-        for attn_name, attn_processor in transformer.attn_processors.items():
-            if isinstance(attn_processor, (FluxIPAdapterJointAttnProcessor2_0)):
-                if len(scale_configs) != len(attn_processor.scale):
-                    raise ValueError(
-                        f"Cannot assign {len(scale_configs)} scale_configs to "
-                        f"{len(attn_processor.scale)} IP-Adapter."
-                    )
-                elif len(scale_configs) == 1:
-                    scale_configs = scale_configs * len(attn_processor.scale)
-                for i, scale_config in enumerate(scale_configs):
-                    attn_processor.scale[i] = scale_config[key_id]
-                key_id += 1
+        if any(len(s) != num_layers for s in scale if isinstance(s, list)):
+            invalid_scale_sizes = {len(s) for s in scale if isinstance(s, list)} - {num_layers}
+            raise ValueError(
+                f"Expected list of {num_layers} scales, got {', '.join(str(x) for x in invalid_scale_sizes)}."
+            )
+
+        # Scalars are transformed to lists with length num_layers
+        scale_configs = [[s] * num_layers if isinstance(s, scale_type) else s for s in scale]
+
+        # Set scales. zip over scale_configs prevents going into single transformer layers
+        for attn_processor, *scale in zip(self.transformer.attn_processors.values(), *scale_configs):
+            attn_processor.scale = scale
 
     def unload_ip_adapter(self):
         """
@@ -793,12 +804,10 @@ class SD3IPAdapterMixin:
                     }
 
                     self.register_modules(
-                        feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs).to(
-                            self.device, dtype=self.dtype
-                        ),
-                        image_encoder=SiglipVisionModel.from_pretrained(image_encoder_subfolder, **kwargs).to(
-                            self.device, dtype=self.dtype
-                        ),
+                        feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs),
+                        image_encoder=SiglipVisionModel.from_pretrained(
+                            image_encoder_subfolder, torch_dtype=self.dtype, **kwargs
+                        ).to(self.device),
                     )
                 else:
                     raise ValueError(

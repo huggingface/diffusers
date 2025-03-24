@@ -93,7 +93,9 @@ class KolorsPipelineImg2ImgFastTests(PipelineTesterMixin, unittest.TestCase):
             sample_size=128,
         )
         torch.manual_seed(0)
-        text_encoder = ChatGLMModel.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
+        text_encoder = ChatGLMModel.from_pretrained(
+            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.float32
+        )
         tokenizer = ChatGLMTokenizer.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
 
         components = {
@@ -152,3 +154,7 @@ class KolorsPipelineImg2ImgFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=7e-2)
+
+    @unittest.skip("Test not supported because kolors img2img doesn't take pooled embeds as inputs unline kolors t2i.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass

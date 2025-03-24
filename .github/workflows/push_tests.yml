@@ -349,7 +349,6 @@ jobs:
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --gpus 0 --shm-size "16gb" --ipc host
-
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
@@ -359,7 +358,6 @@ jobs:
     - name: NVIDIA-SMI
       run: |
         nvidia-smi
-
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"

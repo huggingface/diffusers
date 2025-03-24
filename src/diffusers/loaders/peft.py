@@ -52,6 +52,9 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HunyuanVideoTransformer3DModel": lambda model_cls, weights: weights,
     "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
     "SanaTransformer2DModel": lambda model_cls, weights: weights,
+    "Lumina2Transformer2DModel": lambda model_cls, weights: weights,
+    "WanTransformer3DModel": lambda model_cls, weights: weights,
+    "CogView4Transformer2DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -62,6 +65,9 @@ def _maybe_adjust_config(config):
     method removes the ambiguity by following what is described here:
     https://github.com/huggingface/diffusers/pull/9985#issuecomment-2493840028.
     """
+    # Track keys that have been explicitly removed to prevent re-adding them.
+    deleted_keys = set()
+
     rank_pattern = config["rank_pattern"].copy()
     target_modules = config["target_modules"]
     original_r = config["r"]
@@ -79,21 +85,22 @@ def _maybe_adjust_config(config):
         ambiguous_key = key
 
         if exact_matches and substring_matches:
-            # if ambiguous we update the rank associated with the ambiguous key (`proj_out`, for example)
+            # if ambiguous, update the rank associated with the ambiguous key (`proj_out`, for example)
             config["r"] = key_rank
-            # remove the ambiguous key from `rank_pattern` and update its rank to `r`, instead
+            # remove the ambiguous key from `rank_pattern` and record it as deleted
             del config["rank_pattern"][key]
+            deleted_keys.add(key)
+            # For substring matches, add them with the original rank only if they haven't been assigned already
             for mod in substring_matches:
-                # avoid overwriting if the module already has a specific rank
-                if mod not in config["rank_pattern"]:
+                if mod not in config["rank_pattern"] and mod not in deleted_keys:
                     config["rank_pattern"][mod] = original_r
 
-            # update the rest of the keys with the `original_r`
+            # Update the rest of the target modules with the original rank if not already set and not deleted
             for mod in target_modules:
-                if mod != ambiguous_key and mod not in config["rank_pattern"]:
+                if mod != ambiguous_key and mod not in config["rank_pattern"] and mod not in deleted_keys:
                     config["rank_pattern"][mod] = original_r
 
-    # handle alphas to deal with cases like
+    # Handle alphas to deal with cases like:
     # https://github.com/huggingface/diffusers/pull/9999#issuecomment-2516180777
     has_different_ranks = len(config["rank_pattern"]) > 1 and list(config["rank_pattern"])[0] != config["r"]
     if has_different_ranks:
@@ -229,10 +236,7 @@ class PeftAdapterMixin:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
-            keys = list(state_dict.keys())
-            model_keys = [k for k in keys if k.startswith(f"{prefix}.")]
-            if len(model_keys) > 0:
-                state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
+            state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}):
@@ -250,6 +254,7 @@ class PeftAdapterMixin:
                 # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
                 # Bias layers in LoRA only have a single dimension
                 if "lora_B" in key and val.ndim > 1:
+                    # TODO: revisit this after https://github.com/huggingface/peft/pull/2382 is merged.
                     rank[key] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
@@ -257,6 +262,7 @@ class PeftAdapterMixin:
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
+            # TODO: revisit this after https://github.com/huggingface/peft/pull/2382 is merged.
             lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
 
             if "use_dora" in lora_config_kwargs:
@@ -346,6 +352,15 @@ class PeftAdapterMixin:
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
+
+        if prefix is not None and not state_dict:
+            logger.warning(
+                f"No LoRA keys associated to {self.__class__.__name__} found with the {prefix=}. "
+                "This is safe to ignore if LoRA state dict didn't originally have any "
+                f"{self.__class__.__name__} related params. You can also try specifying `prefix=None` "
+                "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
+                "https://github.com/huggingface/diffusers/issues/new"
+            )
 
     def save_lora_adapter(
         self,

@@ -8,8 +8,10 @@ from PIL import Image, ImageOps
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import normalize, resize
 
-from ...utils import load_image
+from ...utils import get_logger, load_image
 
+
+logger = get_logger(__name__)
 
 _insightface_available = importlib.util.find_spec("insightface") is not None
 _consisid_eva_clip_available = importlib.util.find_spec("consisid_eva_clip") is not None
@@ -166,7 +168,7 @@ def process_face_embeddings(
 
     # incase insightface didn't detect face
     if id_ante_embedding is None:
-        print("fail to detect face using insightface, extract embedding on align face")
+        logger.warning("Failed to detect face using insightface. Extracting embedding with align face")
         id_ante_embedding = face_helper_2.get_feat(align_face)
 
     id_ante_embedding = torch.from_numpy(id_ante_embedding).to(device, weight_dtype)  # torch.Size([512])

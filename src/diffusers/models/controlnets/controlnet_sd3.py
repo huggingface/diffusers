@@ -40,6 +40,48 @@ class SD3ControlNetOutput(BaseOutput):
 
 
 class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+    r"""
+    ControlNet model for [Stable Diffusion 3](https://huggingface.co/papers/2403.03206).
+
+    Parameters:
+        sample_size (`int`, defaults to `128`):
+            The width/height of the latents. This is fixed during training since it is used to learn a number of
+            position embeddings.
+        patch_size (`int`, defaults to `2`):
+            Patch size to turn the input data into small patches.
+        in_channels (`int`, defaults to `16`):
+            The number of latent channels in the input.
+        num_layers (`int`, defaults to `18`):
+            The number of layers of transformer blocks to use.
+        attention_head_dim (`int`, defaults to `64`):
+            The number of channels in each head.
+        num_attention_heads (`int`, defaults to `18`):
+            The number of heads to use for multi-head attention.
+        joint_attention_dim (`int`, defaults to `4096`):
+            The embedding dimension to use for joint text-image attention.
+        caption_projection_dim (`int`, defaults to `1152`):
+            The embedding dimension of caption embeddings.
+        pooled_projection_dim (`int`, defaults to `2048`):
+            The embedding dimension of pooled text projections.
+        out_channels (`int`, defaults to `16`):
+            The number of latent channels in the output.
+        pos_embed_max_size (`int`, defaults to `96`):
+            The maximum latent height/width of positional embeddings.
+        extra_conditioning_channels (`int`, defaults to `0`):
+            The number of extra channels to use for conditioning for patch embedding.
+        dual_attention_layers (`Tuple[int, ...]`, defaults to `()`):
+            The number of dual-stream transformer blocks to use.
+        qk_norm (`str`, *optional*, defaults to `None`):
+            The normalization to use for query and key in the attention layer. If `None`, no normalization is used.
+        pos_embed_type (`str`, defaults to `"sincos"`):
+            The type of positional embedding to use. Choose between `"sincos"` and `None`.
+        use_pos_embed (`bool`, defaults to `True`):
+            Whether to use positional embeddings.
+        force_zeros_for_pooled_projection (`bool`, defaults to `True`):
+            Whether to force zeros for pooled projection embeddings. This is handled in the pipelines by reading the
+            config value of the ControlNet model.
+    """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -93,7 +135,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     JointTransformerBlock(
                         dim=self.inner_dim,
                         num_attention_heads=num_attention_heads,
-                        attention_head_dim=self.config.attention_head_dim,
+                        attention_head_dim=attention_head_dim,
                         context_pre_only=False,
                         qk_norm=qk_norm,
                         use_dual_attention=True if i in dual_attention_layers else False,
@@ -108,7 +150,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     SD3SingleTransformerBlock(
                         dim=self.inner_dim,
                         num_attention_heads=num_attention_heads,
-                        attention_head_dim=self.config.attention_head_dim,
+                        attention_head_dim=attention_head_dim,
                     )
                     for _ in range(num_layers)
                 ]
@@ -297,28 +339,28 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
+        hidden_states: torch.Tensor,
         controlnet_cond: torch.Tensor,
         conditioning_scale: float = 1.0,
-        encoder_hidden_states: torch.FloatTensor = None,
-        pooled_projections: torch.FloatTensor = None,
+        encoder_hidden_states: torch.Tensor = None,
+        pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
         The [`SD3Transformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
+            hidden_states (`torch.Tensor` of shape `(batch size, channel, height, width)`):
                 Input `hidden_states`.
             controlnet_cond (`torch.Tensor`):
                 The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.
-            encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
+            encoder_hidden_states (`torch.Tensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
+            pooled_projections (`torch.Tensor` of shape `(batch_size, projection_dim)`): Embeddings projected
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
@@ -437,11 +479,11 @@ class SD3MultiControlNetModel(ModelMixin):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
+        hidden_states: torch.Tensor,
         controlnet_cond: List[torch.tensor],
         conditioning_scale: List[float],
-        pooled_projections: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
+        pooled_projections: torch.Tensor,
+        encoder_hidden_states: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,

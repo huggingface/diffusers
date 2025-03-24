@@ -170,7 +170,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
 
     images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
@@ -995,7 +995,8 @@ def main(args):
     if args.enable_npu_flash_attention:
         if is_torch_npu_available():
             logger.info("npu flash attention enabled.")
-            transformer.enable_npu_flash_attention()
+            for block in transformer.transformer_blocks:
+                block.attn2.set_use_npu_flash_attention(True)
         else:
             raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
 
