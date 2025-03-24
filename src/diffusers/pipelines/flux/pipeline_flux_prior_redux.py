@@ -527,6 +527,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (prompt_embeds, pooled_prompt_embeds, mask)
+            return (prompt_embeds, pooled_prompt_embeds, composed_image, mask)
 
         return FluxPriorReduxPipelineOutput(prompt_embeds=prompt_embeds, pooled_prompt_embeds=pooled_prompt_embeds)
