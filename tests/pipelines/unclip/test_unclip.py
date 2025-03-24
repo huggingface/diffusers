@@ -303,6 +303,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
         shape = (batch_size, decoder.config.in_channels, decoder.config.sample_size, decoder.config.sample_size)
+        generator = torch.Generator(device=device).manual_seed(0)
         decoder_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
