@@ -381,6 +381,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         product_ratio: Optional[float] = None, # theseam modified
+        image_size: int = 1024,
         return_dict: bool = True,
     ):
         r"""
@@ -449,6 +450,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         if isinstance(image, list):
             if product_ratio is not None:
                 image[1] = image[1].convert('RGBA')
+                image[1] = image[1].resize((image_size, image_size), resample=Image.BICUBIC)
 
                 rgba_np = np.array(image[1])
                 product_mask = rgba_np[:, :, 3]
@@ -460,7 +462,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 img = img.convert('RGB')
                 product_image_array = np.asarray(img)
 
-                background_image_array = np.asarray(image[0].convert("RGB"))
+                image[0] = image[0].convert("RGB")
+                image[0] = image[0].resize((image_size, image_size), resample=Image.BICUBIC)
+
+                background_image_array = np.asarray(image[0])
                 background_mask = ~product_mask
 
                 composed_image = product_image_array * product_mask * product_ratio + background_image_array * product_mask * (1.0 - product_ratio) + background_image_array * background_mask
