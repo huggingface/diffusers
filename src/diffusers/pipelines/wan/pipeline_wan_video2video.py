@@ -434,7 +434,10 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             init_latents = (init_latents - latents_mean) * latents_std
 
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = self.scheduler.add_noise(init_latents, noise, timestep)
+            if hasattr(self.scheduler, "add_noise"):
+                latents = self.scheduler.add_noise(init_latents, noise, timestep)
+            else:
+                latents = self.scheduelr.scale_noise(init_latents, timestep, noise)
         else:
             latents = latents.to(device)
 
