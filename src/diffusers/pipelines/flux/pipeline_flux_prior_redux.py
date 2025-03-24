@@ -470,6 +470,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
                 composed_image = product_image_array * product_mask * product_ratio + background_image_array * product_mask * (1.0 - product_ratio) + background_image_array * background_mask
                 composed_image = Image.fromarray(composed_image.astype(np.uint8))
+
+                mask = Image.fromarray(background_mask.astype(np.uint8)*255)
                 image_latents = self.encode_image(composed_image, device, 1)
             else:
                 for img in image:
@@ -525,6 +527,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (prompt_embeds, pooled_prompt_embeds)
+            return (prompt_embeds, pooled_prompt_embeds, mask)
 
         return FluxPriorReduxPipelineOutput(prompt_embeds=prompt_embeds, pooled_prompt_embeds=pooled_prompt_embeds)
