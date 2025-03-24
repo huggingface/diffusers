@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. -->
 
-# Wan
-
-<div class="flex flex-wrap space-x-1">
-  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+<div style="float: right;">
+  <div class="flex flex-wrap space-x-1">
+    <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+  </div>
 </div>
+
+# Wan
 
 [Wan 2.1](https://github.com/Wan-Video/Wan2.1) by the Alibaba Wan Team.
 

@@ -23,7 +23,7 @@
 
 [CogVideoX](https://huggingface.co/papers/2408.06072) is a large diffusion transformer model - available in 2B and 5B parameters - designed to generate longer and more consistent videos from text. This model uses a 3D causal variational autoencoder to more efficiently process video data by reducing sequence length (and associated training compute) and preventing flickering in generated videos. An "expert" transformer with adaptive LayerNorm improves alignment between text and video, and 3D full attention helps accurately capture motion and time in generated videos.
 
-You can find all the original CogVideoX checkpoints under the CogVideoX [collection](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce).
+You can find all the original CogVideoX checkpoints under the [CogVideoX](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce) collection.
 
 > [!TIP]
 > Click on the CogVideoX models in the right sidebar for more examples of how to use CogVideoX for other video generation tasks.
