@@ -61,7 +61,7 @@ video = pipeline(prompt=prompt, num_frames=61, num_inference_steps=30).frames[0]
 export_to_video(video, "output.mp4", fps=15)
 ```
 
-</hfoptions>
+</hfoption>
 <hfoption id="inference speed">
 
 Compilation is slow the first time but subsequent calls to the pipeline are faster.
