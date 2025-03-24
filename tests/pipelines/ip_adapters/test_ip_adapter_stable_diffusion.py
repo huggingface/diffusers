@@ -377,9 +377,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.set_ip_adapter_scale(0.7)
 
         inputs = self.get_dummy_inputs()
-        id_embeds = load_pt("https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt")[
-            0
-        ]
+        id_embeds = load_pt(
+            "https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt",
+            map_location=torch_device,
+        )[0]
         id_embeds = id_embeds.reshape((2, 1, 1, 512))
         inputs["ip_adapter_image_embeds"] = [id_embeds]
         inputs["ip_adapter_image"] = None
