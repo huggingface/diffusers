@@ -457,6 +457,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     metadata = img.info
                     is_product = metadata.get('is_product')
                     is_product_list.append(is_product)
+
                     img = img.convert('RGBA')
                     img = img.resize((image_width, image_height), resample=Image.BICUBIC)
 
@@ -475,6 +476,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 product_mask = np.full((image_width, image_height, 3), True, dtype=bool)
                 image_mask = {}
                 for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
+                    print(f'index={index}, is_product={is_product}')
                     if is_product:
                         product_mask = product_mask & ~mask
                     else:
