@@ -476,6 +476,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 product_mask = np.full((image_width, image_height, 3), True, dtype=bool)
                 image_mask = {}
                 for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
+                    print(f'index={index}, is_product={is_product}')
                     if is_product.lower() == "true":
                         product_mask = product_mask & ~mask
                     else:
