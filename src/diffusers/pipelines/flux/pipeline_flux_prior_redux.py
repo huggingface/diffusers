@@ -497,7 +497,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 
                 composed_image = Image.fromarray(composed_image.astype(np.uint8))
 
-                mask = Image.fromarray(~product_mask.astype(np.uint8)*255)
+                mask = Image.fromarray(product_mask.astype(np.uint8)*255)
                 image_latents = self.encode_image(composed_image, device, 1)
             else:
                 for img in image:
