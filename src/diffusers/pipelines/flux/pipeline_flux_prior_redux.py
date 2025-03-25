@@ -381,7 +381,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         product_ratio: Optional[float] = None, # theseam modified
-        image_size: Optional[int] = None,
+        image_width: Optional[int] = 1024,
+        image_height: Optional[int] = 1024,
         return_dict: bool = True,
     ):
         r"""
@@ -446,34 +447,55 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. Prepare image embeddings
-        # theseam modified
+        # thesea modified
         if isinstance(image, list):
             if product_ratio is not None:
-                image[1] = image[1].convert('RGBA')
-                if image_size is not None:
-                    image[1] = image[1].resize((image_size, image_size), resample=Image.BICUBIC)
+                image_array_list = []
+                mask_list = []
+                is_product_list = []
+                for img in image:
+                    metadata = img.info
+                    is_product = metadata.get('is_product')
+                    is_product_list.append(is_product)
+                    img = img.convert('RGBA')
+                    img = img.resize((image_width, image_height), resample=Image.BICUBIC)
 
-                rgba_np = np.array(image[1])
-                product_mask = rgba_np[:, :, 3]
-                product_mask = product_mask > 0
-                product_mask = np.stack((product_mask,)*3, axis=-1)
+                    rgba_np = np.array(img)
+                    mask = rgba_np[:, :, 3]
+                    mask = mask > 0
+                    mask = np.stack((mask,)*3, axis=-1)
+                    mask_list.append(mask)
 
-                img = Image.new('RGBA', image[1].size, (255, 255, 255, 255)) 
-                img.paste(image[1], mask=image[1].split()[3])
-                img = img.convert('RGB')
-                product_image_array = np.asarray(img)
+                    tmp_img = Image.new('RGBA', img.size, (255, 255, 255, 255)) 
+                    tmp_img.paste(img, mask=img.split()[3])
+                    tmp_img = tmp_img.convert('RGB')
+                    image_array = np.asarray(tmp_img)
+                    image_array_list.append(image_array)
 
-                image[0] = image[0].convert("RGB")
-                if image_size is not None:
-                    image[0] = image[0].resize((image_size, image_size), resample=Image.BICUBIC)
+                product_mask = np.full((image_width, image_height), True, dtype=bool)
+                image_mask = {}
+                for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
+                    if is_product:
+                        product_mask = product_mask & ~mask
+                    else:
+                        product_mask = product_mask | mask
 
-                background_image_array = np.asarray(image[0])
-                background_mask = ~product_mask
+                    if index not in image_mask:
+                        image_mask[index] = mask
+                    else:
+                        for k in image_mask:
+                            image_mask[k] = image_mask[k] & ~mask 
 
-                composed_image = product_image_array * product_mask * product_ratio + background_image_array * product_mask * (1.0 - product_ratio) + background_image_array * background_mask
+                composed_image = np.zeros((image_width, image_height, 3))
+                for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
+                    if is_product:
+                        composed_image += img_array * image_mask[index] * product_ratio
+                    else:
+                        composed_image += img_array * image_mask[index]
+                
                 composed_image = Image.fromarray(composed_image.astype(np.uint8))
 
-                mask = Image.fromarray(background_mask.astype(np.uint8)*255)
+                mask = Image.fromarray(~product_mask.astype(np.uint8)*255)
                 image_latents = self.encode_image(composed_image, device, 1)
             else:
                 for img in image:
