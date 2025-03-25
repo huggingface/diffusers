@@ -472,7 +472,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     image_array = np.asarray(tmp_img)
                     image_array_list.append(image_array)
 
-                product_mask = np.full((image_width, image_height), True, dtype=bool)
+                product_mask = np.full((image_width, image_height, 3), True, dtype=bool)
                 image_mask = {}
                 for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
                     if is_product:
