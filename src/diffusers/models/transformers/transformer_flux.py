@@ -455,8 +455,6 @@ class FluxTransformer2DModel(
             if guidance is None
             else self.time_text_embed(timestep, guidance, pooled_projections)
         )
-
-        # thesea modifed for text prompt mask
         print(f'transformer flux encoder_hidden_states.ndim={encoder_hidden_states.ndim}')
         if encoder_hidden_states.ndim == 4:
             for index in range(encoder_hidden_states.ndim):

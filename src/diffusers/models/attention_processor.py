@@ -2434,7 +2434,6 @@ class FluxAttnProcessor2_0:
                 img_key = torch.cat([img_encoder_hidden_states_key_proj, key], dim=2)
                 img_value = torch.cat([img_encoder_hidden_states_value_proj, value], dim=2)
             elif prod_masks is not None:
-                print(f'attention processor encoder_hidden_states.shape={encoder_hidden_states.shape}')
                 if not prod_masks.shape[0] == encoder_hidden_states.shape[1]:
                     raise ValueError(
                         f"Length of text masks ({prod_masks.shape[0]}) must match "
@@ -2611,7 +2610,7 @@ class FluxAttnProcessor2_0:
                 for index in range(encoder_hidden_states.shape[1]):
                     encoder_hidden_states[:,index,:,:] = attn.to_add_out(encoder_hidden_states[:,index,:,:])
 
-            return hidden_states, encoder_hidden_states[:,-1,:,:]
+            return hidden_states, encoder_hidden_states
         else:
             return hidden_states
 
