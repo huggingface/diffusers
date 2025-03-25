@@ -296,14 +296,8 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             if guidance is None
             else self.time_text_embed(timestep, guidance, pooled_projections)
         )
-        # thesea modifed for text prompt mask
-        print(f'ctln transformer flux encoder_hidden_states.ndim={encoder_hidden_states.ndim}')
-        if encoder_hidden_states.ndim == 4:
-            for index in range(encoder_hidden_states.ndim):
-                encoder_hidden_states[:,index,:,:] = self.context_embedder(encoder_hidden_states[:,index,:,:])
-        else:
-            encoder_hidden_states = self.context_embedder(encoder_hidden_states)
-        
+        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+
         if self.union:
             # union mode
             if controlnet_mode is None:
@@ -350,7 +344,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
             block_samples = block_samples + (hidden_states,)
 
-        print(f'ctln encoder_hidden_states shape={encoder_hidden_states.shape}, hidden_states shape={hidden_states.shape}')
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         single_block_samples = ()
