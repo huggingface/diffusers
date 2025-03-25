@@ -28,9 +28,10 @@ from diffusers import (
     PixArtTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -143,6 +144,10 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    @unittest.skip("Test is already covered through encode_prompt isolation.")
+    def test_save_load_optional_components(self):
+        pass
+
     def test_inference_with_embeddings_and_multiple_images(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -254,7 +259,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     ckpt_id_1024 = "PixArt-alpha/PixArt-XL-2-1024-MS"
     ckpt_id_512 = "PixArt-alpha/PixArt-XL-2-512x512"
@@ -263,18 +268,18 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_pixart_1024(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
@@ -289,7 +294,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
 
@@ -305,7 +310,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
         height, width = 1024, 768
@@ -339,7 +344,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
         height, width = 512, 768

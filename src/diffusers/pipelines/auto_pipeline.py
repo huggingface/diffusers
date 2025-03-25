@@ -22,7 +22,7 @@ from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
-from .cogview4 import CogView4Pipeline
+from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -69,8 +69,8 @@ from .kandinsky2_2 import (
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
-from .lumina import LuminaText2ImgPipeline
-from .lumina2 import Lumina2Text2ImgPipeline
+from .lumina import LuminaPipeline
+from .lumina2 import Lumina2Pipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
@@ -141,10 +141,11 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux", FluxPipeline),
         ("flux-control", FluxControlPipeline),
         ("flux-controlnet", FluxControlNetPipeline),
-        ("lumina", LuminaText2ImgPipeline),
-        ("lumina2", Lumina2Text2ImgPipeline),
+        ("lumina", LuminaPipeline),
+        ("lumina2", Lumina2Pipeline),
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
+        ("cogview4-control", CogView4ControlPipeline),
     ]
 )
 

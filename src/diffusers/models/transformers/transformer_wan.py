@@ -13,14 +13,15 @@
 # limitations under the License.
 
 import math
-from typing import Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
@@ -109,9 +110,9 @@ class WanImageEmbedding(torch.nn.Module):
     def __init__(self, in_features: int, out_features: int):
         super().__init__()
 
-        self.norm1 = nn.LayerNorm(in_features)
+        self.norm1 = FP32LayerNorm(in_features)
         self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
-        self.norm2 = nn.LayerNorm(out_features)
+        self.norm2 = FP32LayerNorm(out_features)
 
     def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
         hidden_states = self.norm1(encoder_hidden_states_image)
@@ -287,7 +288,7 @@ class WanTransformerBlock(nn.Module):
         return hidden_states
 
 
-class WanTransformer3DModel(ModelMixin, ConfigMixin):
+class WanTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A Transformer model for video-like data used in the Wan model.
 
@@ -328,6 +329,7 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["WanTransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
     def __init__(
@@ -391,7 +393,23 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size
         post_patch_num_frames = num_frames // p_t
@@ -423,6 +441,14 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 5. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+
+        # Move the shift and scale tensors to the same device as hidden_states.
+        # When using multi-GPU inference via accelerate these will be on the
+        # first device rather than the last device, which hidden_states ends up
+        # on.
+        shift = shift.to(hidden_states.device)
+        scale = scale.to(hidden_states.device)
+
         hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
@@ -431,6 +457,10 @@ class WanTransformer3DModel(ModelMixin, ConfigMixin):
         )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
         output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

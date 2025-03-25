@@ -5,10 +5,17 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, LuminaNextDiT2DModel, LuminaText2ImgPipeline
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    LuminaNextDiT2DModel,
+    LuminaPipeline,
+    LuminaText2ImgPipeline,
+)
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -16,8 +23,8 @@ from diffusers.utils.testing_utils import (
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
-    pipeline_class = LuminaText2ImgPipeline
+class LuminaPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+    pipeline_class = LuminaPipeline
     params = frozenset(
         [
             "prompt",
@@ -98,22 +105,28 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
     def test_xformers_attention_forwardGenerator_pass(self):
         pass
 
+    def test_deprecation_raises_warning(self):
+        with self.assertWarns(FutureWarning) as warning:
+            _ = LuminaText2ImgPipeline(**self.get_dummy_components()).to(torch_device)
+        warning_message = str(warning.warnings[0].message)
+        assert "renamed to `LuminaPipeline`" in warning_message
+
 
 @slow
-@require_torch_gpu
-class LuminaText2ImgPipelineSlowTests(unittest.TestCase):
-    pipeline_class = LuminaText2ImgPipeline
+@require_torch_accelerator
+class LuminaPipelineSlowTests(unittest.TestCase):
+    pipeline_class = LuminaPipeline
     repo_id = "Alpha-VLLM/Lumina-Next-SFT-diffusers"
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
@@ -131,7 +144,7 @@ class LuminaText2ImgPipelineSlowTests(unittest.TestCase):
 
     def test_lumina_inference(self):
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
 

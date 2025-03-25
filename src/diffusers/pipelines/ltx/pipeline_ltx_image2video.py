@@ -764,9 +764,8 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare micro-conditions
-        latent_frame_rate = frame_rate / self.vae_temporal_compression_ratio
         rope_interpolation_scale = (
-            1 / latent_frame_rate,
+            self.vae_temporal_compression_ratio / frame_rate,
             self.vae_spatial_compression_ratio,
             self.vae_spatial_compression_ratio,
         )
