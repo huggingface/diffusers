@@ -484,8 +484,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
                     if index not in image_mask:
                         image_mask[index] = mask
-                    else:
-                        for k in image_mask:
+                    for k in image_mask:
+                        if k != index:
                             image_mask[k] = image_mask[k] & ~mask 
 
                 composed_image = np.zeros((image_width, image_height, 3))
