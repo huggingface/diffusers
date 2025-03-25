@@ -554,7 +554,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         if not return_dict:
             if product_ratio is not None:
-                return (prompt_embeds, pooled_prompt_embeds, composed_image, mask)
+                return (prompt_embeds, pooled_prompt_embeds, composed_image, mask, mask_list, image_array_list)
             else:
                 return (prompt_embeds, pooled_prompt_embeds)
 
