@@ -303,6 +303,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 encoder_hidden_states[:,index,:,:] = self.context_embedder(encoder_hidden_states[:,index,:,:])
         else:
             encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+            encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         
         if self.union:
             # union mode

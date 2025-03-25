@@ -2607,11 +2607,12 @@ class FluxAttnProcessor2_0:
 
             if prod_masks is None:
                 encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+                return hidden_states, encoder_hidden_states
             else:
                 for index in range(encoder_hidden_states.shape[1]):
                     encoder_hidden_states[:,index,:,:] = attn.to_add_out(encoder_hidden_states[:,index,:,:])
 
-            return hidden_states, encoder_hidden_states[:,-1,:,:]
+                return hidden_states, encoder_hidden_states[:,-1,:,:]
         else:
             return hidden_states
 
