@@ -476,8 +476,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 product_mask = np.full((image_width, image_height, 3), True, dtype=bool)
                 image_mask = {}
                 for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
-                    print(f'index={index}, is_product={is_product}')
-                    if is_product:
+                    if is_product.lower() == "true":
                         product_mask = product_mask & ~mask
                     else:
                         product_mask = product_mask | mask
@@ -490,7 +489,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
                 composed_image = np.zeros((image_width, image_height, 3))
                 for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
-                    if is_product:
+                    if is_product.lower() == "true":
                         composed_image += img_array * image_mask[index] * product_ratio
                     else:
                         composed_image += img_array * image_mask[index]
