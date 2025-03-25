@@ -374,6 +374,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput,
+        layer_type: Optional[Union[str, List[str]]] = None,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -453,10 +454,13 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 image_array_list = []
                 mask_list = []
                 is_product_list = []
-                for img in image:
-                    metadata = img.info
-                    is_product = metadata.get('is_product')
-                    is_product_list.append(is_product)
+                for img, type in zip(image, layer_type):
+                    #metadata = img.info
+                    #is_product = metadata.get('is_product')
+                    if 'product' in type:
+                        is_product_list.append('true')
+                    else:
+                        is_product_list.append('false')
 
                     img = img.convert('RGBA')
                     img = img.resize((image_width, image_height), resample=Image.BICUBIC)

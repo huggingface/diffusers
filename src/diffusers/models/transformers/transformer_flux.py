@@ -455,7 +455,12 @@ class FluxTransformer2DModel(
             if guidance is None
             else self.time_text_embed(timestep, guidance, pooled_projections)
         )
-        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+        print(f'transformer flux encoder_hidden_states.ndim={encoder_hidden_states.ndim}')
+        if encoder_hidden_states.ndim == 4:
+            for index in range(encoder_hidden_states.ndim):
+                encoder_hidden_states[:,index,:,:] = self.context_embedder(encoder_hidden_states[:,index,:,:])
+        else:
+            encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         if txt_ids.ndim == 3:
             logger.warning(
