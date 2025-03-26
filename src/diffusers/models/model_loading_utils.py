@@ -264,7 +264,6 @@ def load_model_dict_into_meta(
             old_param = None
 
         if old_param is not None:
-            # Do not cast parameters if the model is quantized
             if dtype is None:
                 param = param.to(old_param.dtype)
 
