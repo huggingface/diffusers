@@ -265,7 +265,7 @@ def load_model_dict_into_meta(
 
         if old_param is not None:
             # Do not cast parameters if the model is quantized
-            if dtype is None and hf_quantizer is None:
+            if dtype is None:
                 param = param.to(old_param.dtype)
 
             if old_param.is_contiguous():
