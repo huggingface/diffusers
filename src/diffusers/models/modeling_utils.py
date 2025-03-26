@@ -37,7 +37,6 @@ from torch import Tensor, nn
 from typing_extensions import Self
 
 from .. import __version__
-from ..hooks import apply_group_offloading, apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -504,6 +503,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
         """
+        from ..hooks import apply_layerwise_casting
 
         user_provided_patterns = True
         if skip_modules_pattern is None:
@@ -570,6 +570,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             ... )
             ```
         """
+        from ..hooks import apply_group_offloading
+
         if getattr(self, "enable_tiling", None) is not None and getattr(self, "use_tiling", False) and use_stream:
             msg = (
                 "Applying group offloading on autoencoders, with CUDA streams, may not work as expected if the first "
@@ -878,7 +880,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
@@ -891,7 +893,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
-        if not isinstance(torch_dtype, torch.dtype):
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
             logger.warning(
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."

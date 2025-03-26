@@ -6020,6 +6020,11 @@ class SanaLinearAttnProcessor2_0:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
         query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
         key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
         value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
