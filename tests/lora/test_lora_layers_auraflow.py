@@ -74,6 +74,7 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
     text_encoder_cls, text_encoder_id = UMT5EncoderModel, "hf-internal-testing/tiny-random-umt5"
     text_encoder_target_modules = ["q", "k", "v", "o"]
+    denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0", "linear_1"]
 
     @property
     def output_shape(self):

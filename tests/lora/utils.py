@@ -104,6 +104,7 @@ class PeftLoraLoaderMixinTests:
     vae_kwargs = None
 
     text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
+    denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
 
     def get_dummy_components(self, scheduler_cls=None, use_dora=False):
         if self.unet_kwargs and self.transformer_kwargs:
@@ -157,7 +158,7 @@ class PeftLoraLoaderMixinTests:
         denoiser_lora_config = LoraConfig(
             r=rank,
             lora_alpha=rank,
-            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            target_modules=self.denoiser_target_modules,
             init_lora_weights=False,
             use_dora=use_dora,
         )
@@ -2040,7 +2041,7 @@ class PeftLoraLoaderMixinTests:
         bias_values = {}
         denoiser = pipe.unet if self.unet_kwargs is not None else pipe.transformer
         for name, module in denoiser.named_modules():
-            if any(k in name for k in ["to_q", "to_k", "to_v", "to_out.0"]):
+            if any(k in name for k in self.denoiser_target_modules):
                 if module.bias is not None:
                     bias_values[name] = module.bias.data.clone()
 
