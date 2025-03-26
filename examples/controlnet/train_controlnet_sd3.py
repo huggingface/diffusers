@@ -261,7 +261,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="Path to pretrained controlnet model or model identifier from huggingface.co/models."
-        " If not specified controlnet weights are initialized from unet.",
+        " If not specified controlnet weights are initialized from transformer.",
     )
     parser.add_argument(
         "--num_extra_conditioning_channels",
