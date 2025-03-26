@@ -8,8 +8,9 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProject
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     slow,
     torch_device,
 )
@@ -231,7 +232,7 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 
 @slow
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @pytest.mark.big_gpu_with_torch_cuda
 class StableDiffusion3PipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Pipeline
@@ -240,12 +241,12 @@ class StableDiffusion3PipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
@@ -263,7 +264,7 @@ class StableDiffusion3PipelineSlowTests(unittest.TestCase):
 
     def test_sd3_inference(self):
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
 
