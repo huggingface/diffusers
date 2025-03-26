@@ -686,7 +686,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         from_flax = kwargs.pop("from_flax", False)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        torch_dtype = kwargs.pop("torch_dtype", None)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
@@ -704,7 +704,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         quantization_config = kwargs.pop("quantization_config", None)
 
-        if not isinstance(torch_dtype, torch.dtype):
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
             logger.warning(
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
@@ -1458,8 +1458,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if load_components_from_hub and not trust_remote_code:
                 raise ValueError(
-                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k,v in custom_components.items()])} which must be executed to correctly "
-                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k,v in custom_components.items()])}.\n"
+                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k, v in custom_components.items()])} which must be executed to correctly "
+                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k, v in custom_components.items()])}.\n"
                     f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
                 )
 
