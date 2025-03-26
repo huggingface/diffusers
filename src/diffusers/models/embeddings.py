@@ -336,7 +336,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
             " `from_numpy` is no longer required."
             "  Pass `output_type='pt' to use the new version now."
         )
-        deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
+        deprecate("output_type=='np'", "0.34.0", deprecation_message, standard_warn=False)
         return get_1d_sincos_pos_embed_from_grid_np(embed_dim=embed_dim, pos=pos)
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
@@ -1154,6 +1154,9 @@ def get_1d_rotary_pos_embed(
         / linear_factor
     )  # [D/2]
     freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
+    is_npu = freqs.device.type == "npu"
+    if is_npu:
+        freqs = freqs.float()
     if use_real and repeat_interleave_real:
         # flux, hunyuan-dit, cogvideox
         freqs_cos = freqs.cos().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]

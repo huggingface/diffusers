@@ -131,8 +131,10 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["hooks"].extend(
         [
+            "FasterCacheConfig",
             "HookRegistry",
             "PyramidAttentionBroadcastConfig",
+            "apply_faster_cache",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -271,6 +273,7 @@ else:
             "RePaintScheduler",
             "SASolverScheduler",
             "SchedulerMixin",
+            "SCMScheduler",
             "ScoreSdeVeScheduler",
             "TCDScheduler",
             "UnCLIPScheduler",
@@ -345,6 +348,7 @@ else:
             "CogVideoXPipeline",
             "CogVideoXVideoToVideoPipeline",
             "CogView3PlusPipeline",
+            "CogView4ControlPipeline",
             "CogView4Pipeline",
             "ConsisIDPipeline",
             "CycleDiffusionPipeline",
@@ -401,9 +405,12 @@ else:
             "LDMTextToImagePipeline",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+            "LTXConditionPipeline",
             "LTXImageToVideoPipeline",
             "LTXPipeline",
+            "Lumina2Pipeline",
             "Lumina2Text2ImgPipeline",
+            "LuminaPipeline",
             "LuminaText2ImgPipeline",
             "MarigoldDepthPipeline",
             "MarigoldIntrinsicsPipeline",
@@ -419,6 +426,7 @@ else:
             "ReduxImageEncoder",
             "SanaPAGPipeline",
             "SanaPipeline",
+            "SanaSprintPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -699,7 +707,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .hooks import HookRegistry, PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+        from .hooks import (
+            FasterCacheConfig,
+            HookRegistry,
+            PyramidAttentionBroadcastConfig,
+            apply_faster_cache,
+            apply_pyramid_attention_broadcast,
+        )
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -832,6 +846,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             RePaintScheduler,
             SASolverScheduler,
             SchedulerMixin,
+            SCMScheduler,
             ScoreSdeVeScheduler,
             TCDScheduler,
             UnCLIPScheduler,
@@ -887,6 +902,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogVideoXPipeline,
             CogVideoXVideoToVideoPipeline,
             CogView3PlusPipeline,
+            CogView4ControlPipeline,
             CogView4Pipeline,
             ConsisIDPipeline,
             CycleDiffusionPipeline,
@@ -943,9 +959,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+            LTXConditionPipeline,
             LTXImageToVideoPipeline,
             LTXPipeline,
+            Lumina2Pipeline,
             Lumina2Text2ImgPipeline,
+            LuminaPipeline,
             LuminaText2ImgPipeline,
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
@@ -961,6 +980,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ReduxImageEncoder,
             SanaPAGPipeline,
             SanaPipeline,
+            SanaSprintPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,

@@ -390,12 +390,16 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         return self._num_timesteps
 
     @property
-    def interrupt(self):
-        return self._interrupt
-
-    @property
     def attention_kwargs(self):
         return self._attention_kwargs
+
+    @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
+    def interrupt(self):
+        return self._interrupt
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -533,6 +537,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         )
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # Default call parameters
@@ -610,6 +615,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 latent_model_input = latents.to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -660,6 +666,8 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
+        self._current_timestep = None
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
