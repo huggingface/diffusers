@@ -12,44 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import inspect
 import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
-from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3DModel, DDIMScheduler
+from diffusers import AutoencoderDC, SanaSprintPipeline, SanaTransformer2DModel, SCMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    numpy_cosine_similarity_distance,
-    require_torch_accelerator,
-    slow,
     torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import (
-    FasterCacheTesterMixin,
-    PipelineTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
-    to_np,
-)
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class CogVideoXPipelineFastTests(
-    PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, FasterCacheTesterMixin, unittest.TestCase
-):
-    pipeline_class = CogVideoXPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+class SanaSprintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = SanaSprintPipeline
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "negative_prompt", "negative_prompt_embeds"}
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS - {"negative_prompt"}
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS - {"negative_prompt"}
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
         [
@@ -65,54 +52,69 @@ class CogVideoXPipelineFastTests(
     test_layerwise_casting = True
     test_group_offloading = True
 
-    def get_dummy_components(self, num_layers: int = 1):
+    def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = CogVideoXTransformer3DModel(
-            # Product of num_attention_heads * attention_head_dim must be divisible by 16 for 3D positional embeddings
-            # But, since we are using tiny-random-t5 here, we need the internal dim of CogVideoXTransformer3DModel
-            # to be 32. The internal dim is product of num_attention_heads and attention_head_dim
-            num_attention_heads=4,
-            attention_head_dim=8,
+        transformer = SanaTransformer2DModel(
+            patch_size=1,
             in_channels=4,
             out_channels=4,
-            time_embed_dim=2,
-            text_embed_dim=32,  # Must match with tiny-random-t5
-            num_layers=num_layers,
-            sample_width=2,  # latent width: 2 -> final width: 16
-            sample_height=2,  # latent height: 2 -> final height: 16
-            sample_frames=9,  # latent frames: (9 - 1) / 4 + 1 = 3 -> final frames: 9
-            patch_size=2,
-            temporal_compression_ratio=4,
-            max_text_seq_length=16,
+            num_layers=1,
+            num_attention_heads=2,
+            attention_head_dim=4,
+            num_cross_attention_heads=2,
+            cross_attention_head_dim=4,
+            cross_attention_dim=8,
+            caption_channels=8,
+            sample_size=32,
+            qk_norm="rms_norm_across_heads",
+            guidance_embeds=True,
         )
 
         torch.manual_seed(0)
-        vae = AutoencoderKLCogVideoX(
+        vae = AutoencoderDC(
             in_channels=3,
-            out_channels=3,
-            down_block_types=(
-                "CogVideoXDownBlock3D",
-                "CogVideoXDownBlock3D",
-                "CogVideoXDownBlock3D",
-                "CogVideoXDownBlock3D",
-            ),
-            up_block_types=(
-                "CogVideoXUpBlock3D",
-                "CogVideoXUpBlock3D",
-                "CogVideoXUpBlock3D",
-                "CogVideoXUpBlock3D",
-            ),
-            block_out_channels=(8, 8, 8, 8),
             latent_channels=4,
-            layers_per_block=1,
-            norm_num_groups=2,
-            temporal_compression_ratio=4,
+            attention_head_dim=2,
+            encoder_block_types=(
+                "ResBlock",
+                "EfficientViTBlock",
+            ),
+            decoder_block_types=(
+                "ResBlock",
+                "EfficientViTBlock",
+            ),
+            encoder_block_out_channels=(8, 8),
+            decoder_block_out_channels=(8, 8),
+            encoder_qkv_multiscales=((), (5,)),
+            decoder_qkv_multiscales=((), (5,)),
+            encoder_layers_per_block=(1, 1),
+            decoder_layers_per_block=[1, 1],
+            downsample_block_type="conv",
+            upsample_block_type="interpolate",
+            decoder_norm_types="rms_norm",
+            decoder_act_fns="silu",
+            scaling_factor=0.41407,
         )
 
         torch.manual_seed(0)
-        scheduler = DDIMScheduler()
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        scheduler = SCMScheduler()
+
+        torch.manual_seed(0)
+        text_encoder_config = Gemma2Config(
+            head_dim=16,
+            hidden_size=8,
+            initializer_range=0.02,
+            intermediate_size=64,
+            max_position_embeddings=8192,
+            model_type="gemma2",
+            num_attention_heads=2,
+            num_hidden_layers=1,
+            num_key_value_heads=2,
+            vocab_size=8,
+            attn_implementation="eager",
+        )
+        text_encoder = Gemma2Model(text_encoder_config)
+        tokenizer = GemmaTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
 
         components = {
             "transformer": transformer,
@@ -129,17 +131,15 @@ class CogVideoXPipelineFastTests(
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "prompt": "dance monkey",
-            "negative_prompt": "",
+            "prompt": "",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            # Cannot reduce because convolution kernel becomes bigger than sample
-            "height": 16,
-            "width": 16,
-            "num_frames": 8,
+            "height": 32,
+            "width": 32,
             "max_sequence_length": 16,
             "output_type": "pt",
+            "complex_human_instruction": None,
         }
         return inputs
 
@@ -152,12 +152,12 @@ class CogVideoXPipelineFastTests(
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
-        generated_video = video[0]
+        image = pipe(**inputs)[0]
+        generated_image = image[0]
 
-        self.assertEqual(generated_video.shape, (8, 3, 16, 16))
-        expected_video = torch.randn(8, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
+        self.assertEqual(generated_image.shape, (3, 32, 32))
+        expected_image = torch.randn(3, 32, 32)
+        max_diff = np.abs(generated_image - expected_image).max()
         self.assertLessEqual(max_diff, 1e10)
 
     def test_callback_inputs(self):
@@ -219,9 +219,6 @@ class CogVideoXPipelineFastTests(
         output = pipe(**inputs)[0]
         assert output.abs().sum() < 1e10
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
-
     def test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
     ):
@@ -274,8 +271,8 @@ class CogVideoXPipelineFastTests(
         pipe.vae.enable_tiling(
             tile_sample_min_height=96,
             tile_sample_min_width=96,
-            tile_overlap_factor_height=1 / 12,
-            tile_overlap_factor_width=1 / 12,
+            tile_sample_stride_height=64,
+            tile_sample_stride_width=64,
         )
         inputs = self.get_dummy_inputs(generator_device)
         inputs["height"] = inputs["width"] = 128
@@ -287,79 +284,19 @@ class CogVideoXPipelineFastTests(
             "VAE tiling should not affect the inference results",
         )
 
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+    # TODO(aryan): Create a dummy gemma model with smol vocab size
+    @unittest.skip(
+        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+    )
+    def test_inference_batch_consistent(self):
+        pass
 
-        inputs = self.get_dummy_inputs(device)
-        frames = pipe(**inputs).frames  # [B, F, C, H, W]
-        original_image_slice = frames[0, -2:, -1, -3:, -3:]
+    @unittest.skip(
+        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+    )
+    def test_inference_batch_single_identical(self):
+        pass
 
-        pipe.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(
-            pipe.transformer
-        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
-
-        inputs = self.get_dummy_inputs(device)
-        frames = pipe(**inputs).frames
-        image_slice_fused = frames[0, -2:, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        frames = pipe(**inputs).frames
-        image_slice_disabled = frames[0, -2:, -1, -3:, -3:]
-
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
-
-
-@slow
-@require_torch_accelerator
-class CogVideoXPipelineIntegrationTests(unittest.TestCase):
-    prompt = "A painting of a squirrel eating a burger."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def test_cogvideox(self):
-        generator = torch.Generator("cpu").manual_seed(0)
-
-        pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload(device=torch_device)
-        prompt = self.prompt
-
-        videos = pipe(
-            prompt=prompt,
-            height=480,
-            width=720,
-            num_frames=16,
-            generator=generator,
-            num_inference_steps=2,
-            output_type="pt",
-        ).frames
-
-        video = videos[0]
-        expected_video = torch.randn(1, 16, 480, 720, 3).numpy()
-
-        max_diff = numpy_cosine_similarity_distance(video, expected_video)
-        assert max_diff < 1e-3, f"Max diff is too high. got {video}"
+    def test_float16_inference(self):
+        # Requires higher tolerance as model seems very sensitive to dtype
+        super().test_float16_inference(expected_max_diff=0.08)
