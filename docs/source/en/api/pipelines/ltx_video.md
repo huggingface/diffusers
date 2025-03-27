@@ -20,17 +20,21 @@
 
 # LTX-Video
 
-[LTX-Video](https://huggingface.co/Lightricks/LTX-Video) is a diffusion transformer designed for fast and real-time generation of high-resolution videos from text and images. The main feature of LTX-Video is the Video-VAE. The Video-VAE has a higher pixel to latent compression ratio (1:192) which enables more efficient video data processing and faster generation speed. To support and prevent the finer details from being lost during generation, the Video-VAE decoder performs the latent to pixel conversion *and* the last denoising step.
+[LTX-Video](https://huggingface.co/Lightricks/LTX-Video) is a diffusion transformer designed for fast and real-time generation of high-resolution videos from text and images. The main feature of LTX-Video is the Video-VAE. The Video-VAE has a higher pixel to latent compression ratio (1:192) which enables more efficient video data processing and faster generation speed. To support and prevent finer details from being lost during generation, the Video-VAE decoder performs the latent to pixel conversion *and* the last denoising step.
 
 You can find all the original LTX-Video checkpoints under the [Lightricks](https://huggingface.co/Lightricks) organization.
 
 > [!TIP]
-> Click on the LTX-Video models in the right sidebar for more examples of how to use LTX-Video for other video generation tasks.
+> Click on the LTX-Video models in the right sidebar for more examples of other video generation tasks.
 
 The example below demonstrates how to generate a video optimized for memory or inference speed.
 
 <hfoptions id="usage">
 <hfoption id="memory">
+
+Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
+
+The LTX-Video model below requires ~10GB of VRAM.
 
 ```py
 import torch
@@ -58,58 +62,11 @@ pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_d
 apply_group_offloading(pipeline.text_encoder, onload_device=onload_device, offload_type="block_level", num_blocks_per_group=2)
 apply_group_offloading(pipeline.vae, onload_device=onload_device, offload_type="leaf_level")
 
-prompt = "A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage"
+prompt = """
+A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage
+"""
 negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
-video = pipeline(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    width=768,
-    height=512,
-    num_frames=161,
-    decode_timestep=0.03,
-    decode_noise_scale=0.025,
-    num_inference_steps=50,
-).frames[0]
-export_to_video(video, "output.mp4", fps=24)
-```
-
-</details>
-
-Reduce memory usage even more if necessary by quantizing a model to a lower precision data type.
-
-```py
-import torch
-from diffusers.utils import export_to_video
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, LTXVideoTransformer3DModel, LTXPipeline
-from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
-
-# quantize weights to int8 with bitsandbytes
-quantization_config = BitsAndBytesConfig(load_in_8bit=True)
-text_encoder = T5EncoderModel.from_pretrained(
-    "Lightricks/LTX-Video",
-    subfolder="text_encoder",
-    quantization_config=quantization_config,
-    torch_dtype=torch.bfloat16,
-)
-
-quantization_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
-transformer = LTXVideoTransformer3DModel.from_pretrained(
-    "Lightricks/LTX-Video",
-    subfolder="transformer",
-    quantization_config=quantization_config,
-    torch_dtype=torch.bfloat16,
-)
-
-pipeline = LTXPipeline.from_pretrained(
-    "Lightricks/LTX-Video",
-    text_encoder=text_en,
-    transformer=transformer,
-    torch_dtype=torch.bfloat16,
-)
-
-prompt = "A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage"
-negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 video = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
@@ -143,7 +100,9 @@ pipeline.transformer = torch.compile(
     pipeline.transformer, mode="max-autotune", fullgraph=True
 )
 
-prompt = "A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage"
+prompt = """
+A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage
+"""
 negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
 video = pipeline(
@@ -164,24 +123,27 @@ export_to_video(video, "output.mp4", fps=24)
 
 ## Notes
 
-- LTX-Video supports LoRAs with [`~LTXVideoLoraLoaderMixin.load_lora_weights`].
+- LTX-Video supports LoRAs with [`~loaders.LTXVideoLoraLoaderMixin.load_lora_weights`].
 
   ```py
   import torch
   from diffusers import LTXConditionPipeline
-  from diffusers.utils import export_to_video
+  from diffusers.utils import export_to_video, load_image
 
   pipeline = LTXConditionPipeline.from_pretrained(
       "Lightricks/LTX-Video-0.9.5", torch_dtype=torch.bfloat16
   )
 
   pipeline.load_lora_weights("Lightricks/LTX-Video-Cakeify-LoRA", adapter_name="cakeify")
-  pipeline.set_adapters("cakeify", 0.9)
+  pipeline.set_adapters("cakeify")
 
-  prompt = "CAKEIFY a person using a knife to cut a cake shaped like a pair of cowboy boots"
+  # use "CAKEIFY" to trigger the LoRA
+  prompt = "CAKEIFY a person using a knife to cut a cake shaped like a cereal box"
+  image = load_image("https://i5.walmartimages.com/asr/c0463def-4995-47a7-9486-294fff8cf9fc.f9779f3fc4c621cf1fe86465af1d2ecd.jpeg")
 
   video = pipeline(
       prompt=prompt,
+      image=image,
       width=768,
       height=512,
       num_frames=161,
@@ -191,7 +153,8 @@ export_to_video(video, "output.mp4", fps=24)
   ).frames[0]
   export_to_video(video, "output.mp4", fps=24)
   ```
-- LTX-Video supports loading from single files, such as [GGUF checkpoints](../../quantization/gguf), with [`FromOriginalModelMixin.from_single_file`] or [`FromSingleFileMixin.from_single_file`].
+
+- LTX-Video supports loading from single files, such as [GGUF checkpoints](../../quantization/gguf), with [`loaders.FromOriginalModelMixin.from_single_file`] or [`loaders.FromSingleFileMixin.from_single_file`].
 
   ```py
   import torch
@@ -206,7 +169,7 @@ export_to_video(video, "output.mp4", fps=24)
   pipeline = LTXPipeline.from_pretrained(
     "Lightricks/LTX-Video",
     transformer=transformer,
-    torch_dtype=bfloat16
+    torch_dtype=torch.bfloat16
   )
   ```
 
