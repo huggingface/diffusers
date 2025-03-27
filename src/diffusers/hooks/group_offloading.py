@@ -436,18 +436,24 @@ def apply_group_offloading(
             raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
 
         _apply_group_offloading_block_level(
-            module,
-            num_blocks_per_group,
-            offload_device,
-            onload_device,
-            non_blocking,
-            stream,
-            record_stream,
-            low_cpu_mem_usage,
+            module=module,
+            num_blocks_per_group=num_blocks_per_group,
+            offload_device=offload_device,
+            onload_device=onload_device,
+            non_blocking=non_blocking,
+            stream=stream,
+            record_stream=record_stream,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
     elif offload_type == "leaf_level":
         _apply_group_offloading_leaf_level(
-            module, offload_device, onload_device, non_blocking, stream, record_stream, low_cpu_mem_usage
+            module=module,
+            offload_device=offload_device,
+            onload_device=onload_device,
+            non_blocking=non_blocking,
+            stream=stream,
+            record_stream=record_stream,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
@@ -660,7 +666,7 @@ def _apply_group_offloading_leaf_level(
             buffers=None,
             non_blocking=False,
             stream=None,
-            record_stream=record_stream,
+            record_stream=False,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
         )
