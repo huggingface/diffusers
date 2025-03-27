@@ -2316,7 +2316,7 @@ def main(args):
                     epoch=epoch,
                     torch_dtype=weight_dtype,
                 )
-                if not freeze_text_encoder:
+                if freeze_text_encoder:
                     del text_encoder_one, text_encoder_two
                     free_memory()
 
