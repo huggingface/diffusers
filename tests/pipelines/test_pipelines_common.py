@@ -23,13 +23,16 @@ from diffusers import (
     ConsistencyDecoderVAE,
     DDIMScheduler,
     DiffusionPipeline,
+    FasterCacheConfig,
     KolorsPipeline,
     PyramidAttentionBroadcastConfig,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
+    apply_faster_cache,
 )
 from diffusers.hooks import apply_group_offloading
+from diffusers.hooks.faster_cache import FasterCacheBlockHook, FasterCacheDenoiserHook
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
@@ -45,6 +48,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     require_accelerate_version_greater,
     require_accelerator,
     require_hf_hub_version_greater,
@@ -1108,13 +1112,13 @@ class PipelineTesterMixin:
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
@@ -1423,7 +1427,6 @@ class PipelineTesterMixin:
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -1438,6 +1441,7 @@ class PipelineTesterMixin:
 
         generator_device = "cpu"
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1456,6 +1460,7 @@ class PipelineTesterMixin:
             )
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
@@ -1550,12 +1555,14 @@ class PipelineTesterMixin:
 
         generator_device = "cpu"
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
@@ -1613,12 +1620,14 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_model_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
 
         inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
@@ -2543,6 +2552,167 @@ class PyramidAttentionBroadcastTesterMixin:
         assert np.allclose(
             original_image_slice, image_slice_pab_disabled, atol=1e-4
         ), "Outputs from normal inference and after disabling cache should not differ."
+
+
+class FasterCacheTesterMixin:
+    faster_cache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
+    )
+
+    def test_faster_cache_basic_warning_or_errors_raised(self):
+        components = self.get_dummy_components()
+
+        logger = logging.get_logger("diffusers.hooks.faster_cache")
+        logger.setLevel(logging.INFO)
+
+        # Check if warning is raise when no attention_weight_callback is provided
+        pipe = self.pipeline_class(**components)
+        with CaptureLogger(logger) as cap_logger:
+            config = FasterCacheConfig(spatial_attention_block_skip_range=2, attention_weight_callback=None)
+            apply_faster_cache(pipe.transformer, config)
+        self.assertTrue("No `attention_weight_callback` provided when enabling FasterCache" in cap_logger.out)
+
+        # Check if error raised when unsupported tensor format used
+        pipe = self.pipeline_class(**components)
+        with self.assertRaises(ValueError):
+            config = FasterCacheConfig(spatial_attention_block_skip_range=2, tensor_format="BFHWC")
+            apply_faster_cache(pipe.transformer, config)
+
+    def test_faster_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        def create_pipe():
+            torch.manual_seed(0)
+            num_layers = 2
+            components = self.get_dummy_components(num_layers=num_layers)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            inputs["num_inference_steps"] = 4
+            return pipe(**inputs)[0]
+
+        # Run inference without FasterCache
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_image_slice = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with FasterCache enabled
+        self.faster_cache_config.current_timestep_callback = lambda: pipe.current_timestep
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.faster_cache_config)
+        output = run_forward(pipe).flatten().flatten()
+        image_slice_faster_cache_enabled = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with FasterCache disabled
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        image_slice_faster_cache_disabled = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(
+            original_image_slice, image_slice_faster_cache_enabled, atol=expected_atol
+        ), "FasterCache outputs should not differ much in specified timestep range."
+        assert np.allclose(
+            original_image_slice, image_slice_faster_cache_disabled, atol=1e-4
+        ), "Outputs from normal inference and after disabling cache should not differ."
+
+    def test_faster_cache_state(self):
+        from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
+
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        num_layers = 0
+        num_single_layers = 0
+        dummy_component_kwargs = {}
+        dummy_component_parameters = inspect.signature(self.get_dummy_components).parameters
+        if "num_layers" in dummy_component_parameters:
+            num_layers = 2
+            dummy_component_kwargs["num_layers"] = num_layers
+        if "num_single_layers" in dummy_component_parameters:
+            num_single_layers = 2
+            dummy_component_kwargs["num_single_layers"] = num_single_layers
+
+        components = self.get_dummy_components(**dummy_component_kwargs)
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        self.faster_cache_config.current_timestep_callback = lambda: pipe.current_timestep
+        pipe.transformer.enable_cache(self.faster_cache_config)
+
+        expected_hooks = 0
+        if self.faster_cache_config.spatial_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+        if self.faster_cache_config.temporal_attention_block_skip_range is not None:
+            expected_hooks += num_layers + num_single_layers
+
+        # Check if faster_cache denoiser hook is attached
+        denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
+        self.assertTrue(
+            hasattr(denoiser, "_diffusers_hook")
+            and isinstance(denoiser._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK), FasterCacheDenoiserHook),
+            "Hook should be of type FasterCacheDenoiserHook.",
+        )
+
+        # Check if all blocks have faster_cache block hook attached
+        count = 0
+        for name, module in denoiser.named_modules():
+            if hasattr(module, "_diffusers_hook"):
+                if name == "":
+                    # Skip the root denoiser module
+                    continue
+                count += 1
+                self.assertTrue(
+                    isinstance(module._diffusers_hook.get_hook(_FASTER_CACHE_BLOCK_HOOK), FasterCacheBlockHook),
+                    "Hook should be of type FasterCacheBlockHook.",
+                )
+        self.assertEqual(count, expected_hooks, "Number of hooks should match expected number.")
+
+        # Perform inference to ensure that states are updated correctly
+        def faster_cache_state_check_callback(pipe, i, t, kwargs):
+            for name, module in denoiser.named_modules():
+                if not hasattr(module, "_diffusers_hook"):
+                    continue
+                if name == "":
+                    # Root denoiser module
+                    state = module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state
+                    if not self.faster_cache_config.is_guidance_distilled:
+                        self.assertTrue(state.low_frequency_delta is not None, "Low frequency delta should be set.")
+                        self.assertTrue(state.high_frequency_delta is not None, "High frequency delta should be set.")
+                else:
+                    # Internal blocks
+                    state = module._diffusers_hook.get_hook(_FASTER_CACHE_BLOCK_HOOK).state
+                    self.assertTrue(state.cache is not None and len(state.cache) == 2, "Cache should be set.")
+                self.assertTrue(state.iteration == i + 1, "Hook iteration state should have updated during inference.")
+            return {}
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        inputs["callback_on_step_end"] = faster_cache_state_check_callback
+        _ = pipe(**inputs)[0]
+
+        # After inference, reset_stateful_hooks is called within the pipeline, which should have reset the states
+        for name, module in denoiser.named_modules():
+            if not hasattr(module, "_diffusers_hook"):
+                continue
+
+            if name == "":
+                # Root denoiser module
+                state = module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state
+                self.assertTrue(state.iteration == 0, "Iteration should be reset to 0.")
+                self.assertTrue(state.low_frequency_delta is None, "Low frequency delta should be reset to None.")
+                self.assertTrue(state.high_frequency_delta is None, "High frequency delta should be reset to None.")
+            else:
+                # Internal blocks
+                state = module._diffusers_hook.get_hook(_FASTER_CACHE_BLOCK_HOOK).state
+                self.assertTrue(state.iteration == 0, "Iteration should be reset to 0.")
+                self.assertTrue(state.batch_size is None, "Batch size should be reset to None.")
+                self.assertTrue(state.cache is None, "Cache should be reset to None.")
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
