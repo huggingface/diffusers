@@ -449,9 +449,9 @@ class TextualInversionLoaderMixin:
 
         # 7.5 Offload the model again
         if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
+            self.enable_model_cpu_offload(device=device)
         elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
+            self.enable_sequential_cpu_offload(device=device)
 
         # / Unsafe Code >
 
