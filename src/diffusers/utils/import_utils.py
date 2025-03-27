@@ -191,7 +191,6 @@ _xformers_available, _xformers_version = _is_package_available("xformers")
 _gguf_available, _gguf_version = _is_package_available("gguf")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
-_torchao_available, _torchao_version = _is_package_available("torchao")
 _optimum_quanto_available, _optimum_quanto_version = _is_package_available("optimum", get_dist_name=True)
 
 
