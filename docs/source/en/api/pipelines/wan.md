@@ -169,19 +169,19 @@ export_to_video(output, "output.mp4", fps=16)
   from diffusers.utils import export_to_video
 
   vae = AutoencoderKLWan.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+    "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
   )
   pipeline = WanPipeline.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
+    "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
   )
   pipeline.scheduler = UniPCMultistepScheduler.from_config(
     pipeline.scheduler.config, flow_shift=5.0
   )
   pipeline.to("cuda")
 
-  pipeline.load_lora_weights("benjamin-paine/steamboat-willie-14b", adapter_name="steamboat-willie")
+  pipeline.load_lora_weights("benjamin-paine/steamboat-willie-1.3b", adapter_name="steamboat-willie")
   pipeline.set_adapters("steamboat-willie")
-  
+
   pipeline.enable_model_cpu_offload()
 
   # use "steamboat willie style" to trigger the LoRA
@@ -201,7 +201,7 @@ export_to_video(output, "output.mp4", fps=16)
   export_to_video(output, "output.mp4", fps=16)
   ```
 
-- [`WanTransformer3DModel`] and [`AutoencoderKLWan`] supports loading from single files with [`!loaders.FromSingleFileMixin.from_single_file`].
+- [`WanTransformer3DModel`] and [`AutoencoderKLWan`] supports loading from single files with [`~loaders.FromSingleFileMixin.from_single_file`].
 
   ```py
   # pip install ftfy

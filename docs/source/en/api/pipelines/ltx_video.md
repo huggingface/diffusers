@@ -138,20 +138,20 @@ export_to_video(video, "output.mp4", fps=24)
   pipeline.set_adapters("cakeify")
 
   # use "CAKEIFY" to trigger the LoRA
-  prompt = "CAKEIFY a person using a knife to cut a cake shaped like a cereal box"
-  image = load_image("https://i5.walmartimages.com/asr/c0463def-4995-47a7-9486-294fff8cf9fc.f9779f3fc4c621cf1fe86465af1d2ecd.jpeg")
+  prompt = "CAKEIFY a person using a knife to cut a cake shaped like a Pikachu plushie"
+  image = load_image("https://huggingface.co/Lightricks/LTX-Video-Cakeify-LoRA/resolve/main/assets/images/pikachu.png")
 
   video = pipeline(
       prompt=prompt,
       image=image,
-      width=768,
-      height=512,
+      width=576,
+      height=576,
       num_frames=161,
       decode_timestep=0.03,
       decode_noise_scale=0.025,
       num_inference_steps=50,
   ).frames[0]
-  export_to_video(video, "output.mp4", fps=24)
+  export_to_video(video, "output.mp4", fps=26)
   ```
 
 - LTX-Video supports loading from single files, such as [GGUF checkpoints](../../quantization/gguf), with [`loaders.FromOriginalModelMixin.from_single_file`] or [`loaders.FromSingleFileMixin.from_single_file`].
