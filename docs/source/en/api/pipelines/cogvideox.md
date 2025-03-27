@@ -26,18 +26,31 @@
 You can find all the original CogVideoX checkpoints under the [CogVideoX](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce) collection.
 
 > [!TIP]
-> Click on the CogVideoX models in the right sidebar for more examples of how to use CogVideoX for other video generation tasks.
+> Click on the CogVideoX models in the right sidebar for more examples of other video generation tasks.
 
 The example below demonstrates how to generate a video optimized for memory or inference speed.
 
 <hfoptions id="usage">
 <hfoption id="memory">
 
+Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
+
+The quantized CogVideoX 5B model below requires ~16GB of VRAM.
+
 ```py
 import torch
 from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
+
+# quantize weights to int8 with torchao
+quantization_config = TorchAoConfig("int8wo")
+transformer = CogVideoXTransformer3DModel.from_pretrained(
+    "THUDM/CogVideoX-5b",
+    subfolder="transformer",
+    quantization_config=quantization_config,
+    torch_dtype=torch.bfloat16,
+)
 
 # fp8 layerwise weight-casting
 transformer = CogVideoXTransformer3DModel.from_pretrained(
@@ -60,54 +73,18 @@ pipeline.to("cuda")
 # model-offloading
 pipeline.enable_model_cpu_offload()
 
-prompt = ("A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over a plush, blue carpet that mimics the waves of the sea. "
-          "The ship's hull is painted a rich brown, with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an oceanic expanse. "
-          "Surrounding the ship are various other toys and children's items, hinting at a playful environment. The scene captures the innocence and imagination of childhood, "
-          "with the toy ship's journey symbolizing endless adventures in a whimsical, indoor setting.")
+prompt = """
+A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over a plush, blue carpet that mimics the waves of the sea. 
+The ship's hull is painted a rich brown, with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an oceanic expanse. 
+Surrounding the ship are various other toys and children's items, hinting at a playful environment. The scene captures the innocence and imagination of childhood, 
+with the toy ship's journey symbolizing endless adventures in a whimsical, indoor setting.
+"""
+
 video = pipeline(
   prompt=prompt,
   guidance_scale=6,
   num_inference_steps=50
 ).frames[0]
-export_to_video(video, "output.mp4", fps=8)
-```
-
-Reduce memory usage even more if necessary by quantizing a model to a lower precision data type.
-
-```py
-import torch
-from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel, TorchAoConfig
-from diffusers.utils import export_to_video
-
-# quantize weights to int8 with torchao
-quantization_config = TorchAoConfig("int8wo")
-transformer = CogVideoXTransformer3DModel.from_pretrained(
-    "THUDM/CogVideoX-5b",
-    subfolder="transformer",
-    quantization_config=quantization_config,
-    torch_dtype=torch.bfloat16,
-)
-# fp8 layerwise weight-casting
-transformer.enable_layerwise_casting(
-  storage_dtype=torch.float8_e4m3fn,
-  compute_dtype=torch.bfloat16
-)
-
-pipeline = CogVideoXPipeline.from_pretrained(
-    "THUDM/CogVideoX-5b",
-    transformer=transformer,
-    torch_dtype=torch.bfloat16,
-)
-pipeline.to("cuda")
-
-# model-offloading
-pipeline.enable_model_cpu_offload()
-
-prompt = ("A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over a plush, blue carpet that mimics the waves of the sea. "
-          "The ship's hull is painted a rich brown, with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an oceanic expanse. "
-          "Surrounding the ship are various other toys and children's items, hinting at a playful environment. The scene captures the innocence and imagination of childhood, "
-          "with the toy ship's journey symbolizing endless adventures in a whimsical, indoor setting.")
-video = pipeline(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
 export_to_video(video, "output.mp4", fps=8)
 ```
 
@@ -119,7 +96,6 @@ Compilation is slow the first time but subsequent calls to the pipeline are fast
 ```py
 import torch
 from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel
-from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 
 pipeline = CogVideoXPipeline.from_pretrained(
@@ -133,10 +109,13 @@ pipeline.transformer = torch.compile(
     pipeline.transformer, mode="max-autotune", fullgraph=True
 )
 
-prompt = ("A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over a plush, blue carpet that mimics the waves of the sea. "
-          "The ship's hull is painted a rich brown, with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an oceanic expanse. "
-          "Surrounding the ship are various other toys and children's items, hinting at a playful environment. The scene captures the innocence and imagination of childhood, "
-          "with the toy ship's journey symbolizing endless adventures in a whimsical, indoor setting.")
+prompt = """
+A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over a plush, blue carpet that mimics the waves of the sea. 
+The ship's hull is painted a rich brown, with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an oceanic expanse. 
+Surrounding the ship are various other toys and children's items, hinting at a playful environment. The scene captures the innocence and imagination of childhood, 
+with the toy ship's journey symbolizing endless adventures in a whimsical, indoor setting.
+"""
+
 video = pipeline(
   prompt=prompt,
   guidance_scale=6,
@@ -186,8 +165,11 @@ export_to_video(video, "output.mp4", fps=8)
   ).frames[0]
   export_to_video(video, "output.mp4", fps=16)
   ```
+
 - The text-to-video (T2V) checkpoints work best with a resolution of 1360x768 because that was the resolution it was pretrained on.
+
 - The image-to-video (I2V) checkpoints work with multiple resolutions. The width can vary from 768 to 1360, but the height must be 758. Both height and width must be divisible by 16.
+
 - Both T2V and I2V checkpoints work best with 81 and 161 frames. It is recommended to export the generated video at 16fps.
  
 ## CogVideoXPipeline
