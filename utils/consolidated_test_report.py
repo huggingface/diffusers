@@ -601,14 +601,13 @@ def create_slack_payload(consolidated_data):
 
     # Add action button
     if os.environ.get("GITHUB_RUN_ID"):
+        run_id = os.environ["GITHUB_RUN_ID"]
         payload.append(
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": "*For more details:*"},
-                "accessory": {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "View full report", "emoji": True},
-                    "url": f"https://github.com/huggingface/diffusers/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*<https://github.com/huggingface/diffusers/actions/runs/{run_id}|View full report on GitHub>*",
                 },
             }
         )
