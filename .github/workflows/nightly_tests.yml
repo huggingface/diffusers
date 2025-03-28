@@ -15,6 +15,10 @@ env:
   RUN_NIGHTLY: yes
   PIPELINE_USAGE_CUTOFF: 5000
   SLACK_API_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
+  HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+  CONSOLIDATED_REPORT_PATH: consolidated_test_report.md
+  SHOW_SLOWEST_TESTS: 20
+  HF_REPORT_DATASET: diffusers-ci/nightly-test-reports
 
 jobs:
   setup_torch_cuda_pipeline_matrix:
@@ -475,6 +479,65 @@ jobs:
         run: |
           pip install slack_sdk tabulate
           python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
+  
+  generate_consolidated_report:
+    name: Generate Consolidated Test Report
+    needs: [
+      run_nightly_tests_for_torch_pipelines,
+      run_nightly_tests_for_other_torch_modules,
+      run_big_gpu_torch_tests,
+      run_nightly_onnx_tests,
+      run_nightly_quantization_tests,
+      run_flax_tpu_tests
+    ]
+    if: always()
+    runs-on:
+      group: aws-general-8-plus
+    container:
+      image: diffusers/diffusers-pytorch-cpu
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      
+      - name: Create reports directory
+        run: mkdir -p combined_reports
+          
+      - name: Download all test reports
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          
+      - name: Prepare reports
+        run: |
+          # Move all report files to a single directory for processing
+          find artifacts -name "*.txt" -exec cp {} combined_reports/ \;
+          
+      - name: Install dependencies
+        run: |
+          pip install -e .[test]
+          pip install slack_sdk tabulate huggingface_hub
+          
+      - name: Generate consolidated report
+        run: |
+          python utils/consolidated_test_report.py \
+            --reports_dir combined_reports \
+            --output_file $CONSOLIDATED_REPORT_PATH \
+            --slack_channel_name diffusers-ci-nightly \
+            --hf_dataset_repo $HF_REPORT_DATASET \
+            --upload_to_hub \
+            --compare_with_previous
+          
+      - name: Show consolidated report
+        run: |
+          cat $CONSOLIDATED_REPORT_PATH >> $GITHUB_STEP_SUMMARY
+          
+      - name: Upload consolidated report
+        uses: actions/upload-artifact@v4
+        with:
+          name: consolidated_test_report
+          path: ${{ env.CONSOLIDATED_REPORT_PATH }}
 
 # M1 runner currently not well supported
 # TODO: (Dhruv) add these back when we setup better testing for Apple Silicon
