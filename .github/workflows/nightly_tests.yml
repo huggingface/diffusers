@@ -100,12 +100,6 @@ jobs:
         with:
           name: pipeline_${{ matrix.module }}_test_reports
           path: reports
-      - name: Generate Report and Notify Channel
-        if: always()
-        run: |
-          pip install slack_sdk tabulate
-          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
-
   run_nightly_tests_for_other_torch_modules:
     name: Nightly Torch CUDA Tests
     runs-on:
@@ -175,12 +169,6 @@ jobs:
         name: torch_${{ matrix.module }}_cuda_test_reports
         path: reports
 
-    - name: Generate Report and Notify Channel
-      if: always()
-      run: |
-        pip install slack_sdk tabulate
-        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
-
   run_big_gpu_torch_tests:
     name: Torch tests on big GPU
     strategy:
@@ -231,12 +219,6 @@ jobs:
         with:
           name: torch_cuda_big_gpu_test_reports
           path: reports
-      - name: Generate Report and Notify Channel
-        if: always()
-        run: |
-          pip install slack_sdk tabulate
-          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
-          
   torch_minimum_version_cuda_tests:
     name: Torch Minimum Version CUDA Tests
     runs-on:
@@ -345,12 +327,6 @@ jobs:
         name: flax_tpu_test_reports
         path: reports
 
-    - name: Generate Report and Notify Channel
-      if: always()
-      run: |
-        pip install slack_sdk tabulate
-        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
-
   run_nightly_onnx_tests:
     name: Nightly ONNXRuntime CUDA tests on Ubuntu
     runs-on:
@@ -399,12 +375,6 @@ jobs:
       with:
         name: tests_onnx_cuda_reports
         path: reports
-
-    - name: Generate Report and Notify Channel
-      if: always()
-      run: |
-        pip install slack_sdk tabulate
-        python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_nightly_quantization_tests:
     name: Torch quantization nightly tests
@@ -471,12 +441,6 @@ jobs:
         with:
           name: torch_cuda_${{ matrix.config.backend }}_reports
           path: reports
-      - name: Generate Report and Notify Channel
-        if: always()
-        run: |
-          pip install slack_sdk tabulate
-          python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
-  
   generate_consolidated_report:
     name: Generate Consolidated Test Report
     needs: [

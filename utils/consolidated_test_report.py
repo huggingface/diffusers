@@ -68,11 +68,11 @@ def parse_stats_file(file_path):
                         if len(parts) >= 3:
                             time_str = parts[0]
                             test_path = " ".join(parts[2:])
-                            
+
                             # Skip entries with "< 0.05 secs were omitted" or similar
                             if "secs were omitted" in test_path:
                                 continue
-                                
+
                             try:
                                 time_seconds = float(time_str.rstrip("s"))
                                 slowest_tests.append({"test": test_path, "duration": time_seconds})
@@ -108,11 +108,11 @@ def parse_durations_file(file_path):
                         if len(parts) >= 3:
                             time_str = parts[0]
                             test_path = " ".join(parts[2:])
-                            
+
                             # Skip entries with "< 0.05 secs were omitted" or similar
                             if "secs were omitted" in test_path:
                                 continue
-                                
+
                             try:
                                 time_seconds = float(time_str.rstrip("s"))
                                 slowest_tests.append({"test": test_path, "duration": time_seconds})
@@ -320,7 +320,7 @@ def consolidate_reports(reports_dir):
 
     # Filter out entries with "secs were omitted"
     filtered_slow_tests = [test for test in all_slow_tests if "secs were omitted" not in test["test"]]
-    
+
     # Sort all slow tests by duration (descending)
     filtered_slow_tests.sort(key=lambda x: x["duration"], reverse=True)
 
@@ -572,7 +572,7 @@ def create_slack_payload(consolidated_data):
     if slowest_tests:
         # Filter out "< 0.05 secs were omitted" entries
         filtered_tests = [test for test in slowest_tests if "secs were omitted" not in test["test"]]
-        
+
         # Take top 5 for Slack message to avoid clutter
         top5_slowest = filtered_tests[:5]
 
