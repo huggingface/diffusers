@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 import argparse
 import glob
-import json
 import os
 import re
-import tempfile
 from datetime import date, datetime
 
-from huggingface_hub import login, snapshot_download, upload_file
+# Removed HF Hub imports
 from slack_sdk import WebClient
 from tabulate import tabulate
 
@@ -22,9 +20,7 @@ parser.add_argument(
     help="Directory containing test reports (will search recursively in all subdirectories)",
 )
 parser.add_argument("--output_file", default=None, help="Path to save the consolidated report (markdown format)")
-parser.add_argument("--hf_dataset_repo", default=None, help="Hugging Face dataset repository to store reports")
-parser.add_argument("--upload_to_hub", action="store_true", help="Whether to upload the report to Hugging Face Hub")
-parser.add_argument("--compare_with_previous", action="store_true", help="Compare with the previous report from Hub")
+# Removed HF dataset related arguments
 
 
 def parse_stats_file(file_path):
@@ -287,26 +283,7 @@ def generate_report(consolidated_data):
     report.append("# Diffusers Nightly Test Report")
     report.append(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    # Add comparison section if available
-    comparison = consolidated_data.get("comparison")
-    previous_date = consolidated_data.get("previous_date")
-
-    if comparison:
-        # Determine comparison header based on previous date
-        if previous_date:
-            report.append(f"## New Failures Since {previous_date}")
-        else:
-            report.append("## New Failures")
-
-        # New failures
-        new_failures = comparison.get("new_failures", [])
-        if new_failures:
-            report.append(f"🔴 {len(new_failures)} new failing tests compared to previous report:\n")
-            for i, test in enumerate(new_failures, 1):
-                report.append(f"{i}. `{test}`")
-            report.append("")
-        else:
-            report.append("No new test failures detected! 🎉\n")
+    # Removed comparison section
 
     # Add summary section
     total = consolidated_data["total_stats"]
@@ -469,27 +446,7 @@ def create_slack_payload(consolidated_data):
         },
     ]
 
-    # Add new failures section if available
-    comparison = consolidated_data.get("comparison")
-    previous_date = consolidated_data.get("previous_date")
-
-    if comparison and "new_failures" in comparison:
-        new_failures = comparison["new_failures"]
-
-        if previous_date:
-            title = f"*New Failures Since {previous_date}:*"
-        else:
-            title = "*New Failures:*"
-
-        if new_failures:
-            message = f"{title}\n"
-            for i, test in enumerate(new_failures[:10], 1):  # Limit to first 10
-                message += f"{i}. `{test}`\n"
-
-            if len(new_failures) > 10:
-                message += f"_...and {len(new_failures) - 10} more_\n"
-
-            payload.append({"type": "section", "text": {"type": "mrkdwn", "text": message}})
+    # Removed comparison section
 
     # Add failed test suites summary
     failed_suites = [
@@ -549,96 +506,7 @@ def create_slack_payload(consolidated_data):
     return payload
 
 
-def download_previous_report(repo_id):
-    """Download the most recent report from the HF dataset repository."""
-    try:
-        # Create a temporary directory
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Download the repository content
-            snapshot_download(repo_id=repo_id, local_dir=tmp_dir, repo_type="dataset")
-
-            # Find the most recent report file
-            report_files = glob.glob(os.path.join(tmp_dir, "report_*.json"))
-            if not report_files:
-                print("No previous reports found in the repository.")
-                return None, None
-
-            # Sort by date (assuming report_YYYY-MM-DD.json format)
-            report_files.sort(reverse=True)
-            latest_file = report_files[0]
-
-            # Extract date from filename (report_YYYY-MM-DD.json)
-            report_date = os.path.basename(latest_file).split(".")[0].split("_")[1]
-
-            # Read the most recent report
-            with open(latest_file, "r") as f:
-                return json.load(f), report_date
-    except Exception as e:
-        print(f"Error downloading previous report: {e}")
-        return None, None
-
-
-def compare_reports(current_data, previous_data):
-    """Compare current test results with previous ones to identify new failures."""
-    if not previous_data:
-        return {"new_failures": []}
-
-    # Get current and previous failed tests
-    current_failures = set()
-    for suite_name, suite_data in current_data["test_suites"].items():
-        for failure in suite_data["failures"]:
-            current_failures.add(failure["test"])
-
-    previous_failures = set()
-    for suite_name, suite_data in previous_data["test_suites"].items():
-        for failure in suite_data["failures"]:
-            previous_failures.add(failure["test"])
-
-    # Find new failures
-    new_failures = current_failures - previous_failures
-
-    return {"new_failures": list(new_failures)}
-
-
-def upload_report_to_hub(data, report_text, repo_id):
-    """Upload the report to the Hugging Face Hub dataset repository."""
-    try:
-        # Check if HF_TOKEN is available
-        hf_token = os.environ.get("HF_TOKEN")
-        if not hf_token:
-            print("HF_TOKEN environment variable not set. Cannot upload to Hub.")
-            return False
-
-        # Login to Hugging Face
-        login(token=hf_token)
-
-        # Create a temporary directory
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Generate filename based on current date
-            today = date.today().strftime("%Y-%m-%d")
-            json_filename = f"report_{today}.json"
-            md_filename = f"report_{today}.md"
-
-            # Save report as JSON and Markdown
-            json_path = os.path.join(tmp_dir, json_filename)
-            md_path = os.path.join(tmp_dir, md_filename)
-
-            with open(json_path, "w") as f:
-                json.dump(data, f, indent=2)
-
-            with open(md_path, "w") as f:
-                f.write(report_text)
-
-            # Upload files to Hub
-            upload_file(path_or_fileobj=json_path, path_in_repo=json_filename, repo_id=repo_id, repo_type="dataset")
-
-            upload_file(path_or_fileobj=md_path, path_in_repo=md_filename, repo_id=repo_id, repo_type="dataset")
-
-            print(f"Report successfully uploaded to {repo_id}")
-            return True
-    except Exception as e:
-        print(f"Error uploading report to Hub: {e}")
-        return False
+# Removed HF dataset related functions
 
 
 def main(args):
@@ -654,21 +522,10 @@ def main(args):
     if consolidated_data["total_stats"]["tests"] == 0:
         print(f"Warning: No test results found in '{args.reports_dir}' or its subdirectories.")
 
-    # Compare with previous report if requested
-    comparison_data = None
-    if args.compare_with_previous and args.hf_dataset_repo:
-        previous_data, previous_date = download_previous_report(args.hf_dataset_repo)
-        if previous_data:
-            comparison_data = compare_reports(consolidated_data, previous_data)
-            # Add comparison data and previous report date to consolidated data
-            consolidated_data["comparison"] = comparison_data
-            consolidated_data["previous_date"] = previous_date
+    # Removed comparison section
 
     # Generate markdown report
     report = generate_report(consolidated_data)
-
-    # Print report to stdout
-    print(report)
 
     # Save report to file if specified
     if args.output_file:
@@ -679,13 +536,16 @@ def main(args):
 
         with open(args.output_file, "w") as f:
             f.write(report)
-        print(f"Report saved to {args.output_file}")
 
-    # Upload to Hugging Face Hub if requested
-    if args.upload_to_hub and args.hf_dataset_repo:
-        upload_report_to_hub(consolidated_data, report, args.hf_dataset_repo)
+        # Only print the report when saving to file
+        print(report)
 
-    # Send to Slack if token is available
+    # Send GitHub workflow summary if running in GitHub Actions
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+            f.write(report)
+
+    # Send to Slack if token is available (optional, can be disabled)
     slack_token = os.environ.get("SLACK_API_TOKEN")
     if slack_token and args.slack_channel_name:
         payload = create_slack_payload(consolidated_data)
