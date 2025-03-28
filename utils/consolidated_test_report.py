@@ -5,7 +5,6 @@ import os
 import re
 from datetime import date, datetime
 
-# Removed HF Hub imports
 from slack_sdk import WebClient
 from tabulate import tabulate
 
@@ -20,7 +19,6 @@ parser.add_argument(
     help="Directory containing test reports (will search recursively in all subdirectories)",
 )
 parser.add_argument("--output_file", default=None, help="Path to save the consolidated report (markdown format)")
-# Removed HF dataset related arguments
 
 
 def parse_stats_file(file_path):
@@ -524,7 +522,7 @@ def generate_report(consolidated_data):
 
 
 def create_slack_payload(consolidated_data):
-    """Create a Slack message payload from consolidated data."""
+    """Create a concise Slack message payload from consolidated data."""
     total = consolidated_data["total_stats"]
     success_rate = f"{(total['passed'] / total['tests'] * 100):.2f}%" if total["tests"] > 0 else "N/A"
 
@@ -536,51 +534,68 @@ def create_slack_payload(consolidated_data):
     else:
         emoji = "❌"
 
+    # Create a more compact summary section
+    summary = f"{emoji} *Diffusers Nightly Tests:* {success_rate} success ({total['passed']}/{total['tests']} tests"
+    if total["skipped"] > 0:
+        summary += f", {total['skipped']} skipped"
+    summary += ")"
+
     payload = [
-        {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} Diffusers Nightly Test Report"}},
-        {
-            "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*Total Tests:* {total['tests']}"},
-                {"type": "mrkdwn", "text": f"*Passed:* {total['passed']}"},
-                {"type": "mrkdwn", "text": f"*Failed:* {total['failed']}"},
-                {"type": "mrkdwn", "text": f"*Skipped:* {total['skipped']}"},
-                {"type": "mrkdwn", "text": f"*Success Rate:* {success_rate}"},
-            ],
-        },
+        {"type": "section", "text": {"type": "mrkdwn", "text": summary}},
     ]
 
-    # Removed comparison section
-
-    # Add failed test suites summary
+    # Add failed test suites summary (compact version)
     failed_suites = [
         (name, data) for name, data in consolidated_data["test_suites"].items() if data["stats"]["failed"] > 0
     ]
 
     if failed_suites:
-        message = "*Failed Test Suites:*\n"
-        for suite_name, suite_data in failed_suites:
-            message += f"• {suite_name}: {suite_data['stats']['failed']} failed tests\n"
-
-        if len(message) > MAX_LEN_MESSAGE:
-            message = message[:MAX_LEN_MESSAGE] + "..."
+        # If many failed suites, just show the count and top few
+        if len(failed_suites) > 5:
+            message = f"*Failed Test Suites ({len(failed_suites)}):* "
+            # Show only first 3 with counts
+            for i, (suite_name, suite_data) in enumerate(failed_suites[:3]):
+                short_name = suite_name.split("/")[-1] if "/" in suite_name else suite_name
+                message += f"{short_name} ({suite_data['stats']['failed']}), "
+            message += "..."
+        else:
+            # Show all failed suites if 5 or fewer
+            message = "*Failed Suites:* "
+            for suite_name, suite_data in failed_suites:
+                short_name = suite_name.split("/")[-1] if "/" in suite_name else suite_name
+                message += f"{short_name} ({suite_data['stats']['failed']}), "
+            message = message.rstrip(", ")
 
         payload.append({"type": "section", "text": {"type": "mrkdwn", "text": message}})
 
-    # Add slowest tests summary
+    # Add slowest tests summary (more concise)
     slowest_tests = consolidated_data.get("slowest_tests", [])
     if slowest_tests:
         # Filter out "< 0.05 secs were omitted" entries
         filtered_tests = [test for test in slowest_tests if "secs were omitted" not in test["test"]]
 
-        # Take top 5 for Slack message to avoid clutter
-        top5_slowest = filtered_tests[:5]
+        # Take only top 3 for a more concise message
+        top_slowest = filtered_tests[:3]
 
-        if top5_slowest:
-            slowest_message = "*Top 5 Slowest Tests:*\n"
-            for i, test in enumerate(top5_slowest, 1):
-                test_name = test["test"].split("::")[-1] if "::" in test["test"] else test["test"]
-                slowest_message += f"{i}. `{test_name}` - {test['duration']:.2f}s ({test['suite']})\n"
+        if top_slowest:
+            slowest_message = "*Slowest Tests:* "
+            for i, test in enumerate(top_slowest, 1):
+                # Extract just the test name without the full path
+                if "::" in test["test"]:
+                    parts = test["test"].split("::")
+                    if len(parts) >= 3:
+                        # Format: test_method (TestClass) - duration
+                        test_name = f"{parts[-1]} ({parts[-2]})"
+                    else:
+                        test_name = parts[-1]
+                else:
+                    test_name = test["test"].split("/")[-1] if "/" in test["test"] else test["test"]
+
+                # Add duration and make comma-separated instead of numbered list
+                if i < len(top_slowest):
+                    slowest_message += f"`{test_name}` ({test['duration']:.1f}s), "
+                else:
+                    slowest_message += f"`{test_name}` ({test['duration']:.1f}s)"
 
             payload.append({"type": "section", "text": {"type": "mrkdwn", "text": slowest_message}})
 
@@ -592,29 +607,26 @@ def create_slack_payload(consolidated_data):
                 "text": {"type": "mrkdwn", "text": "*For more details:*"},
                 "accessory": {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "Check Action results", "emoji": True},
+                    "text": {"type": "plain_text", "text": "View full report", "emoji": True},
                     "url": f"https://github.com/huggingface/diffusers/actions/runs/{os.environ['GITHUB_RUN_ID']}",
                 },
             }
         )
 
-    # Add date
+    # Add date in more compact form
     payload.append(
         {
             "type": "context",
             "elements": [
                 {
                     "type": "plain_text",
-                    "text": f"Nightly test results for {date.today()}",
+                    "text": f"Results for {date.today()}",
                 },
             ],
         }
     )
 
     return payload
-
-
-# Removed HF dataset related functions
 
 
 def main(args):
@@ -629,8 +641,6 @@ def main(args):
     # Check if we found any test results
     if consolidated_data["total_stats"]["tests"] == 0:
         print(f"Warning: No test results found in '{args.reports_dir}' or its subdirectories.")
-
-    # Removed comparison section
 
     # Generate markdown report
     report = generate_report(consolidated_data)
