@@ -16,10 +16,11 @@ Import utilities: Utilities related to imports and our lazy inits.
 """
 
 import importlib.util
+import inspect
 import operator as op
 import os
 import sys
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from itertools import chain
 from types import ModuleType
 from typing import Any, Tuple, Union
@@ -61,6 +62,23 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[b
     if pkg_exists:
         try:
             package_map = importlib_metadata.packages_distributions()
+        except Exception as e:
+            package_map = defaultdict(list)
+            if isinstance(e, AttributeError):
+                try:
+                    # Fallback for Python < 3.10
+                    for dist in importlib_metadata.distributions():
+                        _top_level_declared = (dist.read_text("top_level.txt") or "").split()
+                        _infered_opt_names = {
+                            f.parts[0] if len(f.parts) > 1 else inspect.getmodulename(f) for f in (dist.files or [])
+                        } - {None}
+                        _top_level_inferred = filter(lambda name: "." not in name, _infered_opt_names)
+                        for pkg in _top_level_declared or _top_level_inferred:
+                            package_map[pkg].append(dist.metadata["Name"])
+                except Exception as _:
+                    pass
+
+        try:
             if get_dist_name and pkg_name in package_map and package_map[pkg_name]:
                 if len(package_map[pkg_name]) > 1:
                     logger.warning(
