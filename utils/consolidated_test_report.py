@@ -86,6 +86,37 @@ def parse_stats_file(file_path):
         return {"tests": 0, "passed": 0, "failed": 0, "skipped": 0, "slowest_tests": []}
 
 
+def parse_durations_file(file_path):
+    """Parse a durations file to extract test timing information."""
+    slowest_tests = []
+    try:
+        durations_file = file_path.replace("_stats.txt", "_durations.txt")
+        if os.path.exists(durations_file):
+            with open(durations_file, "r") as f:
+                content = f.read()
+                
+                # Skip the header line
+                for line in content.split('\n')[1:]:
+                    if line.strip():
+                        # Format is typically: 10.37s call     tests/path/to/test.py::TestClass::test_method
+                        parts = line.strip().split()
+                        if len(parts) >= 3:
+                            time_str = parts[0]
+                            test_path = ' '.join(parts[2:])
+                            try:
+                                time_seconds = float(time_str.rstrip('s'))
+                                slowest_tests.append({
+                                    "test": test_path,
+                                    "duration": time_seconds
+                                })
+                            except ValueError:
+                                pass
+    except Exception as e:
+        print(f"Error parsing durations file {file_path.replace('_stats.txt', '_durations.txt')}: {e}")
+    
+    return slowest_tests
+
+
 def parse_failures_file(file_path):
     """Parse a failures file to extract failed test details."""
     failures = []
@@ -217,6 +248,10 @@ def consolidate_reports(reports_dir):
 
         # Parse stats
         stats = parse_stats_file(stats_file)
+        
+        # If no slowest tests found in stats file, try the durations file directly
+        if not stats.get("slowest_tests"):
+            stats["slowest_tests"] = parse_durations_file(stats_file)
 
         # Update total stats
         for key in ["tests", "passed", "failed", "skipped"]:
@@ -271,8 +306,50 @@ def consolidate_reports(reports_dir):
     # Get the number of slowest tests to show from environment variable or default to 10
     num_slowest_tests = int(os.environ.get("SHOW_SLOWEST_TESTS", "10"))
     top_slowest_tests = all_slow_tests[:num_slowest_tests] if all_slow_tests else []
+    
+    # Calculate additional duration statistics
+    total_duration = sum(test["duration"] for test in all_slow_tests)
+    
+    # Calculate duration per suite
+    suite_durations = {}
+    for test in all_slow_tests:
+        suite_name = test["suite"]
+        if suite_name not in suite_durations:
+            suite_durations[suite_name] = 0
+        suite_durations[suite_name] += test["duration"]
+        
+    # Create duration categories
+    duration_categories = {
+        "under_1s": 0,
+        "1s_to_5s": 0,
+        "5s_to_10s": 0,
+        "10s_to_30s": 0,
+        "over_30s": 0
+    }
+    
+    for test in all_slow_tests:
+        duration = test["duration"]
+        if duration < 1:
+            duration_categories["under_1s"] += 1
+        elif duration < 5:
+            duration_categories["1s_to_5s"] += 1
+        elif duration < 10:
+            duration_categories["5s_to_10s"] += 1
+        elif duration < 30:
+            duration_categories["10s_to_30s"] += 1
+        else:
+            duration_categories["over_30s"] += 1
 
-    return {"total_stats": total_stats, "test_suites": results, "slowest_tests": top_slowest_tests}
+    return {
+        "total_stats": total_stats, 
+        "test_suites": results, 
+        "slowest_tests": top_slowest_tests,
+        "duration_stats": {
+            "total_duration": total_duration,
+            "suite_durations": suite_durations,
+            "duration_categories": duration_categories
+        }
+    }
 
 
 def generate_report(consolidated_data):
@@ -289,21 +366,49 @@ def generate_report(consolidated_data):
     total = consolidated_data["total_stats"]
     report.append("## Summary")
 
+    # Get duration stats if available
+    duration_stats = consolidated_data.get("duration_stats", {})
+    total_duration = duration_stats.get("total_duration", 0)
+    
     summary_table = [
         ["Total Tests", total["tests"]],
         ["Passed", total["passed"]],
         ["Failed", total["failed"]],
         ["Skipped", total["skipped"]],
         ["Success Rate", f"{(total['passed'] / total['tests'] * 100):.2f}%" if total["tests"] > 0 else "N/A"],
+        ["Total Duration", f"{total_duration:.2f}s" if total_duration else "N/A"],
     ]
 
     report.append(tabulate(summary_table, tablefmt="pipe"))
     report.append("")
+    
+    # Add duration distribution if available
+    duration_categories = duration_stats.get("duration_categories")
+    if duration_categories:
+        report.append("### Test Duration Distribution")
+        
+        distribution_table = [
+            ["Duration Range", "Number of Tests"],
+            ["Under 1s", duration_categories.get("under_1s", 0)],
+            ["1s to 5s", duration_categories.get("1s_to_5s", 0)],
+            ["5s to 10s", duration_categories.get("5s_to_10s", 0)],
+            ["10s to 30s", duration_categories.get("10s_to_30s", 0)],
+            ["Over 30s", duration_categories.get("over_30s", 0)],
+        ]
+        
+        report.append(tabulate(distribution_table, headers="firstrow", tablefmt="pipe"))
+        report.append("")
 
     # Add test suites summary
     report.append("## Test Suites")
 
-    suites_table = [["Test Suite", "Tests", "Passed", "Failed", "Skipped", "Success Rate"]]
+    # Include duration in test suites table if available
+    suite_durations = consolidated_data.get("duration_stats", {}).get("suite_durations", {})
+    
+    if suite_durations:
+        suites_table = [["Test Suite", "Tests", "Passed", "Failed", "Skipped", "Success Rate", "Duration (s)"]]
+    else:
+        suites_table = [["Test Suite", "Tests", "Passed", "Failed", "Skipped", "Success Rate"]]
 
     # Sort test suites by number of failures (descending)
     sorted_suites = sorted(
@@ -313,9 +418,16 @@ def generate_report(consolidated_data):
     for suite_name, suite_data in sorted_suites:
         stats = suite_data["stats"]
         success_rate = f"{(stats['passed'] / stats['tests'] * 100):.2f}%" if stats["tests"] > 0 else "N/A"
-        suites_table.append(
-            [suite_name, stats["tests"], stats["passed"], stats["failed"], stats["skipped"], success_rate]
-        )
+        
+        if suite_durations:
+            duration = suite_durations.get(suite_name, 0)
+            suites_table.append(
+                [suite_name, stats["tests"], stats["passed"], stats["failed"], stats["skipped"], success_rate, f"{duration:.2f}"]
+            )
+        else:
+            suites_table.append(
+                [suite_name, stats["tests"], stats["passed"], stats["failed"], stats["skipped"], success_rate]
+            )
 
     report.append(tabulate(suites_table, headers="firstrow", tablefmt="pipe"))
     report.append("")
