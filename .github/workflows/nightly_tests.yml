@@ -478,7 +478,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e .[test]
-          pip install slack_sdk tabulate huggingface_hub
+          pip install slack_sdk tabulate
           
       - name: Generate consolidated report
         run: |
