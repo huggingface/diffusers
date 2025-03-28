@@ -648,11 +648,6 @@ def main(args):
         # Only print the report when saving to file
         print(report)
 
-    # Send GitHub workflow summary if running in GitHub Actions
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
-            f.write(report)
-
     # Send to Slack if token is available (optional, can be disabled)
     slack_token = os.environ.get("SLACK_API_TOKEN")
     if slack_token and args.slack_channel_name:
