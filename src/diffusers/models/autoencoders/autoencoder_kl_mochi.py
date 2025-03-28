@@ -497,6 +497,8 @@ class MochiEncoder3D(nn.Module):
         self.norm_out = MochiChunkedGroupNorm3D(block_out_channels[-1])
         self.proj_out = nn.Linear(block_out_channels[-1], 2 * out_channels, bias=False)
 
+        self.gradient_checkpointing = False
+
     def forward(
         self, hidden_states: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
