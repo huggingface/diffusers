@@ -15,10 +15,7 @@ env:
   RUN_NIGHTLY: yes
   PIPELINE_USAGE_CUTOFF: 5000
   SLACK_API_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
-  HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
   CONSOLIDATED_REPORT_PATH: consolidated_test_report.md
-  SHOW_SLOWEST_TESTS: 20
-  HF_REPORT_DATASET: diffusers-ci/nightly-test-reports
 
 jobs:
   setup_torch_cuda_pipeline_matrix:
@@ -524,10 +521,7 @@ jobs:
           python utils/consolidated_test_report.py \
             --reports_dir combined_reports \
             --output_file $CONSOLIDATED_REPORT_PATH \
-            --slack_channel_name diffusers-ci-nightly \
-            --hf_dataset_repo $HF_REPORT_DATASET \
-            --upload_to_hub \
-            --compare_with_previous
+            --slack_channel_name diffusers-ci-nightly
           
       - name: Show consolidated report
         run: |

@@ -68,6 +68,11 @@ def parse_stats_file(file_path):
                         if len(parts) >= 3:
                             time_str = parts[0]
                             test_path = " ".join(parts[2:])
+                            
+                            # Skip entries with "< 0.05 secs were omitted" or similar
+                            if "secs were omitted" in test_path:
+                                continue
+                                
                             try:
                                 time_seconds = float(time_str.rstrip("s"))
                                 slowest_tests.append({"test": test_path, "duration": time_seconds})
@@ -94,26 +99,39 @@ def parse_durations_file(file_path):
         if os.path.exists(durations_file):
             with open(durations_file, "r") as f:
                 content = f.read()
-                
+
                 # Skip the header line
-                for line in content.split('\n')[1:]:
+                for line in content.split("\n")[1:]:
                     if line.strip():
                         # Format is typically: 10.37s call     tests/path/to/test.py::TestClass::test_method
                         parts = line.strip().split()
                         if len(parts) >= 3:
                             time_str = parts[0]
-                            test_path = ' '.join(parts[2:])
+                            test_path = " ".join(parts[2:])
+                            
+                            # Skip entries with "< 0.05 secs were omitted" or similar
+                            if "secs were omitted" in test_path:
+                                continue
+                                
                             try:
-                                time_seconds = float(time_str.rstrip('s'))
-                                slowest_tests.append({
-                                    "test": test_path,
-                                    "duration": time_seconds
-                                })
+                                time_seconds = float(time_str.rstrip("s"))
+                                slowest_tests.append({"test": test_path, "duration": time_seconds})
                             except ValueError:
-                                pass
+                                # If time_str is not a valid float, it might be a different format
+                                # For example, some pytest formats show "< 0.05s" or similar
+                                if test_path.startswith("<") and "secs were omitted" in test_path:
+                                    # Extract the time value from test_path if it's in the format "< 0.05 secs were omitted"
+                                    try:
+                                        # This handles entries where the time is in the test_path itself
+                                        dur_match = re.search(r"(\d+(?:\.\d+)?)", test_path)
+                                        if dur_match:
+                                            time_seconds = float(dur_match.group(1))
+                                            slowest_tests.append({"test": test_path, "duration": time_seconds})
+                                    except ValueError:
+                                        pass
     except Exception as e:
         print(f"Error parsing durations file {file_path.replace('_stats.txt', '_durations.txt')}: {e}")
-    
+
     return slowest_tests
 
 
@@ -248,7 +266,7 @@ def consolidate_reports(reports_dir):
 
         # Parse stats
         stats = parse_stats_file(stats_file)
-        
+
         # If no slowest tests found in stats file, try the durations file directly
         if not stats.get("slowest_tests"):
             stats["slowest_tests"] = parse_durations_file(stats_file)
@@ -300,16 +318,19 @@ def consolidate_reports(reports_dir):
         # Store results for this test suite
         results[base_name] = {"stats": stats, "failures": failures}
 
+    # Filter out entries with "secs were omitted"
+    filtered_slow_tests = [test for test in all_slow_tests if "secs were omitted" not in test["test"]]
+    
     # Sort all slow tests by duration (descending)
-    all_slow_tests.sort(key=lambda x: x["duration"], reverse=True)
+    filtered_slow_tests.sort(key=lambda x: x["duration"], reverse=True)
 
     # Get the number of slowest tests to show from environment variable or default to 10
     num_slowest_tests = int(os.environ.get("SHOW_SLOWEST_TESTS", "10"))
-    top_slowest_tests = all_slow_tests[:num_slowest_tests] if all_slow_tests else []
-    
+    top_slowest_tests = filtered_slow_tests[:num_slowest_tests] if filtered_slow_tests else []
+
     # Calculate additional duration statistics
     total_duration = sum(test["duration"] for test in all_slow_tests)
-    
+
     # Calculate duration per suite
     suite_durations = {}
     for test in all_slow_tests:
@@ -317,17 +338,14 @@ def consolidate_reports(reports_dir):
         if suite_name not in suite_durations:
             suite_durations[suite_name] = 0
         suite_durations[suite_name] += test["duration"]
-        
+
     # Removed duration categories
 
     return {
-        "total_stats": total_stats, 
-        "test_suites": results, 
+        "total_stats": total_stats,
+        "test_suites": results,
         "slowest_tests": top_slowest_tests,
-        "duration_stats": {
-            "total_duration": total_duration,
-            "suite_durations": suite_durations
-        }
+        "duration_stats": {"total_duration": total_duration, "suite_durations": suite_durations},
     }
 
 
@@ -348,7 +366,7 @@ def generate_report(consolidated_data):
     # Get duration stats if available
     duration_stats = consolidated_data.get("duration_stats", {})
     total_duration = duration_stats.get("total_duration", 0)
-    
+
     summary_table = [
         ["Total Tests", total["tests"]],
         ["Passed", total["passed"]],
@@ -360,7 +378,7 @@ def generate_report(consolidated_data):
 
     report.append(tabulate(summary_table, tablefmt="pipe"))
     report.append("")
-    
+
     # Removed duration distribution section
 
     # Add test suites summary
@@ -368,7 +386,7 @@ def generate_report(consolidated_data):
 
     # Include duration in test suites table if available
     suite_durations = consolidated_data.get("duration_stats", {}).get("suite_durations", {})
-    
+
     if suite_durations:
         suites_table = [["Test Suite", "Tests", "Passed", "Failed", "Skipped", "Success Rate", "Duration (s)"]]
     else:
@@ -382,11 +400,19 @@ def generate_report(consolidated_data):
     for suite_name, suite_data in sorted_suites:
         stats = suite_data["stats"]
         success_rate = f"{(stats['passed'] / stats['tests'] * 100):.2f}%" if stats["tests"] > 0 else "N/A"
-        
+
         if suite_durations:
             duration = suite_durations.get(suite_name, 0)
             suites_table.append(
-                [suite_name, stats["tests"], stats["passed"], stats["failed"], stats["skipped"], success_rate, f"{duration:.2f}"]
+                [
+                    suite_name,
+                    stats["tests"],
+                    stats["passed"],
+                    stats["failed"],
+                    stats["skipped"],
+                    success_rate,
+                    f"{duration:.2f}",
+                ]
             )
         else:
             suites_table.append(
@@ -403,6 +429,9 @@ def generate_report(consolidated_data):
 
         slowest_table = [["Rank", "Test", "Duration (s)", "Test Suite"]]
         for i, test in enumerate(slowest_tests, 1):
+            # Skip entries that don't contain actual test names
+            if "< 0.05 secs were omitted" in test["test"]:
+                continue
             slowest_table.append([i, test["test"], f"{test['duration']:.2f}", test["suite"]])
 
         report.append(tabulate(slowest_table, headers="firstrow", tablefmt="pipe"))
@@ -541,15 +570,19 @@ def create_slack_payload(consolidated_data):
     # Add slowest tests summary
     slowest_tests = consolidated_data.get("slowest_tests", [])
     if slowest_tests:
+        # Filter out "< 0.05 secs were omitted" entries
+        filtered_tests = [test for test in slowest_tests if "secs were omitted" not in test["test"]]
+        
         # Take top 5 for Slack message to avoid clutter
-        top5_slowest = slowest_tests[:5]
+        top5_slowest = filtered_tests[:5]
 
-        slowest_message = "*Top 5 Slowest Tests:*\n"
-        for i, test in enumerate(top5_slowest, 1):
-            test_name = test["test"].split("::")[-1] if "::" in test["test"] else test["test"]
-            slowest_message += f"{i}. `{test_name}` - {test['duration']:.2f}s ({test['suite']})\n"
+        if top5_slowest:
+            slowest_message = "*Top 5 Slowest Tests:*\n"
+            for i, test in enumerate(top5_slowest, 1):
+                test_name = test["test"].split("::")[-1] if "::" in test["test"] else test["test"]
+                slowest_message += f"{i}. `{test_name}` - {test['duration']:.2f}s ({test['suite']})\n"
 
-        payload.append({"type": "section", "text": {"type": "mrkdwn", "text": slowest_message}})
+            payload.append({"type": "section", "text": {"type": "mrkdwn", "text": slowest_message}})
 
     # Add action button
     if os.environ.get("GITHUB_RUN_ID"):
