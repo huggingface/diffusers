@@ -405,7 +405,7 @@ pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers", transform
 
 ## Recommendations for Inference:
 - Keep `AutencoderKLWan` in `torch.float32` for better decoding quality.
-- `num_frames` should be of the form `4 * k + 1`, for example `49` or `81`.
+- `num_frames` should satisfy the following constraint: `(num_frames - 1) % 4 == 0`
 - For smaller resolution videos, try lower values of `shift` (between `2.0` to `5.0`) in the [Scheduler](https://huggingface.co/docs/diffusers/main/en/api/schedulers/flow_match_euler_discrete#diffusers.FlowMatchEulerDiscreteScheduler.shift). For larger resolution videos, try higher values (between `7.0` and `12.0`). The default value is `3.0` for Wan.
 
 ## WanPipeline
