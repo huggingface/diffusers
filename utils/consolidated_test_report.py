@@ -318,27 +318,7 @@ def consolidate_reports(reports_dir):
             suite_durations[suite_name] = 0
         suite_durations[suite_name] += test["duration"]
         
-    # Create duration categories
-    duration_categories = {
-        "under_1s": 0,
-        "1s_to_5s": 0,
-        "5s_to_10s": 0,
-        "10s_to_30s": 0,
-        "over_30s": 0
-    }
-    
-    for test in all_slow_tests:
-        duration = test["duration"]
-        if duration < 1:
-            duration_categories["under_1s"] += 1
-        elif duration < 5:
-            duration_categories["1s_to_5s"] += 1
-        elif duration < 10:
-            duration_categories["5s_to_10s"] += 1
-        elif duration < 30:
-            duration_categories["10s_to_30s"] += 1
-        else:
-            duration_categories["over_30s"] += 1
+    # Removed duration categories
 
     return {
         "total_stats": total_stats, 
@@ -346,8 +326,7 @@ def consolidate_reports(reports_dir):
         "slowest_tests": top_slowest_tests,
         "duration_stats": {
             "total_duration": total_duration,
-            "suite_durations": suite_durations,
-            "duration_categories": duration_categories
+            "suite_durations": suite_durations
         }
     }
 
@@ -382,22 +361,7 @@ def generate_report(consolidated_data):
     report.append(tabulate(summary_table, tablefmt="pipe"))
     report.append("")
     
-    # Add duration distribution if available
-    duration_categories = duration_stats.get("duration_categories")
-    if duration_categories:
-        report.append("### Test Duration Distribution")
-        
-        distribution_table = [
-            ["Duration Range", "Number of Tests"],
-            ["Under 1s", duration_categories.get("under_1s", 0)],
-            ["1s to 5s", duration_categories.get("1s_to_5s", 0)],
-            ["5s to 10s", duration_categories.get("5s_to_10s", 0)],
-            ["10s to 30s", duration_categories.get("10s_to_30s", 0)],
-            ["Over 30s", duration_categories.get("over_30s", 0)],
-        ]
-        
-        report.append(tabulate(distribution_table, headers="firstrow", tablefmt="pipe"))
-        report.append("")
+    # Removed duration distribution section
 
     # Add test suites summary
     report.append("## Test Suites")
@@ -435,8 +399,7 @@ def generate_report(consolidated_data):
     # Add slowest tests section
     slowest_tests = consolidated_data.get("slowest_tests", [])
     if slowest_tests:
-        num_slowest = len(slowest_tests)
-        report.append(f"## Slowest {num_slowest} Tests")
+        report.append("## Slowest Tests")
 
         slowest_table = [["Rank", "Test", "Duration (s)", "Test Suite"]]
         for i, test in enumerate(slowest_tests, 1):
