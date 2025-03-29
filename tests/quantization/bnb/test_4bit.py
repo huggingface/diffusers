@@ -63,6 +63,8 @@ if is_torch_available():
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
 
+    from diffusers.quantizers.bitsandbytes.utils import replace_with_bnb_linear
+
 
 @require_bitsandbytes_version_greater("0.43.2")
 @require_accelerate
@@ -363,6 +365,18 @@ class BnB4BitBasicTests(Base4bitTests):
                 _ = SD3Transformer2DModel.from_pretrained(tmpdirname)
 
             assert key_to_target in str(err_context.exception)
+
+    def test_bnb_4bit_logs_warning_for_no_quantization(self):
+        model_with_no_linear = torch.nn.Sequential(torch.nn.Conv2d(4, 4, 3), torch.nn.ReLU())
+        quantization_config = BitsAndBytesConfig(load_in_4bit=True)
+        logger = logging.get_logger("diffusers.quantizers.bitsandbytes.utils")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            _ = replace_with_bnb_linear(model_with_no_linear, quantization_config=quantization_config)
+        assert (
+            "You are loading your model in 8bit or 4bit but no linear modules were found in your model."
+            in cap_logger.out
+        )
 
 
 class BnB4BitTrainingTests(Base4bitTests):
