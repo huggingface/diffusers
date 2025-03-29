@@ -25,6 +25,7 @@ from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
     check_peft_version,
+    convert_control_lora_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
@@ -109,6 +110,33 @@ def _maybe_adjust_config(config):
         for module_name, rank in config["rank_pattern"].items():
             alpha_pattern[module_name] = rank
         config["alpha_pattern"] = alpha_pattern
+
+    return config
+
+
+def _maybe_adjust_config_for_control_lora(config):
+    """
+    """
+
+    target_modules_before = config["target_modules"]
+    target_modules = []
+    modules_to_save = []
+
+    for module in target_modules_before:
+        if module.endswith("weight"):
+            base_name = ".".join(module.split(".")[:-1])
+            modules_to_save.append(base_name)
+        elif module.endswith("bias"):
+            base_name = ".".join(module.split(".")[:-1])
+            if ".".join([base_name, "weight"]) in target_modules_before:
+                modules_to_save.append(base_name)
+            else:
+                target_modules.append(base_name)
+        else:
+            target_modules.append(module)
+
+    config["target_modules"] = list(set(target_modules))
+    config["modules_to_save"] = list(set(modules_to_save))
 
     return config
 
@@ -244,6 +272,13 @@ class PeftAdapterMixin:
                     f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."
                 )
 
+            # Control LoRA from SAI is different from BFL Control LoRA
+            # https://huggingface.co/stabilityai/control-lora/
+            is_control_lora = "lora_controlnet" in state_dict
+            if is_control_lora:
+                del state_dict["lora_controlnet"]
+                state_dict = convert_control_lora_state_dict_to_peft(state_dict)
+
             # check with first key if is not in peft format
             first_key = next(iter(state_dict.keys()))
             if "lora_A" not in first_key:
@@ -264,6 +299,8 @@ class PeftAdapterMixin:
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
             # TODO: revisit this after https://github.com/huggingface/peft/pull/2382 is merged.
             lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
+            if is_control_lora:
+                lora_config_kwargs = _maybe_adjust_config_for_control_lora(lora_config_kwargs)
 
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
