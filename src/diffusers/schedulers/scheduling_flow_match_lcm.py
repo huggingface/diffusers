@@ -24,6 +24,7 @@ from ..utils import BaseOutput, is_scipy_available, logging
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
 
+
 if is_scipy_available():
     import scipy.stats
 
@@ -91,22 +92,22 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
     @register_to_config
     def __init__(
-            self,
-            num_train_timesteps: int = 1000,
-            shift: float = 1.0,
-            use_dynamic_shifting: bool = False,
-            base_shift: Optional[float] = 0.5,
-            max_shift: Optional[float] = 1.15,
-            base_image_seq_len: Optional[int] = 256,
-            max_image_seq_len: Optional[int] = 4096,
-            invert_sigmas: bool = False,
-            shift_terminal: Optional[float] = None,
-            use_karras_sigmas: Optional[bool] = False,
-            use_exponential_sigmas: Optional[bool] = False,
-            use_beta_sigmas: Optional[bool] = False,
-            time_shift_type: str = "exponential",
-            scale_factors: Optional[List[float]] = None,
-            upscale_mode: Optional[str] = 'bicubic'
+        self,
+        num_train_timesteps: int = 1000,
+        shift: float = 1.0,
+        use_dynamic_shifting: bool = False,
+        base_shift: Optional[float] = 0.5,
+        max_shift: Optional[float] = 1.15,
+        base_image_seq_len: Optional[int] = 256,
+        max_image_seq_len: Optional[int] = 4096,
+        invert_sigmas: bool = False,
+        shift_terminal: Optional[float] = None,
+        use_karras_sigmas: Optional[bool] = False,
+        use_exponential_sigmas: Optional[bool] = False,
+        use_beta_sigmas: Optional[bool] = False,
+        time_shift_type: str = "exponential",
+        scale_factors: Optional[List[float]] = None,
+        upscale_mode: Optional[str] = "bicubic",
     ):
         if self.config.use_beta_sigmas and not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
@@ -189,10 +190,10 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         self._upscale_mode = upscale_mode
 
     def scale_noise(
-            self,
-            sample: torch.FloatTensor,
-            timestep: Union[float, torch.FloatTensor],
-            noise: Optional[torch.FloatTensor] = None,
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[float, torch.FloatTensor],
+        noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         """
         Forward process in flow-matching
@@ -267,12 +268,12 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         return stretched_t
 
     def set_timesteps(
-            self,
-            num_inference_steps: Optional[int] = None,
-            device: Union[str, torch.device] = None,
-            sigmas: Optional[List[float]] = None,
-            mu: Optional[float] = None,
-            timesteps: Optional[List[float]] = None,
+        self,
+        num_inference_steps: Optional[int] = None,
+        device: Union[str, torch.device] = None,
+        sigmas: Optional[List[float]] = None,
+        mu: Optional[float] = None,
+        timesteps: Optional[List[float]] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -301,7 +302,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
         if num_inference_steps is not None:
             if (sigmas is not None and len(sigmas) != num_inference_steps) or (
-                    timesteps is not None and len(timesteps) != num_inference_steps
+                timesteps is not None and len(timesteps) != num_inference_steps
             ):
                 raise ValueError(
                     "`sigmas` and `timesteps` should have the same length as num_inference_steps, if `num_inference_steps` is provided"
@@ -391,17 +392,17 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = self._begin_index
 
     def step(
-            self,
-            model_output: torch.FloatTensor,
-            timestep: Union[float, torch.FloatTensor],
-            sample: torch.FloatTensor,
-            s_churn: float = 0.0,
-            s_tmin: float = 0.0,
-            s_tmax: float = float("inf"),
-            s_noise: float = 1.0,
-            generator: Optional[torch.Generator] = None,
-            per_token_timesteps: Optional[torch.Tensor] = None,
-            return_dict: bool = True,
+        self,
+        model_output: torch.FloatTensor,
+        timestep: Union[float, torch.FloatTensor],
+        sample: torch.FloatTensor,
+        s_churn: float = 0.0,
+        s_tmin: float = 0.0,
+        s_tmax: float = float("inf"),
+        s_noise: float = 1.0,
+        generator: Optional[torch.Generator] = None,
+        per_token_timesteps: Optional[torch.Tensor] = None,
+        return_dict: bool = True,
     ) -> Union[FlowMatchLCMSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
@@ -424,20 +425,19 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
             per_token_timesteps (`torch.Tensor`, *optional*):
                 The timesteps for each token in the sample.
             return_dict (`bool`):
-                Whether or not to return a
-                [`~schedulers.scheduling_flow_match_lcm.FlowMatchLCMSchedulerOutput`] or tuple.
+                Whether or not to return a [`~schedulers.scheduling_flow_match_lcm.FlowMatchLCMSchedulerOutput`] or
+                tuple.
 
         Returns:
             [`~schedulers.scheduling_flow_match_lcm.FlowMatchLCMSchedulerOutput`] or `tuple`:
-                If return_dict is `True`,
-                [`~schedulers.scheduling_flow_match_lcm.FlowMatchLCMSchedulerOutput`] is returned,
-                otherwise a tuple is returned where the first element is the sample tensor.
+                If return_dict is `True`, [`~schedulers.scheduling_flow_match_lcm.FlowMatchLCMSchedulerOutput`] is
+                returned, otherwise a tuple is returned where the first element is the sample tensor.
         """
 
         if (
-                isinstance(timestep, int)
-                or isinstance(timestep, torch.IntTensor)
-                or isinstance(timestep, torch.LongTensor)
+            isinstance(timestep, int)
+            or isinstance(timestep, torch.IntTensor)
+            or isinstance(timestep, torch.LongTensor)
         ):
             raise ValueError(
                 (
@@ -447,11 +447,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
                 ),
             )
 
-        if (
-                self._scale_factors
-                and self._upscale_mode
-                and len(self.timesteps) != len(self._scale_factors) + 1
-        ):
+        if self._scale_factors and self._upscale_mode and len(self.timesteps) != len(self._scale_factors) + 1:
             raise ValueError(
                 "`_scale_factors` should have the same length as `timesteps` - 1, if `_scale_factors` are set."
             )
@@ -467,23 +463,14 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
         sigma = self.sigmas[self.step_index]
         sigma_next = self.sigmas[self.step_index + 1]
-        x0_pred = (sample - sigma * model_output)
+        x0_pred = sample - sigma * model_output
 
         if self._scale_factors and self._upscale_mode:
             if self._step_index < len(self._scale_factors):
-                size = [
-                    round(self._scale_factors[self._step_index] * size)
-                    for size in self._init_size
-                ]
-                x0_pred = torch.nn.functional.interpolate(
-                    x0_pred,
-                    size=size,
-                    mode=self._upscale_mode
-                )
+                size = [round(self._scale_factors[self._step_index] * size) for size in self._init_size]
+                x0_pred = torch.nn.functional.interpolate(x0_pred, size=size, mode=self._upscale_mode)
 
-        noise = randn_tensor(
-            x0_pred.shape, generator=generator, device=x0_pred.device, dtype=x0_pred.dtype
-        )
+        noise = randn_tensor(x0_pred.shape, generator=generator, device=x0_pred.device, dtype=x0_pred.dtype)
         prev_sample = (1 - sigma_next) * x0_pred + sigma_next * noise
 
         # upon completion increase step index by one
@@ -547,7 +534,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_beta
     def _convert_to_beta(
-            self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
+        self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
         """From "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et. al, 2024)"""
 
@@ -570,9 +557,9 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
             [
                 sigma_min + (ppf * (sigma_max - sigma_min))
                 for ppf in [
-                scipy.stats.beta.ppf(timestep, alpha, beta)
-                for timestep in 1 - np.linspace(0, 1, num_inference_steps)
-            ]
+                    scipy.stats.beta.ppf(timestep, alpha, beta)
+                    for timestep in 1 - np.linspace(0, 1, num_inference_steps)
+                ]
             ]
         )
         return sigmas
