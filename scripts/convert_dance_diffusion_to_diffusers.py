@@ -46,6 +46,9 @@ MODELS_MAP = {
     },
 }
 
+# Set global timeout
+request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
+
 
 def alpha_sigma_to_t(alpha, sigma):
     """Returns a timestep, given the scaling factors for the clean image and for
@@ -74,7 +77,7 @@ class DiffusionUncond(nn.Module):
 
 def download(model_name):
     url = MODELS_MAP[model_name]["url"]
-    r = requests.get(url, stream=True)
+    r = requests.get(url, stream=True, timeout=request_timeout)
 
     local_filename = f"./{model_name}.ckpt"
     with open(local_filename, "wb") as fp:

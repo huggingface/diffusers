@@ -57,6 +57,9 @@ if is_accelerate_available():
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+# Set global timeout
+request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
+
 CHECKPOINT_KEY_NAMES = {
     "v2": "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight",
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
@@ -443,7 +446,7 @@ def fetch_original_config(original_config_file, local_files_only=False):
                 "Please provide a valid local file path."
             )
 
-        original_config_file = BytesIO(requests.get(original_config_file).content)
+        original_config_file = BytesIO(requests.get(original_config_file, timeout=request_timeout).content)
 
     else:
         raise ValueError("Invalid `original_config_file` provided. Please set it to a valid file path or URL.")

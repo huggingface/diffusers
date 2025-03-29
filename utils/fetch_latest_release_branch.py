@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import requests
 from packaging.version import parse
 
@@ -22,12 +24,16 @@ USER = "huggingface"
 REPO = "diffusers"
 
 
+# Set global timeout
+request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
+
+
 def fetch_all_branches(user, repo):
     branches = []  # List to store all branches
     page = 1  # Start from first page
     while True:
         # Make a request to the GitHub API for the branches
-        response = requests.get(f"https://api.github.com/repos/{user}/{repo}/branches", params={"page": page})
+        response = requests.get(f"https://api.github.com/repos/{user}/{repo}/branches", params={"page": page}, timeout=request_timeout)
 
         # Check if the request was successful
         if response.status_code == 200:
