@@ -13,15 +13,15 @@
 # limitations under the License.
 
 
-from typing import Dict, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin
-from ...utils import logging
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_processor import (
     Attention,
@@ -160,14 +160,15 @@ class AuraFlowSingleTransformerBlock(nn.Module):
         self.norm2 = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
         self.ff = AuraFlowFeedForward(dim, dim * 4)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor):
+    def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor, attention_kwargs: Optional[Dict[str, Any]] = None):
         residual = hidden_states
+        attention_kwargs = attention_kwargs or {}
 
         # Norm + Projection.
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         # Attention.
-        attn_output = self.attn(hidden_states=norm_hidden_states)
+        attn_output = self.attn(hidden_states=norm_hidden_states, **attention_kwargs)
 
         # Process attention outputs for the `hidden_states`.
         hidden_states = self.norm2(residual + gate_msa.unsqueeze(1) * attn_output)
@@ -223,10 +224,11 @@ class AuraFlowJointTransformerBlock(nn.Module):
         self.ff_context = AuraFlowFeedForward(dim, dim * 4)
 
     def forward(
-        self, hidden_states: torch.FloatTensor, encoder_hidden_states: torch.FloatTensor, temb: torch.FloatTensor
+        self, hidden_states: torch.FloatTensor, encoder_hidden_states: torch.FloatTensor, temb: torch.FloatTensor, attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         residual = hidden_states
         residual_context = encoder_hidden_states
+        attention_kwargs = attention_kwargs or {}
 
         # Norm + Projection.
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
@@ -236,7 +238,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
 
         # Attention.
         attn_output, context_attn_output = self.attn(
-            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states
+            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states, **attention_kwargs,
         )
 
         # Process attention outputs for the `hidden_states`.
@@ -254,7 +256,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model as introduced in AuraFlow (https://blog.fal.ai/auraflow/).
 
@@ -449,8 +451,24 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         height, width = hidden_states.shape[-2:]
 
         # Apply patch embedding, timestep embedding, and project the caption embeddings.
@@ -474,7 +492,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
 
             else:
                 encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb, attention_kwargs=attention_kwargs,
                 )
 
         # Single DiT blocks that combine the `hidden_states` (image) and `encoder_hidden_states` (text)
@@ -491,7 +509,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
                     )
 
                 else:
-                    combined_hidden_states = block(hidden_states=combined_hidden_states, temb=temb)
+                    combined_hidden_states = block(hidden_states=combined_hidden_states, temb=temb, attention_kwargs=attention_kwargs)
 
             hidden_states = combined_hidden_states[:, encoder_seq_len:]
 
@@ -511,6 +529,10 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
         output = hidden_states.reshape(
             shape=(hidden_states.shape[0], out_channels, height * patch_size, width * patch_size)
         )
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)
