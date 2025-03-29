@@ -319,7 +319,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image,
         height,
         width,
-        num_frames,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
@@ -328,8 +327,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             raise ValueError("`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is" f" {type(image)}")
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
-        if num_frames % 4 != 1:
-            raise ValueError("`num_frames` must be of the form 4 * k + 1, for k >= 0")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -557,11 +554,17 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             image,
             height,
             width,
-            num_frames,
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
         )
+
+        if num_frames % self.vae_scale_factor_temporal != 1:
+            logger.warning(
+                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
+            )
+            num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+        num_frames = max(num_frames, 1)
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
