@@ -298,15 +298,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        if self.union:
-            # union mode
-            if controlnet_mode is None:
-                raise ValueError("`controlnet_mode` cannot be `None` when applying ControlNet-Union")
-            # union mode emb
-            controlnet_mode_emb = self.controlnet_mode_embedder(controlnet_mode)
-            encoder_hidden_states = torch.cat([controlnet_mode_emb, encoder_hidden_states], dim=1)
-            txt_ids = torch.cat([txt_ids[:1], txt_ids], dim=0)
-
         if txt_ids.ndim == 3:
             logger.warning(
                 "Passing `txt_ids` 3d torch.Tensor is deprecated."
@@ -319,6 +310,15 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 "Please remove the batch dimension and pass it as a 2d torch Tensor"
             )
             img_ids = img_ids[0]
+
+        if self.union:
+            # union mode
+            if controlnet_mode is None:
+                raise ValueError("`controlnet_mode` cannot be `None` when applying ControlNet-Union")
+            # union mode emb
+            controlnet_mode_emb = self.controlnet_mode_embedder(controlnet_mode)
+            encoder_hidden_states = torch.cat([controlnet_mode_emb, encoder_hidden_states], dim=1)
+            txt_ids = torch.cat([txt_ids[:1], txt_ids], dim=0)
 
         ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
