@@ -46,6 +46,7 @@ class QuantizationMethod(str, Enum):
     GGUF = "gguf"
     TORCHAO = "torchao"
     QUANTO = "quanto"
+    MODELOPT = "modelopt"
 
 
 if is_torchao_available():
@@ -722,3 +723,26 @@ class QuantoConfig(QuantizationConfigMixin):
         accepted_weights = ["float8", "int8", "int4", "int2"]
         if self.weights_dtype not in accepted_weights:
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
+
+
+@dataclass
+class ModelOptConfig(QuantizationConfigMixin):
+    """This is a config class to use nvidia modelopt for quantization.
+
+    Args:
+        QuantizationConfigMixin (_type_): _description_
+    """
+
+    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, **kwargs) -> None:
+        self.quant_method = QuantizationMethod.MODELOPT
+        self.quant_type = "FP8"
+        self.modules_to_not_convert = modules_to_not_convert
+
+    def get_config_from_quant_type(self) -> Dict[str, Any]:
+        """
+        Get the config from the quantization type.
+        """
+        # ModelOpt imports diffusers internally. This is here to prevent circular imports
+        from modelopt.torch.quantization.config import FP8_PER_TENSOR_REAL_QUANT_CFG
+
+        return FP8_PER_TENSOR_REAL_QUANT_CFG
