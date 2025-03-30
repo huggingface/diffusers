@@ -444,6 +444,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             predicted_variance = None
 
         # 1. compute alphas, betas
+        self.alphas_cumprod = self.alphas_cumprod.to(device=model_output.device)
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
