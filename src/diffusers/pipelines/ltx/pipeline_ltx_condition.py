@@ -659,7 +659,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        if conditions is not None:
+        if len(conditions) > 0:
             condition_latent_frames_mask = torch.zeros(
                 (batch_size, num_latent_frames), device=device, dtype=torch.float32
             )
@@ -743,7 +743,10 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             patch_size=self.transformer_spatial_patch_size,
             device=device,
         )
-        conditioning_mask = condition_latent_frames_mask.gather(1, video_ids[:, 0]) if conditions is not None else None
+        if len(conditions) > 0:
+            conditioning_mask = condition_latent_frames_mask.gather(1, video_ids[:, 0])
+        else:
+            conditioning_mask, extra_conditioning_num_latents = None, 0
         video_ids = self._scale_video_ids(
             video_ids,
             scale_factor=self.vae_spatial_compression_ratio,
@@ -755,12 +758,12 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
         )
 
-        if conditions is not None and len(extra_conditioning_latents) > 0:
+        if len(conditions) > 0 and len(extra_conditioning_latents) > 0:
             latents = torch.cat([*extra_conditioning_latents, latents], dim=1)
             video_ids = torch.cat([*extra_conditioning_video_ids, video_ids], dim=2)
             conditioning_mask = torch.cat([*extra_conditioning_mask, conditioning_mask], dim=1)
 
-        return latents, conditioning_mask, video_ids, (extra_conditioning_num_latents if conditions is not None else 0)
+        return latents, conditioning_mask, video_ids, extra_conditioning_num_latents
 
     @property
     def guidance_scale(self):
