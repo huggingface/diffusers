@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+from typing import List, Union
 
+import PIL.Image
+import numpy as np
 import torch
 
 from diffusers.utils import BaseOutput
@@ -17,4 +20,4 @@ class CogVideoXPipelineOutput(BaseOutput):
             `(batch_size, num_frames, channels, height, width)`.
     """
 
-    frames: torch.Tensor
+    frames: Union[torch.Tensor, np.ndarray, List[PIL.Image.Image]]
