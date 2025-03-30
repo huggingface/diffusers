@@ -17,6 +17,8 @@ import os
 
 import requests
 
+from ..src.diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+
 
 # Configuration
 LIBRARY_NAME = "diffusers"
@@ -24,13 +26,9 @@ GITHUB_REPO = "huggingface/diffusers"
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 
-# Set global timeout
-request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
-
-
 def check_pypi_for_latest_release(library_name):
     """Check PyPI for the latest release of the library."""
-    response = requests.get(f"https://pypi.org/pypi/{library_name}/json", timeout=request_timeout)
+    response = requests.get(f"https://pypi.org/pypi/{library_name}/json", timeout=DIFFUSERS_REQUEST_TIMEOUT)
     if response.status_code == 200:
         data = response.json()
         return data["info"]["version"]
@@ -42,7 +40,7 @@ def check_pypi_for_latest_release(library_name):
 def get_github_release_info(github_repo):
     """Fetch the latest release info from GitHub."""
     url = f"https://api.github.com/repos/{github_repo}/releases/latest"
-    response = requests.get(url, timeout=request_timeout)
+    response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
 
     if response.status_code == 200:
         data = response.json()

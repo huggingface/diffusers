@@ -60,6 +60,7 @@ from diffusers.schedulers import (
     UnCLIPScheduler,
 )
 from diffusers.utils import is_accelerate_available, logging
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 
 
 if is_accelerate_available():
@@ -67,10 +68,6 @@ if is_accelerate_available():
     from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-# Set global timeout
-request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -1440,7 +1437,7 @@ def download_from_original_stable_diffusion_ckpt(
             config_url = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml"
 
         if config_url is not None:
-            original_config_file = BytesIO(requests.get(config_url, timeout=request_timeout).content)
+            original_config_file = BytesIO(requests.get(config_url, timeout=DIFFUSERS_REQUEST_TIMEOUT).content)
         else:
             with open(original_config_file, "r") as f:
                 original_config_file = f.read()

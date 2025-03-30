@@ -18,14 +18,12 @@ import os
 import requests
 from packaging.version import parse
 
+from ..src.diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+
 
 # GitHub repository details
 USER = "huggingface"
 REPO = "diffusers"
-
-
-# Set global timeout
-request_timeout = int(os.environ.get("DIFFUSERS_REQUEST_TIMEOUT", 60))
 
 
 def fetch_all_branches(user, repo):
@@ -33,7 +31,7 @@ def fetch_all_branches(user, repo):
     page = 1  # Start from first page
     while True:
         # Make a request to the GitHub API for the branches
-        response = requests.get(f"https://api.github.com/repos/{user}/{repo}/branches", params={"page": page}, timeout=request_timeout)
+        response = requests.get(f"https://api.github.com/repos/{user}/{repo}/branches", params={"page": page}, timeout=DIFFUSERS_REQUEST_TIMEOUT)
 
         # Check if the request was successful
         if response.status_code == 200:
