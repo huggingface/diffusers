@@ -15,7 +15,6 @@
 """Conversion script for stable diffusion checkpoints which _only_ contain a controlnet."""
 
 import argparse
-import os
 import re
 from contextlib import nullcontext
 from io import BytesIO
