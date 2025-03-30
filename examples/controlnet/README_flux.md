@@ -58,7 +58,8 @@ When running `accelerate config`, if we specify torch compile mode to True there
 ## Custom Datasets
 
 We support dataset formats:
-The original dataset is hosted in the [ControlNet repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip). We re-uploaded it to be compatible with `datasets` [here](https://huggingface.co/datasets/fusing/fill50k). Note that `datasets` handles dataloading within the training script. To use our example, add `--dataset_name=fusing/fill50k \` to the script and remove line `--jsonl_for_train` mentioned below.
+The original dataset is hosted in the [ControlNet repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip). We re-uploaded it to be compatible with `datasets` [here](https://huggingface.co/datasets/fusing/fill50k). Note that `datasets` handles dataloading within the training script. To use our example, add `--dataset_name=fusing/fill50k \
+--trust_remote_code \` to the script and remove line `--jsonl_for_train` mentioned below.
 
 
 We also support importing data from jsonl(xxx.jsonl),using `--jsonl_for_train` to enable it, here is a brief example of jsonl files:
@@ -85,6 +86,7 @@ we can define the num_layers, num_single_layers, which determines the size of th
 accelerate launch train_controlnet_flux.py \
     --pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev" \
     --dataset_name=fusing/fill50k \
+    --trust_remote_code \
     --conditioning_image_column=conditioning_image \
     --image_column=image \
     --caption_column=text \
