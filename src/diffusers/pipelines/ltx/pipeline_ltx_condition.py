@@ -659,7 +659,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        # If no conditions are provided, handle text-to-video generation
         if conditions is None or len(conditions) == 0:
             video_ids = self._prepare_video_ids(
                 batch_size,
