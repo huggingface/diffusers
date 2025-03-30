@@ -223,7 +223,7 @@ def retrieve_latents(
 
 class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixin):
     r"""
-    Pipeline for image-to-video generation.
+    Pipeline for text/image/video-to-video generation.
 
     Reference: https://github.com/Lightricks/LTX-Video
 
