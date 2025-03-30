@@ -502,26 +502,35 @@ class LoraBaseMixin:
 
     def unload_lora_weights(self):
         """
-        Unloads the LoRA parameters.
+        Unloads all LoRA adapters from memory and resets internal adapter configuration.
+        This allows reloading the same adapter names without conflict.
 
-        Examples:
-
-        ```python
-        >>> # Assuming `pipeline` is already loaded with the LoRA parameters.
-        >>> pipeline.unload_lora_weights()
-        >>> ...
-        ```
+        Example:
+        pipe.unload_lora_weights()
+        pipe.load_lora_weights("adapter_name")  # safe to reload
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
-            if model is not None:
-                if issubclass(model.__class__, ModelMixin):
-                    model.unload_lora()
-                elif issubclass(model.__class__, PreTrainedModel):
-                    _remove_text_encoder_monkey_patch(model)
+            if model is None:
+                continue
+
+        # For diffusers-style models
+            if issubclass(model.__class__, ModelMixin):
+                model.unload_lora()
+                if hasattr(model, "peft_config"):
+                    model.peft_config.clear()
+                if hasattr(model, "active_adapter"):
+                    model.active_adapter = None
+
+        # For transformers/PEFT models
+            elif issubclass(model.__class__, PreTrainedModel):
+                _remove_text_encoder_monkey_patch(model)
+
+        torch.cuda.empty_cache()
+
 
     def fuse_lora(
         self,
