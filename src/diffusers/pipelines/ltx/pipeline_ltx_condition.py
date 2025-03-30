@@ -1125,16 +1125,11 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                 denoised_latents = self.scheduler.step(
                     -noise_pred, t, latents, per_token_timesteps=timestep, return_dict=False
                 )[0]
-                tokens_to_denoise_mask = (
-                    (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1)
-                    if is_conditioning_image_or_video
-                    else None
-                )
-                latents = (
-                    torch.where(tokens_to_denoise_mask, denoised_latents, latents)
-                    if tokens_to_denoise_mask is not None
-                    else denoised_latents
-                )
+                if is_conditioning_image_or_video:
+                    tokens_to_denoise_mask = (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1)
+                    latents = torch.where(tokens_to_denoise_mask, denoised_latents, latents)
+                else:
+                    latents = denoised_latents
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
