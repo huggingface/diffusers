@@ -659,99 +659,80 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        if conditions is None or len(conditions) == 0:
-            video_ids = self._prepare_video_ids(
-                batch_size,
-                num_latent_frames,
-                latent_height,
-                latent_width,
-                patch_size_t=self.transformer_temporal_patch_size,
-                patch_size=self.transformer_spatial_patch_size,
-                device=device,
+        if conditions is not None:
+            condition_latent_frames_mask = torch.zeros(
+                (batch_size, num_latent_frames), device=device, dtype=torch.float32
             )
-            video_ids = self._scale_video_ids(
-                video_ids,
-                scale_factor=self.vae_spatial_compression_ratio,
-                scale_factor_t=self.vae_temporal_compression_ratio,
-                frame_index=0,
-                device=device,
-            )
-            packed_latents = self._pack_latents(
-                latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-            )
-            return packed_latents, None, video_ids, 0
 
-        condition_latent_frames_mask = torch.zeros((batch_size, num_latent_frames), device=device, dtype=torch.float32)
+            extra_conditioning_latents = []
+            extra_conditioning_video_ids = []
+            extra_conditioning_mask = []
+            extra_conditioning_num_latents = 0
+            for data, strength, frame_index in zip(conditions, condition_strength, condition_frame_index):
+                condition_latents = retrieve_latents(self.vae.encode(data), generator=generator)
+                condition_latents = self._normalize_latents(
+                    condition_latents, self.vae.latents_mean, self.vae.latents_std
+                ).to(device, dtype=dtype)
 
-        extra_conditioning_latents = []
-        extra_conditioning_video_ids = []
-        extra_conditioning_mask = []
-        extra_conditioning_num_latents = 0
-        for data, strength, frame_index in zip(conditions, condition_strength, condition_frame_index):
-            condition_latents = retrieve_latents(self.vae.encode(data), generator=generator)
-            condition_latents = self._normalize_latents(
-                condition_latents, self.vae.latents_mean, self.vae.latents_std
-            ).to(device, dtype=dtype)
+                num_data_frames = data.size(2)
+                num_cond_frames = condition_latents.size(2)
 
-            num_data_frames = data.size(2)
-            num_cond_frames = condition_latents.size(2)
+                if frame_index == 0:
+                    latents[:, :, :num_cond_frames] = torch.lerp(
+                        latents[:, :, :num_cond_frames], condition_latents, strength
+                    )
+                    condition_latent_frames_mask[:, :num_cond_frames] = strength
 
-            if frame_index == 0:
-                latents[:, :, :num_cond_frames] = torch.lerp(
-                    latents[:, :, :num_cond_frames], condition_latents, strength
-                )
-                condition_latent_frames_mask[:, :num_cond_frames] = strength
+                else:
+                    if num_data_frames > 1:
+                        if num_cond_frames < num_prefix_latent_frames:
+                            raise ValueError(
+                                f"Number of latent frames must be at least {num_prefix_latent_frames} but got {num_data_frames}."
+                            )
 
-            else:
-                if num_data_frames > 1:
-                    if num_cond_frames < num_prefix_latent_frames:
-                        raise ValueError(
-                            f"Number of latent frames must be at least {num_prefix_latent_frames} but got {num_data_frames}."
-                        )
+                        if num_cond_frames > num_prefix_latent_frames:
+                            start_frame = frame_index // self.vae_temporal_compression_ratio + num_prefix_latent_frames
+                            end_frame = start_frame + num_cond_frames - num_prefix_latent_frames
+                            latents[:, :, start_frame:end_frame] = torch.lerp(
+                                latents[:, :, start_frame:end_frame],
+                                condition_latents[:, :, num_prefix_latent_frames:],
+                                strength,
+                            )
+                            condition_latent_frames_mask[:, start_frame:end_frame] = strength
+                            condition_latents = condition_latents[:, :, :num_prefix_latent_frames]
 
-                    if num_cond_frames > num_prefix_latent_frames:
-                        start_frame = frame_index // self.vae_temporal_compression_ratio + num_prefix_latent_frames
-                        end_frame = start_frame + num_cond_frames - num_prefix_latent_frames
-                        latents[:, :, start_frame:end_frame] = torch.lerp(
-                            latents[:, :, start_frame:end_frame],
-                            condition_latents[:, :, num_prefix_latent_frames:],
-                            strength,
-                        )
-                        condition_latent_frames_mask[:, start_frame:end_frame] = strength
-                        condition_latents = condition_latents[:, :, :num_prefix_latent_frames]
+                    noise = randn_tensor(condition_latents.shape, generator=generator, device=device, dtype=dtype)
+                    condition_latents = torch.lerp(noise, condition_latents, strength)
 
-                noise = randn_tensor(condition_latents.shape, generator=generator, device=device, dtype=dtype)
-                condition_latents = torch.lerp(noise, condition_latents, strength)
+                    condition_video_ids = self._prepare_video_ids(
+                        batch_size,
+                        condition_latents.size(2),
+                        latent_height,
+                        latent_width,
+                        patch_size=self.transformer_spatial_patch_size,
+                        patch_size_t=self.transformer_temporal_patch_size,
+                        device=device,
+                    )
+                    condition_video_ids = self._scale_video_ids(
+                        condition_video_ids,
+                        scale_factor=self.vae_spatial_compression_ratio,
+                        scale_factor_t=self.vae_temporal_compression_ratio,
+                        frame_index=frame_index,
+                        device=device,
+                    )
+                    condition_latents = self._pack_latents(
+                        condition_latents,
+                        self.transformer_spatial_patch_size,
+                        self.transformer_temporal_patch_size,
+                    )
+                    condition_conditioning_mask = torch.full(
+                        condition_latents.shape[:2], strength, device=device, dtype=dtype
+                    )
 
-                condition_video_ids = self._prepare_video_ids(
-                    batch_size,
-                    condition_latents.size(2),
-                    latent_height,
-                    latent_width,
-                    patch_size=self.transformer_spatial_patch_size,
-                    patch_size_t=self.transformer_temporal_patch_size,
-                    device=device,
-                )
-                condition_video_ids = self._scale_video_ids(
-                    condition_video_ids,
-                    scale_factor=self.vae_spatial_compression_ratio,
-                    scale_factor_t=self.vae_temporal_compression_ratio,
-                    frame_index=frame_index,
-                    device=device,
-                )
-                condition_latents = self._pack_latents(
-                    condition_latents,
-                    self.transformer_spatial_patch_size,
-                    self.transformer_temporal_patch_size,
-                )
-                condition_conditioning_mask = torch.full(
-                    condition_latents.shape[:2], strength, device=device, dtype=dtype
-                )
-
-                extra_conditioning_latents.append(condition_latents)
-                extra_conditioning_video_ids.append(condition_video_ids)
-                extra_conditioning_mask.append(condition_conditioning_mask)
-                extra_conditioning_num_latents += condition_latents.size(1)
+                    extra_conditioning_latents.append(condition_latents)
+                    extra_conditioning_video_ids.append(condition_video_ids)
+                    extra_conditioning_mask.append(condition_conditioning_mask)
+                    extra_conditioning_num_latents += condition_latents.size(1)
 
         video_ids = self._prepare_video_ids(
             batch_size,
@@ -762,7 +743,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             patch_size=self.transformer_spatial_patch_size,
             device=device,
         )
-        conditioning_mask = condition_latent_frames_mask.gather(1, video_ids[:, 0])
+        conditioning_mask = condition_latent_frames_mask.gather(1, video_ids[:, 0]) if conditions is not None else None
         video_ids = self._scale_video_ids(
             video_ids,
             scale_factor=self.vae_spatial_compression_ratio,
@@ -774,12 +755,12 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
         )
 
-        if len(extra_conditioning_latents) > 0:
+        if conditions is not None and len(extra_conditioning_latents) > 0:
             latents = torch.cat([*extra_conditioning_latents, latents], dim=1)
             video_ids = torch.cat([*extra_conditioning_video_ids, video_ids], dim=2)
             conditioning_mask = torch.cat([*extra_conditioning_mask, conditioning_mask], dim=1)
 
-        return latents, conditioning_mask, video_ids, extra_conditioning_num_latents
+        return latents, conditioning_mask, video_ids, (extra_conditioning_num_latents if conditions is not None else 0)
 
     @property
     def guidance_scale(self):
