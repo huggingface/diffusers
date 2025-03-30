@@ -223,12 +223,15 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def encode_image(
         self,
         image: PipelineImageInput,
+        image_embeds: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
     ):
-        device = device or self._execution_device
-        image = self.image_processor(images=image, return_tensors="pt").to(device)
-        image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-2]
+        if image_embeds is None:
+            device = device or self._execution_device
+            image = self.image_processor(images=image, return_tensors="pt").to(device)
+            image_embeds = self.image_encoder(**image, output_hidden_states=True)
+            image_embeds = image_embeds.hidden_states[-2]
+        return image_embeds
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
@@ -321,9 +324,18 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         width,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
+        if image is not None and image_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `image`: {image} and `image_embeds`: {image_embeds}. Please make sure to"
+                " only forward one of the two."
+        if image is None and image_embeds is None:
+            raise ValueError(
+                "Provide either `image` or `prompt_embeds`. Cannot leave both `image` and `image_embeds` undefined."
+            )
+        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
             raise ValueError("`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is" f" {type(image)}")
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -463,6 +475,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
+        image_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -512,6 +525,12 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
+                provided, text embeddings are generated from the `negative_prompt` input argument.
+            image_embeds (`torch.Tensor`, *optional*):
+                Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not
+                provided, image embeddings are generated from the `image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -592,7 +611,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
-        image_embeds = self.encode_image(image, device)
+        image_embeds = self.encode_image(image, image_embeds, device)
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
         image_embeds = image_embeds.to(transformer_dtype)
 
