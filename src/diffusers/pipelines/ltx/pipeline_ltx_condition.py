@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import PIL.Image
 import torch
@@ -658,7 +658,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
 
         shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        
+
         # If no conditions are provided, handle text-to-video generation
         if conditions is None or len(conditions) == 0:
             video_ids = self._prepare_video_ids(
@@ -1123,9 +1123,11 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                     height=latent_height,
                     width=latent_width,
                     rope_interpolation_scale=(
-                        (self.vae_temporal_compression_ratio / frame_rate,
-                        self.vae_spatial_compression_ratio,
-                        self.vae_spatial_compression_ratio)
+                        (
+                            self.vae_temporal_compression_ratio / frame_rate,
+                            self.vae_spatial_compression_ratio,
+                            self.vae_spatial_compression_ratio,
+                        )
                     ),
                     video_coords=video_coords,
                     attention_kwargs=attention_kwargs,
@@ -1140,8 +1142,16 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                 denoised_latents = self.scheduler.step(
                     -noise_pred, t, latents, per_token_timesteps=timestep, return_dict=False
                 )[0]
-                tokens_to_denoise_mask = (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1) if is_conditioning_image_or_video else None
-                latents = torch.where(tokens_to_denoise_mask, denoised_latents, latents) if tokens_to_denoise_mask is not None else denoised_latents
+                tokens_to_denoise_mask = (
+                    (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1)
+                    if is_conditioning_image_or_video
+                    else None
+                )
+                latents = (
+                    torch.where(tokens_to_denoise_mask, denoised_latents, latents)
+                    if tokens_to_denoise_mask is not None
+                    else denoised_latents
+                )
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -1161,7 +1171,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
 
         if is_conditioning_image_or_video:
             latents = latents[:, extra_conditioning_num_latents:]
-        
+
         latents = self._unpack_latents(
             latents,
             latent_num_frames,
