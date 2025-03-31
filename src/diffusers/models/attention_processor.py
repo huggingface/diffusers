@@ -2418,12 +2418,12 @@ class FluxAttnProcessor2_0:
             if ip_img:
                 num_of_prompts = int((query.shape[2] - 4825)/512)
                 if num_of_prompts == 1:
-                    #attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
-                    attention_mask = torch.zeros(1241, 1241, dtype=torch.bool, device=query.device)
+                    attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
+                    #self_attend_masks = torch.zeros((4096, 4096), device=query.device)
+                    #union_masks = torch.zeros((4096, 4096), device=query.device)
+                    
                     # text related attention mask
-                    attention_mask[:512, :512] = torch.ones(512, 512, dtype=torch.bool, device=query.device)
-                    attention_mask[512:1241, 512:1241] = torch.ones(729, 729, dtype=torch.bool, device=query.device)
-                    """
+                    attention_mask[:512, :512] = torch.ones(512, 512)
                     mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
                         txt_masks[0],
                         1,
@@ -2432,16 +2432,25 @@ class FluxAttnProcessor2_0:
                     )
                     mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
                     mask_downsample_t2i = mask_downsample_t2i.squeeze()
+                    #mask_downsample_t2i[mask_downsample_t2i<0.5] = 0
+                    #mask_downsample_t2i[mask_downsample_t2i>=0.5] = 1
                     mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(512, 1).to(device=query.device)
                     mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
                     attention_mask[:512,-4096:] = mask_downsample_t2i_tensor
                     attention_mask[-4096:, :512] = mask_downsample_t2i_tensor_transpose
+                    
+                    """
+                    img_size_masks = mask_downsample_t2i_tensor_transpose[:, :1].repeat(1, 4096).to(device=query.device)
+                    img_size_masks_transpose = img_size_masks.transpose(-1, -2).to(device=query.device)
+                    self_attend_masks = torch.logical_or(self_attend_masks, 
+                                                            torch.logical_and(img_size_masks, img_size_masks_transpose))
+                    union_masks = torch.logical_or(union_masks, 
+                                                torch.logical_or(img_size_masks, img_size_masks_transpose))
                     """
                     # text related attention mask
                     
                     # image related attention mask
-                    #attention_mask[512:1241, 512:1241] = torch.ones(729, 729)
-                    """
+                    attention_mask[512:1241, 512:1241] = torch.ones(729, 729)
                     mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
                         img_mask[0],
                         1,
@@ -2450,25 +2459,38 @@ class FluxAttnProcessor2_0:
                     )
                     mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
                     mask_downsample_t2i = mask_downsample_t2i.squeeze()
+                    #mask_downsample_t2i[mask_downsample_t2i<0.5] = 0
+                    #mask_downsample_t2i[mask_downsample_t2i>=0.5] = 1
                     mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(729, 1).to(device=query.device)
                     mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
                     attention_mask[512:1241,-4096:] = mask_downsample_t2i_tensor
                     attention_mask[-4096:, 512:1241] = mask_downsample_t2i_tensor_transpose
+
+                    """
+                    img_size_masks = mask_downsample_t2i_tensor_transpose[:, :1].repeat(1, 4096).to(device=query.device)
+                    img_size_masks_transpose = img_size_masks.transpose(-1, -2).to(device=query.device)
+                    self_attend_masks = torch.logical_or(self_attend_masks, 
+                                                            torch.logical_and(img_size_masks, img_size_masks_transpose))
+                    union_masks = torch.logical_or(union_masks, 
+                                                torch.logical_or(img_size_masks, img_size_masks_transpose))
                     """
                     # image related attention mask
-                 
-                    #attention_mask[-4096:,-4096:] = 1#background_and_self_attend_masks
                     
-                    #zero_index = attention_mask < 0.5
-                    #one_index = attention_mask >= 0.5
-                    #attention_mask = attention_mask.masked_fill(zero_index, float('-inf'))
-                    #attention_mask = attention_mask.masked_fill(one_index, 0)
-                    #attention_mask = attention_mask.to(dtype=query.dtype, device=query.device)
+                    #background_masks = torch.logical_not(union_masks)
+                    #background_and_self_attend_masks = torch.logical_or(background_masks, self_attend_masks)    
+                     
+                    attention_mask[-4096:,-4096:] = 1#background_and_self_attend_masks
+                    
+                    zero_index = attention_mask < 0.5
+                    one_index = attention_mask >= 0.5
+                    attention_mask = attention_mask.masked_fill(zero_index, float('-inf'))
+                    attention_mask = attention_mask.masked_fill(one_index, 0)
+                    attention_mask = attention_mask.to(dtype=query.dtype, device=query.device)
 
                     hidden_states_region = F.scaled_dot_product_attention(
-                        query[:,:,:1241,:], 
-                        key[:,:,:1241,:], 
-                        value[:,:,:1241,:], 
+                        query, 
+                        key, 
+                        value, 
                         attn_mask=attention_mask, 
                         dropout_p=0.0, 
                         is_causal=False
