@@ -735,14 +735,85 @@ class ModelOptConfig(QuantizationConfigMixin):
 
     def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, **kwargs) -> None:
         self.quant_method = QuantizationMethod.MODELOPT
-        self.quant_type = "FP8"
+        self.quant_type = quant_type
+        QUANT_TYPES = [
+            "FP8_WO",
+            "FP8_AINT8",
+            "INT8_WO",
+            "INT8_AFP8",
+            "INT8_AFP8_QKVFP8",
+            "INT4_WO",
+            "INT4_AFP8",
+            "INT4_AFP8_QKVFP8",
+        ]
+        if quant_type not in QUANT_TYPES:
+            logger.warning(
+                f"Quantization type {quant_type} not supported. Supported types are {QUANT_TYPES}, picking FP8_WO as default"
+            )
+            self.quant_type = "FP8_WO"
         self.modules_to_not_convert = modules_to_not_convert
+        self.advanced_quant = kwargs
 
     def get_config_from_quant_type(self) -> Dict[str, Any]:
         """
         Get the config from the quantization type.
         """
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
-        from modelopt.torch.quantization.config import FP8_PER_TENSOR_REAL_QUANT_CFG
+        external_conf = self.advanced_quant.pop("modelopt_config", None)
+        if external_conf:
+            return external_conf
 
-        return FP8_PER_TENSOR_REAL_QUANT_CFG
+        BASE_CONFIG = {
+            "quant_cfg": {
+                "*weight_quantizer": {"fake_quant": False},
+                "*input_quantizer": {},
+                "*output_quantizer": {"enable": False},
+                "*q_bmm_quantizer": {},
+                "*k_bmm_quantizer": {},
+                "*v_bmm_quantizer": {},
+                "*softmax_quantizer": {},
+                "default": {"enable": False},
+            },
+            "algorithm": "max",
+        }
+
+        quant_cfg = BASE_CONFIG["quant_cfg"]
+        if "FP8" in self.quant_type:
+            for k in quant_cfg:
+                if "enable" not in quant_cfg[k]:
+                    quant_cfg[k]["num_bits"] = (4, 3)
+        elif "INT8" in self.quant_type:
+            for k in quant_cfg:
+                if "enable" not in quant_cfg[k]:
+                    quant_cfg[k]["num_bits"] = 8
+        elif "INT4" in self.quant_type:
+            for k in quant_cfg:
+                if "enable" not in quant_cfg[k]:
+                    quant_cfg[k]["num_bits"] = 4
+        else:
+            raise ValueError(f"Unknown quantization type: {self.quant_type}")
+
+        if "WO" in self.quant_type:
+            for k in quant_cfg:
+                if "*weight_quantizer" not in k:
+                    quant_cfg[k]["enable"] = False
+
+        per_channel = self.advanced_quant.pop("per_channel", False)
+        if per_channel:
+            quant_cfg["*weight_quantizer"]["axis"] = self.advanced_quant.pop("axis", -1)
+            quant_cfg["*input_quantizer"]["axis"] = self.advanced_quant.pop("axis", -1)
+
+        block_quantize = self.advanced_quant.pop("block_quantize", False)
+        if block_quantize:
+            quant_cfg["*weight_quantizer"]["block_sizes"] = {
+                self.advanced_quant.pop("axis", -1): self.advanced_quant.pop("block_size", 128)
+            }
+            quant_cfg["*input_quantizer"]["block_sizes"] = {
+                self.advanced_quant.pop("axis", -1): self.advanced_quant.pop("block_size", 128)
+            }
+
+        if self.modules_to_not_convert is not None:
+            for module in self.modules_to_not_convert:
+                quant_cfg["*" + module + "*"] = {"enable": False}
+
+        return BASE_CONFIG
