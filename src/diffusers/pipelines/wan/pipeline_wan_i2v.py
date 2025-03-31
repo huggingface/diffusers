@@ -223,15 +223,12 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def encode_image(
         self,
         image: PipelineImageInput,
-        image_embeds: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
     ):
-        if image_embeds is None:
-            device = device or self._execution_device
-            image = self.image_processor(images=image, return_tensors="pt").to(device)
-            image_embeds = self.image_encoder(**image, output_hidden_states=True)
-            image_embeds = image_embeds.hidden_states[-2]
-        return image_embeds
+        device = device or self._execution_device
+        image = self.image_processor(images=image, return_tensors="pt").to(device)
+        image_embeds = self.image_encoder(**image, output_hidden_states=True)
+        return image_embeds.hidden_states[-2]
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
