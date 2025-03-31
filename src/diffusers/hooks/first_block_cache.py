@@ -87,8 +87,6 @@ class FBCHeadBlockHook(ModelHook):
 
         if not should_compute:
             # Apply caching
-            logger.info("Skipping forward pass through remaining blocks")
-
             if is_output_tuple:
                 hs = self.shared_state.tail_block_residuals[0] + output[self._metadata.return_hidden_states_index]
             else:
@@ -109,7 +107,6 @@ class FBCHeadBlockHook(ModelHook):
                 return_output = hs
             return return_output
         else:
-            logger.info("Computing forward pass through remaining blocks")
             if is_output_tuple:
                 head_block_output = [None] * len(output)
                 head_block_output[0] = output[self._metadata.return_hidden_states_index]
@@ -131,7 +128,6 @@ class FBCHeadBlockHook(ModelHook):
         hs_absmean = (hs_residual - prev_hs_residual).abs().mean()
         prev_hs_mean = prev_hs_residual.abs().mean()
         diff = (hs_absmean / prev_hs_mean).item()
-        logger.info(f"Diff: {diff}, Threshold: {self.threshold}")
         return diff > self.threshold
 
 
