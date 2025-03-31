@@ -57,7 +57,7 @@ from diffusers.utils.testing_utils import (
     require_accelerate_version_greater,
     require_torch_2,
     require_torch_accelerator,
-    require_torch_multi_gpu,
+    require_torch_multi_accelerator,
     run_test_in_subprocess,
     skip_mps,
     slow,
@@ -1409,7 +1409,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
 
 # (sayakpaul): This test suite was run in the DGX with two GPUs (1, 2).
 @slow
-@require_torch_multi_gpu
+@require_torch_multi_accelerator
 @require_accelerate_version_greater("0.27.0")
 class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
     def tearDown(self):
@@ -1497,7 +1497,7 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
         assert sd_pipe_with_device_map.hf_device_map is None
 
         # Make sure `to()` can be used and the pipeline can be called.
-        pipe = sd_pipe_with_device_map.to("cuda")
+        pipe = sd_pipe_with_device_map.to(torch_device)
         _ = pipe("hello", num_inference_steps=2)
 
     def test_reset_device_map_enable_model_cpu_offload(self):
@@ -1509,7 +1509,7 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
         assert sd_pipe_with_device_map.hf_device_map is None
 
         # Make sure `enable_model_cpu_offload()` can be used and the pipeline can be called.
-        sd_pipe_with_device_map.enable_model_cpu_offload()
+        sd_pipe_with_device_map.enable_model_cpu_offload(device=torch_device)
         _ = sd_pipe_with_device_map("hello", num_inference_steps=2)
 
     def test_reset_device_map_enable_sequential_cpu_offload(self):
@@ -1521,5 +1521,5 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
         assert sd_pipe_with_device_map.hf_device_map is None
 
         # Make sure `enable_sequential_cpu_offload()` can be used and the pipeline can be called.
-        sd_pipe_with_device_map.enable_sequential_cpu_offload()
+        sd_pipe_with_device_map.enable_sequential_cpu_offload(device=torch_device)
         _ = sd_pipe_with_device_map("hello", num_inference_steps=2)
