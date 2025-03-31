@@ -123,7 +123,8 @@ def vae_pt_to_vae_diffuser(
 ):
     # Only support V1
     r = requests.get(
-        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml", timeout=DIFFUSERS_REQUEST_TIMEOUT
+        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml",
+        timeout=DIFFUSERS_REQUEST_TIMEOUT,
     )
     io_obj = io.BytesIO(r.content)
 

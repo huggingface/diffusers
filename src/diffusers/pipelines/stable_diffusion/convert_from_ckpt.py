@@ -14,7 +14,6 @@
 # limitations under the License.
 """Conversion script for the Stable Diffusion checkpoints."""
 
-import os
 import re
 from contextlib import nullcontext
 from io import BytesIO
