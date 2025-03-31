@@ -33,7 +33,6 @@ class AutoencoderKLMochiTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
     main_input_name = "sample"
     base_precision = 1e-2
 
-
     def get_autoencoder_kl_mochi_config(self):
         return {
             "in_channels": 15,
@@ -82,40 +81,39 @@ class AutoencoderKLMochiTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
 
     @unittest.skip("Unsupported test.")
     def test_effective_gradient_checkpointing(self):
-       """ Fails because of conv_cache:
-       tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_effective_gradient_checkpointing - 
-       TypeError: ModelMixin.enable_gradient_checkpointing.<locals>._gradient_checkpointing_func() got an unexpected keyword argument 'conv_cache'
-       """
-       pass
+        """Fails because of conv_cache:
+        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_effective_gradient_checkpointing -
+        TypeError: ModelMixin.enable_gradient_checkpointing.<locals>._gradient_checkpointing_func() got an unexpected keyword argument 'conv_cache'
+        """
+        pass
 
     @unittest.skip("Unsupported test.")
     def test_forward_with_norm_groups(self):
-       """
-       tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_forward_with_norm_groups - 
-       TypeError: AutoencoderKLMochi.__init__() got an unexpected keyword argument 'norm_num_groups'
-       """
-       pass
-
+        """
+        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_forward_with_norm_groups -
+        TypeError: AutoencoderKLMochi.__init__() got an unexpected keyword argument 'norm_num_groups'
+        """
+        pass
 
     @unittest.skip("Unsupported test.")
     def test_model_parallelism(self):
-       """
-       tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_outputs_equivalence -
-       RuntimeError: values expected sparse tensor layout but got Strided
-       """
-       pass
+        """
+        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_outputs_equivalence -
+        RuntimeError: values expected sparse tensor layout but got Strided
+        """
+        pass
 
     @unittest.skip("Unsupported test.")
     def test_outputs_equivalence(self):
-       """
-       tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_outputs_equivalence -
-       RuntimeError: values expected sparse tensor layout but got Strided
-       """
-       pass
+        """
+        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_outputs_equivalence -
+        RuntimeError: values expected sparse tensor layout but got Strided
+        """
+        pass
 
     @unittest.skip("Unsupported test.")
     def test_sharded_checkpoints_device_map(self):
-       """
-       tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_sharded_checkpoints_device_map - 
-       RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cuda:5!
-       """
+        """
+        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_sharded_checkpoints_device_map -
+        RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cuda:5!
+        """
