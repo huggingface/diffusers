@@ -438,8 +438,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 batch_size = len(image)
         else:
             batch_size = image.shape[0]
-        if prompt is not None and isinstance(prompt, str):
-            prompt = batch_size * [prompt]
+        # thesea modified for ip and txt masks
+        #if prompt is not None and isinstance(prompt, str):
+        #    prompt = batch_size * [prompt]
         if isinstance(prompt_embeds_scale, float):
             prompt_embeds_scale = batch_size * [prompt_embeds_scale]
         if isinstance(pooled_prompt_embeds_scale, float):
@@ -449,15 +450,14 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         # 3. Prepare image embeddings
         # thesea modified
+        # thesea modified for ip and txt masks
         if isinstance(image, list):
             if product_ratio is not None:
                 image_array_list = []
                 mask_list = []
                 is_product_list = []
                 for img, type in zip(image, layer_type):
-                    #metadata = img.info
-                    #is_product = metadata.get('is_product')
-                    if 'product' in type:
+                    if 'product' or 'Product' in type:
                         is_product_list.append('true')
                     else:
                         is_product_list.append('false')
@@ -514,21 +514,40 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         image_embeds = image_embeds.to(device=device)
     
         # 3. Prepare (dummy) text embeddings
+        # thesea modified for ip and txt masks
         if hasattr(self, "text_encoder") and self.text_encoder is not None:
-            (
-                prompt_embeds,
-                pooled_prompt_embeds,
-                _,
-            ) = self.encode_prompt(
-                prompt=prompt,
-                prompt_2=prompt_2,
-                prompt_embeds=prompt_embeds,
-                pooled_prompt_embeds=pooled_prompt_embeds,
-                device=device,
-                num_images_per_prompt=1,
-                max_sequence_length=512,
-                lora_scale=None,
-            )
+            prompt_embeds_list = []
+            if isinstance(prompt, list):
+                for pmt in prompt:
+                    (
+                        prompt_embeds,
+                        pooled_prompt_embeds,
+                        text_ids,
+                    ) = self.encode_prompt(
+                        prompt=pmt,
+                        prompt_2=prompt_2,
+                        device=device,
+                        num_images_per_prompt=batch_size,
+                        max_sequence_length=512,
+                        lora_scale=None,
+                    )
+                    prompt_embeds_list.append(prompt_embeds)
+                prompt_embeds = torch.cat(prompt_embeds_list, dim=1)
+            else:
+                (
+                    prompt_embeds,
+                    pooled_prompt_embeds,
+                    _,
+                ) = self.encode_prompt(
+                    prompt=prompt,
+                    prompt_2=prompt_2,
+                    prompt_embeds=prompt_embeds,
+                    pooled_prompt_embeds=pooled_prompt_embeds,
+                    device=device,
+                    num_images_per_prompt=batch_size,
+                    max_sequence_length=512,
+                    lora_scale=None,
+                )
         else:
             if prompt is not None:
                 logger.warning(
@@ -557,7 +576,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         if not return_dict:
             if product_ratio is not None:
-                return (prompt_embeds, pooled_prompt_embeds, composed_image, mask) #, mask_list, image_mask, image_array_list
+                return (prompt_embeds, pooled_prompt_embeds, composed_image, mask)
             else:
                 return (prompt_embeds, pooled_prompt_embeds)
 
