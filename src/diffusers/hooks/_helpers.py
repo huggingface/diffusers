@@ -84,8 +84,8 @@ def _register_transformer_blocks_metadata():
         model_class=FluxSingleTransformerBlock,
         metadata=TransformerBlockMetadata(
             skip_block_output_fn=_skip_block_output_fn_FluxSingleTransformerBlock,
-            return_hidden_states_index=0,
-            return_encoder_hidden_states_index=None,
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
         ),
     )
 
@@ -185,7 +185,7 @@ def _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___en
 _skip_block_output_fn_CogVideoXBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___hidden_states___encoder_hidden_states
 _skip_block_output_fn_CogView4TransformerBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___hidden_states___encoder_hidden_states
 _skip_block_output_fn_FluxTransformerBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___encoder_hidden_states___hidden_states
-_skip_block_output_fn_FluxSingleTransformerBlock = _skip_block_output_fn___hidden_states_0___ret___hidden_states
+_skip_block_output_fn_FluxSingleTransformerBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___encoder_hidden_states___hidden_states
 _skip_block_output_fn_HunyuanVideoTransformerBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___hidden_states___encoder_hidden_states
 _skip_block_output_fn_HunyuanVideoSingleTransformerBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___hidden_states___encoder_hidden_states
 _skip_block_output_fn_HunyuanVideoTokenReplaceTransformerBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___hidden_states___encoder_hidden_states

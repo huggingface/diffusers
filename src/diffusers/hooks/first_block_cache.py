@@ -166,11 +166,7 @@ class FBCBlockHook(ModelHook):
                         - self.shared_state.head_block_output[1]
                     )
                 else:
-                    if isinstance(self.shared_state.head_block_output, list):
-                        # For cases where double blocks returning list is followed by single blocks returning single value (Flux)
-                        hs_residual = output - self.shared_state.head_block_output[0]
-                    else:
-                        hs_residual = output - self.shared_state.head_block_output
+                    hs_residual = output - self.shared_state.head_block_output
                 self.shared_state.tail_block_residuals = (hs_residual, ehs_residual)
             return output
 
