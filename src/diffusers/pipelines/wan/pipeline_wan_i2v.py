@@ -331,6 +331,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             raise ValueError(
                 f"Cannot forward both `image`: {image} and `image_embeds`: {image_embeds}. Please make sure to"
                 " only forward one of the two."
+            )
         if image is None and image_embeds is None:
             raise ValueError(
                 "Provide either `image` or `prompt_embeds`. Cannot leave both `image` and `image_embeds` undefined."
