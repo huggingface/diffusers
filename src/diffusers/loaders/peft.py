@@ -307,6 +307,9 @@ class PeftAdapterMixin:
             try:
                 inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
                 incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+                # Set peft config loaded flag to True if module has been successfully injected and incompatible keys retrieved
+                if not self._hf_peft_config_loaded:
+                    self._hf_peft_config_loaded = True
             except Exception as e:
                 # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
                 if hasattr(self, "peft_config"):
@@ -354,8 +357,12 @@ class PeftAdapterMixin:
             # Unsafe code />
 
         if prefix is not None and not state_dict:
-            logger.info(
-                f"No LoRA keys associated to {self.__class__.__name__} found with the {prefix=}. This is safe to ignore if LoRA state dict didn't originally have any {self.__class__.__name__} related params. Open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new"
+            logger.warning(
+                f"No LoRA keys associated to {self.__class__.__name__} found with the {prefix=}. "
+                "This is safe to ignore if LoRA state dict didn't originally have any "
+                f"{self.__class__.__name__} related params. You can also try specifying `prefix=None` "
+                "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
+                "https://github.com/huggingface/diffusers/issues/new"
             )
 
     def save_lora_adapter(

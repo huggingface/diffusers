@@ -227,13 +227,17 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         # Prepare text embeddings for spatial block
         # batch_size num_tokens hidden_size -> (batch_size * num_frame) num_tokens hidden_size
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)  # 3 120 1152
-        encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(num_frame, dim=0).view(
-            -1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1]
-        )
+        encoder_hidden_states_spatial = encoder_hidden_states.repeat_interleave(
+            num_frame, dim=0, output_size=encoder_hidden_states.shape[0] * num_frame
+        ).view(-1, encoder_hidden_states.shape[-2], encoder_hidden_states.shape[-1])
 
         # Prepare timesteps for spatial and temporal block
-        timestep_spatial = timestep.repeat_interleave(num_frame, dim=0).view(-1, timestep.shape[-1])
-        timestep_temp = timestep.repeat_interleave(num_patches, dim=0).view(-1, timestep.shape[-1])
+        timestep_spatial = timestep.repeat_interleave(
+            num_frame, dim=0, output_size=timestep.shape[0] * num_frame
+        ).view(-1, timestep.shape[-1])
+        timestep_temp = timestep.repeat_interleave(
+            num_patches, dim=0, output_size=timestep.shape[0] * num_patches
+        ).view(-1, timestep.shape[-1])
 
         # Spatial and temporal transformer blocks
         for i, (spatial_block, temp_block) in enumerate(
@@ -269,7 +273,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
                 if i == 0 and num_frame > 1:
-                    hidden_states = hidden_states + self.temp_pos_embed
+                    hidden_states = hidden_states + self.temp_pos_embed.to(hidden_states.dtype)
 
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
                     hidden_states = self._gradient_checkpointing_func(
@@ -299,7 +303,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
                 ).permute(0, 2, 1, 3)
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
-        embedded_timestep = embedded_timestep.repeat_interleave(num_frame, dim=0).view(-1, embedded_timestep.shape[-1])
+        embedded_timestep = embedded_timestep.repeat_interleave(
+            num_frame, dim=0, output_size=embedded_timestep.shape[0] * num_frame
+        ).view(-1, embedded_timestep.shape[-1])
         shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
         hidden_states = self.norm_out(hidden_states)
         # Modulation
