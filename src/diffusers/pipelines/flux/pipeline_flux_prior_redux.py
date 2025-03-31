@@ -526,7 +526,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
             image_embeds_prod = self.image_embedder(image_latents_prod).image_embeds
             image_embeds_prod = image_embeds_prod.to(device=device)
-            image_embeds = torch.cat([image_embeds_prod, image_embeds_bg], , dim=1)
+            image_embeds = torch.cat([image_embeds_prod, image_embeds_bg], dim=1)
         else:
             image_embeds = self.image_embedder(image_latents).image_embeds
             image_embeds = image_embeds.to(device=device)
