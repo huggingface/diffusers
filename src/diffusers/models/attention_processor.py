@@ -2533,6 +2533,7 @@ class FluxAttnProcessor2_0:
                         4096,
                         attn.heads * head_dim,
                     )
+                    img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
 
                     hidden_states_common = hidden_states_txt[:,-4096:,:] * txt_mask_downsample + hidden_states_img[:,-4096:,:] * img_mask_downsample
                     hidden_states = torch.cat([hidden_states_region[:,:1241,:], hidden_states_common], dim=1) 
