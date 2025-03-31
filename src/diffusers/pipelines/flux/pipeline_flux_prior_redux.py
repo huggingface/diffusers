@@ -491,16 +491,21 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                         if k != index:
                             image_mask[k] = image_mask[k] & ~mask 
 
-                composed_image = np.zeros((image_width, image_height, 3))
-                for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
-                    if is_product.lower() == "true":
-                        composed_image += img_array * image_mask[index] * product_ratio
-                    else:
-                        composed_image += img_array * image_mask[index]
-                
-                composed_image = Image.fromarray(composed_image.astype(np.uint8))
+                if product_ratio > 0.0:
+                    composed_image = np.zeros((image_width, image_height, 3))
+                    for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
+                        if is_product.lower() == "true":
+                            composed_image += img_array * image_mask[index] * product_ratio
+                        else:
+                            composed_image += img_array * image_mask[index]
+                    
+                    composed_image = Image.fromarray(composed_image.astype(np.uint8))
+                else:
+                    composed_image = image
+                    for img in composed_image:
+                        img = img.convert('RGB')
 
-                mask = Image.fromarray(product_mask.astype(np.uint8)*255)
+                mask = Image.fromarray(product_mask.astype(np.uint8)*255).convert('RGB')
                 image_latents = self.encode_image(composed_image, device, 1)
             else:
                 for img in image:
