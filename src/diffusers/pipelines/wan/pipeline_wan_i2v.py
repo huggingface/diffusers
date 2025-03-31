@@ -530,8 +530,8 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `negative_prompt` input argument.
             image_embeds (`torch.Tensor`, *optional*):
-                Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not
-                provided, image embeddings are generated from the `image` input argument.
+                Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not provided,
+                image embeddings are generated from the `image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
