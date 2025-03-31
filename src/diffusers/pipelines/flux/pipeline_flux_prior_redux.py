@@ -457,7 +457,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 mask_list = []
                 is_product_list = []
                 for img, type in zip(image, layer_type):
-                    if 'product' or 'Product' in type:
+                    if 'product' in img_type or 'Product' in img_type:
+                        print(f'in img_type = {in img_type}')
                         is_product_list.append('true')
                     else:
                         is_product_list.append('false')
