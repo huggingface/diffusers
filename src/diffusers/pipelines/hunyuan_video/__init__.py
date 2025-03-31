@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_hunyuan_skyreels_image2video"] = ["HunyuanSkyreelsImageToVideoPipeline"]
     _import_structure["pipeline_hunyuan_video"] = ["HunyuanVideoPipeline"]
+    _import_structure["pipeline_hunyuan_video_image2video"] = ["HunyuanVideoImageToVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -35,6 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_hunyuan_skyreels_image2video import HunyuanSkyreelsImageToVideoPipeline
         from .pipeline_hunyuan_video import HunyuanVideoPipeline
+        from .pipeline_hunyuan_video_image2video import HunyuanVideoImageToVideoPipeline
 
 else:
     import sys
