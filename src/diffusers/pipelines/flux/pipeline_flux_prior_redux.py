@@ -492,19 +492,26 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                             image_mask[k] = image_mask[k] & ~mask 
 
                 if product_ratio > 0.0:
-                    composed_image = np.zeros((image_width, image_height, 3))
+                    composed_bg_image = np.zeros((image_width, image_height, 3))
+                    composed_prod_image = np.zeros((image_width, image_height, 3))
                     for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
                         if is_product.lower() == "true":
-                            composed_image += img_array * image_mask[index] * product_ratio
+                            composed_prod_image += img_array * image_mask[index] * product_ratio
                         else:
-                            composed_image += img_array * image_mask[index]
+                            composed_bg_image += img_array * image_mask[index]
                     
-                    composed_image = Image.fromarray(composed_image.astype(np.uint8))
+                    composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8))
+                    composed_prod_image = Image.fromarray(composed_prod_image.astype(np.uint8))
                 else:
                     composed_image = image[0].convert('RGB')
                     
                 mask = Image.fromarray(product_mask.astype(np.uint8)*255).convert('RGB')
-                image_latents = self.encode_image(composed_image, device, 1)
+                
+                if product_ratio > 0.0:
+                    image_latents_bg = self.encode_image(composed_bg_image, device, 1)
+                    image_latents_prod = self.encode_image(composed_prod_image, device, 1)     
+                else:
+                    image_latents = self.encode_image(composed_image, device, 1)
             else:
                 for img in image:
                     img = img.convert('RGB')
@@ -513,9 +520,18 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             image = image.convert('RGB')
             image_latents = self.encode_image(image, device, 1)
 
-        image_embeds = self.image_embedder(image_latents).image_embeds
-        image_embeds = image_embeds.to(device=device)
-    
+        if product_ratio > 0.0:
+            image_embeds_bg = self.image_embedder(image_latents_bg).image_embeds
+            image_embeds_bg = image_embeds_bg.to(device=device)
+
+            image_embeds_prod = self.image_embedder(image_latents_prod).image_embeds
+            image_embeds_prod = image_embeds_prod.to(device=device)
+            image_embeds = torch.cat([image_embeds_prod, image_embeds_bg], , dim=1)
+        else:
+            image_embeds = self.image_embedder(image_latents).image_embeds
+            image_embeds = image_embeds.to(device=device)
+
+        
         # 3. Prepare (dummy) text embeddings
         # thesea modified for ip and txt masks
         if hasattr(self, "text_encoder") and self.text_encoder is not None:
@@ -579,7 +595,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         if not return_dict:
             if product_ratio is not None:
-                return (prompt_embeds, pooled_prompt_embeds, composed_image, mask)
+                if product_ratio > 0.0:
+                    return (prompt_embeds, pooled_prompt_embeds, composed_bg_image, composed_prod_image, mask)
+                else:
+                    return (prompt_embeds, pooled_prompt_embeds, composed_image, mask)
             else:
                 return (prompt_embeds, pooled_prompt_embeds)
 

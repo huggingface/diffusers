@@ -2359,6 +2359,7 @@ class FluxAttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
         ip_img: Optional[bool] = False, # thesea modified for ip image
+        ip_prod_img: Optional[bool] = False, # thesea modified for ip image
         img_mask: Optional[torch.Tensor] = None, # thesea modified for ip mask
         txt_masks: Optional[torch.Tensor] = None, # thesea modified for text mask
     ) -> torch.FloatTensor:
@@ -2416,102 +2417,200 @@ class FluxAttnProcessor2_0:
 
         if txt_masks is not None:
             if ip_img:
-                num_of_prompts = int((query.shape[2] - 4825)/512)
-                if num_of_prompts == 1:
-                    attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
-                    # text related attention mask
-                    attention_mask[:512, :512] = torch.ones(512, 512)
-                    mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
-                        txt_masks[0],
-                        1,
-                        4096,
-                        1,
-                    )
-                    mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
-                    mask_downsample_t2i = mask_downsample_t2i.squeeze()
-                    mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(512, 1).to(device=query.device)
-                    mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
-                    attention_mask[:512,-4096:] = mask_downsample_t2i_tensor
-                    attention_mask[-4096:, :512] = mask_downsample_t2i_tensor_transpose
-                    
-                    # image related attention mask
-                    attention_mask[512:1241, 512:1241] = torch.ones(729, 729)
-                    mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
-                        img_mask[0],
-                        1,
-                        4096,
-                        1,
-                    )
-                    mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
-                    mask_downsample_t2i = mask_downsample_t2i.squeeze()
-                    mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(729, 1).to(device=query.device)
-                    mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
-                    attention_mask[512:1241,-4096:] = mask_downsample_t2i_tensor
-                    attention_mask[-4096:, 512:1241] = mask_downsample_t2i_tensor_transpose   
-                     
-                    attention_mask[-4096:,-4096:] = 1
-                    
-                    zero_index = attention_mask < 0.5
-                    one_index = attention_mask >= 0.5
-                    attention_mask = attention_mask.masked_fill(zero_index, float('-inf'))
-                    attention_mask = attention_mask.masked_fill(one_index, 0)
-                    attention_mask = attention_mask.to(dtype=query.dtype, device=query.device)
+                if not ip_prod_img:
+                    num_of_prompts = int((query.shape[2] - 4825)/512)
+                    if num_of_prompts == 1:
+                        attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
+                        # text related attention mask
+                        attention_mask[:512, :512] = torch.ones(512, 512)
+                        mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
+                            txt_masks[0],
+                            1,
+                            4096,
+                            1,
+                        )
+                        mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
+                        mask_downsample_t2i = mask_downsample_t2i.squeeze()
+                        mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(512, 1).to(device=query.device)
+                        mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
+                        attention_mask[:512,-4096:] = mask_downsample_t2i_tensor
+                        attention_mask[-4096:, :512] = mask_downsample_t2i_tensor_transpose
+                        
+                        # image related attention mask
+                        attention_mask[512:1241, 512:1241] = torch.ones(729, 729)
+                        mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
+                            img_mask[0],
+                            1,
+                            4096,
+                            1,
+                        )
+                        mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
+                        mask_downsample_t2i = mask_downsample_t2i.squeeze()
+                        mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(729, 1).to(device=query.device)
+                        mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
+                        attention_mask[512:1241,-4096:] = mask_downsample_t2i_tensor
+                        attention_mask[-4096:, 512:1241] = mask_downsample_t2i_tensor_transpose   
+                        
+                        attention_mask[-4096:,-4096:] = 1
+                        
+                        zero_index = attention_mask < 0.5
+                        one_index = attention_mask >= 0.5
+                        attention_mask = attention_mask.masked_fill(zero_index, float('-inf'))
+                        attention_mask = attention_mask.masked_fill(one_index, 0)
+                        attention_mask = attention_mask.to(dtype=query.dtype, device=query.device)
 
-                    hidden_states_region = F.scaled_dot_product_attention(
-                        query, 
-                        key, 
-                        value, 
-                        attn_mask=attention_mask, 
-                        dropout_p=0.0, 
-                        is_causal=False
-                    )
+                        hidden_states_region = F.scaled_dot_product_attention(
+                            query, 
+                            key, 
+                            value, 
+                            attn_mask=attention_mask, 
+                            dropout_p=0.0, 
+                            is_causal=False
+                        )
 
-                    hidden_states_txt = F.scaled_dot_product_attention(
-                        torch.cat([query[:,:,:512,:], query[:,:,-4096:,:]], dim=2), 
-                        torch.cat([key[:,:,:512,:], key[:,:,-4096:,:]], dim=2), 
-                        torch.cat([value[:,:,:512,:], value[:,:,-4096:,:]], dim=2), 
-                        attn_mask=None, 
-                        dropout_p=0.0, 
-                        is_causal=False
-                    )
+                        hidden_states_txt = F.scaled_dot_product_attention(
+                            torch.cat([query[:,:,:512,:], query[:,:,-4096:,:]], dim=2), 
+                            torch.cat([key[:,:,:512,:], key[:,:,-4096:,:]], dim=2), 
+                            torch.cat([value[:,:,:512,:], value[:,:,-4096:,:]], dim=2), 
+                            attn_mask=None, 
+                            dropout_p=0.0, 
+                            is_causal=False
+                        )
 
-                    hidden_states_img = F.scaled_dot_product_attention(
-                        query[:,:,512:,:], 
-                        key[:,:,512:,:], 
-                        value[:,:,512:,:], 
-                        attn_mask=None, 
-                        dropout_p=0.0, 
-                        is_causal=False
-                    )
+                        hidden_states_img = F.scaled_dot_product_attention(
+                            query[:,:,512:,:], 
+                            key[:,:,512:,:], 
+                            value[:,:,512:,:], 
+                            attn_mask=None, 
+                            dropout_p=0.0, 
+                            is_causal=False
+                        )
 
-                    hidden_states_region = hidden_states_region.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                    hidden_states_region = hidden_states_region.to(query.dtype)
-                    
-                    hidden_states_txt = hidden_states_txt.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                    hidden_states_txt = hidden_states_txt.to(query.dtype)
-                    
-                    hidden_states_img = hidden_states_img.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                    hidden_states_img = hidden_states_img.to(query.dtype)
+                        hidden_states_region = hidden_states_region.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                        hidden_states_region = hidden_states_region.to(query.dtype)
+                        
+                        hidden_states_txt = hidden_states_txt.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                        hidden_states_txt = hidden_states_txt.to(query.dtype)
+                        
+                        hidden_states_img = hidden_states_img.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                        hidden_states_img = hidden_states_img.to(query.dtype)
 
-                    txt_mask_downsample = IPAdapterMaskProcessor.downsample(
-                        txt_masks[0],
-                        batch_size,
-                        4096,
-                        attn.heads * head_dim,
-                    ) 
-                    txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
+                        txt_mask_downsample = IPAdapterMaskProcessor.downsample(
+                            txt_masks[0],
+                            batch_size,
+                            4096,
+                            attn.heads * head_dim,
+                        ) 
+                        txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
 
-                    img_mask_downsample = IPAdapterMaskProcessor.downsample(
-                        img_mask[0],
-                        batch_size,
-                        4096,
-                        attn.heads * head_dim,
-                    )
-                    img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
+                        img_mask_downsample = IPAdapterMaskProcessor.downsample(
+                            img_mask[0],
+                            batch_size,
+                            4096,
+                            attn.heads * head_dim,
+                        )
+                        img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
 
-                    hidden_states_common = hidden_states_txt[:,-4096:,:] * txt_mask_downsample + hidden_states_img[:,-4096:,:] * img_mask_downsample
-                    hidden_states = torch.cat([hidden_states_region[:,:1241,:], hidden_states_common], dim=1) 
-                    #hidden_states = hidden_states_region 
+                        hidden_states_common = hidden_states_txt[:,-4096:,:] * txt_mask_downsample + hidden_states_img[:,-4096:,:] * img_mask_downsample
+                        hidden_states = torch.cat([hidden_states_region[:,:1241,:], hidden_states_common], dim=1) 
+                        #hidden_states = hidden_states_region 
+                else:
+                    num_of_prompts = int((query.shape[2] - 5554)/512)
+                    if num_of_prompts == 1:
+                        attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
+                        # text related attention mask
+                        attention_mask[:1241, :1241] = torch.ones(1241, 1241)
+                        mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
+                            txt_masks[0],
+                            1,
+                            4096,
+                            1,
+                        )
+                        mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
+                        mask_downsample_t2i = mask_downsample_t2i.squeeze()
+                        mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(1241, 1).to(device=query.device)
+                        mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
+                        attention_mask[:1241,-4096:] = mask_downsample_t2i_tensor
+                        attention_mask[-4096:, :1241] = mask_downsample_t2i_tensor_transpose
+                        
+                        # image related attention mask
+                        attention_mask[1241:1970, 1241:1970] = torch.ones(729, 729)
+                        mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
+                            img_mask[0],
+                            1,
+                            4096,
+                            1,
+                        )
+                        mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
+                        mask_downsample_t2i = mask_downsample_t2i.squeeze()
+                        mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(729, 1).to(device=query.device)
+                        mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
+                        attention_mask[1241:1970,-4096:] = mask_downsample_t2i_tensor
+                        attention_mask[-4096:, 1241:1970] = mask_downsample_t2i_tensor_transpose   
+                        
+                        attention_mask[-4096:,-4096:] = 1
+                        
+                        zero_index = attention_mask < 0.5
+                        one_index = attention_mask >= 0.5
+                        attention_mask = attention_mask.masked_fill(zero_index, float('-inf'))
+                        attention_mask = attention_mask.masked_fill(one_index, 0)
+                        attention_mask = attention_mask.to(dtype=query.dtype, device=query.device)
+
+                        hidden_states_region = F.scaled_dot_product_attention(
+                            query, 
+                            key, 
+                            value, 
+                            attn_mask=attention_mask, 
+                            dropout_p=0.0, 
+                            is_causal=False
+                        )
+
+                        hidden_states_txt = F.scaled_dot_product_attention(
+                            torch.cat([query[:,:,:1241,:], query[:,:,-4096:,:]], dim=2), 
+                            torch.cat([key[:,:,:1241,:], key[:,:,-4096:,:]], dim=2), 
+                            torch.cat([value[:,:,:1241,:], value[:,:,-4096:,:]], dim=2), 
+                            attn_mask=None, 
+                            dropout_p=0.0, 
+                            is_causal=False
+                        )
+
+                        hidden_states_img = F.scaled_dot_product_attention(
+                            query[:,:,1241:,:], 
+                            key[:,:,1241:,:], 
+                            value[:,:,1241:,:], 
+                            attn_mask=None, 
+                            dropout_p=0.0, 
+                            is_causal=False
+                        )
+
+                        hidden_states_region = hidden_states_region.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                        hidden_states_region = hidden_states_region.to(query.dtype)
+                        
+                        hidden_states_txt = hidden_states_txt.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                        hidden_states_txt = hidden_states_txt.to(query.dtype)
+                        
+                        hidden_states_img = hidden_states_img.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                        hidden_states_img = hidden_states_img.to(query.dtype)
+
+                        txt_mask_downsample = IPAdapterMaskProcessor.downsample(
+                            txt_masks[0],
+                            batch_size,
+                            4096,
+                            attn.heads * head_dim,
+                        ) 
+                        txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
+
+                        img_mask_downsample = IPAdapterMaskProcessor.downsample(
+                            img_mask[0],
+                            batch_size,
+                            4096,
+                            attn.heads * head_dim,
+                        )
+                        img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
+
+                        hidden_states_common = hidden_states_txt[:,-4096:,:] * txt_mask_downsample + hidden_states_img[:,-4096:,:] * img_mask_downsample
+                        hidden_states = torch.cat([hidden_states_region[:,:1970,:], hidden_states_common], dim=1) 
+                        #hidden_states = hidden_states_region 
         else:        
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
