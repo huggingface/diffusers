@@ -515,7 +515,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                         composed_prod_image = np.zeros((image_width, image_height, 3))
                         for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
                             if is_product.lower() == "true":
-                                composed_prod_image += img_array * image_mask_prod[index] * product_ratio
+                                composed_prod_image += img_array * image_mask_prod[index] #* product_ratio
                             else:
                                 composed_bg_image += img_array * image_mask_bg[index]
                         
@@ -527,7 +527,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                         composed_prod_images = []
                         for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
                             if is_product.lower() == "true":
-                                composed_prod_image = img_array * image_mask_prod[index] * product_ratio
+                                composed_prod_image = img_array * image_mask_prod[index] #* product_ratio
                                 composed_prod_images.append(Image.fromarray(composed_prod_image.astype(np.uint8)))
                                 composed_image_all += img_array * image_mask_all[index]
                             else:
@@ -638,7 +638,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         else:
             prompt_embeds = image_embeds_bg
             for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
-                prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod, prompt_embeds], dim=1)
+                prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod * product_ratio, prompt_embeds], dim=1)
         
         prompt_embeds *= torch.tensor(prompt_embeds_scale, device=device, dtype=prompt_embeds.dtype)[:, None, None]
         pooled_prompt_embeds *= torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=prompt_embeds.dtype)[
