@@ -81,9 +81,12 @@ class FBCHeadBlockHook(ModelHook):
         output = self.fn_ref.original_forward(*args, **kwargs)
         is_output_tuple = isinstance(output, tuple)
 
-        hs_residual = output[self._metadata.return_hidden_states_index] - original_hs
-        hs, ehs = None, None
+        if is_output_tuple:
+            hs_residual = output[self._metadata.return_hidden_states_index] - original_hs
+        else:
+            hs_residual = output - original_hs
 
+        hs, ehs = None, None
         should_compute = self._should_compute_remaining_blocks(hs_residual)
         self.shared_state.should_compute = should_compute
 
@@ -92,9 +95,10 @@ class FBCHeadBlockHook(ModelHook):
             if is_output_tuple:
                 hs = self.shared_state.tail_block_residuals[0] + output[self._metadata.return_hidden_states_index]
             else:
-                hs = output
+                hs = self.shared_state.tail_block_residuals[0] + output
 
             if self._metadata.return_encoder_hidden_states_index is not None:
+                assert is_output_tuple
                 ehs = (
                     self.shared_state.tail_block_residuals[1]
                     + output[self._metadata.return_encoder_hidden_states_index]
@@ -132,7 +136,6 @@ class FBCHeadBlockHook(ModelHook):
         hs_absmean = (hs_residual - prev_hs_residual).abs().mean()
         prev_hs_mean = prev_hs_residual.abs().mean()
         diff = (hs_absmean / prev_hs_mean).item()
-        print("diff:", self.shared_state._mark_name, diff, flush=True)
         return diff > self.threshold
 
 
