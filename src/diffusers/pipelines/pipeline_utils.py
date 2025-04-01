@@ -887,20 +887,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
-        # Check `torch_dtype` map for unused keys
-        if isinstance(torch_dtype, dict):
-            extra_keys_dtype = set(torch_dtype.keys()) - set(passed_class_obj.keys())
-            extra_keys_obj = set(passed_class_obj.keys()) - set(torch_dtype.keys())
-            if len(extra_keys_dtype) > 0:
-                logger.warning(
-                    f"Expected `{list(passed_class_obj.keys())}`, got extra `torch_dtype` keys `{extra_keys_dtype}`."
-                )
-            if len(extra_keys_obj) > 0:
-                logger.warning(
-                    f"Expected `{list(passed_class_obj.keys())}`, missing `torch_dtype` keys `{extra_keys_dtype}`."
-                    " using `default` or `torch.float32`."
-                )
-
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
             raise NotImplementedError(
