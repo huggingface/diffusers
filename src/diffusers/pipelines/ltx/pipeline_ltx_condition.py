@@ -75,6 +75,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Generate video
         >>> generator = torch.Generator("cuda").manual_seed(0)
+        >>> # Text-only conditioning is also supported without the need to pass `conditions`
         >>> video = pipe(
         ...     conditions=[condition1, condition2],
         ...     prompt=prompt,
