@@ -738,13 +738,13 @@ class ModelOptConfig(QuantizationConfigMixin):
         self.quant_type = quant_type
         QUANT_TYPES = [
             "FP8_WO",
-            "FP8_AINT8",
+            # "FP8_AINT8",
             "INT8_WO",
-            "INT8_AFP8",
-            "INT8_AFP8_QKVFP8",
+            # "INT8_AFP8",
+            # "INT8_AFP8_QKVFP8",
             "INT4_WO",
-            "INT4_AFP8",
-            "INT4_AFP8_QKVFP8",
+            # "INT4_AFP8",
+            # "INT4_AFP8_QKVFP8",
         ]
         if quant_type not in QUANT_TYPES:
             logger.warning(
