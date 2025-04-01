@@ -514,16 +514,20 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                         composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8))
                         composed_prod_image = Image.fromarray(composed_prod_image.astype(np.uint8))
                     else:
+                        composed_image_all = np.zeros((image_width, image_height, 3))
                         composed_bg_image = np.zeros((image_width, image_height, 3))
                         composed_prod_images = []
                         for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
                             if is_product.lower() == "true":
                                 composed_prod_image = img_array * image_mask_prod[index] * product_ratio
                                 composed_prod_images.append(Image.fromarray(composed_prod_image.astype(np.uint8)))
+                                composed_image_all += img_array * image_mask_prod[index]
                             else:
                                 composed_bg_image += img_array * image_mask_bg[index]
-                        
-                        composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8))
+                                composed_image_all += img_array * image_mask_bg[index]
+
+                        composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
+                        composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
                 else:
                     composed_image = image[0].convert('RGB')
                     
@@ -641,7 +645,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         if not return_dict:
             if product_ratio is not None:
                 if product_ratio > 0.0:
-                    return (prompt_embeds, pooled_prompt_embeds, composed_bg_image, composed_prod_image, mask)
+                    if not multiprod:
+                        return (prompt_embeds, pooled_prompt_embeds, composed_bg_image, composed_prod_image, mask)
+                    else:
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, mask)
                 else:
                     return (prompt_embeds, pooled_prompt_embeds, composed_image, mask)
             else:
