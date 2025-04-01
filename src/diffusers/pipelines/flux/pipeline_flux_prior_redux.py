@@ -484,12 +484,19 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 product_mask = np.full((image_width, image_height, 3), True, dtype=bool)
                 image_mask_prod = {}
                 image_mask_bg = {}
+                image_mask_all = {}
                 for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
                     if is_product.lower() == "true":
                         product_mask = product_mask & ~mask
                     else:
                         product_mask = product_mask | mask
 
+                    if index not in image_mask_all:
+                        image_mask_all[index] = mask
+                    for k in image_mask_all:
+                        if k != index:
+                            image_mask_all[k] = image_mask_all[k] & ~mask 
+                            
                     if is_product.lower() == "true":
                         if index not in image_mask_prod:
                             image_mask_prod[index] = mask
@@ -523,10 +530,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                             if is_product.lower() == "true":
                                 composed_prod_image = img_array * image_mask_prod[index] * product_ratio
                                 composed_prod_images.append(Image.fromarray(composed_prod_image.astype(np.uint8)))
-                                composed_image_all += img_array * image_mask_prod[index]
+                                composed_image_all += img_array * image_mask_all[index]
                             else:
                                 composed_bg_image += img_array * image_mask_bg[index]
-                                composed_image_all += img_array * image_mask_bg[index]
+                                composed_image_all += img_array * image_mask_all[index]
 
                         composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
                         composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
