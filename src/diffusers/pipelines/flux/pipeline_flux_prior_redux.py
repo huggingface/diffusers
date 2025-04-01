@@ -381,6 +381,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
+        multiprod: Optional[bool] = False, # thesea modified for ip image
+        multiprod_prompts: Optional[Union[str, List[str]]] = None,
         product_ratio: Optional[float] = None, # theseam modified
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
@@ -500,24 +502,42 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                                 image_mask_bg[k] = image_mask_bg[k] & ~mask 
 
                 if product_ratio > 0.0:
-                    composed_bg_image = np.zeros((image_width, image_height, 3))
-                    composed_prod_image = np.zeros((image_width, image_height, 3))
-                    for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
-                        if is_product.lower() == "true":
-                            composed_prod_image += img_array * image_mask_prod[index] * product_ratio
-                        else:
-                            composed_bg_image += img_array * image_mask_bg[index]
-                    
-                    composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8))
-                    composed_prod_image = Image.fromarray(composed_prod_image.astype(np.uint8))
+                    if not multiprod:
+                        composed_bg_image = np.zeros((image_width, image_height, 3))
+                        composed_prod_image = np.zeros((image_width, image_height, 3))
+                        for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
+                            if is_product.lower() == "true":
+                                composed_prod_image += img_array * image_mask_prod[index] * product_ratio
+                            else:
+                                composed_bg_image += img_array * image_mask_bg[index]
+                        
+                        composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8))
+                        composed_prod_image = Image.fromarray(composed_prod_image.astype(np.uint8))
+                    else:
+                        composed_bg_image = np.zeros((image_width, image_height, 3))
+                        composed_prod_images = []
+                        for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
+                            if is_product.lower() == "true":
+                                composed_prod_image = img_array * image_mask_prod[index] * product_ratio
+                                composed_prod_images.append(Image.fromarray(composed_prod_image.astype(np.uint8)))
+                            else:
+                                composed_bg_image += img_array * image_mask_bg[index]
+                        
+                        composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8))
                 else:
                     composed_image = image[0].convert('RGB')
                     
                 mask = Image.fromarray(product_mask.astype(np.uint8)*255).convert('RGB')
                 
                 if product_ratio > 0.0:
-                    image_latents_bg = self.encode_image(composed_bg_image, device, 1)
-                    image_latents_prod = self.encode_image(composed_prod_image, device, 1)     
+                    if not multiprod:
+                        image_latents_bg = self.encode_image(composed_bg_image, device, 1)
+                        image_latents_prod = self.encode_image(composed_prod_image, device, 1)
+                    else:
+                        image_latents_bg = self.encode_image(composed_bg_image, device, 1)
+                        image_latents_prods = []
+                        for composed_prod_image in composed_prod_images:
+                            image_latents_prods.append(self.encode_image(composed_prod_image, device, 1))
                 else:
                     image_latents = self.encode_image(composed_image, device, 1)
             else:
@@ -529,12 +549,22 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             image_latents = self.encode_image(image, device, 1)
 
         if product_ratio > 0.0:
-            image_embeds_bg = self.image_embedder(image_latents_bg).image_embeds
-            image_embeds_bg = image_embeds_bg.to(device=device)
+            if not multiprod:
+                image_embeds_bg = self.image_embedder(image_latents_bg).image_embeds
+                image_embeds_bg = image_embeds_bg.to(device=device)
 
-            image_embeds_prod = self.image_embedder(image_latents_prod).image_embeds
-            image_embeds_prod = image_embeds_prod.to(device=device)
-            image_embeds = torch.cat([image_embeds_prod, image_embeds_bg], dim=1)
+                image_embeds_prod = self.image_embedder(image_latents_prod).image_embeds
+                image_embeds_prod = image_embeds_prod.to(device=device)
+                image_embeds = torch.cat([image_embeds_prod, image_embeds_bg], dim=1)
+            else:
+                image_embeds_bg = self.image_embedder(image_latents_bg).image_embeds
+                image_embeds_bg = image_embeds_bg.to(device=device)
+
+                image_embeds_prods = []
+                for image_latents_prod in image_latents_prods:
+                    image_embeds_prod = self.image_embedder(image_latents_prod).image_embeds
+                    image_embeds_prod = image_embeds_prod.to(device=device)
+                    image_embeds_prods.append(image_embeds_prod)
         else:
             image_embeds = self.image_embedder(image_latents).image_embeds
             image_embeds = image_embeds.to(device=device)
@@ -559,7 +589,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                         lora_scale=None,
                     )
                     prompt_embeds_list.append(prompt_embeds)
-                prompt_embeds = torch.cat(prompt_embeds_list, dim=1)
+                if not multiprod:    
+                    prompt_embeds = torch.cat(prompt_embeds_list, dim=1)
             else:
                 (
                     prompt_embeds,
@@ -587,7 +618,13 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             pooled_prompt_embeds = torch.zeros((batch_size, 768), device=device, dtype=image_embeds.dtype)
 
         # scale & concatenate image and text embeddings
-        prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
+        if not multiprod:
+            prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
+        else:
+            prompt_embeds = image_embeds_bg
+            for tmp_prompt_embeds, tmp_image_embeds_prod in zip(prompt_embeds_list, image_embeds_prods):
+                prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod, prompt_embeds], dim=1)
+                print(f'prompt_embeds shape={prompt_embeds.shape}')
         
         prompt_embeds *= torch.tensor(prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None, None]
         pooled_prompt_embeds *= torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[
