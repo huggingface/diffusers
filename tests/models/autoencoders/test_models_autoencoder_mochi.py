@@ -80,14 +80,6 @@ class AutoencoderKLMochiTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     @unittest.skip("Unsupported test.")
-    def test_effective_gradient_checkpointing(self):
-        """Fails because of conv_cache:
-        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_effective_gradient_checkpointing -
-        TypeError: ModelMixin.enable_gradient_checkpointing.<locals>._gradient_checkpointing_func() got an unexpected keyword argument 'conv_cache'
-        """
-        pass
-
-    @unittest.skip("Unsupported test.")
     def test_forward_with_norm_groups(self):
         """
         tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_forward_with_norm_groups -
