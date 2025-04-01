@@ -23,6 +23,70 @@ from ..utils.logging import get_logger
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class BaseState:
+    def reset(self, *args, **kwargs) -> None:
+        raise NotImplementedError(
+            "BaseState::reset is not implemented. Please implement this method in the derived class."
+        )
+
+
+class BaseMarkedState(BaseState):
+    def __init__(self, init_args=None, init_kwargs=None):
+        super().__init__()
+
+        self._init_args = init_args if init_args is not None else ()
+        self._init_kwargs = init_kwargs if init_kwargs is not None else {}
+        self._mark_name = None
+        self._state_cache = {}
+
+    def get_current_state(self) -> "BaseMarkedState":
+        if self._mark_name is None:
+            # If no mark name is set, simply return a dummy object since we're not going to be using it
+            return self
+        if self._mark_name not in self._state_cache.keys():
+            self._state_cache[self._mark_name] = self.__class__(*self._init_args, **self._init_kwargs)
+        return self._state_cache[self._mark_name]
+
+    def mark_batch(self, name: str) -> None:
+        self._mark_name = name
+
+    def reset(self, *args, **kwargs) -> None:
+        for name, state in list(self._state_cache.items()):
+            state.reset(*args, **kwargs)
+            self._state_cache.pop(name)
+        self._mark_name = None
+
+    def __getattribute__(self, name):
+        if name in (
+            "get_current_state",
+            "mark_batch",
+            "reset",
+            "_init_args",
+            "_init_kwargs",
+            "_mark_name",
+            "_state_cache",
+        ) or _is_dunder_method(name):
+            return object.__getattribute__(self, name)
+        else:
+            current_state = BaseMarkedState.get_current_state(self)
+            return object.__getattribute__(current_state, name)
+
+    def __setattr__(self, name, value):
+        if name in (
+            "get_current_state",
+            "mark_batch",
+            "reset",
+            "_init_args",
+            "_init_kwargs",
+            "_mark_name",
+            "_state_cache",
+        ) or _is_dunder_method(name):
+            object.__setattr__(self, name, value)
+        else:
+            current_state = BaseMarkedState.get_current_state(self)
+            object.__setattr__(current_state, name, value)
+
+
 class ModelHook:
     r"""
     A hook that contains callbacks to be executed just before and after the forward method of a model.
@@ -97,6 +161,14 @@ class ModelHook:
     def reset_state(self, module: torch.nn.Module):
         if self._is_stateful:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
+        return module
+
+    def _mark_state(self, module: torch.nn.Module, name: str) -> None:
+        # Iterate over all attributes of the hook to see if any of them have the type `BaseMarkedState`. If so, call `mark_batch` on them.
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if isinstance(attr, BaseMarkedState):
+                attr.mark_batch(name)
         return module
 
 
@@ -223,6 +295,18 @@ class HookRegistry:
             module._diffusers_hook = cls(module)
         return module._diffusers_hook
 
+    def _mark_state(self, name: str) -> None:
+        for hook_name in reversed(self._hook_order):
+            hook = self.hooks[hook_name]
+            if hook._is_stateful:
+                hook._mark_state(self._module_ref, name)
+
+        for module_name, module in self._module_ref.named_modules():
+            if module_name == "":
+                continue
+            if hasattr(module, "_diffusers_hook"):
+                module._diffusers_hook._mark_state(name)
+
     def __repr__(self) -> str:
         registry_repr = ""
         for i, hook_name in enumerate(self._hook_order):
@@ -234,3 +318,7 @@ class HookRegistry:
             if i < len(self._hook_order) - 1:
                 registry_repr += "\n"
         return f"HookRegistry(\n{registry_repr}\n)"
+
+
+def _is_dunder_method(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__") and name in dir(object)

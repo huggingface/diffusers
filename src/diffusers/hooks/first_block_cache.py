@@ -20,7 +20,7 @@ import torch
 from ..utils import get_logger
 from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS
 from ._helpers import TransformerBlockRegistry
-from .hooks import HookRegistry, ModelHook
+from .hooks import BaseMarkedState, HookRegistry, ModelHook
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -48,8 +48,10 @@ class FirstBlockCacheConfig:
     threshold: float = 0.05
 
 
-class FBCSharedBlockState:
+class FBCSharedBlockState(BaseMarkedState):
     def __init__(self) -> None:
+        super().__init__()
+
         self.head_block_output: Union[torch.Tensor, Tuple[torch.Tensor, ...]] = None
         self.head_block_residual: torch.Tensor = None
         self.tail_block_residuals: Union[torch.Tensor, Tuple[torch.Tensor, ...]] = None
@@ -130,6 +132,7 @@ class FBCHeadBlockHook(ModelHook):
         hs_absmean = (hs_residual - prev_hs_residual).abs().mean()
         prev_hs_mean = prev_hs_residual.abs().mean()
         diff = (hs_absmean / prev_hs_mean).item()
+        print("diff:", self.shared_state._mark_name, diff, flush=True)
         return diff > self.threshold
 
 

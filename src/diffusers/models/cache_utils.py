@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
+
 from ..utils.logging import get_logger
 
 
@@ -114,3 +116,21 @@ class CacheMixin:
         from ..hooks import HookRegistry
 
         HookRegistry.check_if_exists_or_initialize(self).reset_stateful_hooks(recurse=recurse)
+
+    @contextmanager
+    def _cache_context(self):
+        r"""Context manager that provides additional methods for cache management."""
+        cache_context = _CacheContextManager(self)
+        yield cache_context
+
+
+class _CacheContextManager:
+    def __init__(self, model: CacheMixin):
+        self.model = model
+
+    def mark_state(self, name: str) -> None:
+        from ..hooks import HookRegistry
+
+        if self.model.is_cache_enabled:
+            registry = HookRegistry.check_if_exists_or_initialize(self.model)
+            registry._mark_state(name)
