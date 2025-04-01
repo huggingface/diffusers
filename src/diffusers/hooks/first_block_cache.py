@@ -105,7 +105,7 @@ class FBCHeadBlockHook(ModelHook):
                 return_output = tuple(return_output)
             else:
                 return_output = hs
-            return return_output
+            output = return_output
         else:
             if is_output_tuple:
                 head_block_output = [None] * len(output)
@@ -115,12 +115,14 @@ class FBCHeadBlockHook(ModelHook):
                 head_block_output = output
             self.shared_state.head_block_output = head_block_output
             self.shared_state.head_block_residual = hs_residual
-            return output
+
+        return output
 
     def reset_state(self, module):
         self.shared_state.reset()
         return module
 
+    @torch.compiler.disable
     def _should_compute_remaining_blocks(self, hs_residual: torch.Tensor) -> bool:
         if self.shared_state.head_block_residual is None:
             return True
@@ -144,6 +146,8 @@ class FBCBlockHook(ModelHook):
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         outputs_if_skipped = self._metadata.skip_block_output_fn(module, *args, **kwargs)
+        if not isinstance(outputs_if_skipped, tuple):
+            outputs_if_skipped = (outputs_if_skipped,)
         original_hs = outputs_if_skipped[self._metadata.return_hidden_states_index]
         original_ehs = None
         if self._metadata.return_encoder_hidden_states_index is not None:
@@ -166,7 +170,7 @@ class FBCBlockHook(ModelHook):
                 self.shared_state.tail_block_residuals = (hs_residual, ehs_residual)
             return output
 
-        output_count = len(outputs_if_skipped) if isinstance(outputs_if_skipped, tuple) else 1
+        output_count = len(outputs_if_skipped)
         if output_count == 1:
             return_output = original_hs
         else:
@@ -183,8 +187,8 @@ def apply_first_block_cache(module: torch.nn.Module, config: FirstBlockCacheConf
     for name, submodule in module.named_children():
         if name not in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS or not isinstance(submodule, torch.nn.ModuleList):
             continue
-        for block in submodule:
-            remaining_blocks.append((name, block))
+        for index, block in enumerate(submodule):
+            remaining_blocks.append((f"{name}.{index}", block))
 
     head_block_name, head_block = remaining_blocks.pop(0)
     tail_block_name, tail_block = remaining_blocks.pop(-1)
