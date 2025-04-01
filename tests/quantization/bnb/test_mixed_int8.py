@@ -315,7 +315,7 @@ class BnB8bitBasicTests(Base8bitTests):
         _ = self.model_fp16.float()
 
         # Check that this does not throw an error
-        _ = self.model_fp16.cuda()
+        _ = self.model_fp16.to(torch_device)
 
 
 class Bnb8bitDeviceTests(Base8bitTests):
