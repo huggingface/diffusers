@@ -363,7 +363,7 @@ import numpy as np
 from diffusers import AutoencoderKLWan, WanTransformer3DModel, WanImageToVideoPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
-from transformers import UMT5EncoderModel, CLIPVisionMode
+from transformers import UMT5EncoderModel, CLIPVisionModel
 
 model_id = "Wan-AI/Wan2.1-I2V-14B-720P-Diffusers"
 image_encoder = CLIPVisionModel.from_pretrained(
@@ -396,7 +396,7 @@ prompt = (
     "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
 )
-negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
+negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 num_frames = 33
 
 output = pipe(
