@@ -382,7 +382,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         multiprod: Optional[bool] = False, # thesea modified for ip image
-        multiprod_prompts: Optional[Union[str, List[str]]] = None,
         product_ratio: Optional[float] = None, # theseam modified
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
