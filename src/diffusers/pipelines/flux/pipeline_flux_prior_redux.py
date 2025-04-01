@@ -419,6 +419,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs. Raise error if not correct
+        """
         self.check_inputs(
             image,
             prompt,
@@ -428,6 +429,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             prompt_embeds_scale=prompt_embeds_scale,
             pooled_prompt_embeds_scale=pooled_prompt_embeds_scale,
         )
+        """
 
         # 2. Define call parameters
         if image is not None and isinstance(image, Image.Image):
@@ -532,6 +534,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     composed_image = image[0].convert('RGB')
                     
                 mask = Image.fromarray(product_mask.astype(np.uint8)*255).convert('RGB')
+                prod_masks = []
+                for tmp_mask in image_mask_prod:
+                    prod_masks.append(Image.fromarray(image_mask_prod[tmp_mask].astype(np.uint8)*255).convert('RGB'))
                 
                 if product_ratio > 0.0:
                     if not multiprod:
@@ -648,7 +653,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     if not multiprod:
                         return (prompt_embeds, pooled_prompt_embeds, composed_bg_image, composed_prod_image, mask)
                     else:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, mask)
+                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, mask)
                 else:
                     return (prompt_embeds, pooled_prompt_embeds, composed_image, mask)
             else:
