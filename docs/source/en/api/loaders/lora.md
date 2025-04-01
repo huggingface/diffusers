@@ -80,3 +80,7 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 ## LoraBaseMixin
 
 [[autodoc]] loaders.lora_base.LoraBaseMixin
+
+## WanLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.WanLoraLoaderMixin
