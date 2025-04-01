@@ -64,9 +64,8 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
     
         >>> # Configure STG mode options
-        >>> stg_applied_layers_idx = [10] # Layer indices from 0 to 39 for 14b or 0 to 29 for 1.3b
+        >>> stg_applied_layers_idx = [8] # Layer indices from 0 to 39 for 14b or 0 to 29 for 1.3b
         >>> stg_scale = 1.0 # Set 0.0 for CFG
-        >>> do_rescaling = False
 
         >>> output = pipe(
         ...     prompt=prompt,
@@ -77,7 +76,6 @@ EXAMPLE_DOC_STRING = """
         ...     guidance_scale=5.0,
         ...     stg_applied_layers_idx=stg_applied_layers_idx,
         ...     stg_scale=stg_scale,
-        ...     do_rescaling=do_rescaling,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=16)
         ```
