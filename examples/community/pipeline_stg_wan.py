@@ -581,7 +581,6 @@ class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 if self.do_spatio_temporal_guidance:
                     for idx, block in enumerate(self.transformer.blocks):
-                        print("resetting block", idx)
                         block.forward = types.MethodType(
                                 forward_without_stg, block
                             )
@@ -605,7 +604,6 @@ class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if self.do_spatio_temporal_guidance:
                         for idx, block in enumerate(self.transformer.blocks):
                             if idx in stg_applied_layers_idx:
-                                print("replacing block", idx)
                                 block.forward = types.MethodType(
                                         forward_with_stg, block
                                     )
