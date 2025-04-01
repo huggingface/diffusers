@@ -575,8 +575,6 @@ class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 self._current_timestep = t
                 latent_model_input = latents.to(transformer_dtype)
-                #if self.do_spatio_temporal_guidance:
-                #    latent_model_input = torch.cat([latent_model_input] * 2)
                 timestep = t.expand(latents.shape[0])
 
                 if self.do_spatio_temporal_guidance:
