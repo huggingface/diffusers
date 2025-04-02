@@ -2486,7 +2486,7 @@ class FluxAttnProcessor2_0:
                 txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
                 txt_mask_downsamples.append(txt_mask_downsample)
 
-            hidden_states_commom = torch.zeros(4096, 4096, dtype=query.dtype, device=query.device)
+            hidden_states_common = torch.zeros(4096, 4096, dtype=query.dtype, device=query.device)
             for hidden_states_txt, txt_mask_downsample in zip(hidden_states_txts, txt_mask_downsamples):
                 hidden_states_common += hidden_states_txt[:,-4096:,:] * txt_mask_downsample
 
