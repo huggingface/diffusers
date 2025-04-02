@@ -2490,7 +2490,7 @@ class FluxAttnProcessor2_0:
             for index in range(1, len(hidden_states_txts)):
                 hidden_states_common += hidden_states_txts[index][:,-4096:,:] * txt_mask_downsamples[index]
 
-            hidden_states = torch.cat([hidden_states-_region[:,:-4096,:], hidden_states_common], dim=1) 
+            hidden_states = torch.cat([hidden_states_region[:,:-4096,:], hidden_states_common], dim=1) 
         # thesea modified for quick validation of product shots    
         elif is_qv:
             attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
