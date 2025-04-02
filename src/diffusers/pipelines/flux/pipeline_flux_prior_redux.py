@@ -512,7 +512,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
             if len(image_mask_prod) > 1:
                 if not is_multiprod:
-                    prompt=[prompt*len(image_mask_prod)]
+                    prompt=[prompt]*len(image_mask_prod)
                     
                     print(f'number of prompts={len(image_mask_prod)}')
                     for pmt in prompt:
