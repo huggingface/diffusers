@@ -2293,7 +2293,7 @@ class PipelineTesterMixin:
         specified_key = next(iter(components.keys()))
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
-            pipe.save_pretrained(tmpdirname)
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
             torch_dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, torch_dtype=torch_dtype_dict)
 
