@@ -2426,10 +2426,10 @@ class FluxAttnProcessor2_0:
                 )
             
             last_mask = torch.ones_like(txt_masks[0])
-            for tmp_mask in txt_masks:
-                one_index = tmp_mask == 1.0
+            for index in range(len(txt_masks)):
+                one_index = txt_masks[index] == 1.0
                 last_mask = last_mask.masked_fill(one_index, 0)
-            txt_masks.append(last_mask)
+            txt_masks = torch.cat([txt_masks, last_mask], dim=0)
 
             attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
 
