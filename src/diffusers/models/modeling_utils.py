@@ -714,7 +714,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if safe_serialization:
                 # At some point we will need to deal better with save_function (used for TPU and other distributed
                 # joyfulness), but for now this enough.
-                safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+                try:
+                    safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+                except RuntimeError:
+                    safetensors.torch.save_model(model_to_save, filepath, metadata={"format": "pt"})
             else:
                 torch.save(shard, filepath)
 
