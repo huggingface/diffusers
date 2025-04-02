@@ -625,6 +625,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     max_sequence_length=512,
                     lora_scale=None,
                 )
+                prompt_embeds_list.append(prompt_embeds)
         else:
             if prompt is not None:
                 logger.warning(
