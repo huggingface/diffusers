@@ -482,7 +482,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
             bg_mask = np.full((image_width, image_height, 3), True, dtype=bool)
             image_mask_prod = {}
-            image_mask_prod_for_ip = {}
             image_mask_bg = {}
             image_mask_all = {}
             for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
@@ -500,13 +499,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 if is_product.lower() == "true":
                     if index not in image_mask_prod:
                         image_mask_prod[index] = mask
-                    
-                    if index not in image_mask_prod_for_ip:
-                        image_mask_prod_for_ip[index] = mask
-                    
-                    for k in image_mask_prod_for_ip:
-                        if k != index:
-                            image_mask_prod_for_ip[k] = image_mask_prod_for_ip[k] & ~mask      
                 else:
                     if index not in image_mask_bg:
                         image_mask_bg[index] = mask
@@ -522,7 +514,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 if not is_multiprod:
                     prompt=[prompt*len(image_mask_prod)]
                     
-                    print(f'number of prompts={len(prompt)}')
+                    print(f'number of prompts={len(image_mask_prod)}')
                     for pmt in prompt:
                         print(f'prompt={pmt}')
 
@@ -531,8 +523,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             composed_prod_images = []
             for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
                 if is_product.lower() == "true":
-                    composed_prod_image = img_array * image_mask_prod_for_ip[index] 
-                    composed_prod_images.append(Image.fromarray(composed_prod_image.astype(np.uint8)))
+                    composed_prod_images.append(Image.fromarray(img_array.astype(np.uint8)))
                 else:
                     composed_bg_image += img_array * image_mask_bg[index]
                 
