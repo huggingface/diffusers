@@ -455,12 +455,8 @@ class FluxTransformer2DModel(
             if guidance is None
             else self.time_text_embed(timestep, guidance, pooled_projections)
         )
-        #print(f'transformer flux encoder_hidden_states.ndim={encoder_hidden_states.ndim}')
-        if encoder_hidden_states.ndim == 4:
-            for index in range(encoder_hidden_states.ndim):
-                encoder_hidden_states[:,index,:,:] = self.context_embedder(encoder_hidden_states[:,index,:,:])
-        else:
-            encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+
+        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         if txt_ids.ndim == 3:
             logger.warning(
@@ -529,7 +525,7 @@ class FluxTransformer2DModel(
                     hidden_states=hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=joint_attention_kwargs,
+                    #joint_attention_kwargs=joint_attention_kwargs,
                 )
 
             # controlnet residual

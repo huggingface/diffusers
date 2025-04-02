@@ -2358,15 +2358,13 @@ class FluxAttnProcessor2_0:
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        img_mask: Optional[torch.Tensor] = None, # thesea modification for ip mask
-        txt_mask: Optional[torch.Tensor] = None, # thesea modification for ip mask
-        prod_masks: Optional[torch.Tensor] = None, # thesea modification for text mask
+        is_qv: Optional[bool] = False, # thesea modified for ip image
+        product_ratio: Optional[float] = None, # theseam modified
+        bg_mask: Optional[torch.Tensor] = None, # thesea modified for ip mask
+        prod_masks: Optional[torch.Tensor] = None, # thesea modified for text mask
     ) -> torch.FloatTensor:
-        if prod_masks is None:
-            batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        else:
-            batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states[:,0,:,:].shape
-        
+        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+
         # `sample` projections.
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
@@ -2374,7 +2372,7 @@ class FluxAttnProcessor2_0:
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
-        
+
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
@@ -2386,229 +2384,167 @@ class FluxAttnProcessor2_0:
 
         # the attention in FluxSingleTransformerBlock does not use `encoder_hidden_states`
         if encoder_hidden_states is not None:
-            # theseam modified
-            if img_mask is not None:
-                # `context` projections.
-                encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states[:,0:512,:])
-                encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states[:,0:512,:])
-                encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states[:,0:512,:])
+            # `context` projections.
+            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
 
-                img_encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states[:,512:,:])
-                img_encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states[:,512:,:])
-                img_encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states[:,512:,:])
-                
-                encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
-                encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
-                encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
 
-                img_encoder_hidden_states_query_proj = img_encoder_hidden_states_query_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
-                img_encoder_hidden_states_key_proj = img_encoder_hidden_states_key_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
-                img_encoder_hidden_states_value_proj = img_encoder_hidden_states_value_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
 
-                
-                if attn.norm_added_q is not None:
-                    encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-                    img_encoder_hidden_states_query_proj = attn.norm_added_q(img_encoder_hidden_states_query_proj)
-                if attn.norm_added_k is not None:
-                    encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-                    img_encoder_hidden_states_key_proj = attn.norm_added_k(img_encoder_hidden_states_key_proj)
-
-                # attention
-                txt_query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-                txt_key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-                txt_value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-                img_query = torch.cat([img_encoder_hidden_states_query_proj, query], dim=2)
-                img_key = torch.cat([img_encoder_hidden_states_key_proj, key], dim=2)
-                img_value = torch.cat([img_encoder_hidden_states_value_proj, value], dim=2)
-            elif prod_masks is not None:
-                if not prod_masks.shape[0] == encoder_hidden_states.shape[1]:
-                    raise ValueError(
-                        f"Length of text masks ({prod_masks.shape[0]}) must match "
-                        f"the number of text prompts "
-                        f"({encoder_hidden_states.shape[1]})")
-                queries = []
-                keys = []
-                values = []
-                for index in range(encoder_hidden_states.shape[1]):
-                    encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states[:,index,:,:])
-                    encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states[:,index,:,:])
-                    encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states[:,index,:,:])
-
-                    encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                        batch_size, -1, attn.heads, head_dim
-                    ).transpose(1, 2)
-                    encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                        batch_size, -1, attn.heads, head_dim
-                    ).transpose(1, 2)
-                    encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                        batch_size, -1, attn.heads, head_dim
-                    ).transpose(1, 2)
-
-                    if attn.norm_added_q is not None:
-                        encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-                    if attn.norm_added_k is not None:
-                        encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-                    # attention
-                    tmp_query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-                    tmp_key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-                    tmp_value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
-
-                    queries.append(tmp_query)
-                    keys.append(tmp_key)
-                    values.append(tmp_value)
-            else:
-                encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
-                encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-                encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-
-                encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
-                encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
-                encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
-                    batch_size, -1, attn.heads, head_dim
-                ).transpose(1, 2)
-
-                if attn.norm_added_q is not None:
-                    encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
-                if attn.norm_added_k is not None:
-                    encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
-
-                # attention
-                query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
-                key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
-                value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+            # attention
+            query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
 
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
+
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
+
+        if is_qv:
+            attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
+            prod_embeds_dim = 512 + int(729 * product_ratio)
+            num_of_prompts = int ((query.size(-2) - 729 - 4096)/prod_embeds_dim)
+            if num_of_prompts != len(prod_masks):
+                raise ValueError(
+                    f"Length of prod_masks ({len(prod_masks)}) must match number of prompts {num_of_prompts}"
+                )
+
+            # text related attention mask
+            for index in range(len(prod_masks)):
+                attention_mask[index*prod_embeds_dim:(index+1)*prod_embeds_dim, index*prod_embeds_dim:(index+1)*prod_embeds_dim] = torch.ones(prod_embeds_dim, prod_embeds_dim)
+                mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
+                    prod_masks[index],
+                    1,
+                    4096,
+                    1,
+                )
+                mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
+                mask_downsample_t2i = mask_downsample_t2i.squeeze()
+                mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(prod_embeds_dim, 1).to(device=query.device)
+                mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
+                attention_mask[index*prod_embeds_dim:(index+1)*prod_embeds_dim,-4096:] = mask_downsample_t2i_tensor
+                attention_mask[-4096:, index*prod_embeds_dim:(index+1)*prod_embeds_dim] = mask_downsample_t2i_tensor_transpose
             
-            # theseam modified
-            if encoder_hidden_states is not None:
-                if img_mask is not None:
-                    cos, sin = image_rotary_emb
-                    #print(f'cos shape={cos.shape}, sin shape={sin.shape}')
-                    txt_query = apply_rotary_emb(txt_query, (torch.cat([cos[0:512,:], cos[1241:,:]], dim = 0), torch.cat([sin[0:512,:], sin[1241:,:]],dim=0))) 
-                    txt_key = apply_rotary_emb(txt_key,     (torch.cat([cos[0:512,:], cos[1241:,:]], dim = 0), torch.cat([sin[0:512,:], sin[1241:,:]],dim=0))) 
 
-                    img_query = apply_rotary_emb(img_query, (cos[512:,:],sin[512:,:])) 
-                    img_key = apply_rotary_emb(img_key,     (cos[512:,:],sin[512:,:]))
-                elif prod_masks is not None:
-                    for tmp_query, tmp_key in zip(queries, keys):
-                        tmp_query = apply_rotary_emb(tmp_query, image_rotary_emb)
-                        tmp_key = apply_rotary_emb(tmp_key, image_rotary_emb)
-                else:
-                    query = apply_rotary_emb(query, image_rotary_emb)
-                    key = apply_rotary_emb(key, image_rotary_emb)
-            else:
-                query = apply_rotary_emb(query, image_rotary_emb)
-                key = apply_rotary_emb(key, image_rotary_emb)
+            # image related attention mask
+            attention_mask[len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + 729, len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + 729] = torch.ones(729, 729)
+            mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
+                bg_mask[0],
+                1,
+                4096,
+                1,
+            )
+            mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
+            mask_downsample_t2i = mask_downsample_t2i.squeeze()
+            mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(729, 1).to(device=query.device)
+            mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
+            attention_mask[len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + 729,-4096:] = mask_downsample_t2i_tensor
+            attention_mask[-4096:, len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + 729] = mask_downsample_t2i_tensor_transpose   
 
-        if encoder_hidden_states is not None: 
-            # theseam modified
-            if img_mask is not None:
-                txt_hidden_states = F.scaled_dot_product_attention(
-                    txt_query, txt_key, txt_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-                )
-                img_hidden_states = F.scaled_dot_product_attention(
-                    img_query, img_key, img_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-                )
+
+            attention_mask[-4096:,-4096:] = 1
                 
-                txt_hidden_states = txt_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                txt_hidden_states = txt_hidden_states.to(query.dtype)
+            zero_index = attention_mask < 0.5
+            one_index = attention_mask >= 0.5
+            attention_mask = attention_mask.masked_fill(zero_index, float('-inf'))
+            attention_mask = attention_mask.masked_fill(one_index, 0)
+            attention_mask = attention_mask.to(dtype=query.dtype, device=query.device)
 
-                img_hidden_states = img_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                img_hidden_states = img_hidden_states.to(query.dtype)
+            hidden_states_region = F.scaled_dot_product_attention(
+                query, 
+                key, 
+                value, 
+                attn_mask=attention_mask, 
+                dropout_p=0.0, 
+                is_causal=False
+            )
+            hidden_states_region = hidden_states_region.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            hidden_states_region = hidden_states_region.to(query.dtype)
+                
 
-                txt_mask_downsample = IPAdapterMaskProcessor.downsample(
-                    txt_mask[0],
+            hidden_states_prods = []
+            prod_mask_downsamples = []
+            for index in range(len(prod_masks)):
+                hidden_states_tmp = F.scaled_dot_product_attention(
+                    torch.cat([query[:,:,index*prod_embeds_dim:(index+1)*prod_embeds_dim,:], query[:,:,-4096:,:]], dim=2), 
+                    torch.cat([key[:,:,index*prod_embeds_dim:(index+1)*prod_embeds_dim,:], key[:,:,-4096:,:]], dim=2), 
+                    torch.cat([value[:,:,index*prod_embeds_dim:(index+1)*prod_embeds_dim,:], value[:,:,-4096:,:]], dim=2), 
+                    attn_mask=None, 
+                    dropout_p=0.0, 
+                    is_causal=False
+                )
+                hidden_states_tmp = hidden_states_tmp.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+                hidden_states_tmp = hidden_states_tmp.to(query.dtype)
+                hidden_states_prods.append(hidden_states_tmp)
+
+                prod_mask_downsample = IPAdapterMaskProcessor.downsample(
+                    prod_masks[index],
                     batch_size,
-                    hidden_states.shape[1],
-                    hidden_states.shape[2],
+                    4096,
+                    attn.heads * head_dim,
                 ) 
-                txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
-                masked_txt_hidden_states = txt_hidden_states[:,512:,:] * txt_mask_downsample
-
-                img_mask_downsample = IPAdapterMaskProcessor.downsample(
-                    img_mask[0],
-                    batch_size,
-                    hidden_states.shape[1],
-                    hidden_states.shape[2],
-                )
-
-                img_mask_downsample = img_mask_downsample.to(dtype=query.dtype, device=query.device)
-                masked_img_hidden_states = img_hidden_states[:,729:,:] * img_mask_downsample
+                prod_mask_downsample = prod_mask_downsample.to(dtype=query.dtype, device=query.device)
+                prod_mask_downsamples.append(prod_mask_downsample)
                 
-                hidden_states = torch.cat([txt_hidden_states[:,:-hidden_states.shape[1],:], img_hidden_states[:,:-hidden_states.shape[1],:], masked_txt_hidden_states + masked_img_hidden_states],dim=1)
-            elif prod_masks is not None:
-                hidden_states_list = []
-                encoder_hidden_states_list = []
-                for tmp_mask, tmp_query, tmp_key, tmp_value in zip(prod_masks, queries, keys, values):
-                    tmp_hidden_states = F.scaled_dot_product_attention(
-                        tmp_query, tmp_key, tmp_value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-                    )
-                    tmp_hidden_states = tmp_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                    tmp_hidden_states = tmp_hidden_states.to(query.dtype)
+            hidden_states_img = F.scaled_dot_product_attention(
+                query[:,:,-4825:,:], 
+                key[:,:,-4825:,:], 
+                value[:,:,-4825:,:], 
+                attn_mask=None, 
+                dropout_p=0.0, 
+                is_causal=False
+            )
+            hidden_states_img = hidden_states_img.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            hidden_states_img = hidden_states_img.to(query.dtype)
 
-                    mask_downsample = IPAdapterMaskProcessor.downsample(
-                        tmp_mask,
-                        batch_size,
-                        hidden_states.shape[1],
-                        hidden_states.shape[2],
-                    )   
-                    mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
-                    hidden_states_list.append(tmp_hidden_states[:,512:,:] * mask_downsample) 
-                    encoder_hidden_states_list.append(tmp_hidden_states[:,:512,:])
-                
-                hidden_states_list = torch.stack(hidden_states_list)
-                hidden_states = torch.sum(hidden_states_list, dim=0, keepdim=False)
-                
-                encoder_hidden_states = torch.stack(encoder_hidden_states_list, dim=1)
-            else:
-                hidden_states = F.scaled_dot_product_attention(
-                    query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-                )
-                hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                hidden_states = hidden_states.to(query.dtype)
-        else:
+            bg_mask_downsample = IPAdapterMaskProcessor.downsample(
+                bg_mask[0],
+                batch_size,
+                4096,
+                attn.heads * head_dim,
+            )
+            bg_mask_downsample = bg_mask_downsample.to(dtype=query.dtype, device=query.device)
+
+            hidden_states_common = hidden_states_img[:,-4096:,:] * bg_mask_downsample
+            for hidden_states_prod, prod_mask_downsample in zip(hidden_states_prods, prod_mask_downsamples):
+                hidden_states_common += hidden_states_prod[:,-4096:,:] * prod_mask_downsample
+
+            hidden_states = torch.cat([hidden_states_region[:,:-4096,:], hidden_states_common], dim=1) 
+        else:        
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
+
             hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
             hidden_states = hidden_states.to(query.dtype)
 
         if encoder_hidden_states is not None:
-            if prod_masks is None:
-                encoder_hidden_states, hidden_states = (
-                    hidden_states[:, : encoder_hidden_states.shape[1]],
-                    hidden_states[:, encoder_hidden_states.shape[1] :],
-                )
+            encoder_hidden_states, hidden_states = (
+                hidden_states[:, : encoder_hidden_states.shape[1]],
+                hidden_states[:, encoder_hidden_states.shape[1] :],
+            )
 
             # linear proj
             hidden_states = attn.to_out[0](hidden_states)
             # dropout
             hidden_states = attn.to_out[1](hidden_states)
 
-            if prod_masks is None:
-                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-            else:
-                for index in range(encoder_hidden_states.shape[1]):
-                    encoder_hidden_states[:,index,:,:] = attn.to_add_out(encoder_hidden_states[:,index,:,:])
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
             return hidden_states, encoder_hidden_states
         else:

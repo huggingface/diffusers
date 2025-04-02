@@ -848,7 +848,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
-            batch_size = 1 #len(prompt) #thesea modified for text prompt mask
+            batch_size = 1 #len(prompt) # thesea modified for text prompt mask
         else:
             batch_size = prompt_embeds.shape[0]
 
@@ -862,7 +862,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         do_true_cfg = true_cfg_scale > 1 and negative_prompt is not None
         ## thesea modified for text prompt mask
         prompt_embeds_list = []
-        pooled_prompt_embeds_list = []
         text_ids_list = []
         if isinstance(prompt, list):
             for pmt in prompt:
@@ -881,11 +880,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     lora_scale=lora_scale,
                 )
                 prompt_embeds_list.append(prompt_embeds)
-                pooled_prompt_embeds_list.append(pooled_prompt_embeds)
                 text_ids_list.append(text_ids)
-            prompt_embeds_list = torch.stack(prompt_embeds_list,dim=1)
-            pooled_prompt_embeds_list = torch.stack(pooled_prompt_embeds_list,dim=1)
-            text_ids_list = torch.stack(text_ids_list,dim=1)
+            prompt_embeds = torch.cat(prompt_embeds_list, dim=1)
+            text_ids = torch.cat(text_ids_list, dim=0)
         else:
             (
                 prompt_embeds,
@@ -1113,11 +1110,10 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     conditioning_scale=cond_scale,
                     timestep=timestep / 1000,
                     guidance=guidance,
-                    pooled_projections=pooled_prompt_embeds, # TBD: pooled_prompt_embeds_list if isinstance(prompt, list) else pooled_prompt_embeds,
-                    encoder_hidden_states=prompt_embeds_list if isinstance(prompt, list) else prompt_embeds, #prompt_embeds, thesea modified for text prompt mask
+                    pooled_projections=pooled_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )
 
@@ -1130,8 +1126,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     hidden_states=latents,
                     timestep=timestep / 1000,
                     guidance=guidance,
-                    pooled_projections=pooled_prompt_embeds, # TBD: pooled_prompt_embeds_list if isinstance(prompt, list) else pooled_prompt_embeds,
-                    encoder_hidden_states=prompt_embeds_list if isinstance(prompt, list) else prompt_embeds, #prompt_embeds, thesea modified for text prompt mask
+                    pooled_projections=pooled_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
                     controlnet_block_samples=controlnet_block_samples,
                     controlnet_single_block_samples=controlnet_single_block_samples,
                     txt_ids=text_ids,
