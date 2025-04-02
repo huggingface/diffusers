@@ -2429,7 +2429,7 @@ class FluxAttnProcessor2_0:
 
             # prod related attention mask
             for index in range(len(txt_masks)):
-                attention_mask[index*prod_embeds_dim:(index+1)*prod_embeds_dim, index*prod_embeds_dim:(index+1)*prod_embeds_dim] = torch.ones(prod_embeds_dim, prod_embeds_dim)
+                attention_mask[index*prod_embeds_dim:(index+1)*prod_embeds_dim, index*prod_embeds_dim:(index+1)*prod_embeds_dim] = 1
                 mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
                     txt_masks[index],
                     1,
@@ -2486,11 +2486,11 @@ class FluxAttnProcessor2_0:
                 txt_mask_downsample = txt_mask_downsample.to(dtype=query.dtype, device=query.device)
                 txt_mask_downsamples.append(txt_mask_downsample)
 
-            hidden_states_common = torch.zeros_like(hidden_states_txts[0][:,-4096:,:])
-            for hidden_states_txt, txt_mask_downsample in zip(hidden_states_txts, txt_mask_downsamples):
-                hidden_states_common += hidden_states_txt[:,-4096:,:] * txt_mask_downsample
+            hidden_states_common = hidden_states_txts[0][:,-4096:,:] * txt_mask_downsample[0]
+            for index in range(1, len(hidden_states_txts)):
+                hidden_states_common += hidden_states_txt[index][:,-4096:,:] * txt_mask_downsample[index]
 
-            hidden_states = torch.cat([hidden_states_region[:,:-4096,:], hidden_states_common], dim=1) 
+            hidden_states = torch.cat([hidden_states-_region[:,:-4096,:], hidden_states_common], dim=1) 
         # thesea modified for quick validation of product shots    
         elif is_qv:
             attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
@@ -2503,7 +2503,7 @@ class FluxAttnProcessor2_0:
 
             # prod related attention mask
             for index in range(len(prod_masks)):
-                attention_mask[index*prod_embeds_dim:(index+1)*prod_embeds_dim, index*prod_embeds_dim:(index+1)*prod_embeds_dim] = torch.ones(prod_embeds_dim, prod_embeds_dim)
+                attention_mask[index*prod_embeds_dim:(index+1)*prod_embeds_dim, index*prod_embeds_dim:(index+1)*prod_embeds_dim] = 1
                 mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
                     prod_masks[index],
                     1,
