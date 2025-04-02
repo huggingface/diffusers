@@ -513,10 +513,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             if len(image_mask_prod) > 1:
                 if not is_multiprod:
                     prompt=[prompt]*len(image_mask_prod)
-                    
-                    print(f'number of prompts={len(image_mask_prod)}')
-                    for pmt in prompt:
-                        print(f'prompt={pmt}')
 
             composed_image_all = np.zeros((image_width, image_height, 3))
             composed_bg_image = np.zeros((image_width, image_height, 3))
