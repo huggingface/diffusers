@@ -381,8 +381,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
-        multiprod: Optional[bool] = False, # thesea modified for ip image
-        product_ratio: Optional[float] = None, # theseam modified
+        is_qv: Optional[bool] = False, # thesea modified for quick validation of product shots
+        product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
         return_dict: bool = True,
@@ -418,6 +418,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs. Raise error if not correct
+        # thesea modified
         """
         self.check_inputs(
             image,
@@ -452,143 +453,100 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. Prepare image embeddings
-        # thesea modified
         # thesea modified for ip and txt masks
-        if isinstance(image, list):
-            if product_ratio is not None:
-                image_array_list = []
-                mask_list = []
-                is_product_list = []
-                for img, img_type in zip(image, layer_type):
-                    if 'product' in img_type or 'Product' in img_type:
-                        is_product_list.append('true')
-                    else:
-                        is_product_list.append('false')
+        if is_qv:
+            image_array_list = []
+            mask_list = []
+            is_product_list = []
+            for img, img_type in zip(image, layer_type):
+                if 'product' in img_type or 'Product' in img_type:
+                    is_product_list.append('true')
+                else:
+                    is_product_list.append('false')
 
-                    img = img.convert('RGBA')
-                    img = img.resize((image_width, image_height), resample=Image.BICUBIC)
+                img = img.convert('RGBA')
+                img = img.resize((image_width, image_height), resample=Image.BICUBIC)
 
-                    rgba_np = np.array(img)
-                    mask = rgba_np[:, :, 3]
-                    mask = mask > 0
-                    mask = np.stack((mask,)*3, axis=-1)
-                    mask_list.append(mask)
+                rgba_np = np.array(img)
+                mask = rgba_np[:, :, 3]
+                mask = mask > 0
+                mask = np.stack((mask,)*3, axis=-1)
+                mask_list.append(mask)
 
-                    tmp_img = Image.new('RGBA', img.size, (255, 255, 255, 255)) 
-                    tmp_img.paste(img, mask=img.split()[3])
-                    tmp_img = tmp_img.convert('RGB')
-                    image_array = np.asarray(tmp_img)
-                    image_array_list.append(image_array)
+                tmp_img = Image.new('RGBA', img.size, (255, 255, 255, 255)) 
+                tmp_img.paste(img, mask=img.split()[3])
+                tmp_img = tmp_img.convert('RGB')
+                image_array = np.asarray(tmp_img)
+                image_array_list.append(image_array)
 
-                product_mask = np.full((image_width, image_height, 3), True, dtype=bool)
-                image_mask_prod = {}
-                image_mask_bg = {}
-                image_mask_all = {}
-                for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
-                    if is_product.lower() == "true":
-                        product_mask = product_mask & ~mask
-                    else:
-                        product_mask = product_mask | mask
+            product_mask = np.full((image_width, image_height, 3), True, dtype=bool)
+            image_mask_prod = {}
+            image_mask_bg = {}
+            image_mask_all = {}
+            for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
+                if is_product.lower() == "true":
+                    product_mask = product_mask & ~mask
+                else:
+                    product_mask = product_mask | mask
 
-                    if index not in image_mask_all:
-                        image_mask_all[index] = mask
-                    for k in image_mask_all:
+                if index not in image_mask_all:
+                    image_mask_all[index] = mask
+                for k in image_mask_all:
+                    if k != index:
+                        image_mask_all[k] = image_mask_all[k] & ~mask 
+                        
+                if is_product.lower() == "true":
+                    if index not in image_mask_prod:
+                        image_mask_prod[index] = mask
+                    for k in image_mask_prod:
                         if k != index:
-                            image_mask_all[k] = image_mask_all[k] & ~mask 
-                            
-                    if is_product.lower() == "true":
-                        if index not in image_mask_prod:
-                            image_mask_prod[index] = mask
-                        for k in image_mask_prod:
-                            if k != index:
-                                image_mask_prod[k] = image_mask_prod[k] & ~mask 
-                    else:
-                        if index not in image_mask_bg:
-                            image_mask_bg[index] = mask
-                        for k in image_mask_bg:
-                            if k != index:
-                                image_mask_bg[k] = image_mask_bg[k] & ~mask 
-
-                if product_ratio > 0.0:
-                    if not multiprod:
-                        composed_image_all = np.zeros((image_width, image_height, 3))
-                        composed_bg_image = np.zeros((image_width, image_height, 3))
-                        composed_prod_image = np.zeros((image_width, image_height, 3))
-                        for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
-                            if is_product.lower() == "true":
-                                composed_prod_image += img_array * image_mask_prod[index] 
-                            else:
-                                composed_bg_image += img_array * image_mask_bg[index]
-
-                            composed_image_all += img_array * image_mask_all[index]
-
-                        composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8))
-                        composed_prod_image = Image.fromarray(composed_prod_image.astype(np.uint8))
-                        composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
-                    else:
-                        composed_image_all = np.zeros((image_width, image_height, 3))
-                        composed_bg_image = np.zeros((image_width, image_height, 3))
-                        composed_prod_images = []
-                        for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
-                            if is_product.lower() == "true":
-                                composed_prod_image = img_array * image_mask_prod[index] 
-                                composed_prod_images.append(Image.fromarray(composed_prod_image.astype(np.uint8)))
-                            else:
-                                composed_bg_image += img_array * image_mask_bg[index]
-                            
-                            composed_image_all += img_array * image_mask_all[index]
-
-                        composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
-                        composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
+                            image_mask_prod[k] = image_mask_prod[k] & ~mask 
                 else:
-                    composed_image = image[0].convert('RGB')
-                    
-                mask = Image.fromarray(product_mask.astype(np.uint8)*255).convert('RGB')
-                prod_masks = []
-                for tmp_mask in image_mask_prod:
-                    prod_masks.append(Image.fromarray(image_mask_prod[tmp_mask].astype(np.uint8)*255).convert('RGB'))
+                    if index not in image_mask_bg:
+                        image_mask_bg[index] = mask
+                    for k in image_mask_bg:
+                        if k != index:
+                            image_mask_bg[k] = image_mask_bg[k] & ~mask 
+
+            composed_image_all = np.zeros((image_width, image_height, 3))
+            composed_bg_image = np.zeros((image_width, image_height, 3))
+            composed_prod_images = []
+            for index, (is_product, img_array) in enumerate(zip(is_product_list, image_array_list)):
+                if is_product.lower() == "true":
+                    composed_prod_image = img_array * image_mask_prod[index] 
+                    composed_prod_images.append(Image.fromarray(composed_prod_image.astype(np.uint8)))
+                else:
+                    composed_bg_image += img_array * image_mask_bg[index]
                 
-                if product_ratio > 0.0:
-                    if not multiprod:
-                        image_latents_bg = self.encode_image(composed_bg_image, device, 1)
-                        image_latents_prod = self.encode_image(composed_prod_image, device, 1)
-                    else:
-                        image_latents_bg = self.encode_image(composed_bg_image, device, 1)
-                        image_latents_prods = []
-                        for composed_prod_image in composed_prod_images:
-                            image_latents_prods.append(self.encode_image(composed_prod_image, device, 1))
-                else:
-                    image_latents = self.encode_image(composed_image, device, 1)
-            else:
-                for img in image:
-                    img = img.convert('RGB')
-                image_latents = self.encode_image(image, device, 1)
+                composed_image_all += img_array * image_mask_all[index]
+
+            composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
+            composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
+        
+            mask = Image.fromarray(product_mask.astype(np.uint8)*255).convert('RGB')
+            prod_masks = []
+            for tmp_mask in image_mask_prod:
+                prod_masks.append(Image.fromarray(image_mask_prod[tmp_mask].astype(np.uint8)*255).convert('RGB'))
+            
+            image_latents_bg = self.encode_image(composed_bg_image, device, 1)
+            image_latents_prods = []
+            for composed_prod_image in composed_prod_images:
+                image_latents_prods.append(self.encode_image(composed_prod_image, device, 1))
+            
+            image_embeds_bg = self.image_embedder(image_latents_bg).image_embeds
+            image_embeds_bg = image_embeds_bg.to(device=device)
+
+            image_embeds_prods = []
+            for image_latents_prod in image_latents_prods:
+                image_embeds_prod = self.image_embedder(image_latents_prod).image_embeds
+                image_embeds_prod = image_embeds_prod.to(device=device)
+                image_embeds_prods.append(image_embeds_prod)
         else:
             image = image.convert('RGB')
             image_latents = self.encode_image(image, device, 1)
-
-        if product_ratio > 0.0:
-            if not multiprod:
-                image_embeds_bg = self.image_embedder(image_latents_bg).image_embeds
-                image_embeds_bg = image_embeds_bg.to(device=device)
-
-                image_embeds_prod = self.image_embedder(image_latents_prod).image_embeds
-                image_embeds_prod = image_embeds_prod.to(device=device)
-                image_embeds = torch.cat([image_embeds_prod, image_embeds_bg], dim=1)
-            else:
-                image_embeds_bg = self.image_embedder(image_latents_bg).image_embeds
-                image_embeds_bg = image_embeds_bg.to(device=device)
-
-                image_embeds_prods = []
-                for image_latents_prod in image_latents_prods:
-                    image_embeds_prod = self.image_embedder(image_latents_prod).image_embeds
-                    image_embeds_prod = image_embeds_prod.to(device=device)
-                    image_embeds_prods.append(image_embeds_prod)
-        else:
             image_embeds = self.image_embedder(image_latents).image_embeds
             image_embeds = image_embeds.to(device=device)
 
-        
         # 3. Prepare (dummy) text embeddings
         # thesea modified for ip and txt masks
         if hasattr(self, "text_encoder") and self.text_encoder is not None:
@@ -608,8 +566,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                         lora_scale=None,
                     )
                     prompt_embeds_list.append(prompt_embeds)
-                if not multiprod:    
-                    prompt_embeds = torch.cat(prompt_embeds_list, dim=1)
             else:
                 (
                     prompt_embeds,
@@ -625,7 +581,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     max_sequence_length=512,
                     lora_scale=None,
                 )
-                prompt_embeds_list.append(prompt_embeds)
+                prompt_embeds_list.append(prompt_embeds) # thesea modified for ip and txt masks
         else:
             if prompt is not None:
                 logger.warning(
@@ -638,12 +594,12 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             pooled_prompt_embeds = torch.zeros((batch_size, 768), device=device, dtype=image_embeds.dtype)
 
         # scale & concatenate image and text embeddings
-        if not multiprod:
-            prompt_embeds = torch.cat([prompt_embeds, image_embeds[:,:int(729*product_ratio),:]], dim=1)
-        else:
+        if is_qv:
             prompt_embeds = image_embeds_bg
             for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
                 prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
+        else:
+            prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
         
         prompt_embeds *= torch.tensor(prompt_embeds_scale, device=device, dtype=prompt_embeds.dtype)[:, None, None]
         pooled_prompt_embeds *= torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=prompt_embeds.dtype)[
@@ -658,14 +614,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            if product_ratio is not None:
-                if product_ratio > 0.0:
-                    if not multiprod:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_image, mask)
-                    else:
-                        return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, mask)
-                else:
-                    return (prompt_embeds, pooled_prompt_embeds, composed_image, mask)
+            if is_qv
+                return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, mask)
             else:
                 return (prompt_embeds, pooled_prompt_embeds)
 
