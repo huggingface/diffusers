@@ -479,15 +479,15 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 image_array = np.asarray(tmp_img)
                 image_array_list.append(image_array)
 
-            product_mask = np.full((image_width, image_height, 3), True, dtype=bool)
+            bg_mask = np.full((image_width, image_height, 3), True, dtype=bool)
             image_mask_prod = {}
             image_mask_bg = {}
             image_mask_all = {}
             for index, (is_product, mask) in enumerate(zip(is_product_list, mask_list)):
                 if is_product.lower() == "true":
-                    product_mask = product_mask & ~mask
+                    bg_mask = bg_mask & ~mask
                 else:
-                    product_mask = product_mask | mask
+                    bg_mask = bg_mask | mask
 
                 if index not in image_mask_all:
                     image_mask_all[index] = mask
@@ -495,13 +495,14 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     if k != index:
                         image_mask_all[k] = image_mask_all[k] & ~mask 
                         
-                if is_product.lower() == "true":
-                    if index not in image_mask_prod:
-                        image_mask_prod[index] = mask
-                    for k in image_mask_prod:
-                        if k != index:
-                            image_mask_prod[k] = image_mask_prod[k] & ~mask 
-                else:
+                #if is_product.lower() == "true":
+                if index not in image_mask_prod:
+                    image_mask_prod[index] = mask
+                for k in image_mask_prod:
+                    if k != index:
+                        image_mask_prod[k] = image_mask_prod[k] & ~mask 
+                        
+                if is_product.lower() != "true":
                     if index not in image_mask_bg:
                         image_mask_bg[index] = mask
                     for k in image_mask_bg:
@@ -523,7 +524,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8)).convert('RGB')
             composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
         
-            mask = Image.fromarray(product_mask.astype(np.uint8)*255).convert('RGB')
+            bg_mask = Image.fromarray(bg_mask.astype(np.uint8)*255).convert('RGB')
             prod_masks = []
             for tmp_mask in image_mask_prod:
                 prod_masks.append(Image.fromarray(image_mask_prod[tmp_mask].astype(np.uint8)*255).convert('RGB'))
@@ -615,7 +616,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         if not return_dict:
             if is_qv:
-                return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, mask)
+                return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, bg_mask)
             else:
                 return (prompt_embeds, pooled_prompt_embeds)
 
