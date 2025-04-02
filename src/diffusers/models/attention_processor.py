@@ -2358,7 +2358,7 @@ class FluxAttnProcessor2_0:
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        ip_qv: Optional[bool] = False, # thesea modified for ip image
+        is_qv: Optional[bool] = False, # thesea modified for ip image
         product_ratio: Optional[float] = None, # theseam modified
         img_mask: Optional[torch.Tensor] = None, # thesea modified for ip mask
         txt_masks: Optional[torch.Tensor] = None, # thesea modified for text mask
@@ -2415,7 +2415,7 @@ class FluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        if is_qv is not None:
+        if is_qv:
             attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
             prod_embeds_dim = 512 + int(729 * product_ratio)
             # text related attention mask
