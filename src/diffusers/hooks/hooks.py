@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from ..utils.logging import get_logger
+from ..utils.torch_utils import unwrap_module
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -47,7 +48,7 @@ class BaseMarkedState(BaseState):
             self._state_cache[self._mark_name] = self.__class__(*self._init_args, **self._init_kwargs)
         return self._state_cache[self._mark_name]
 
-    def mark_batch(self, name: str) -> None:
+    def mark_state(self, name: str) -> None:
         self._mark_name = name
 
     def reset(self, *args, **kwargs) -> None:
@@ -59,7 +60,7 @@ class BaseMarkedState(BaseState):
     def __getattribute__(self, name):
         if name in (
             "get_current_state",
-            "mark_batch",
+            "mark_state",
             "reset",
             "_init_args",
             "_init_kwargs",
@@ -74,7 +75,7 @@ class BaseMarkedState(BaseState):
     def __setattr__(self, name, value):
         if name in (
             "get_current_state",
-            "mark_batch",
+            "mark_state",
             "reset",
             "_init_args",
             "_init_kwargs",
@@ -164,11 +165,11 @@ class ModelHook:
         return module
 
     def _mark_state(self, module: torch.nn.Module, name: str) -> None:
-        # Iterate over all attributes of the hook to see if any of them have the type `BaseMarkedState`. If so, call `mark_batch` on them.
+        # Iterate over all attributes of the hook to see if any of them have the type `BaseMarkedState`. If so, call `mark_state` on them.
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
             if isinstance(attr, BaseMarkedState):
-                attr.mark_batch(name)
+                attr.mark_state(name)
         return module
 
 
@@ -283,9 +284,10 @@ class HookRegistry:
                 hook.reset_state(self._module_ref)
 
         if recurse:
-            for module_name, module in self._module_ref.named_modules():
+            for module_name, module in unwrap_module(self._module_ref).named_modules():
                 if module_name == "":
                     continue
+                module = unwrap_module(module)
                 if hasattr(module, "_diffusers_hook"):
                     module._diffusers_hook.reset_stateful_hooks(recurse=False)
 
@@ -301,9 +303,10 @@ class HookRegistry:
             if hook._is_stateful:
                 hook._mark_state(self._module_ref, name)
 
-        for module_name, module in self._module_ref.named_modules():
+        for module_name, module in unwrap_module(self._module_ref).named_modules():
             if module_name == "":
                 continue
+            module = unwrap_module(module)
             if hasattr(module, "_diffusers_hook"):
                 module._diffusers_hook._mark_state(name)
 

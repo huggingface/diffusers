@@ -18,6 +18,7 @@ from typing import Tuple, Union
 import torch
 
 from ..utils import get_logger
+from ..utils.torch_utils import unwrap_module
 from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS
 from ._helpers import TransformerBlockRegistry
 from .hooks import BaseMarkedState, HookRegistry, ModelHook
@@ -71,7 +72,7 @@ class FBCHeadBlockHook(ModelHook):
         self._metadata = None
 
     def initialize_hook(self, module):
-        self._metadata = TransformerBlockRegistry.get(module.__class__)
+        self._metadata = TransformerBlockRegistry.get(unwrap_module(module).__class__)
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -147,7 +148,7 @@ class FBCBlockHook(ModelHook):
         self._metadata = None
 
     def initialize_hook(self, module):
-        self._metadata = TransformerBlockRegistry.get(module.__class__)
+        self._metadata = TransformerBlockRegistry.get(unwrap_module(module).__class__)
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
