@@ -1114,7 +1114,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
-                    #joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )
 
