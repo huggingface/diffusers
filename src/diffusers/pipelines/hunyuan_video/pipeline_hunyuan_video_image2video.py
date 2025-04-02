@@ -54,6 +54,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import HunyuanVideoImageToVideoPipeline, HunyuanVideoTransformer3DModel
         >>> from diffusers.utils import load_image, export_to_video
 
+        >>> # Available checkpoints: hunyuanvideo-community/HunyuanVideo-I2V, hunyuanvideo-community/HunyuanVideo-I2V-33ch
         >>> model_id = "hunyuanvideo-community/HunyuanVideo-I2V"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
         ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
@@ -69,7 +70,12 @@ EXAMPLE_DOC_STRING = """
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/guitar-man.png"
         ... )
 
-        >>> output = pipe(image=image, prompt=prompt).frames[0]
+        >>> # If using hunyuanvideo-community/HunyuanVideo-I2V
+        >>> output = pipe(image=image, prompt=prompt, guidance_scale=6.0).frames[0]
+
+        >>> # If using hunyuanvideo-community/HunyuanVideo-I2V-33ch
+        >>> output = pipe(image=image, prompt=prompt, guidance_scale=1.0, true_cfg_scale=1.0).frames[0]
+
         >>> export_to_video(output, "output.mp4", fps=15)
         ```
 """
@@ -399,7 +405,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 256,
-    ):
+        image_embed_interleave: int = 2,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if prompt_embeds is None:
             prompt_embeds, prompt_attention_mask = self._get_llama_prompt_embeds(
                 image,
@@ -409,6 +416,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 device=device,
                 dtype=dtype,
                 max_sequence_length=max_sequence_length,
+                image_embed_interleave=image_embed_interleave,
             )
 
         if pooled_prompt_embeds is None:
@@ -433,6 +441,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         prompt_template=None,
+        true_cfg_scale=1.0,
+        guidance_scale=1.0,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -471,6 +481,13 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     f"`prompt_template` has to contain a key `template` but only found {prompt_template.keys()}"
                 )
 
+        if true_cfg_scale > 1.0 and guidance_scale > 1.0:
+            logger.warning(
+                "Both `true_cfg_scale` and `guidance_scale` are greater than 1.0. This will result in both "
+                "classifier-free guidance and embedded-guidance to be applied. This is not recommended "
+                "as it may lead to higher memory usage, slower inference and potentially worse results."
+            )
+
     def prepare_latents(
         self,
         image: torch.Tensor,
@@ -483,6 +500,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        image_condition_type: str = "latent_concat",
     ) -> torch.Tensor:
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -497,10 +515,11 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         image = image.unsqueeze(2)  # [B, C, 1, H, W]
         if isinstance(generator, list):
             image_latents = [
-                retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
+                retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i], "argmax")
+                for i in range(batch_size)
             ]
         else:
-            image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
+            image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator, "argmax") for img in image]
 
         image_latents = torch.cat(image_latents, dim=0).to(dtype) * self.vae_scaling_factor
         image_latents = image_latents.repeat(1, 1, num_latent_frames, 1, 1)
@@ -512,6 +531,9 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
         t = torch.tensor([0.999]).to(device=device)
         latents = latents * t + image_latents * (1 - t)
+
+        if image_condition_type == "token_replace":
+            image_latents = image_latents[:, :, :1]
 
         return latents, image_latents
 
@@ -598,6 +620,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         prompt_template: Dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         max_sequence_length: int = 256,
+        image_embed_interleave: Optional[int] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -704,12 +727,22 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             prompt_embeds,
             callback_on_step_end_tensor_inputs,
             prompt_template,
+            true_cfg_scale,
+            guidance_scale,
         )
 
+        image_condition_type = self.transformer.config.image_condition_type
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_pooled_prompt_embeds is not None
         )
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+        image_embed_interleave = (
+            image_embed_interleave
+            if image_embed_interleave is not None
+            else (
+                2 if image_condition_type == "latent_concat" else 4 if image_condition_type == "token_replace" else 1
+            )
+        )
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
@@ -729,7 +762,12 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         # 3. Prepare latent variables
         vae_dtype = self.vae.dtype
         image_tensor = self.video_processor.preprocess(image, height, width).to(device, vae_dtype)
-        num_channels_latents = (self.transformer.config.in_channels - 1) // 2
+
+        if image_condition_type == "latent_concat":
+            num_channels_latents = (self.transformer.config.in_channels - 1) // 2
+        elif image_condition_type == "token_replace":
+            num_channels_latents = self.transformer.config.in_channels
+
         latents, image_latents = self.prepare_latents(
             image_tensor,
             batch_size * num_videos_per_prompt,
@@ -741,10 +779,12 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             device,
             generator,
             latents,
+            image_condition_type,
         )
-        image_latents[:, :, 1:] = 0
-        mask = image_latents.new_ones(image_latents.shape[0], 1, *image_latents.shape[2:])
-        mask[:, :, 1:] = 0
+        if image_condition_type == "latent_concat":
+            image_latents[:, :, 1:] = 0
+            mask = image_latents.new_ones(image_latents.shape[0], 1, *image_latents.shape[2:])
+            mask[:, :, 1:] = 0
 
         # 4. Encode input prompt
         transformer_dtype = self.transformer.dtype
@@ -759,6 +799,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             prompt_attention_mask=prompt_attention_mask,
             device=device,
             max_sequence_length=max_sequence_length,
+            image_embed_interleave=image_embed_interleave,
         )
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         prompt_attention_mask = prompt_attention_mask.to(transformer_dtype)
@@ -782,9 +823,16 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             negative_prompt_attention_mask = negative_prompt_attention_mask.to(transformer_dtype)
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(transformer_dtype)
 
-        # 4. Prepare timesteps
+        # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
+
+        # 6. Prepare guidance condition
+        guidance = None
+        if self.transformer.config.guidance_embeds:
+            guidance = (
+                torch.tensor([guidance_scale] * latents.shape[0], dtype=transformer_dtype, device=device) * 1000.0
+            )
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -796,9 +844,13 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     continue
 
                 self._current_timestep = t
-                latent_model_input = torch.cat([latents, image_latents, mask], dim=1).to(transformer_dtype)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+                if image_condition_type == "latent_concat":
+                    latent_model_input = torch.cat([latents, image_latents, mask], dim=1).to(transformer_dtype)
+                elif image_condition_type == "token_replace":
+                    latent_model_input = torch.cat([image_latents, latents[:, :, 1:]], dim=2).to(transformer_dtype)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -806,6 +858,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
                     pooled_projections=pooled_prompt_embeds,
+                    guidance=guidance,
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -817,13 +870,20 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                         encoder_hidden_states=negative_prompt_embeds,
                         encoder_attention_mask=negative_prompt_attention_mask,
                         pooled_projections=negative_pooled_prompt_embeds,
+                        guidance=guidance,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
                     noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                if image_condition_type == "latent_concat":
+                    latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                elif image_condition_type == "token_replace":
+                    latents = latents = self.scheduler.step(
+                        noise_pred[:, :, 1:], t, latents[:, :, 1:], return_dict=False
+                    )[0]
+                    latents = torch.cat([image_latents, latents], dim=2)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -844,12 +904,16 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
+            latents = latents.to(self.vae.dtype) / self.vae_scaling_factor
             video = self.vae.decode(latents, return_dict=False)[0]
-            video = video[:, :, 4:, :, :]
+            if image_condition_type == "latent_concat":
+                video = video[:, :, 4:, :, :]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
-            video = latents[:, :, 1:, :, :]
+            if image_condition_type == "latent_concat":
+                video = latents[:, :, 1:, :, :]
+            else:
+                video = latents
 
         # Offload all models
         self.maybe_free_model_hooks()

@@ -68,6 +68,7 @@ else:
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
+    _import_structure["scheduling_scm"] = ["SCMScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
@@ -168,13 +169,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sasolver import SASolverScheduler
+        from .scheduling_scm import SCMScheduler
         from .scheduling_sde_ve import ScoreSdeVeScheduler
         from .scheduling_tcd import TCDScheduler
         from .scheduling_unclip import UnCLIPScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
         from .scheduling_utils import AysSchedules, KarrasDiffusionSchedulers, SchedulerMixin
         from .scheduling_vq_diffusion import VQDiffusionScheduler
-
     try:
         if not is_flax_available():
             raise OptionalDependencyNotAvailable()

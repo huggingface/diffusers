@@ -104,13 +104,6 @@ class RMSNorm(torch.nn.Module):
         return (self.weight * hidden_states).to(input_dtype)
 
 
-def _config_to_kwargs(args):
-    common_kwargs = {
-        "dtype": args.torch_dtype,
-    }
-    return common_kwargs
-
-
 class CoreAttention(torch.nn.Module):
     def __init__(self, config: ChatGLMConfig, layer_number):
         super(CoreAttention, self).__init__()
@@ -314,7 +307,6 @@ class SelfAttention(torch.nn.Module):
             self.qkv_hidden_size,
             bias=config.add_bias_linear or config.add_qkv_bias,
             device=device,
-            **_config_to_kwargs(config),
         )
 
         self.core_attention = CoreAttention(config, self.layer_number)
@@ -325,7 +317,6 @@ class SelfAttention(torch.nn.Module):
             config.hidden_size,
             bias=config.add_bias_linear,
             device=device,
-            **_config_to_kwargs(config),
         )
 
     def _allocate_memory(self, inference_max_sequence_len, batch_size, device=None, dtype=None):
@@ -449,7 +440,6 @@ class MLP(torch.nn.Module):
             config.ffn_hidden_size * 2,
             bias=self.add_bias,
             device=device,
-            **_config_to_kwargs(config),
         )
 
         def swiglu(x):
@@ -459,9 +449,7 @@ class MLP(torch.nn.Module):
         self.activation_func = swiglu
 
         # Project back to h.
-        self.dense_4h_to_h = nn.Linear(
-            config.ffn_hidden_size, config.hidden_size, bias=self.add_bias, device=device, **_config_to_kwargs(config)
-        )
+        self.dense_4h_to_h = nn.Linear(config.ffn_hidden_size, config.hidden_size, bias=self.add_bias, device=device)
 
     def forward(self, hidden_states):
         # [s, b, 4hp]
@@ -488,18 +476,14 @@ class GLMBlock(torch.nn.Module):
 
         LayerNormFunc = RMSNorm if config.rmsnorm else LayerNorm
         # Layernorm on the input data.
-        self.input_layernorm = LayerNormFunc(
-            config.hidden_size, eps=config.layernorm_epsilon, device=device, dtype=config.torch_dtype
-        )
+        self.input_layernorm = LayerNormFunc(config.hidden_size, eps=config.layernorm_epsilon, device=device)
 
         # Self attention.
         self.self_attention = SelfAttention(config, layer_number, device=device)
         self.hidden_dropout = config.hidden_dropout
 
         # Layernorm on the attention output
-        self.post_attention_layernorm = LayerNormFunc(
-            config.hidden_size, eps=config.layernorm_epsilon, device=device, dtype=config.torch_dtype
-        )
+        self.post_attention_layernorm = LayerNormFunc(config.hidden_size, eps=config.layernorm_epsilon, device=device)
 
         # MLP
         self.mlp = MLP(config, device=device)
@@ -569,9 +553,7 @@ class GLMTransformer(torch.nn.Module):
         if self.post_layer_norm:
             LayerNormFunc = RMSNorm if config.rmsnorm else LayerNorm
             # Final layer norm before output.
-            self.final_layernorm = LayerNormFunc(
-                config.hidden_size, eps=config.layernorm_epsilon, device=device, dtype=config.torch_dtype
-            )
+            self.final_layernorm = LayerNormFunc(config.hidden_size, eps=config.layernorm_epsilon, device=device)
 
         self.gradient_checkpointing = False
 
@@ -679,9 +661,7 @@ class Embedding(torch.nn.Module):
 
         self.hidden_size = config.hidden_size
         # Word embeddings (parallel).
-        self.word_embeddings = nn.Embedding(
-            config.padded_vocab_size, self.hidden_size, dtype=config.torch_dtype, device=device
-        )
+        self.word_embeddings = nn.Embedding(config.padded_vocab_size, self.hidden_size, device=device)
         self.fp32_residual_connection = config.fp32_residual_connection
 
     def forward(self, input_ids):
@@ -784,16 +764,13 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             config.hidden_size // config.num_attention_heads if config.kv_channels is None else config.kv_channels
         )
 
-        self.rotary_pos_emb = RotaryEmbedding(
-            rotary_dim // 2, original_impl=config.original_rope, device=device, dtype=config.torch_dtype
-        )
+        self.rotary_pos_emb = RotaryEmbedding(rotary_dim // 2, original_impl=config.original_rope, device=device)
         self.encoder = init_method(GLMTransformer, config, **init_kwargs)
         self.output_layer = init_method(
             nn.Linear,
             config.hidden_size,
             config.padded_vocab_size,
             bias=False,
-            dtype=config.torch_dtype,
             **init_kwargs,
         )
         self.pre_seq_len = config.pre_seq_len

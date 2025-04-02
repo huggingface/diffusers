@@ -367,7 +367,7 @@ def prepare_encode(
     if shift_factor is not None:
         parameters["shift_factor"] = shift_factor
     if isinstance(image, torch.Tensor):
-        data = safetensors.torch._tobytes(image, "tensor")
+        data = safetensors.torch._tobytes(image.contiguous(), "tensor")
         parameters["shape"] = list(image.shape)
         parameters["dtype"] = str(image.dtype).split(".")[-1]
     else:

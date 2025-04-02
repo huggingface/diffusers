@@ -24,6 +24,7 @@ class CacheMixin:
 
     Supported caching techniques:
         - [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588)
+        - [FasterCache](https://huggingface.co/papers/2410.19355)
     """
 
     _cache_config = None
@@ -59,17 +60,31 @@ class CacheMixin:
         ```
         """
 
-        from ..hooks import PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
+        from ..hooks import (
+            FasterCacheConfig,
+            PyramidAttentionBroadcastConfig,
+            apply_faster_cache,
+            apply_pyramid_attention_broadcast,
+        )
+
+        if self.is_cache_enabled:
+            raise ValueError(
+                f"Caching has already been enabled with {type(self._cache_config)}. To apply a new caching technique, please disable the existing one first."
+            )
 
         if isinstance(config, PyramidAttentionBroadcastConfig):
             apply_pyramid_attention_broadcast(self, config)
+        elif isinstance(config, FasterCacheConfig):
+            apply_faster_cache(self, config)
         else:
             raise ValueError(f"Cache config {type(config)} is not supported.")
 
         self._cache_config = config
 
     def disable_cache(self) -> None:
-        from ..hooks import HookRegistry, PyramidAttentionBroadcastConfig
+        from ..hooks import FasterCacheConfig, HookRegistry, PyramidAttentionBroadcastConfig
+        from ..hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
+        from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
 
         if self._cache_config is None:
             logger.warning("Caching techniques have not been enabled, so there's nothing to disable.")
@@ -77,7 +92,11 @@ class CacheMixin:
 
         if isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry = HookRegistry.check_if_exists_or_initialize(self)
-            registry.remove_hook("pyramid_attention_broadcast", recurse=True)
+            registry.remove_hook(_PYRAMID_ATTENTION_BROADCAST_HOOK, recurse=True)
+        elif isinstance(self._cache_config, FasterCacheConfig):
+            registry = HookRegistry.check_if_exists_or_initialize(self)
+            registry.remove_hook(_FASTER_CACHE_DENOISER_HOOK, recurse=True)
+            registry.remove_hook(_FASTER_CACHE_BLOCK_HOOK, recurse=True)
         else:
             raise ValueError(f"Cache config {type(self._cache_config)} is not supported.")
 

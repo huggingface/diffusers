@@ -222,11 +222,13 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FluxIPAdapterM
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
-        latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
+        self.latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
+        self.image_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor * 2, vae_latent_channels=self.latent_channels
+        )
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor * 2,
-            vae_latent_channels=latent_channels,
+            vae_latent_channels=self.latent_channels,
             do_normalize=False,
             do_binarize=True,
             do_convert_grayscale=True,
@@ -653,7 +655,10 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FluxIPAdapterM
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
         image = image.to(device=device, dtype=dtype)
-        image_latents = self._encode_vae_image(image=image, generator=generator)
+        if image.shape[1] != self.latent_channels:
+            image_latents = self._encode_vae_image(image=image, generator=generator)
+        else:
+            image_latents = image
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand init_latents for batch_size
@@ -710,7 +715,9 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FluxIPAdapterM
         else:
             masked_image_latents = retrieve_latents(self.vae.encode(masked_image), generator=generator)
 
-        masked_image_latents = (masked_image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+            masked_image_latents = (
+                masked_image_latents - self.vae.config.shift_factor
+            ) * self.vae.config.scaling_factor
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:

@@ -83,6 +83,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             text_embed_dim=16,
             pooled_projection_dim=8,
             rope_axes_dim=(2, 4, 4),
+            image_condition_type="latent_concat",
         )
 
         torch.manual_seed(0)
