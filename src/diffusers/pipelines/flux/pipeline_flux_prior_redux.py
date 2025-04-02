@@ -382,6 +382,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         is_qv: Optional[bool] = False, # thesea modified for quick validation of product shots
+        is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
@@ -495,20 +496,20 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     if k != index:
                         image_mask_all[k] = image_mask_all[k] & ~mask 
                         
-                #if is_product.lower() == "true":
-                if index not in image_mask_prod:
-                    image_mask_prod[index] = mask
-                for k in image_mask_prod:
-                    if k != index:
-                        image_mask_prod[k] = image_mask_prod[k] & ~mask 
-                        
-                if is_product.lower() != "true":
+                if is_product.lower() == "true":
+                    if index not in image_mask_prod:
+                        image_mask_prod[index] = mask
+                else:
                     if index not in image_mask_bg:
                         image_mask_bg[index] = mask
                     for k in image_mask_bg:
                         if k != index:
                             image_mask_bg[k] = image_mask_bg[k] & ~mask 
 
+                for k in image_mask_prod:
+                    if k != index:
+                        image_mask_prod[k] = image_mask_prod[k] & ~mask 
+        
             composed_image_all = np.zeros((image_width, image_height, 3))
             composed_bg_image = np.zeros((image_width, image_height, 3))
             composed_prod_images = []
