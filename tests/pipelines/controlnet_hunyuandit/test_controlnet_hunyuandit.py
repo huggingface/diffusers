@@ -302,24 +302,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
 
-        if torch_device == "xpu":
-            expected_image = np.array(
-                [0.59277344, 0.6640625, 0.75146484, 0.74121094, 0.7636719, 0.7426758, 0.6879883, 0.6455078, 0.6386719]
-            )
-        else:
-            expected_image = np.array(
-                [
-                    0.4091797,
-                    0.4177246,
-                    0.39526367,
-                    0.4194336,
-                    0.40356445,
-                    0.3857422,
-                    0.39208984,
-                    0.40429688,
-                    0.37451172,
-                ]
-            )
+        expected_image = np.array(
+            [0.4091797, 0.4177246, 0.39526367, 0.4194336, 0.40356445, 0.3857422, 0.39208984, 0.40429688, 0.37451172]
+        )
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
 
@@ -356,34 +341,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
 
-        if torch_device == "xpu":
-            expected_image = np.array(
-                [
-                    0.7529297,
-                    0.69628906,
-                    0.62060547,
-                    0.76708984,
-                    0.7158203,
-                    0.65185547,
-                    0.74853516,
-                    0.69628906,
-                    0.6455078,
-                ]
-            )
-        else:
-            expected_image = np.array(
-                [
-                    0.31982422,
-                    0.32177734,
-                    0.30126953,
-                    0.3190918,
-                    0.3100586,
-                    0.31396484,
-                    0.3232422,
-                    0.33544922,
-                    0.30810547,
-                ]
-            )
+        expected_image = np.array(
+            [0.31982422, 0.32177734, 0.30126953, 0.3190918, 0.3100586, 0.31396484, 0.3232422, 0.33544922, 0.30810547]
+        )
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
 
@@ -422,33 +382,8 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
 
-        if torch_device == "xpu":
-            expected_image = np.array(
-                [
-                    0.28320312,
-                    0.28125,
-                    0.31347656,
-                    0.29736328,
-                    0.29077148,
-                    0.33740234,
-                    0.33911133,
-                    0.35668945,
-                    0.38452148,
-                ]
-            )
-        else:
-            expected_image = np.array(
-                [
-                    0.43652344,
-                    0.44018555,
-                    0.4494629,
-                    0.44995117,
-                    0.45654297,
-                    0.44848633,
-                    0.43603516,
-                    0.4404297,
-                    0.42626953,
-                ]
-            )
+        expected_image = np.array(
+            [0.43652344, 0.44018555, 0.4494629, 0.44995117, 0.45654297, 0.44848633, 0.43603516, 0.4404297, 0.42626953]
+        )
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
