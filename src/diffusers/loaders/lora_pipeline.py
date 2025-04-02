@@ -1988,7 +1988,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     ).data
                     if weight_on_cpu:
                         module_weight = module_weight.cpu()
-                    module_weight = dequantize_bnb_weight(module.weight, state=module.weight.quant_state).data
                 else:
                     module_weight = module.weight.data
                 module_bias = module.bias.data if module.bias is not None else None
