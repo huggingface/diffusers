@@ -2420,11 +2420,17 @@ class FluxAttnProcessor2_0:
         if txt_masks is not None:
             prod_embeds_dim = 512
             num_of_prompts = int ((query.size(-2) - 4096)/prod_embeds_dim)
-            if num_of_prompts != len(txt_masks):
+            if num_of_prompts != len(txt_masks) + 1:
                 raise ValueError(
-                    f"Length of txt_masks ({len(txt_masks)}) must match number of prompts {num_of_prompts}"
+                    f"Length of txt_masks ({len(txt_masks)}) + 1 must match number of prompts {num_of_prompts}"
                 )
             
+            last_mask = torch.ones_like(txt_masks[0])
+            for tmp_mask in txt_masks:
+                one_index = tmp_mask == 1.0
+                last_mask = last_mask.masked_fill(one_index, 0)
+            txt_masks.append(last_mask)
+
             attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
 
             # prod related attention mask
