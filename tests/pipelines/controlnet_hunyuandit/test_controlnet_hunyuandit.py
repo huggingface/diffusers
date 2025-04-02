@@ -238,7 +238,9 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
 
-        expected_image = np.array([0.43652344, 0.4399414, 0.44921875, 0.45043945, 0.45703125, 0.44873047, 0.43579102, 0.44018555, 0.42578125])
+        expected_image = np.array(
+            [0.43652344, 0.4399414, 0.44921875, 0.45043945, 0.45703125, 0.44873047, 0.43579102, 0.44018555, 0.42578125]
+        )
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
 
