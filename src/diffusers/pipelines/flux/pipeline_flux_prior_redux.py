@@ -524,6 +524,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
                         composed_bg_image = Image.fromarray(composed_bg_image.astype(np.uint8))
                         composed_prod_image = Image.fromarray(composed_prod_image.astype(np.uint8))
+                        composed_image_all = Image.fromarray(composed_image_all.astype(np.uint8)).convert('RGB')
                     else:
                         composed_image_all = np.zeros((image_width, image_height, 3))
                         composed_bg_image = np.zeros((image_width, image_height, 3))
