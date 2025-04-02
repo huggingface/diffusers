@@ -238,34 +238,7 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
 
-        if torch_device == "xpu":
-            expected_image = np.array(
-                [
-                    0.2944336,
-                    0.30981445,
-                    0.24389648,
-                    0.2890625,
-                    0.32006836,
-                    0.2578125,
-                    0.31469727,
-                    0.34545898,
-                    0.28515625,
-                ]
-            )
-        else:
-            expected_image = np.array(
-                [
-                    0.43652344,
-                    0.4399414,
-                    0.44921875,
-                    0.45043945,
-                    0.45703125,
-                    0.44873047,
-                    0.43579102,
-                    0.44018555,
-                    0.42578125,
-                ]
-            )
+        expected_image = np.array([0.43652344, 0.4399414, 0.44921875, 0.45043945, 0.45703125, 0.44873047, 0.43579102, 0.44018555, 0.42578125])
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
 
