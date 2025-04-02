@@ -614,7 +614,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            if is_qv
+            if is_qv:
                 return (prompt_embeds, pooled_prompt_embeds, composed_image_all, composed_bg_image, composed_prod_images, prod_masks, mask)
             else:
                 return (prompt_embeds, pooled_prompt_embeds)
