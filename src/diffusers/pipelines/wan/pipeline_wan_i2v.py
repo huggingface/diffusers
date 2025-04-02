@@ -573,6 +573,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             width,
             prompt_embeds,
             negative_prompt_embeds,
+            image_embeds,
             callback_on_step_end_tensor_inputs,
         )
 
