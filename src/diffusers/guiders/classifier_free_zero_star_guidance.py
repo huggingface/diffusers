@@ -20,56 +20,60 @@ import torch
 from .guider_utils import GuidanceMixin, rescale_noise_cfg
 
 
-class ClassifierFreeGuidance(GuidanceMixin):
+class ClassifierFreeZeroStarGuidance(GuidanceMixin):
     """
-    Classifier-free guidance (CFG): https://huggingface.co/papers/2207.12598
+    Classifier-free Zero* (CFG-Zero*): https://huggingface.co/papers/2503.18886
 
-    CFG is a technique used to improve generation quality and condition-following in diffusion models. It works by
-    jointly training a model on both conditional and unconditional data, and using a weighted sum of the two during
-    inference. This allows the model to tradeoff between generation quality and sample diversity.
+    This is an implementation of the Classifier-Free Zero* guidance technique, which is a variant of classifier-free
+    guidance. It proposes zero initialization of the noise predictions for the first few steps of the diffusion
+    process, and also introduces an optimal rescaling factor for the noise predictions, which can help in improving the
+    quality of generated images.
 
-    The original paper proposes scaling and shifting the conditional distribution based on the difference between
-    conditional and unconditional predictions. [x_pred = x_cond + scale * (x_cond - x_uncond)]
-
-    Diffusers implemented the scaling and shifting on the unconditional prediction instead, which is equivalent to what
-    the original paper proposed in theory. [x_pred = x_uncond + scale * (x_cond - x_uncond)]
-
-    The intution behind the original formulation can be thought of as moving the conditional distribution estimates
-    further away from the unconditional distribution estimates, while the diffusers-native implementation can be
-    thought of as moving the unconditional distribution towards the conditional distribution estimates to get rid of
-    the unconditional predictions (usually negative features like "bad quality, bad anotomy, watermarks", etc.)
-
-    The `use_original_formulation` argument can be set to `True` to use the original CFG formulation mentioned in the
-    paper. By default, we use the diffusers-native implementation that has been in the codebase for a long time.
+    The authors of the paper suggest setting zero initialization in the first 4% of the inference steps.
 
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
+        zero_init_steps (`int`, defaults to `1`):
+            The number of inference steps for which the noise predictions are zeroed out (see Section 4.2).
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
             Flawed](https://huggingface.co/papers/2305.08891).
         use_original_formulation (`bool`, defaults to `False`):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
-            we use the diffusers-native implementation that has been in the codebase for a long time.
+            we use the diffusers-native implementation that has been in the codebase for a long time. See
+            [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
     """
 
     def __init__(
-        self, guidance_scale: float = 7.5, guidance_rescale: float = 0.0, use_original_formulation: bool = False
+        self,
+        guidance_scale: float = 7.5,
+        zero_init_steps: int = 1,
+        guidance_rescale: float = 0.0,
+        use_original_formulation: bool = False,
     ):
         self.guidance_scale = guidance_scale
+        self.zero_init_steps = zero_init_steps
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
         pred = None
 
-        if math.isclose(self.guidance_scale, 1.0):
+        if self._step < self.zero_init_steps:
+            pred = torch.zeros_like(pred_cond)
+        elif math.isclose(self.guidance_scale, 1.0):
             pred = pred_cond
         else:
             shift = pred_cond - pred_uncond
+            pred_cond_flat = pred_cond.flatten(1)
+            pred_uncond_flat = pred_uncond.flatten(1)
+            alpha = cfg_zero_star_scale(pred_cond_flat, pred_uncond_flat)
+            alpha = alpha.view(-1, *(1,) * (len(pred_cond.shape) - 1))
+            pred_uncond = pred_uncond * alpha
             pred = pred_cond if self.use_original_formulation else pred_uncond
             pred = pred + self.guidance_scale * shift
 
@@ -84,3 +88,13 @@ class ClassifierFreeGuidance(GuidanceMixin):
         if not math.isclose(self.guidance_scale, 1.0):
             num_conditions += 1
         return num_conditions
+
+
+def cfg_zero_star_scale(cond: torch.Tensor, uncond: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    cond = cond.float()
+    uncond = uncond.float()
+    dot_product = torch.sum(cond * uncond, dim=1, keepdim=True)
+    squared_norm = torch.sum(uncond**2, dim=1, keepdim=True) + eps
+    # st_star = v_cond^T * v_uncond / ||v_uncond||^2
+    scale = dot_product / squared_norm
+    return scale.to(cond.dtype)

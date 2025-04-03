@@ -130,7 +130,9 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
-    _import_structure["guiders"].extend(["ClassifierFreeGuidance", "SkipLayerGuidance"])
+    _import_structure["guiders"].extend(
+        ["ClassifierFreeGuidance", "ClassifierFreeZeroStarGuidance", "SkipLayerGuidance"]
+    )
     _import_structure["hooks"].extend(
         [
             "FasterCacheConfig",
@@ -714,7 +716,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .guiders import ClassifierFreeGuidance, SkipLayerGuidance
+        from .guiders import ClassifierFreeGuidance, ClassifierFreeZeroStarGuidance, SkipLayerGuidance
         from .hooks import (
             FasterCacheConfig,
             FirstBlockCacheConfig,

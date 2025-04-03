@@ -175,7 +175,6 @@ class SkipLayerGuidance(GuidanceMixin):
 
         if math.isclose(self.guidance_scale, 1.0) and math.isclose(self.skip_layer_guidance_scale, 1.0):
             pred = pred_cond
-
         elif math.isclose(self.guidance_scale, 1.0):
             if skip_start_step < self._step < skip_stop_step:
                 shift = pred_cond - pred_cond_skip
@@ -183,12 +182,10 @@ class SkipLayerGuidance(GuidanceMixin):
                 pred = pred + self.skip_layer_guidance_scale * shift
             else:
                 pred = pred_cond
-
         elif math.isclose(self.skip_layer_guidance_scale, 1.0):
             shift = pred_cond - pred_uncond
             pred = pred_cond if self.use_original_formulation else pred_uncond
             pred = pred + self.guidance_scale * shift
-
         else:
             shift = pred_cond - pred_uncond
             pred = pred_cond if self.use_original_formulation else pred_uncond
