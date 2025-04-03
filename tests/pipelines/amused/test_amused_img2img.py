@@ -23,7 +23,7 @@ from diffusers import AmusedImg2ImgPipeline, AmusedScheduler, UVit2DModel, VQMod
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -131,7 +131,7 @@ class AmusedImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class AmusedImg2ImgPipelineSlowTests(unittest.TestCase):
     def test_amused_256(self):
         pipe = AmusedImg2ImgPipeline.from_pretrained("amused/amused-256")

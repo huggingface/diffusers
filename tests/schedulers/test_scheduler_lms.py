@@ -168,3 +168,9 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 27663.6895) < 1e-2
         assert abs(result_mean.item() - 36.0204) < 1e-3
+
+    def test_beta_sigmas(self):
+        self.check_over_configs(use_beta_sigmas=True)
+
+    def test_exponential_sigmas(self):
+        self.check_over_configs(use_exponential_sigmas=True)

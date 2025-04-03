@@ -103,8 +103,6 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         elif torch_device in ["cuda"]:
             assert abs(result_sum.item() - 329.1999816894531) < 1e-2
             assert abs(result_mean.item() - 0.4286458194255829) < 1e-3
-        else:
-            print("None")
 
     def test_full_loop_with_v_prediction(self):
         scheduler_class = self.scheduler_classes[0]
@@ -135,8 +133,6 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         elif torch_device in ["cuda"]:
             assert abs(result_sum.item() - 193.4154052734375) < 1e-2
             assert abs(result_mean.item() - 0.2518429756164551) < 1e-3
-        else:
-            print("None")
 
     def test_full_loop_device(self):
         scheduler_class = self.scheduler_classes[0]
@@ -166,8 +162,6 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         elif torch_device in ["cuda"]:
             assert abs(result_sum.item() - 337.394287109375) < 1e-2
             assert abs(result_mean.item() - 0.4393154978752136) < 1e-3
-        else:
-            print("None")
 
     def test_full_loop_device_karras_sigmas(self):
         scheduler_class = self.scheduler_classes[0]
@@ -198,5 +192,9 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         elif torch_device in ["cuda"]:
             assert abs(result_sum.item() - 837.25537109375) < 1e-2
             assert abs(result_mean.item() - 1.0901763439178467) < 1e-2
-        else:
-            print("None")
+
+    def test_beta_sigmas(self):
+        self.check_over_configs(use_beta_sigmas=True)
+
+    def test_exponential_sigmas(self):
+        self.check_over_configs(use_exponential_sigmas=True)

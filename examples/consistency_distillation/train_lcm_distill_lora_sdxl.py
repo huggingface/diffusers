@@ -66,7 +66,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.31.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 

@@ -20,10 +20,11 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
 from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
+from ..cache_utils import CacheMixin
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -120,8 +121,10 @@ class CogVideoXBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
+        attention_kwargs = attention_kwargs or {}
 
         # norm & modulate
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
@@ -133,6 +136,7 @@ class CogVideoXBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            **attention_kwargs,
         )
 
         hidden_states = hidden_states + gate_msa * attn_hidden_states
@@ -153,7 +157,7 @@ class CogVideoXBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, CacheMixin):
     """
     A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 
@@ -170,6 +174,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             Whether to flip the sin to cos in the time embedding.
         time_embed_dim (`int`, defaults to `512`):
             Output dimension of timestep embeddings.
+        ofs_embed_dim (`int`, defaults to `512`):
+            Output dimension of "ofs" embeddings used in CogVideoX-5b-I2B in version 1.5
         text_embed_dim (`int`, defaults to `4096`):
             Input dimension of text embeddings from the text encoder.
         num_layers (`int`, defaults to `30`):
@@ -177,7 +183,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         dropout (`float`, defaults to `0.0`):
             The dropout probability to use.
         attention_bias (`bool`, defaults to `True`):
-            Whether or not to use bias in the attention projection layers.
+            Whether to use bias in the attention projection layers.
         sample_width (`int`, defaults to `90`):
             The width of the input latents.
         sample_height (`int`, defaults to `60`):
@@ -198,7 +204,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         timestep_activation_fn (`str`, defaults to `"silu"`):
             Activation function to use when generating the timestep embeddings.
         norm_elementwise_affine (`bool`, defaults to `True`):
-            Whether or not to use elementwise affine in normalization layers.
+            Whether to use elementwise affine in normalization layers.
         norm_eps (`float`, defaults to `1e-5`):
             The epsilon value to use in normalization layers.
         spatial_interpolation_scale (`float`, defaults to `1.875`):
@@ -207,7 +213,9 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             Scaling factor to apply in 3D positional embeddings across temporal dimensions.
     """
 
+    _skip_layerwise_casting_patterns = ["patch_embed", "norm"]
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["CogVideoXBlock", "CogVideoXPatchEmbed"]
 
     @register_to_config
     def __init__(
@@ -219,6 +227,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         time_embed_dim: int = 512,
+        ofs_embed_dim: Optional[int] = None,
         text_embed_dim: int = 4096,
         num_layers: int = 30,
         dropout: float = 0.0,
@@ -227,6 +236,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         sample_height: int = 60,
         sample_frames: int = 49,
         patch_size: int = 2,
+        patch_size_t: Optional[int] = None,
         temporal_compression_ratio: int = 4,
         max_text_seq_length: int = 226,
         activation_fn: str = "gelu-approximate",
@@ -237,6 +247,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         temporal_interpolation_scale: float = 1.0,
         use_rotary_positional_embeddings: bool = False,
         use_learned_positional_embeddings: bool = False,
+        patch_bias: bool = True,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -251,10 +262,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # 1. Patch embedding
         self.patch_embed = CogVideoXPatchEmbed(
             patch_size=patch_size,
+            patch_size_t=patch_size_t,
             in_channels=in_channels,
             embed_dim=inner_dim,
             text_embed_dim=text_embed_dim,
-            bias=True,
+            bias=patch_bias,
             sample_width=sample_width,
             sample_height=sample_height,
             sample_frames=sample_frames,
@@ -267,9 +279,18 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
         self.embedding_dropout = nn.Dropout(dropout)
 
-        # 2. Time embeddings
+        # 2. Time embeddings and ofs embedding(Only CogVideoX1.5-5B I2V have)
+
         self.time_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
+
+        self.ofs_proj = None
+        self.ofs_embedding = None
+        if ofs_embed_dim:
+            self.ofs_proj = Timesteps(ofs_embed_dim, flip_sin_to_cos, freq_shift)
+            self.ofs_embedding = TimestepEmbedding(
+                ofs_embed_dim, ofs_embed_dim, timestep_activation_fn
+            )  # same as time embeddings, for ofs
 
         # 3. Define spatio-temporal transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -298,12 +319,17 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             norm_eps=norm_eps,
             chunk_dim=1,
         )
-        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
+
+        if patch_size_t is None:
+            # For CogVideox 1.0
+            output_dim = patch_size * patch_size * out_channels
+        else:
+            # For CogVideoX 1.5
+            output_dim = patch_size * patch_size * patch_size_t * out_channels
+
+        self.proj_out = nn.Linear(inner_dim, output_dim)
 
         self.gradient_checkpointing = False
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        self.gradient_checkpointing = value
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -411,6 +437,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
+        ofs: Optional[Union[int, float, torch.LongTensor]] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
@@ -442,6 +469,12 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         t_emb = t_emb.to(dtype=hidden_states.dtype)
         emb = self.time_embedding(t_emb, timestep_cond)
 
+        if self.ofs_embedding is not None:
+            ofs_emb = self.ofs_proj(ofs)
+            ofs_emb = ofs_emb.to(dtype=hidden_states.dtype)
+            ofs_emb = self.ofs_embedding(ofs_emb)
+            emb = emb + ofs_emb
+
         # 2. Patch embedding
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
         hidden_states = self.embedding_dropout(hidden_states)
@@ -452,22 +485,14 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         # 3. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     emb,
                     image_rotary_emb,
-                    **ckpt_kwargs,
+                    attention_kwargs,
                 )
             else:
                 hidden_states, encoder_hidden_states = block(
@@ -475,28 +500,27 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     temb=emb,
                     image_rotary_emb=image_rotary_emb,
+                    attention_kwargs=attention_kwargs,
                 )
 
-        if not self.config.use_rotary_positional_embeddings:
-            # CogVideoX-2B
-            hidden_states = self.norm_final(hidden_states)
-        else:
-            # CogVideoX-5B
-            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-            hidden_states = self.norm_final(hidden_states)
-            hidden_states = hidden_states[:, text_seq_length:]
+        hidden_states = self.norm_final(hidden_states)
 
         # 4. Final block
         hidden_states = self.norm_out(hidden_states, temb=emb)
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
-        # Note: we use `-1` instead of `channels`:
-        #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
-        #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
-        output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+        p_t = self.config.patch_size_t
+
+        if p_t is None:
+            output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
+            output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+        else:
+            output = hidden_states.reshape(
+                batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
+            )
+            output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer

@@ -30,7 +30,7 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     torch_device,
 )
@@ -204,8 +204,15 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     def test_from_pipe_consistent_forward_pass_cpu_offload(self):
         super().test_from_pipe_consistent_forward_pass_cpu_offload(expected_max_diff=5e-3)
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
-@require_torch_gpu
+
+@require_torch_accelerator
 @nightly
 class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
     # Attend and excite requires being able to run a backward pass at
@@ -237,7 +244,7 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe.to("cuda")
+        pipe.to(torch_device)
 
         prompt = "a painting of an elephant with glasses"
         token_indices = [5, 7]

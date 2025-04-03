@@ -156,3 +156,9 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 93087.3437) < 1e-2, f" expected result sum 93087.3437, but get {result_sum}"
         assert abs(result_mean.item() - 121.2074) < 5e-3, f" expected result mean 121.2074, but get {result_mean}"
+
+    def test_beta_sigmas(self):
+        self.check_over_configs(use_beta_sigmas=True)
+
+    def test_exponential_sigmas(self):
+        self.check_over_configs(use_exponential_sigmas=True)

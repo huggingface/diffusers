@@ -25,11 +25,16 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableDiffusionUpscalePipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
-    require_torch_gpu,
+    require_accelerator,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -43,13 +48,13 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @property
     def dummy_image(self):
@@ -289,7 +294,7 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_prompt_embeds_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
+    @require_accelerator
     def test_stable_diffusion_upscale_fp16(self):
         """Test that stable diffusion upscale works with fp16"""
         unet = self.dummy_cond_unet_upscale
@@ -380,19 +385,19 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_diffusion_upscale_pipeline(self):
         image = load_image(
@@ -458,9 +463,9 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-1
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -474,7 +479,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
 
         prompt = "a cat sitting on a park bench"
 
@@ -487,6 +492,6 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
             output_type="np",
         )
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         # make sure that less than 2.9 GB is allocated
         assert mem_bytes < 2.9 * 10**9

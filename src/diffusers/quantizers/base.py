@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -134,7 +134,7 @@ class DiffusersQuantizer(ABC):
         """adjust max_memory argument for infer_auto_device_map() if extra memory is needed for quantization"""
         return max_memory
 
-    def check_quantized_param(
+    def check_if_quantized_param(
         self,
         model: "ModelMixin",
         param_value: "torch.Tensor",
@@ -152,10 +152,13 @@ class DiffusersQuantizer(ABC):
         """
         takes needed components from state_dict and creates quantized param.
         """
-        if not hasattr(self, "check_quantized_param"):
-            raise AttributeError(
-                f"`.create_quantized_param()` method is not supported by quantizer class {self.__class__.__name__}."
-            )
+        return
+
+    def check_quantized_param_shape(self, *args, **kwargs):
+        """
+        checks if the quantized param has expected shape.
+        """
+        return True
 
     def validate_environment(self, *args, **kwargs):
         """

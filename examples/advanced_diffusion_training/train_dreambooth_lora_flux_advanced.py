@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.31.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -227,7 +227,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     autocast_ctx = nullcontext()
 
     with autocast_ctx:
@@ -378,7 +378,7 @@ def parse_args(input_args=None):
         default=None,
         help="the concept to use to initialize the new inserted tokens when training with "
         "--train_text_encoder_ti = True. By default, new tokens (<si><si+1>) are initialized with random value. "
-        "Alternatively, you could specify a different word/words whos value will be used as the starting point for the new inserted tokens. "
+        "Alternatively, you could specify a different word/words whose value will be used as the starting point for the new inserted tokens. "
         "--num_new_tokens_per_abstraction is ignored when initializer_concept is provided",
     )
     parser.add_argument(
@@ -662,7 +662,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            "The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. "
+            "The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. "
             'E.g. - "to_k,to_q,to_v,to_out.0" will result in lora training of attention layers only. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/README_flux.md'
         ),
     )
@@ -880,9 +880,7 @@ class TokenEmbeddingsHandler:
         idx_to_text_encoder_name = {0: "clip_l", 1: "t5"}
         for idx, text_encoder in enumerate(self.text_encoders):
             train_ids = self.train_ids if idx == 0 else self.train_ids_t5
-            embeds = (
-                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
-            )
+            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.shared
             assert embeds.weight.data.shape[0] == len(self.tokenizers[idx]), "Tokenizers should be the same."
             new_token_embeddings = embeds.weight.data[train_ids]
 
@@ -904,9 +902,7 @@ class TokenEmbeddingsHandler:
     @torch.no_grad()
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
-            embeds = (
-                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
-            )
+            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.shared
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
             embeds.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
@@ -1650,6 +1646,8 @@ def main(args):
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
                     if args.train_text_encoder:  # when --train_text_encoder_ti we don't save the layers
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                elif isinstance(model, type(unwrap_model(text_encoder_two))):
+                    pass  # when --train_text_encoder_ti and --enable_t5_ti we don't save the layers
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1747,7 +1745,7 @@ def main(args):
         if args.enable_t5_ti:  # whether to do pivotal tuning/textual inversion for T5 as well
             text_lora_parameters_two = []
             for name, param in text_encoder_two.named_parameters():
-                if "token_embedding" in name:
+                if "shared" in name:
                     # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
                     param.data = param.to(dtype=torch.float32)
                     param.requires_grad = True
@@ -1776,15 +1774,10 @@ def main(args):
         if not args.enable_t5_ti:
             # pure textual inversion - only clip
             if pure_textual_inversion:
-                params_to_optimize = [
-                    text_parameters_one_with_lr,
-                ]
+                params_to_optimize = [text_parameters_one_with_lr]
                 te_idx = 0
             else:  # regular te training or regular pivotal for clip
-                params_to_optimize = [
-                    transformer_parameters_with_lr,
-                    text_parameters_one_with_lr,
-                ]
+                params_to_optimize = [transformer_parameters_with_lr, text_parameters_one_with_lr]
                 te_idx = 1
         elif args.enable_t5_ti:
             # pivotal tuning of clip & t5
@@ -1807,9 +1800,7 @@ def main(args):
                 ]
                 te_idx = 1
     else:
-        params_to_optimize = [
-            transformer_parameters_with_lr,
-        ]
+        params_to_optimize = [transformer_parameters_with_lr]
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
@@ -1869,7 +1860,6 @@ def main(args):
             params_to_optimize[-1]["lr"] = args.learning_rate
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             beta3=args.prodigy_beta3,
             weight_decay=args.adam_weight_decay,
@@ -2160,6 +2150,7 @@ def main(args):
 
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
+                    elems_to_repeat = 1
                     if freeze_text_encoder:
                         prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
                             prompts, text_encoders, tokenizers
@@ -2174,17 +2165,21 @@ def main(args):
                             max_sequence_length=args.max_sequence_length,
                             add_special_tokens=add_special_tokens_t5,
                         )
+                else:
+                    elems_to_repeat = len(prompts)
 
                 if not freeze_text_encoder:
                     prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=[None, None],
-                        text_input_ids_list=[tokens_one, tokens_two],
+                        text_input_ids_list=[
+                            tokens_one.repeat(elems_to_repeat, 1),
+                            tokens_two.repeat(elems_to_repeat, 1),
+                        ],
                         max_sequence_length=args.max_sequence_length,
                         device=accelerator.device,
                         prompt=prompts,
                     )
-
                 # Convert images to latent space
                 if args.cache_latents:
                     model_input = latents_cache[step].sample()
@@ -2198,8 +2193,8 @@ def main(args):
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
-                    model_input.shape[2],
-                    model_input.shape[3],
+                    model_input.shape[2] // 2,
+                    model_input.shape[3] // 2,
                     accelerator.device,
                     weight_dtype,
                 )
@@ -2253,8 +2248,8 @@ def main(args):
                 )[0]
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2] * vae_scale_factor / 2),
-                    width=int(model_input.shape[3] * vae_scale_factor / 2),
+                    height=model_input.shape[2] * vae_scale_factor,
+                    width=model_input.shape[3] * vae_scale_factor,
                     vae_scale_factor=vae_scale_factor,
                 )
 
@@ -2377,6 +2372,9 @@ def main(args):
                     epoch=epoch,
                     torch_dtype=weight_dtype,
                 )
+                images = None
+                del pipeline
+
                 if freeze_text_encoder:
                     del text_encoder_one, text_encoder_two
                     free_memory()
@@ -2454,6 +2452,8 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+        images = None
+        del pipeline
 
     accelerator.end_training()
 

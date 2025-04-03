@@ -19,7 +19,7 @@ from diffusers import (
 )
 from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available, logging
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import require_accelerator, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS, VIDEO_TO_VIDEO_BATCH_PARAMS
 from ..test_pipelines_common import IPAdapterTesterMixin, PipelineFromPipeTesterMixin, PipelineTesterMixin
@@ -258,7 +258,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
         max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -274,14 +274,14 @@ class AnimateDiffVideoToVideoPipelineFastTests(
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
@@ -544,3 +544,11 @@ class AnimateDiffVideoToVideoPipelineFastTests(
             inputs["strength"] = 0.5
             inputs["prompt"] = {0: "Caterpillar on a leaf", 10: "Butterfly on a leaf", 42: "Error on a leaf"}
             pipe(**inputs).frames[0]
+
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "num_images_per_prompt": 1,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)

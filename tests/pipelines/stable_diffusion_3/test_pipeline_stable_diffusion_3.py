@@ -2,13 +2,15 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_big_accelerator,
     slow,
     torch_device,
 )
@@ -34,6 +36,8 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -102,6 +106,8 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_3": tokenizer_3,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
@@ -151,39 +157,6 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         # Outputs should be different here
         assert max_diff > 1e-2
 
-    def test_stable_diffusion_3_prompt_embeds(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-
-        output_with_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        do_classifier_free_guidance = inputs["guidance_scale"] > 1
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = pipe.encode_prompt(
-            prompt,
-            prompt_2=None,
-            prompt_3=None,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            device=torch_device,
-        )
-        output_with_embeds = pipe(
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            **inputs,
-        ).images[0]
-
-        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
-
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -224,9 +197,43 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
 
+    def test_skip_guidance_layers(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        output_full = pipe(**inputs)[0]
+
+        inputs_with_skip = inputs.copy()
+        inputs_with_skip["skip_guidance_layers"] = [0]
+        output_skip = pipe(**inputs_with_skip)[0]
+
+        self.assertFalse(
+            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
+        inputs["num_images_per_prompt"] = 2
+        output_full = pipe(**inputs)[0]
+
+        inputs_with_skip = inputs.copy()
+        inputs_with_skip["skip_guidance_layers"] = [0]
+        output_skip = pipe(**inputs_with_skip)[0]
+
+        self.assertFalse(
+            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
 
 @slow
-@require_torch_gpu
+@require_big_accelerator
+@pytest.mark.big_gpu_with_torch_cuda
 class StableDiffusion3PipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Pipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
@@ -234,12 +241,12 @@ class StableDiffusion3PipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
@@ -257,7 +264,7 @@ class StableDiffusion3PipelineSlowTests(unittest.TestCase):
 
     def test_sd3_inference(self):
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
 

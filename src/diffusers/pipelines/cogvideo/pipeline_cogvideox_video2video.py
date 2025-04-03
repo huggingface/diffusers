@@ -27,11 +27,18 @@ from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from .pipeline_output import CogVideoXPipelineOutput
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -206,14 +213,12 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         )
 
         self.vae_scale_factor_spatial = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+            2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         )
         self.vae_scale_factor_temporal = (
-            self.vae.config.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
+            self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
         )
-        self.vae_scaling_factor_image = (
-            self.vae.config.scaling_factor if hasattr(self, "vae") and self.vae is not None else 0.7
-        )
+        self.vae_scaling_factor_image = self.vae.config.scaling_factor if getattr(self, "vae", None) else 0.7
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
@@ -373,12 +378,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
         if latents is None:
             if isinstance(generator, list):
-                if len(generator) != batch_size:
-                    raise ValueError(
-                        f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                        f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                    )
-
                 init_latents = [
                     retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
                 ]
@@ -518,21 +517,39 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        base_size_width = 720 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        base_size_height = 480 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
 
-        grid_crops_coords = get_resize_crop_region_for_grid(
-            (grid_height, grid_width), base_size_width, base_size_height
-        )
-        freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
-            embed_dim=self.transformer.config.attention_head_dim,
-            crops_coords=grid_crops_coords,
-            grid_size=(grid_height, grid_width),
-            temporal_size=num_frames,
-        )
+        p = self.transformer.config.patch_size
+        p_t = self.transformer.config.patch_size_t
 
-        freqs_cos = freqs_cos.to(device=device)
-        freqs_sin = freqs_sin.to(device=device)
+        base_size_width = self.transformer.config.sample_width // p
+        base_size_height = self.transformer.config.sample_height // p
+
+        if p_t is None:
+            # CogVideoX 1.0
+            grid_crops_coords = get_resize_crop_region_for_grid(
+                (grid_height, grid_width), base_size_width, base_size_height
+            )
+            freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
+                embed_dim=self.transformer.config.attention_head_dim,
+                crops_coords=grid_crops_coords,
+                grid_size=(grid_height, grid_width),
+                temporal_size=num_frames,
+                device=device,
+            )
+        else:
+            # CogVideoX 1.5
+            base_num_frames = (num_frames + p_t - 1) // p_t
+
+            freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
+                embed_dim=self.transformer.config.attention_head_dim,
+                crops_coords=None,
+                grid_size=(grid_height, grid_width),
+                temporal_size=base_num_frames,
+                grid_type="slice",
+                max_size=(base_size_height, base_size_width),
+                device=device,
+            )
+
         return freqs_cos, freqs_sin
 
     @property
@@ -548,6 +565,10 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         return self._attention_kwargs
 
     @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -558,8 +579,8 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         video: List[Image.Image] = None,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        height: int = 480,
-        width: int = 720,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         strength: float = 0.8,
@@ -662,6 +683,10 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
+        height = height or self.transformer.config.sample_height * self.vae_scale_factor_spatial
+        width = width or self.transformer.config.sample_width * self.vae_scale_factor_spatial
+        num_frames = len(video) if latents is None else latents.size(1)
+
         num_videos_per_prompt = 1
 
         # 1. Check inputs. Raise error if not correct
@@ -679,6 +704,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         )
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Default call parameters
@@ -717,6 +743,16 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents
+        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+
+        # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
+        patch_size_t = self.transformer.config.patch_size_t
+        if patch_size_t is not None and latent_frames % patch_size_t != 0:
+            raise ValueError(
+                f"The number of latent frames must be divisible by `{patch_size_t=}` but the given video "
+                f"contains {latent_frames=}, which is not divisible."
+            )
+
         if latents is None:
             video = self.video_processor.preprocess_video(video, height=height, width=width)
             video = video.to(device=device, dtype=prompt_embeds.dtype)
@@ -755,6 +791,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -809,6 +846,11 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
+        self._current_timestep = None
 
         if not output_type == "latent":
             video = self.decode_latents(latents)

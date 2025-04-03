@@ -36,14 +36,16 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import is_accelerate_available, is_accelerate_version
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
     nightly,
-    require_torch_gpu,
+    require_accelerate_version_greater,
+    require_accelerator,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -74,6 +76,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"depth_mask"})
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -194,7 +198,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-4)
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -226,7 +231,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 2e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_float16_inference(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -246,10 +252,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_fp16).max()
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
-    )
+    @require_accelerator
+    @require_accelerate_version_greater("0.14.0")
     def test_cpu_offload_forward_pass(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -259,7 +263,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         output_without_offload = pipe(**inputs)[0]
 
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
@@ -366,19 +370,26 @@ class StableDiffusionDepth2ImgPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=7e-3)
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
@@ -415,17 +426,17 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)

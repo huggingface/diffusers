@@ -12,13 +12,13 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import FluxIPAdapterTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class FluxInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class FluxInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin, FluxIPAdapterTesterMixin):
     pipeline_class = FluxInpaintPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
@@ -85,6 +85,8 @@ class FluxInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "tokenizer_2": tokenizer_2,
             "transformer": transformer,
             "vae": vae,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
@@ -126,26 +128,16 @@ class FluxInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         # For some reasons, they don't show large differences
         assert max_diff > 1e-6
 
-    def test_flux_inpaint_prompt_embeds(self):
+    def test_flux_image_output_shape(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
 
-        output_with_prompt = pipe(**inputs).images[0]
+        height_width_pairs = [(32, 32), (72, 57)]
+        for height, width in height_width_pairs:
+            expected_height = height - height % (pipe.vae_scale_factor * 2)
+            expected_width = width - width % (pipe.vae_scale_factor * 2)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        (prompt_embeds, pooled_prompt_embeds, text_ids) = pipe.encode_prompt(
-            prompt,
-            prompt_2=None,
-            device=torch_device,
-            max_sequence_length=inputs["max_sequence_length"],
-        )
-        output_with_embeds = pipe(
-            prompt_embeds=prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            **inputs,
-        ).images[0]
-
-        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
+            inputs.update({"height": height, "width": width})
+            image = pipe(**inputs).images[0]
+            output_height, output_width, _ = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width)

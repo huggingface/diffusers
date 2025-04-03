@@ -39,7 +39,7 @@ pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=contro
 
 ## ControlNetOutput
 
-[[autodoc]] models.controlnet.ControlNetOutput
+[[autodoc]] models.controlnets.controlnet.ControlNetOutput
 
 ## FlaxControlNetModel
 
@@ -47,4 +47,4 @@ pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=contro
 
 ## FlaxControlNetOutput
 
-[[autodoc]] models.controlnet_flax.FlaxControlNetOutput
+[[autodoc]] models.controlnets.controlnet_flax.FlaxControlNetOutput

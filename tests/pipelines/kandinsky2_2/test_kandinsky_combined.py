@@ -22,7 +22,7 @@ from diffusers import (
     KandinskyV22Img2ImgCombinedPipeline,
     KandinskyV22InpaintCombinedPipeline,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 from .test_kandinsky import Dummies
@@ -56,6 +56,8 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
     ]
     test_xformers_attention = True
     callback_cfg_params = ["image_embds"]
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = Dummies()
@@ -108,7 +110,7 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -117,12 +119,12 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -181,6 +183,8 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
     test_xformers_attention = False
     callback_cfg_params = ["image_embds"]
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummy = Img2ImgDummies()
         prior_dummy = PriorDummies()
@@ -230,7 +234,7 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -239,12 +243,12 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -302,6 +306,8 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
     ]
     test_xformers_attention = False
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         dummy = InpaintDummies()
         prior_dummy = PriorDummies()
@@ -351,7 +357,7 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -360,12 +366,12 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []

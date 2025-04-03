@@ -43,6 +43,9 @@ def set_seed(seed: int):
 
     Args:
         seed (`int`): The seed to set.
+
+    Returns:
+        `None`
     """
     random.seed(seed)
     np.random.seed(seed)
@@ -58,6 +61,17 @@ def compute_snr(noise_scheduler, timesteps):
     """
     Computes SNR as per
     https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+    for the given timesteps using the provided noise scheduler.
+
+    Args:
+        noise_scheduler (`NoiseScheduler`):
+            An object containing the noise schedule parameters, specifically `alphas_cumprod`, which is used to compute
+            the SNR values.
+        timesteps (`torch.Tensor`):
+            A tensor of timesteps for which the SNR is computed.
+
+    Returns:
+        `torch.Tensor`: A tensor containing the computed SNR values for each timestep.
     """
     alphas_cumprod = noise_scheduler.alphas_cumprod
     sqrt_alphas_cumprod = alphas_cumprod**0.5
@@ -234,7 +248,13 @@ def _set_state_dict_into_text_encoder(
 
 
 def compute_density_for_timestep_sampling(
-    weighting_scheme: str, batch_size: int, logit_mean: float = None, logit_std: float = None, mode_scale: float = None
+    weighting_scheme: str,
+    batch_size: int,
+    logit_mean: float = None,
+    logit_std: float = None,
+    mode_scale: float = None,
+    device: Union[torch.device, str] = "cpu",
+    generator: Optional[torch.Generator] = None,
 ):
     """
     Compute the density for sampling the timesteps when doing SD3 training.
@@ -244,14 +264,13 @@ def compute_density_for_timestep_sampling(
     SD3 paper reference: https://arxiv.org/abs/2403.03206v1.
     """
     if weighting_scheme == "logit_normal":
-        # See 3.1 in the SD3 paper ($rf/lognorm(0.00,1.00)$).
-        u = torch.normal(mean=logit_mean, std=logit_std, size=(batch_size,), device="cpu")
+        u = torch.normal(mean=logit_mean, std=logit_std, size=(batch_size,), device=device, generator=generator)
         u = torch.nn.functional.sigmoid(u)
     elif weighting_scheme == "mode":
-        u = torch.rand(size=(batch_size,), device="cpu")
+        u = torch.rand(size=(batch_size,), device=device, generator=generator)
         u = 1 - u - mode_scale * (torch.cos(math.pi * u / 2) ** 2 - 1 + u)
     else:
-        u = torch.rand(size=(batch_size,), device="cpu")
+        u = torch.rand(size=(batch_size,), device=device, generator=generator)
     return u
 
 
@@ -284,7 +303,9 @@ def free_memory():
     elif torch.backends.mps.is_available():
         torch.mps.empty_cache()
     elif is_torch_npu_available():
-        torch_npu.empty_cache()
+        torch_npu.npu.empty_cache()
+    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+        torch.xpu.empty_cache()
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
@@ -379,7 +400,7 @@ class EMAModel:
 
     @classmethod
     def from_pretrained(cls, path, model_cls, foreach=False) -> "EMAModel":
-        _, ema_kwargs = model_cls.load_config(path, return_unused_kwargs=True)
+        _, ema_kwargs = model_cls.from_config(path, return_unused_kwargs=True)
         model = model_cls.from_pretrained(path)
 
         ema_model = cls(model.parameters(), model_cls=model_cls, model_config=model.config, foreach=foreach)

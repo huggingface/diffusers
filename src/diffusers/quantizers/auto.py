@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,28 +15,45 @@
 Adapted from
 https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339dbc020fb3b/src/transformers/quantizers/auto.py
 """
+
 import warnings
 from typing import Dict, Optional, Union
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
-from .quantization_config import BitsAndBytesConfig, QuantizationConfigMixin, QuantizationMethod
+from .gguf import GGUFQuantizer
+from .quantization_config import (
+    BitsAndBytesConfig,
+    GGUFQuantizationConfig,
+    QuantizationConfigMixin,
+    QuantizationMethod,
+    QuantoConfig,
+    TorchAoConfig,
+)
+from .quanto import QuantoQuantizer
+from .torchao import TorchAoHfQuantizer
 
 
 AUTO_QUANTIZER_MAPPING = {
     "bitsandbytes_4bit": BnB4BitDiffusersQuantizer,
     "bitsandbytes_8bit": BnB8BitDiffusersQuantizer,
+    "gguf": GGUFQuantizer,
+    "quanto": QuantoQuantizer,
+    "torchao": TorchAoHfQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "bitsandbytes_4bit": BitsAndBytesConfig,
     "bitsandbytes_8bit": BitsAndBytesConfig,
+    "gguf": GGUFQuantizationConfig,
+    "quanto": QuantoConfig,
+    "torchao": TorchAoConfig,
 }
 
 
-class DiffusersAutoQuantizationConfig:
+class DiffusersAutoQuantizer:
     """
-    The auto diffusers quantization config class that takes care of automatically dispatching to the correct
-    quantization config given a quantization config stored in a dictionary.
+     The auto diffusers quantizer class that takes care of automatically instantiating to the correct
+    `DiffusersQuantizer` given the `QuantizationConfig`.
     """
 
     @classmethod
@@ -61,30 +78,10 @@ class DiffusersAutoQuantizationConfig:
         return target_cls.from_dict(quantization_config_dict)
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        model_config = cls.load_config(pretrained_model_name_or_path, **kwargs)
-        if getattr(model_config, "quantization_config", None) is None:
-            raise ValueError(
-                f"Did not found a `quantization_config` in {pretrained_model_name_or_path}. Make sure that the model is correctly quantized."
-            )
-        quantization_config_dict = model_config.quantization_config
-        quantization_config = cls.from_dict(quantization_config_dict)
-        # Update with potential kwargs that are passed through from_pretrained.
-        quantization_config.update(kwargs)
-        return quantization_config
-
-
-class DiffusersAutoQuantizer:
-    """
-     The auto diffusers quantizer class that takes care of automatically instantiating to the correct
-    `DiffusersQuantizer` given the `QuantizationConfig`.
-    """
-
-    @classmethod
     def from_config(cls, quantization_config: Union[QuantizationConfigMixin, Dict], **kwargs):
         # Convert it to a QuantizationConfig if the q_config is a dict
         if isinstance(quantization_config, dict):
-            quantization_config = DiffusersAutoQuantizationConfig.from_dict(quantization_config)
+            quantization_config = cls.from_dict(quantization_config)
 
         quant_method = quantization_config.quant_method
 
@@ -107,7 +104,16 @@ class DiffusersAutoQuantizer:
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        quantization_config = DiffusersAutoQuantizationConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        model_config = cls.load_config(pretrained_model_name_or_path, **kwargs)
+        if getattr(model_config, "quantization_config", None) is None:
+            raise ValueError(
+                f"Did not found a `quantization_config` in {pretrained_model_name_or_path}. Make sure that the model is correctly quantized."
+            )
+        quantization_config_dict = model_config.quantization_config
+        quantization_config = cls.from_dict(quantization_config_dict)
+        # Update with potential kwargs that are passed through from_pretrained.
+        quantization_config.update(kwargs)
+
         return cls.from_config(quantization_config)
 
     @classmethod
@@ -129,7 +135,7 @@ class DiffusersAutoQuantizer:
             warning_msg = ""
 
         if isinstance(quantization_config, dict):
-            quantization_config = DiffusersAutoQuantizationConfig.from_dict(quantization_config)
+            quantization_config = cls.from_dict(quantization_config)
 
         if warning_msg != "":
             warnings.warn(warning_msg)

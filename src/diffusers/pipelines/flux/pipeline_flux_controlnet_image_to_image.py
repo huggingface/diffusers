@@ -13,7 +13,7 @@ from transformers import (
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
+from ...models.controlnets.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -87,7 +87,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -198,7 +198,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _optional_components = []
-    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "control_image"]
 
     def __init__(
         self,
@@ -227,14 +227,14 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             scheduler=scheduler,
             controlnet=controlnet,
         )
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels)) if hasattr(self, "vae") and self.vae is not None else 16
-        )
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
+        # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
+        # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
-        self.default_sample_size = 64
+        self.default_sample_size = 128
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
@@ -453,8 +453,10 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if height % self.vae_scale_factor * 2 != 0 or width % self.vae_scale_factor * 2 != 0:
+            logger.warning(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -493,9 +495,9 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
     @staticmethod
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
-        latent_image_ids = torch.zeros(height // 2, width // 2, 3)
-        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
-        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
+        latent_image_ids = torch.zeros(height, width, 3)
+        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
+        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
 
         latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
 
@@ -519,17 +521,18 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
-        height = height // vae_scale_factor
-        width = width // vae_scale_factor
+        # VAE applies 8x compression on images but we must also account for packing which requires
+        # latent height and width to be divisible by 2.
+        height = 2 * (int(height) // (vae_scale_factor * 2))
+        width = 2 * (int(width) // (vae_scale_factor * 2))
 
-        latents = latents.view(batch_size, height, width, channels // 4, 2, 2)
+        latents = latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
         latents = latents.permute(0, 3, 1, 4, 2, 5)
 
-        latents = latents.reshape(batch_size, channels // (2 * 2), height * 2, width * 2)
+        latents = latents.reshape(batch_size, channels // (2 * 2), height, width)
 
         return latents
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux_img2img.FluxImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
         image,
@@ -549,11 +552,12 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        height = 2 * (int(height) // self.vae_scale_factor)
-        width = 2 * (int(width) // self.vae_scale_factor)
-
+        # VAE applies 8x compression on images but we must also account for packing which requires
+        # latent height and width to be divisible by 2.
+        height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        width = 2 * (int(width) // (self.vae_scale_factor * 2))
         shape = (batch_size, num_channels_latents, height, width)
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
+        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
         if latents is not None:
             return latents.to(device=device, dtype=dtype), latent_image_ids
@@ -639,7 +643,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         width: Optional[int] = None,
         strength: float = 0.6,
         num_inference_steps: int = 28,
-        timesteps: List[int] = None,
+        sigmas: Optional[List[float]] = None,
         guidance_scale: float = 7.0,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
@@ -678,8 +682,10 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             num_inference_steps (`int`, *optional*, defaults to 28):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
             control_mode (`int` or `List[int]`, *optional*):
@@ -794,7 +800,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             )
             height, width = control_image.shape[-2:]
 
-            control_image = self.vae.encode(control_image).latent_dist.sample()
+            control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
             control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
             height_control_image, width_control_image = control_image.shape[2:]
@@ -825,7 +831,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 )
                 height, width = control_image_.shape[-2:]
 
-                control_image_ = self.vae.encode(control_image_).latent_dist.sample()
+                control_image_ = retrieve_latents(self.vae.encode(control_image_), generator=generator)
                 control_image_ = (control_image_ - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
                 height_control_image, width_control_image = control_image_.shape[2:]
@@ -851,27 +857,25 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             control_mode = torch.tensor(control_mode_).to(device, dtype=torch.long)
             control_mode = control_mode.reshape([-1, 1])
 
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        image_seq_len = (int(height) // self.vae_scale_factor) * (int(width) // self.vae_scale_factor)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
             device,
-            timesteps,
-            sigmas,
+            sigmas=sigmas,
             mu=mu,
         )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-
         latents, latent_image_ids = self.prepare_latents(
             init_image,
             latent_timestep,
@@ -903,9 +907,12 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                guidance = (
-                    torch.tensor([guidance_scale], device=device) if self.controlnet.config.guidance_embeds else None
-                )
+                if isinstance(self.controlnet, FluxMultiControlNetModel):
+                    use_guidance = self.controlnet.nets[0].config.guidance_embeds
+                else:
+                    use_guidance = self.controlnet.config.guidance_embeds
+
+                guidance = torch.tensor([guidance_scale], device=device) if use_guidance else None
                 guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 if isinstance(controlnet_keep[i], list):
@@ -965,6 +972,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    control_image = callback_outputs.pop("control_image", control_image)
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()

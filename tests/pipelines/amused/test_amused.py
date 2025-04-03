@@ -22,7 +22,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import AmusedPipeline, AmusedScheduler, UVit2DModel, VQModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -38,6 +38,8 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AmusedPipeline
     params = TEXT_TO_IMAGE_PARAMS | {"encoder_hidden_states", "negative_encoder_hidden_states"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -129,7 +131,7 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class AmusedPipelineSlowTests(unittest.TestCase):
     def test_amused_256(self):
         pipe = AmusedPipeline.from_pretrained("amused/amused-256")

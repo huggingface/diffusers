@@ -36,7 +36,7 @@ from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 from diffusers.utils.import_utils import is_accelerate_available
 
 
-CTX = init_empty_weights if is_accelerate_available else nullcontext
+CTX = init_empty_weights if is_accelerate_available() else nullcontext
 
 TOKENIZER_MAX_LENGTH = 224
 

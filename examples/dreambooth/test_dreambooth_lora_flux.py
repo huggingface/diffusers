@@ -37,6 +37,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
     instance_prompt = "photo"
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-pipe"
     script_path = "examples/dreambooth/train_dreambooth_lora_flux.py"
+    transformer_layer_type = "single_transformer_blocks.0.attn.to_k"
 
     def test_dreambooth_lora_flux(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -134,6 +135,43 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names.
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
+            self.assertTrue(starts_with_transformer)
+
+    def test_dreambooth_lora_layers(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                {self.script_path}
+                --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --instance_data_dir {self.instance_data_dir}
+                --instance_prompt {self.instance_prompt}
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --cache_latents
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lora_layers {self.transformer_layer_type}
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+            # when not training the text encoder, all the parameters in the state dict should start
+            # with `"transformer"` in their names. In this test, we only params of
+            # transformer.single_transformer_blocks.0.attn.to_k should be in the state dict
+            starts_with_transformer = all(
+                key.startswith("transformer.single_transformer_blocks.0.attn.to_k") for key in lora_state_dict.keys()
+            )
             self.assertTrue(starts_with_transformer)
 
     def test_dreambooth_lora_flux_checkpointing_checkpoints_total_limit(self):

@@ -67,6 +67,8 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             The maximum length of the sequence over which to apply positional embeddings.
     """
 
+    _skip_layerwise_casting_patterns = ["norm"]
+
     @register_to_config
     def __init__(
         self,
@@ -340,20 +342,12 @@ class TransformerSpatioTemporalModel(nn.Module):
 
         # 2. Blocks
         for block, temporal_block in zip(self.transformer_blocks, self.temporal_transformer_blocks):
-            if self.training and self.gradient_checkpointing:
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    block,
-                    hidden_states,
-                    None,
-                    encoder_hidden_states,
-                    None,
-                    use_reentrant=False,
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, None, encoder_hidden_states, None
                 )
             else:
-                hidden_states = block(
-                    hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                )
+                hidden_states = block(hidden_states, encoder_hidden_states=encoder_hidden_states)
 
             hidden_states_mix = hidden_states
             hidden_states_mix = hidden_states_mix + emb

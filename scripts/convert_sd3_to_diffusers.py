@@ -11,7 +11,7 @@ from diffusers.models.modeling_utils import load_model_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
 
 
-CTX = init_empty_weights if is_accelerate_available else nullcontext
+CTX = init_empty_weights if is_accelerate_available() else nullcontext
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--checkpoint_path", type=str)
