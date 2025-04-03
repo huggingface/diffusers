@@ -17,8 +17,6 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - local: tutorials/using_peft_for_inference
-    title: Load LoRAs for inference
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
   - local: tutorials/inference_with_big_models
@@ -33,11 +31,19 @@
     title: Load schedulers and models
   - local: using-diffusers/other-formats
     title: Model files and layouts
-  - local: using-diffusers/loading_adapters
-    title: Load adapters
   - local: using-diffusers/push_to_hub
     title: Push files to the Hub
   title: Load pipelines and adapters
+- sections:
+  - local: using-diffusers/using_peft_for_inference
+    title: LoRA
+  - local: using-diffusers/ip_adapter
+    title: IP-Adapter
+  - local: using-diffusers/dreambooth
+    title: DreamBooth
+  - local: using-diffusers/textual_inversion_inference
+    title: Textual inversion
+  title: Adapters
 - sections:
   - local: using-diffusers/unconditional_image_generation
     title: Unconditional image generation
@@ -97,8 +103,6 @@
     title: SDXL Turbo
   - local: using-diffusers/kandinsky
     title: Kandinsky
-  - local: using-diffusers/ip_adapter
-    title: IP-Adapter
   - local: using-diffusers/omnigen
     title: OmniGen
   - local: using-diffusers/pag
@@ -109,8 +113,6 @@
     title: T2I-Adapter
   - local: using-diffusers/inference_with_lcm
     title: Latent Consistency Model
-  - local: using-diffusers/textual_inversion_inference
-    title: Textual inversion
   - local: using-diffusers/shap-e
     title: Shap-E
   - local: using-diffusers/diffedit
