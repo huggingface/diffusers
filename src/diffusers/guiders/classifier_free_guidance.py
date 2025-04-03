@@ -56,9 +56,13 @@ class ClassifierFreeGuidance(GuidanceMixin):
             we use the diffusers-native implementation that has been in the codebase for a long time.
     """
 
+    _input_predictions = ["pred_cond", "pred_uncond"]
+
     def __init__(
         self, guidance_scale: float = 7.5, guidance_rescale: float = 0.0, use_original_formulation: bool = False
     ):
+        super().__init__()
+
         self.guidance_scale = guidance_scale
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
@@ -66,7 +70,7 @@ class ClassifierFreeGuidance(GuidanceMixin):
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
         pred = None
 
-        if math.isclose(self.guidance_scale, 1.0):
+        if not self._is_cfg_enabled():
             pred = pred_cond
         else:
             shift = pred_cond - pred_uncond
@@ -81,6 +85,12 @@ class ClassifierFreeGuidance(GuidanceMixin):
     @property
     def num_conditions(self) -> int:
         num_conditions = 1
-        if not math.isclose(self.guidance_scale, 1.0):
+        if self._is_cfg_enabled():
             num_conditions += 1
         return num_conditions
+
+    def _is_cfg_enabled(self) -> bool:
+        if self.use_original_formulation:
+            return not math.isclose(self.guidance_scale, 0.0)
+        else:
+            return not math.isclose(self.guidance_scale, 1.0)

@@ -48,6 +48,8 @@ class ClassifierFreeZeroStarGuidance(GuidanceMixin):
             [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
     """
 
+    _input_predictions = ["pred_cond", "pred_uncond"]
+
     def __init__(
         self,
         guidance_scale: float = 7.5,
@@ -55,6 +57,8 @@ class ClassifierFreeZeroStarGuidance(GuidanceMixin):
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
     ):
+        super().__init__()
+
         self.guidance_scale = guidance_scale
         self.zero_init_steps = zero_init_steps
         self.guidance_rescale = guidance_rescale
@@ -65,7 +69,7 @@ class ClassifierFreeZeroStarGuidance(GuidanceMixin):
 
         if self._step < self.zero_init_steps:
             pred = torch.zeros_like(pred_cond)
-        elif math.isclose(self.guidance_scale, 1.0):
+        elif self._is_cfg_enabled():
             pred = pred_cond
         else:
             shift = pred_cond - pred_uncond
@@ -85,9 +89,15 @@ class ClassifierFreeZeroStarGuidance(GuidanceMixin):
     @property
     def num_conditions(self) -> int:
         num_conditions = 1
-        if not math.isclose(self.guidance_scale, 1.0):
+        if self._is_cfg_enabled():
             num_conditions += 1
         return num_conditions
+
+    def _is_cfg_enabled(self) -> bool:
+        if self.use_original_formulation:
+            return not math.isclose(self.guidance_scale, 0.0)
+        else:
+            return not math.isclose(self.guidance_scale, 1.0)
 
 
 def cfg_zero_star_scale(cond: torch.Tensor, uncond: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:

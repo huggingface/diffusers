@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -25,15 +25,26 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 class GuidanceMixin:
     r"""Base mixin class providing the skeleton for implementing guidance techniques."""
 
+    _input_predictions = None
+
     def __init__(self):
         self._step: int = None
         self._num_inference_steps: int = None
         self._timestep: torch.LongTensor = None
+        self._preds: Dict[str, torch.Tensor] = {}
+        self._num_outputs_prepared: int = 0
+
+        if self._input_predictions is None or not isinstance(self._input_predictions, list):
+            raise ValueError(
+                "`_input_predictions` must be a list of required prediction names for the guidance technique."
+            )
 
     def set_state(self, step: int, num_inference_steps: int, timestep: torch.LongTensor) -> None:
         self._step = step
         self._num_inference_steps = num_inference_steps
         self._timestep = timestep
+        self._preds = {}
+        self._num_outputs_prepared = 0
 
     def prepare_models(self, denoiser: torch.nn.Module) -> None:
         pass
@@ -63,15 +74,22 @@ class GuidanceMixin:
                 )
         return tuple(list_of_inputs)
 
+    def prepare_outputs(self, pred: torch.Tensor) -> None:
+        self._num_outputs_prepared += 1
+        if self._num_outputs_prepared > self.num_conditions:
+            raise ValueError(f"Expected {self.num_conditions} outputs, but prepare_outputs called more times.")
+        key = self._input_predictions[self._num_outputs_prepared - 1]
+        self._preds[key] = pred
+
     def cleanup_models(self, denoiser: torch.nn.Module) -> None:
         pass
 
-    def __call__(self, *args) -> Any:
-        if len(args) != self.num_conditions:
+    def __call__(self, **kwargs) -> Any:
+        if len(kwargs) != self.num_conditions:
             raise ValueError(
-                f"Expected {self.num_conditions} arguments, but got {len(args)}. Please provide the correct number of arguments."
+                f"Expected {self.num_conditions} arguments, but got {len(kwargs)}. Please provide the correct number of arguments."
             )
-        return self.forward(*args)
+        return self.forward(**kwargs)
 
     def forward(self, *args, **kwargs) -> Any:
         raise NotImplementedError("GuidanceMixin::forward must be implemented in subclasses.")
@@ -79,6 +97,10 @@ class GuidanceMixin:
     @property
     def num_conditions(self) -> int:
         raise NotImplementedError("GuidanceMixin::num_conditions must be implemented in subclasses.")
+
+    @property
+    def outputs(self) -> Dict[str, torch.Tensor]:
+        return self._preds
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):

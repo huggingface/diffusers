@@ -635,7 +635,6 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     crops_coords_top_left[0],
                 )
 
-                noise_preds = []
                 for batch_index, (latent, condition, original_size_c, target_size_c, crop_coord_c) in enumerate(
                     zip(latents, prompt_embeds, original_size, target_size, crops_coords_top_left)
                 ):
@@ -652,9 +651,10 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
-                    noise_preds.append(noise_pred)
+                    guidance.prepare_outputs(noise_pred)
 
-                noise_pred = guidance(*noise_preds)
+                outputs = guidance.outputs
+                noise_pred = guidance(**outputs)
                 latents = self.scheduler.step(noise_pred, t, latents[0], return_dict=False)[0]
                 guidance.cleanup_models(self.transformer)
 

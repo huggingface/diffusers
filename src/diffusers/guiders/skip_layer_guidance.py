@@ -71,6 +71,8 @@ class SkipLayerGuidance(GuidanceMixin):
             [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
     """
 
+    _input_predictions = ["pred_cond", "pred_uncond", "pred_cond_skip"]
+
     def __init__(
         self,
         guidance_scale: float = 7.5,
@@ -82,6 +84,8 @@ class SkipLayerGuidance(GuidanceMixin):
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
     ):
+        super().__init__()
+
         self.guidance_scale = guidance_scale
         self.skip_layer_guidance_scale = skip_layer_guidance_scale
         self.skip_layer_guidance_start = skip_layer_guidance_start
@@ -157,6 +161,18 @@ class SkipLayerGuidance(GuidanceMixin):
                 )
         return tuple(list_of_inputs)
 
+    def prepare_outputs(self, pred: torch.Tensor) -> None:
+        self._num_outputs_prepared += 1
+        if self._num_outputs_prepared > self.num_conditions:
+            raise ValueError(f"Expected {self.num_conditions} outputs, but prepare_outputs called more times.")
+        key = self._input_predictions[self._num_outputs_prepared - 1]
+        if not self._is_cfg_enabled() and self._is_slg_enabled():
+            # If we're predicting pred_cond and pred_cond_skip only, we need to set the key to pred_cond_skip
+            # to avoid writing into pred_uncond which is not used
+            if self._num_outputs_prepared == 2:
+                key = "pred_cond_skip"
+        self._preds[key] = pred
+
     def cleanup_models(self, denoiser: torch.nn.Module):
         registry = HookRegistry.check_if_exists_or_initialize(denoiser)
         # Remove the hooks after inference
@@ -173,16 +189,16 @@ class SkipLayerGuidance(GuidanceMixin):
         skip_start_step = int(self.skip_layer_guidance_start * self._num_inference_steps)
         skip_stop_step = int(self.skip_layer_guidance_stop * self._num_inference_steps)
 
-        if math.isclose(self.guidance_scale, 1.0) and math.isclose(self.skip_layer_guidance_scale, 1.0):
+        if not self._is_cfg_enabled() and not self._is_slg_enabled():
             pred = pred_cond
-        elif math.isclose(self.guidance_scale, 1.0):
+        elif not self._is_cfg_enabled():
             if skip_start_step < self._step < skip_stop_step:
                 shift = pred_cond - pred_cond_skip
                 pred = pred_cond if self.use_original_formulation else pred_cond_skip
                 pred = pred + self.skip_layer_guidance_scale * shift
             else:
                 pred = pred_cond
-        elif math.isclose(self.skip_layer_guidance_scale, 1.0):
+        elif not self._is_slg_enabled():
             shift = pred_cond - pred_uncond
             pred = pred_cond if self.use_original_formulation else pred_uncond
             pred = pred + self.guidance_scale * shift
@@ -203,12 +219,19 @@ class SkipLayerGuidance(GuidanceMixin):
     @property
     def num_conditions(self) -> int:
         num_conditions = 1
+        if self._is_cfg_enabled():
+            num_conditions += 1
+        if self._is_slg_enabled():
+            num_conditions += 1
+        return num_conditions
+
+    def _is_cfg_enabled(self) -> bool:
+        if self.use_original_formulation:
+            return not math.isclose(self.guidance_scale, 0.0)
+        else:
+            return not math.isclose(self.guidance_scale, 1.0)
+
+    def _is_slg_enabled(self) -> bool:
         skip_start_step = int(self.skip_layer_guidance_start * self._num_inference_steps)
         skip_stop_step = int(self.skip_layer_guidance_stop * self._num_inference_steps)
-
-        if not math.isclose(self.guidance_scale, 1.0):
-            num_conditions += 1
-        if not math.isclose(self.skip_layer_guidance_scale, 1.0) and skip_start_step < self._step < skip_stop_step:
-            num_conditions += 1
-
-        return num_conditions
+        return skip_start_step < self._step < skip_stop_step
