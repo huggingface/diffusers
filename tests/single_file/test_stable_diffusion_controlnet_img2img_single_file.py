@@ -8,9 +8,10 @@ from diffusers import ControlNetModel, StableDiffusionControlNetPipeline
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -27,7 +28,7 @@ enable_full_determinism()
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetPipeline
     ckpt_path = (
@@ -41,12 +42,12 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
@@ -75,14 +76,14 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
         pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         pipe_sf = self.pipeline_class.from_single_file(
             self.ckpt_path,
             controlnet=controlnet,
         )
         pipe_sf.unet.set_default_attn_processor()
-        pipe_sf.enable_model_cpu_offload()
+        pipe_sf.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         output = pipe(**inputs).images[0]

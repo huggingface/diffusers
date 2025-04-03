@@ -10,7 +10,7 @@ from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, Mochi
 from diffusers.utils.import_utils import is_accelerate_available
 
 
-CTX = init_empty_weights if is_accelerate_available else nullcontext
+CTX = init_empty_weights if is_accelerate_available() else nullcontext
 
 TOKENIZER_MAX_LENGTH = 256
 

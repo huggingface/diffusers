@@ -87,7 +87,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -198,7 +198,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _optional_components = []
-    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "control_image"]
 
     def __init__(
         self,
@@ -227,9 +227,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             scheduler=scheduler,
             controlnet=controlnet,
         )
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
@@ -535,7 +533,6 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
         return latents
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux_img2img.FluxImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
         image,
@@ -646,7 +643,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         width: Optional[int] = None,
         strength: float = 0.6,
         num_inference_steps: int = 28,
-        timesteps: List[int] = None,
+        sigmas: Optional[List[float]] = None,
         guidance_scale: float = 7.0,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
@@ -685,8 +682,10 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             num_inference_steps (`int`, *optional*, defaults to 28):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
             control_mode (`int` or `List[int]`, *optional*):
@@ -858,21 +857,20 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             control_mode = torch.tensor(control_mode_).to(device, dtype=torch.long)
             control_mode = control_mode.reshape([-1, 1])
 
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
             device,
-            timesteps,
-            sigmas,
+            sigmas=sigmas,
             mu=mu,
         )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
@@ -974,6 +972,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    control_image = callback_outputs.pop("control_image", control_image)
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()

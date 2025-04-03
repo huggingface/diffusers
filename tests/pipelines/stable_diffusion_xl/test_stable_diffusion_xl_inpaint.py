@@ -41,7 +41,13 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
@@ -71,6 +77,8 @@ class StableDiffusionXLInpaintPipelineFastTests(
             "masked_image_latents",
         }
     )
+
+    supports_dduf = False
 
     def get_dummy_components(self, skip_first_text_encoder=False, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -299,10 +307,11 @@ class StableDiffusionXLInpaintPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
-    # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
+    @unittest.skip("Skip for now.")
     def test_save_load_optional_components(self):
         pass
 
+    @require_torch_accelerator
     def test_stable_diffusion_xl_inpaint_negative_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLInpaintPipeline(**components)
@@ -343,7 +352,7 @@ class StableDiffusionXLInpaintPipelineFastTests(
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -352,12 +361,12 @@ class StableDiffusionXLInpaintPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLInpaintPipeline(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLInpaintPipeline(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []

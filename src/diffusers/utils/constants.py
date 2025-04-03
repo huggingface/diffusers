@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ ONNX_WEIGHTS_NAME = "model.onnx"
 SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
 SAFE_WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.safetensors.index.json"
 SAFETENSORS_FILE_EXTENSION = "safetensors"
+GGUF_FILE_EXTENSION = "gguf"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
@@ -55,3 +56,14 @@ USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 
 if USE_PEFT_BACKEND and _CHECK_PEFT:
     dep_version_check("peft")
+
+
+DECODE_ENDPOINT_SD_V1 = "https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud/"
+DECODE_ENDPOINT_SD_XL = "https://x2dmsqunjd6k9prw.us-east-1.aws.endpoints.huggingface.cloud/"
+DECODE_ENDPOINT_FLUX = "https://whhx50ex1aryqvw6.us-east-1.aws.endpoints.huggingface.cloud/"
+DECODE_ENDPOINT_HUNYUAN_VIDEO = "https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud/"
+
+
+ENCODE_ENDPOINT_SD_V1 = "https://qc6479g0aac6qwy9.us-east-1.aws.endpoints.huggingface.cloud/"
+ENCODE_ENDPOINT_SD_XL = "https://xjqqhmyn62rog84g.us-east-1.aws.endpoints.huggingface.cloud/"
+ENCODE_ENDPOINT_FLUX = "https://ptccx55jz97f9zgo.us-east-1.aws.endpoints.huggingface.cloud/"

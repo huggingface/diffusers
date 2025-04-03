@@ -27,6 +27,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     nightly,
     require_torch_2,
+    require_torch_accelerator,
     require_torch_gpu,
     run_test_in_subprocess,
     torch_device,
@@ -85,6 +86,8 @@ class UniDiffuserPipelineFastTests(
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     # vae_latents, not latents, is the argument that corresponds to VAE latent inputs
     image_latents_params = frozenset(["vae_latents"])
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         unet = UniDiffuserModel.from_pretrained(
@@ -499,20 +502,19 @@ class UniDiffuserPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=2e-4)
 
-    @require_torch_gpu
-    def test_unidiffuser_default_joint_v1_cuda_fp16(self):
-        device = "cuda"
+    @require_torch_accelerator
+    def test_unidiffuser_default_joint_v1_fp16(self):
         unidiffuser_pipe = UniDiffuserPipeline.from_pretrained(
             "hf-internal-testing/unidiffuser-test-v1", torch_dtype=torch.float16
         )
-        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe = unidiffuser_pipe.to(torch_device)
         unidiffuser_pipe.set_progress_bar_config(disable=None)
 
         # Set mode to 'joint'
         unidiffuser_pipe.set_joint_mode()
         assert unidiffuser_pipe.mode == "joint"
 
-        inputs = self.get_dummy_inputs_with_latents(device)
+        inputs = self.get_dummy_inputs_with_latents(torch_device)
         # Delete prompt and image for joint inference.
         del inputs["prompt"]
         del inputs["image"]
@@ -529,20 +531,19 @@ class UniDiffuserPipelineFastTests(
         expected_text_prefix = '" This This'
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
-    @require_torch_gpu
-    def test_unidiffuser_default_text2img_v1_cuda_fp16(self):
-        device = "cuda"
+    @require_torch_accelerator
+    def test_unidiffuser_default_text2img_v1_fp16(self):
         unidiffuser_pipe = UniDiffuserPipeline.from_pretrained(
             "hf-internal-testing/unidiffuser-test-v1", torch_dtype=torch.float16
         )
-        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe = unidiffuser_pipe.to(torch_device)
         unidiffuser_pipe.set_progress_bar_config(disable=None)
 
         # Set mode to 'text2img'
         unidiffuser_pipe.set_text_to_image_mode()
         assert unidiffuser_pipe.mode == "text2img"
 
-        inputs = self.get_dummy_inputs_with_latents(device)
+        inputs = self.get_dummy_inputs_with_latents(torch_device)
         # Delete prompt and image for joint inference.
         del inputs["image"]
         inputs["data_type"] = 1
@@ -554,20 +555,19 @@ class UniDiffuserPipelineFastTests(
         expected_img_slice = np.array([0.5054, 0.5498, 0.5854, 0.3052, 0.4458, 0.6489, 0.5122, 0.4810, 0.6138])
         assert np.abs(image_slice.flatten() - expected_img_slice).max() < 1e-3
 
-    @require_torch_gpu
-    def test_unidiffuser_default_img2text_v1_cuda_fp16(self):
-        device = "cuda"
+    @require_torch_accelerator
+    def test_unidiffuser_default_img2text_v1_fp16(self):
         unidiffuser_pipe = UniDiffuserPipeline.from_pretrained(
             "hf-internal-testing/unidiffuser-test-v1", torch_dtype=torch.float16
         )
-        unidiffuser_pipe = unidiffuser_pipe.to(device)
+        unidiffuser_pipe = unidiffuser_pipe.to(torch_device)
         unidiffuser_pipe.set_progress_bar_config(disable=None)
 
         # Set mode to 'img2text'
         unidiffuser_pipe.set_image_to_text_mode()
         assert unidiffuser_pipe.mode == "img2text"
 
-        inputs = self.get_dummy_inputs_with_latents(device)
+        inputs = self.get_dummy_inputs_with_latents(torch_device)
         # Delete prompt and image for joint inference.
         del inputs["prompt"]
         inputs["data_type"] = 1
@@ -575,6 +575,12 @@ class UniDiffuserPipelineFastTests(
 
         expected_text_prefix = '" This This'
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
+
+    @unittest.skip(
+        "Test not supported becauseit has a bunch of direct configs at init and also, this pipeline isn't used that much now."
+    )
+    def test_encode_prompt_works_in_isolation():
+        pass
 
 
 @nightly

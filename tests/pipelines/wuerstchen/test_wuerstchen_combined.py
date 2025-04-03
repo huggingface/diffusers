@@ -21,7 +21,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenCombinedPipeline
 from diffusers.pipelines.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt, WuerstchenPrior
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -198,7 +198,7 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -207,12 +207,12 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -232,8 +232,10 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     def test_float16_inference(self):
         super().test_float16_inference()
 
+    @unittest.skip(reason="Test not supported.")
     def test_callback_inputs(self):
         pass
 
+    @unittest.skip(reason="Test not supported.")
     def test_callback_cfg(self):
         pass

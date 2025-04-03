@@ -16,6 +16,11 @@ specific language governing permissions and limitations under the License.
     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
+> [!TIP]
+> This document has now grown outdated given the emergence of existing evaluation frameworks for diffusion models for image generation. Please check
+> out works like [HEIM](https://crfm.stanford.edu/helm/heim/latest/), [T2I-Compbench](https://arxiv.org/abs/2307.06350),
+> [GenEval](https://arxiv.org/abs/2310.11513).
+
 Evaluation of generative models like [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) is subjective in nature. But as practitioners and researchers, we often have to make careful choices amongst many different possibilities. So, when working with different generative models (like GANs, Diffusion, etc.), how do we choose one over the other?
 
 Qualitative evaluation of such models can be error-prone and might incorrectly influence a decision.
@@ -181,7 +186,7 @@ Then we load the [v1-5 checkpoint](https://huggingface.co/stable-diffusion-v1-5/
 
 ```python
 model_ckpt_1_5 = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=weight_dtype).to(device)
+sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=torch.float16).to("cuda")
 
 images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
@@ -280,7 +285,7 @@ from diffusers import StableDiffusionInstructPix2PixPipeline
 
 instruct_pix2pix_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
     "timbrooks/instruct-pix2pix", torch_dtype=torch.float16
-).to(device)
+).to("cuda")
 ```
 
 Now, we perform the edits:
@@ -326,9 +331,9 @@ from transformers import (
 
 clip_id = "openai/clip-vit-large-patch14"
 tokenizer = CLIPTokenizer.from_pretrained(clip_id)
-text_encoder = CLIPTextModelWithProjection.from_pretrained(clip_id).to(device)
+text_encoder = CLIPTextModelWithProjection.from_pretrained(clip_id).to("cuda")
 image_processor = CLIPImageProcessor.from_pretrained(clip_id)
-image_encoder = CLIPVisionModelWithProjection.from_pretrained(clip_id).to(device)
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(clip_id).to("cuda")
 ```
 
 Notice that we are using a particular CLIP checkpoint, i.e., `openai/clip-vit-large-patch14`. This is because the Stable Diffusion pre-training was performed with this CLIP variant. For more details, refer to the [documentation](https://huggingface.co/docs/transformers/model_doc/clip).
@@ -350,7 +355,7 @@ class DirectionalSimilarity(nn.Module):
 
     def preprocess_image(self, image):
         image = self.image_processor(image, return_tensors="pt")["pixel_values"]
-        return {"pixel_values": image.to(device)}
+        return {"pixel_values": image.to("cuda")}
 
     def tokenize_text(self, text):
         inputs = self.tokenizer(
@@ -360,7 +365,7 @@ class DirectionalSimilarity(nn.Module):
             truncation=True,
             return_tensors="pt",
         )
-        return {"input_ids": inputs.input_ids.to(device)}
+        return {"input_ids": inputs.input_ids.to("cuda")}
 
     def encode_image(self, image):
         preprocessed_image = self.preprocess_image(image)
@@ -459,6 +464,7 @@ with ZipFile(local_filepath, "r") as zipper:
 ```python
 from PIL import Image
 import os
+import numpy as np
 
 dataset_path = "sample-imagenet-images"
 image_paths = sorted([os.path.join(dataset_path, x) for x in os.listdir(dataset_path)])
@@ -477,6 +483,7 @@ Now that the images are loaded, let's apply some lightweight pre-processing on t
 
 ```python
 from torchvision.transforms import functional as F
+import torch
 
 
 def preprocess_image(image):
@@ -497,6 +504,10 @@ from diffusers import DiTPipeline, DPMSolverMultistepScheduler
 dit_pipeline = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", torch_dtype=torch.float16)
 dit_pipeline.scheduler = DPMSolverMultistepScheduler.from_config(dit_pipeline.scheduler.config)
 dit_pipeline = dit_pipeline.to("cuda")
+
+seed = 0
+generator = torch.manual_seed(seed)
+
 
 words = [
     "cassette player",

@@ -47,7 +47,7 @@ This pipeline was contributed by [PommesPeter](https://github.com/PommesPeter). 
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.md) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading.md#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
 </Tip>
 
@@ -58,10 +58,10 @@ Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fa
 First, load the pipeline:
 
 ```python
-from diffusers import LuminaText2ImgPipeline
+from diffusers import LuminaPipeline
 import torch
 
-pipeline = LuminaText2ImgPipeline.from_pretrained(
+pipeline = LuminaPipeline.from_pretrained(
 	"Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 ```
@@ -82,9 +82,49 @@ pipeline.vae.decode = torch.compile(pipeline.vae.decode, mode="max-autotune", fu
 image = pipeline(prompt="Upper body of a young woman in a Victorian-era outfit with brass goggles and leather straps. Background shows an industrial revolution cityscape with smoky skies and tall, metal structures").images[0]
 ```
 
-## LuminaText2ImgPipeline
+## Quantization
 
-[[autodoc]] LuminaText2ImgPipeline
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`LuminaPipeline`] for inference with bitsandbytes.
+
+```py
+import torch
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, Transformer2DModel, LuminaPipeline
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
+
+quant_config = BitsAndBytesConfig(load_in_8bit=True)
+text_encoder_8bit = T5EncoderModel.from_pretrained(
+    "Alpha-VLLM/Lumina-Next-SFT-diffusers",
+    subfolder="text_encoder",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_8bit = Transformer2DModel.from_pretrained(
+    "Alpha-VLLM/Lumina-Next-SFT-diffusers",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+pipeline = LuminaPipeline.from_pretrained(
+    "Alpha-VLLM/Lumina-Next-SFT-diffusers",
+    text_encoder=text_encoder_8bit,
+    transformer=transformer_8bit,
+    torch_dtype=torch.float16,
+    device_map="balanced",
+)
+
+prompt = "a tiny astronaut hatching from an egg on the moon"
+image = pipeline(prompt).images[0]
+image.save("lumina.png")
+```
+
+## LuminaPipeline
+
+[[autodoc]] LuminaPipeline
 	- all
 	- __call__
 

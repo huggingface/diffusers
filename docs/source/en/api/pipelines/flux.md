@@ -12,6 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # Flux
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 Flux is a series of text-to-image generation models based on diffusion transformers. To know more about Flux, check out the original [blog post](https://blackforestlabs.ai/announcing-black-forest-labs/) by the creators of Flux, Black Forest Labs.
 
 Original model checkpoints for Flux can be found [here](https://huggingface.co/black-forest-labs). Original inference code can be found [here](https://github.com/black-forest-labs/flux).
@@ -143,18 +147,77 @@ image = pipe(
 image.save("output.png")
 ```
 
+Canny Control is also possible with a LoRA variant of this condition. The usage is as follows:
+
+```python
+# !pip install -U controlnet-aux
+import torch
+from controlnet_aux import CannyDetector
+from diffusers import FluxControlPipeline
+from diffusers.utils import load_image
+
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = CannyDetector()
+control_image = processor(control_image, low_threshold=50, high_threshold=200, detect_resolution=1024, image_resolution=1024)
+
+image = pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=50,
+    guidance_scale=30.0,
+).images[0]
+image.save("output.png")
+```
+
 ### Depth Control
 
 **Note:** `black-forest-labs/Flux.1-Depth-dev` is _not_ a ControlNet model. [`ControlNetModel`] models are a separate component from the UNet/Transformer whose residuals are added to the actual underlying model. Depth Control is an alternate architecture that achieves effectively the same results as a ControlNet model would, by using channel-wise concatenation with input control condition and ensuring the transformer learns structure control by following the condition as closely as possible.
 
 ```python
-# !pip install git+https://github.com/asomoza/image_gen_aux.git
+# !pip install git+https://github.com/huggingface/image_gen_aux
 import torch
 from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
 
 pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", torch_dtype=torch.bfloat16).to("cuda")
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = DepthPreprocessor.from_pretrained("LiheYoung/depth-anything-large-hf")
+control_image = processor(control_image)[0].convert("RGB")
+
+image = pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=30,
+    guidance_scale=10.0,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("output.png")
+```
+
+Depth Control is also possible with a LoRA variant of this condition. The usage is as follows:
+
+```python
+# !pip install git+https://github.com/huggingface/image_gen_aux
+import torch
+from diffusers import FluxControlPipeline, FluxTransformer2DModel
+from diffusers.utils import load_image
+from image_gen_aux import DepthPreprocessor
+
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
@@ -209,7 +272,161 @@ images = pipe(
 images[0].save("flux-redux.png")
 ```
 
-## Running FP16 inference
+## Combining Flux Turbo LoRAs with Flux Control, Fill, and Redux
+
+We can combine Flux Turbo LoRAs with Flux Control and other pipelines like Fill and Redux to enable few-steps' inference. The example below shows how to do that for Flux Control LoRA for depth and turbo LoRA from [`ByteDance/Hyper-SD`](https://hf.co/ByteDance/Hyper-SD).
+
+```py
+from diffusers import FluxControlPipeline
+from image_gen_aux import DepthPreprocessor
+from diffusers.utils import load_image
+from huggingface_hub import hf_hub_download
+import torch
+
+control_pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+control_pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora", adapter_name="depth")
+control_pipe.load_lora_weights(
+    hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
+)
+control_pipe.set_adapters(["depth", "hyper-sd"], adapter_weights=[0.85, 0.125])
+control_pipe.enable_model_cpu_offload()
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = DepthPreprocessor.from_pretrained("LiheYoung/depth-anything-large-hf")
+control_image = processor(control_image)[0].convert("RGB")
+
+image = control_pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=8,
+    guidance_scale=10.0,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("output.png")
+```
+
+## Note about `unload_lora_weights()` when using Flux LoRAs
+
+When unloading the Control LoRA weights, call `pipe.unload_lora_weights(reset_to_overwritten_params=True)` to reset the `pipe.transformer` completely back to its original form. The resultant pipeline can then be used with methods like [`DiffusionPipeline.from_pipe`]. More details about this argument are available in [this PR](https://github.com/huggingface/diffusers/pull/10397).
+
+## IP-Adapter
+
+<Tip>
+
+Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
+
+</Tip>
+
+An IP-Adapter lets you prompt Flux with images, in addition to the text prompt. This is especially useful when describing complex concepts that are difficult to articulate through text alone and you have reference images.
+
+```python
+import torch
+from diffusers import FluxPipeline
+from diffusers.utils import load_image
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+).to("cuda")
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux_ip_adapter_input.jpg").resize((1024, 1024))
+
+pipe.load_ip_adapter(
+    "XLabs-AI/flux-ip-adapter",
+    weight_name="ip_adapter.safetensors",
+    image_encoder_pretrained_model_name_or_path="openai/clip-vit-large-patch14"
+)
+pipe.set_ip_adapter_scale(1.0)
+
+image = pipe(
+    width=1024,
+    height=1024,
+    prompt="wearing sunglasses",
+    negative_prompt="",
+    true_cfg=4.0,
+    generator=torch.Generator().manual_seed(4444),
+    ip_adapter_image=image,
+).images[0]
+
+image.save('flux_ip_adapter_output.jpg')
+```
+
+<div class="justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux_ip_adapter_output.jpg"/>
+    <figcaption class="mt-2 text-sm text-center text-gray-500">IP-Adapter examples with prompt "wearing sunglasses"</figcaption>
+</div>
+
+## Optimize
+
+Flux is a very large model and requires ~50GB of RAM/VRAM to load all the modeling components. Enable some of the optimizations below to lower the memory requirements.
+
+### Group offloading
+
+[Group offloading](../../optimization/memory#group-offloading) lowers VRAM usage by offloading groups of internal layers rather than the whole model or weights. You need to use [`~hooks.apply_group_offloading`] on all the model components of a pipeline. The `offload_type` parameter allows you to toggle between block and leaf-level offloading. Setting it to `leaf_level` offloads the lowest leaf-level parameters to the CPU instead of offloading at the module-level.
+
+On CUDA devices that support asynchronous data streaming, set `use_stream=True` to overlap data transfer and computation to accelerate inference.
+
+> [!TIP]
+> It is possible to mix block and leaf-level offloading for different components in a pipeline.
+
+```py
+import torch
+from diffusers import FluxPipeline
+from diffusers.hooks import apply_group_offloading
+
+model_id = "black-forest-labs/FLUX.1-dev"
+dtype = torch.bfloat16
+pipe = FluxPipeline.from_pretrained(
+	model_id,
+	torch_dtype=dtype,
+)
+
+apply_group_offloading(
+    pipe.transformer,
+    offload_type="leaf_level",
+    offload_device=torch.device("cpu"),
+    onload_device=torch.device("cuda"),
+    use_stream=True,
+)
+apply_group_offloading(
+    pipe.text_encoder, 
+    offload_device=torch.device("cpu"),
+    onload_device=torch.device("cuda"),
+    offload_type="leaf_level",
+    use_stream=True,
+)
+apply_group_offloading(
+    pipe.text_encoder_2, 
+    offload_device=torch.device("cpu"),
+    onload_device=torch.device("cuda"),
+    offload_type="leaf_level",
+    use_stream=True,
+)
+apply_group_offloading(
+    pipe.vae, 
+    offload_device=torch.device("cpu"),
+    onload_device=torch.device("cuda"),
+    offload_type="leaf_level",
+    use_stream=True,
+)
+
+prompt="A cat wearing sunglasses and working as a lifeguard at pool."
+
+generator = torch.Generator().manual_seed(181201)
+image = pipe(
+    prompt,
+    width=576,
+    height=1024,
+    num_inference_steps=30,
+    generator=generator
+).images[0]
+image
+```
+
+### Running FP16 inference
 
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
 
@@ -236,6 +453,46 @@ out = pipe(
     max_sequence_length=256,
 ).images[0]
 out.save("image.png")
+```
+
+### Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`FluxPipeline`] for inference with bitsandbytes.
+
+```py
+import torch
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, FluxTransformer2DModel, FluxPipeline
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderModel
+
+quant_config = BitsAndBytesConfig(load_in_8bit=True)
+text_encoder_8bit = T5EncoderModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="text_encoder_2",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_8bit = FluxTransformer2DModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+
+pipeline = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    text_encoder_2=text_encoder_8bit,
+    transformer=transformer_8bit,
+    torch_dtype=torch.float16,
+    device_map="balanced",
+)
+
+prompt = "a tiny astronaut hatching from an egg on the moon"
+image = pipeline(prompt, guidance_scale=3.5, height=768, width=1360, num_inference_steps=50).images[0]
+image.save("flux.png")
 ```
 
 ## Single File Loading for the `FluxTransformer2DModel`

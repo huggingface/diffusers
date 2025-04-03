@@ -30,6 +30,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
     deprecate,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -40,6 +41,13 @@ from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -71,7 +79,7 @@ EXAMPLE_DOC_STRING = """
         >>> # load control net and stable diffusion v1-5
         >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
         ... )
 
         >>> # speed up diffusion process with faster scheduler and memory optimization
@@ -168,8 +176,8 @@ class StableDiffusionControlNetImg2ImgPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
@@ -177,7 +185,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "control_image"]
 
     def __init__(
         self,
@@ -224,7 +232,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
@@ -1286,6 +1294,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    control_image = callback_outputs.pop("control_image", control_image)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1293,6 +1302,9 @@ class StableDiffusionControlNetImg2ImgPipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         # If we do sequential model offloading, let's offload unet and controlnet
         # manually for max memory savings

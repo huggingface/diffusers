@@ -34,11 +34,12 @@ from diffusers import (
 from diffusers.image_processor import IPAdapterMaskProcessor
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     is_flaky,
     load_pt,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -54,13 +55,13 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_image_encoder(self, repo_id, subfolder):
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
@@ -165,7 +166,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
@@ -280,7 +281,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs = self.get_dummy_inputs()
         output_without_offload = pipeline(**inputs).images
 
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs()
         output_with_offload = pipeline(**inputs).images
         max_diff = np.abs(output_with_offload - output_without_offload).max()
@@ -376,9 +377,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.set_ip_adapter_scale(0.7)
 
         inputs = self.get_dummy_inputs()
-        id_embeds = load_pt("https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt")[
-            0
-        ]
+        id_embeds = load_pt(
+            "https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt",
+            map_location=torch_device,
+        )[0]
         id_embeds = id_embeds.reshape((2, 1, 1, 512))
         inputs["ip_adapter_image_embeds"] = [id_embeds]
         inputs["ip_adapter_image"] = None
@@ -391,7 +393,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image_sdxl(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="sdxl_models/image_encoder")
@@ -403,7 +405,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs()
@@ -461,7 +463,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
@@ -530,7 +532,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
@@ -578,7 +580,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             image_encoder=image_encoder,
             torch_dtype=self.dtype,
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.load_ip_adapter(
             "h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus-face_sdxl_vit-h.safetensors"
         )
@@ -606,7 +608,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             image_encoder=image_encoder,
             torch_dtype=self.dtype,
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.load_ip_adapter(
             "h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2
         )
@@ -633,7 +635,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             "RunDiffusion/Juggernaut-XL-v9", torch_dtype=torch.float16, image_encoder=image_encoder, variant="fp16"
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
 
         pipeline.load_ip_adapter(
             ["ostris/ip-composition-adapter", "h94/IP-Adapter"],
@@ -674,7 +676,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             image_encoder=image_encoder,
             torch_dtype=self.dtype,
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.load_ip_adapter(
             "h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"]
         )
