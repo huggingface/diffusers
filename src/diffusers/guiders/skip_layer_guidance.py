@@ -39,18 +39,36 @@ class SkipLayerGuidance(GuidanceMixin):
     Additional reading:
     - [Guiding a Diffusion Model with a Bad Version of Itself](https://huggingface.co/papers/2406.02507)
 
+    The values for `skip_layer_guidance_scale`, `skip_layer_guidance_start`, and `skip_layer_guidance_stop` are
+    defaulted to the recommendations by StabilityAI for Stable Diffusion 3.5 Medium.
+
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
+        skip_layer_guidance_scale (`float`, defaults to `2.8`):
+            The scale parameter for skip layer guidance. Anatomy and structure coherence may improve with higher
+            values, but it may also lead to overexposure and saturation.
+        skip_layer_guidance_start (`float`, defaults to `0.01`):
+            The fraction of the total number of denoising steps after which skip layer guidance starts.
+        skip_layer_guidance_stop (`float`, defaults to `0.2`):
+            The fraction of the total number of denoising steps after which skip layer guidance stops.
+        skip_guidance_layers (`int` or `List[int]`, *optional*):
+            The layer indices to apply skip layer guidance to. Can be a single integer or a list of integers. If not
+            provided, `skip_layer_config` must be provided. The recommended values are `[7, 8, 9]` for Stable Diffusion
+            3.5 Medium.
+        skip_layer_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
+            The configuration for the skip layer guidance. Can be a single `LayerSkipConfig` or a list of
+            `LayerSkipConfig`. If not provided, `skip_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
             Flawed](https://huggingface.co/papers/2305.08891).
         use_original_formulation (`bool`, defaults to `False`):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
-            we use the diffusers-native implementation that has been in the codebase for a long time.
+            we use the diffusers-native implementation that has been in the codebase for a long time. See
+            [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
     """
 
     def __init__(
@@ -70,6 +88,15 @@ class SkipLayerGuidance(GuidanceMixin):
         self.skip_layer_guidance_stop = skip_layer_guidance_stop
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
+
+        if not (0.0 <= skip_layer_guidance_start < 1.0):
+            raise ValueError(
+                f"Expected `skip_layer_guidance_start` to be between 0.0 and 1.0, but got {skip_layer_guidance_start}."
+            )
+        if not (0.0 < skip_layer_guidance_stop <= 1.0):
+            raise ValueError(
+                f"Expected `skip_layer_guidance_stop` to be between 0.0 and 1.0, but got {skip_layer_guidance_stop}."
+            )
 
         if skip_guidance_layers is None and skip_layer_config is None:
             raise ValueError(
