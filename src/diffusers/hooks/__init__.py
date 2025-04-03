@@ -20,5 +20,6 @@ if is_torch_available():
     from .first_block_cache import FirstBlockCacheConfig, apply_first_block_cache
     from .group_offloading import apply_group_offloading
     from .hooks import HookRegistry, ModelHook
+    from .layer_skip import LayerSkipConfig, apply_layer_skip
     from .layerwise_casting import apply_layerwise_casting, apply_layerwise_casting_hook
     from .pyramid_attention_broadcast import PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast

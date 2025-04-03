@@ -43,11 +43,11 @@ class ClassifierFreeGuidance(GuidanceMixin):
     paper. By default, we use the diffusers-native implementation that has been in the codebase for a long time.
 
     Args:
-        scale (`float`, defaults to `7.5`):
+        guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
-        rescale (`float`, defaults to `0.0`):
+        guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
             Flawed](https://huggingface.co/papers/2305.08891).
@@ -56,31 +56,26 @@ class ClassifierFreeGuidance(GuidanceMixin):
             we use the diffusers-native implementation that has been in the codebase for a long time.
     """
 
-    def __init__(self, scale: float = 7.5, rescale: float = 0.0, use_original_formulation: bool = False):
-        self.scale = scale
-        self.rescale = rescale
+    def __init__(
+        self, guidance_scale: float = 7.5, guidance_rescale: float = 0.0, use_original_formulation: bool = False
+    ):
+        self.guidance_scale = guidance_scale
+        self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
-        if math.isclose(self.scale, 1.0):
+        if math.isclose(self.guidance_scale, 1.0):
             return pred_cond
         shift = pred_cond - pred_uncond
         pred = pred_cond if self.use_original_formulation else pred_uncond
-        pred = pred + self.scale * shift
-        if self.rescale > 0.0:
-            pred = rescale_noise_cfg(pred, pred_cond, self.rescale)
+        pred = pred + self.guidance_scale * shift
+        if self.guidance_rescale > 0.0:
+            pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
         return pred
 
     @property
     def num_conditions(self) -> int:
-        if math.isclose(self.scale, 1.0):
-            return 1
-        return 2
-
-    @property
-    def guidance_scale(self) -> float:
-        return self.scale
-
-    @property
-    def guidance_rescale(self) -> float:
-        return self.rescale
+        num_conditions = 1
+        if not math.isclose(self.guidance_scale, 1.0):
+            num_conditions += 1
+        return num_conditions

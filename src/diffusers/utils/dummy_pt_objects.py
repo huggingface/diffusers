@@ -17,6 +17,21 @@ class ClassifierFreeGuidance(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class SkipLayerGuidance(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class FasterCacheConfig(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -62,6 +77,21 @@ class HookRegistry(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class LayerSkipConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class PyramidAttentionBroadcastConfig(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -83,6 +113,10 @@ def apply_faster_cache(*args, **kwargs):
 
 def apply_first_block_cache(*args, **kwargs):
     requires_backends(apply_first_block_cache, ["torch"])
+
+
+def apply_layer_skip(*args, **kwargs):
+    requires_backends(apply_layer_skip, ["torch"])
 
 
 def apply_pyramid_attention_broadcast(*args, **kwargs):

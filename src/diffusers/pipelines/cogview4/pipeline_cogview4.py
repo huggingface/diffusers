@@ -520,7 +520,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
         _raise_guidance_deprecation_warning(guidance_scale=guidance_scale)
         if guidance is None:
-            guidance = ClassifierFreeGuidance(scale=guidance_scale)
+            guidance = ClassifierFreeGuidance(guidance_scale=guidance_scale)
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -612,17 +612,12 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         )
         self._num_timesteps = len(timesteps)
 
-        latents, prompt_embeds, original_size, target_size, crops_coords_top_left = guidance.prepare_inputs(
-            latents,
-            (prompt_embeds, negative_prompt_embeds),
-            original_size,
-            target_size,
-            crops_coords_top_left,
-        )
-
         # Denoising loop
         transformer_dtype = self.transformer.dtype
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
+        conds = [prompt_embeds, negative_prompt_embeds, original_size, target_size, crops_coords_top_left]
+        prompt_embeds, negative_prompt_embeds, original_size, target_size, crops_coords_top_left = [[v] for v in conds]
 
         with self.progress_bar(total=num_inference_steps) as progress_bar, self.transformer._cache_context() as cc:
             for i, t in enumerate(timesteps):
@@ -630,11 +625,21 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 if self.interrupt:
                     continue
 
+                guidance.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
+                guidance.prepare_models(self.transformer)
+                latents, prompt_embeds, original_size, target_size, crops_coords_top_left = guidance.prepare_inputs(
+                    latents,
+                    (prompt_embeds[0], negative_prompt_embeds[0]),
+                    original_size[0],
+                    target_size[0],
+                    crops_coords_top_left[0],
+                )
+
                 noise_preds = []
-                for i, (latent, condition, original_size_c, target_size_c, crop_coord_c) in enumerate(
+                for batch_index, (latent, condition, original_size_c, target_size_c, crop_coord_c) in enumerate(
                     zip(latents, prompt_embeds, original_size, target_size, crops_coords_top_left)
                 ):
-                    cc.mark_state(f"batch_{i}")
+                    cc.mark_state(f"batch_{batch_index}")
                     latent = latent.to(transformer_dtype)
                     timestep = t.expand(latent.shape[0])
                     noise_pred = self.transformer(
@@ -651,6 +656,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
                 noise_pred = guidance(*noise_preds)
                 latents = self.scheduler.step(noise_pred, t, latents[0], return_dict=False)[0]
+                guidance.cleanup_models(self.transformer)
 
                 # call the callback, if provided
                 if callback_on_step_end is not None:
@@ -664,10 +670,6 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                         callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds[0])
                     ]
 
-                latents, prompt_embeds = guidance.prepare_inputs(
-                    latents, (prompt_embeds[0], negative_prompt_embeds[0])
-                )
-
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
@@ -675,7 +677,6 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     xm.mark_step()
 
         self._current_timestep = None
-        latents = latents[0]
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor

@@ -18,3 +18,4 @@ from ..utils import is_torch_available
 if is_torch_available():
     from .classifier_free_guidance import ClassifierFreeGuidance
     from .guider_utils import GuidanceMixin, _raise_guidance_deprecation_warning
+    from .skip_layer_guidance import SkipLayerGuidance

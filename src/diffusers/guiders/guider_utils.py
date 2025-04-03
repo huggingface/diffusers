@@ -25,6 +25,19 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 class GuidanceMixin:
     r"""Base mixin class providing the skeleton for implementing guidance techniques."""
 
+    def __init__(self):
+        self._step: int = None
+        self._num_inference_steps: int = None
+        self._timestep: torch.LongTensor = None
+
+    def set_state(self, step: int, num_inference_steps: int, timestep: torch.LongTensor) -> None:
+        self._step = step
+        self._num_inference_steps = num_inference_steps
+        self._timestep = timestep
+
+    def prepare_models(self, denoiser: torch.nn.Module) -> None:
+        pass
+
     def prepare_inputs(self, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
         num_conditions = self.num_conditions
         list_of_inputs = []
@@ -32,15 +45,26 @@ class GuidanceMixin:
             if isinstance(arg, torch.Tensor):
                 list_of_inputs.append([arg] * num_conditions)
             elif isinstance(arg, (tuple, list)):
-                inputs = [x for x in arg if x is not None]
-                if len(inputs) < num_conditions:
-                    raise ValueError(f"Required at least {num_conditions} inputs, but got {len(inputs)}.")
-                list_of_inputs.append(inputs[:num_conditions])
+                if len(arg) != 2:
+                    raise ValueError(
+                        f"Expected a tuple or list of length 2, but got {len(arg)} for argument {arg}. Please provide a tuple/list of length 2 "
+                        f"with the first element being the conditional input and the second element being the unconditional input or None."
+                    )
+                if arg[1] is None:
+                    # Only conditioning inputs for all batches
+                    list_of_inputs.append([arg[0]] * num_conditions)
+                else:
+                    # Alternating conditional and unconditional inputs as batches
+                    inputs = [arg[i % 2] for i in range(num_conditions)]
+                    list_of_inputs.append(inputs)
             else:
                 raise ValueError(
                     f"Expected a tensor, tuple, or list, but got {type(arg)} for argument {arg}. Please provide a tensor, tuple, or list."
                 )
         return tuple(list_of_inputs)
+
+    def cleanup_models(self, denoiser: torch.nn.Module) -> None:
+        pass
 
     def __call__(self, *args) -> Any:
         if len(args) != self.num_conditions:
