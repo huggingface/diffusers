@@ -161,10 +161,10 @@ Your Python environment will find the `main` version of 🤗 Diffusers on the ne
 
 Model weights and files are downloaded from the Hub to a cache which is usually your home directory. You can change the cache location by specifying the `HF_HOME` or `HUGGINFACE_HUB_CACHE` environment variables or configuring the `cache_dir` parameter in methods like [`~DiffusionPipeline.from_pretrained`].
 
-Cached files allow you to run 🤗 Diffusers offline. To prevent 🤗 Diffusers from connecting to the internet, set the `HF_HUB_OFFLINE` environment variable to `True` and 🤗 Diffusers will only load previously downloaded files in the cache.
+Cached files allow you to run 🤗 Diffusers offline. To prevent 🤗 Diffusers from connecting to the internet, set the `HF_HUB_OFFLINE` environment variable to `1` and 🤗 Diffusers will only load previously downloaded files in the cache.
 
 ```shell
-export HF_HUB_OFFLINE=True
+export HF_HUB_OFFLINE=1
 ```
 
 For more details about managing and cleaning the cache, take a look at the [caching](https://huggingface.co/docs/huggingface_hub/guides/manage-cache) guide.
@@ -179,14 +179,16 @@ Telemetry is only sent when loading models and pipelines from the Hub,
 and it is not collected if you're loading local files.
 
 We understand that not everyone wants to share additional information,and we respect your privacy.
-You can disable telemetry collection by setting the `DISABLE_TELEMETRY` environment variable from your terminal:
+You can disable telemetry collection by setting the `HF_HUB_DISABLE_TELEMETRY` environment variable from your terminal:
 
 On Linux/MacOS:
+
 ```bash
-export DISABLE_TELEMETRY=YES
+export HF_HUB_DISABLE_TELEMETRY=1
 ```
 
 On Windows:
+
 ```bash
-set DISABLE_TELEMETRY=YES
+set HF_HUB_DISABLE_TELEMETRY=1
 ```

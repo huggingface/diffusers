@@ -938,6 +938,7 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
+                timestep = timestep * self.transformer.config.timestep_scale
 
                 # predict noise model_output
                 noise_pred = self.transformer(

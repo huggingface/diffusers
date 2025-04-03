@@ -282,6 +282,7 @@ class FromOriginalModelMixin:
         if quantization_config is not None:
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
             hf_quantizer.validate_environment()
+            torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
 
         else:
             hf_quantizer = None

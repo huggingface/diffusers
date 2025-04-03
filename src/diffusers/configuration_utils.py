@@ -35,6 +35,7 @@ from huggingface_hub.utils import (
     validate_hf_hub_args,
 )
 from requests import HTTPError
+from typing_extensions import Self
 
 from . import __version__
 from .utils import (
@@ -185,7 +186,9 @@ class ConfigMixin:
             )
 
     @classmethod
-    def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
+    def from_config(
+        cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs
+    ) -> Union[Self, Tuple[Self, Dict[str, Any]]]:
         r"""
         Instantiate a Python class from a config dictionary.
 

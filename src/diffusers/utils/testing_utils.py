@@ -1161,7 +1161,7 @@ if is_torch_available():
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
         "cuda": torch.cuda.reset_max_memory_allocated,
-        "xpu": None,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
         "default": None,

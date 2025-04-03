@@ -552,9 +552,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
-            torch_dtype (`str` or `torch.dtype`, *optional*):
+            torch_dtype (`str` or `torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
-                dtype is automatically derived from the model's weights.
+                dtype is automatically derived from the model's weights. To load submodels with different dtype pass a
+                `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`). Set the default dtype for
+                unspecified components with `default` (for example `{'transformer': torch.bfloat16, 'default':
+                torch.float16}`). If a component is not specified and no default is set, `torch.float32` is used.
             custom_pipeline (`str`, *optional*):
 
                 <Tip warning={true}>
@@ -703,7 +706,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
-        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+        if torch_dtype is not None and not isinstance(torch_dtype, dict) and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
             logger.warning(
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
@@ -950,6 +953,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 loaded_sub_model = passed_class_obj[name]
             else:
                 # load sub model
+                sub_model_dtype = (
+                    torch_dtype.get(name, torch_dtype.get("default", torch.float32))
+                    if isinstance(torch_dtype, dict)
+                    else torch_dtype
+                )
                 loaded_sub_model = load_sub_model(
                     library_name=library_name,
                     class_name=class_name,
@@ -957,7 +965,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     pipelines=pipelines,
                     is_pipeline_module=is_pipeline_module,
                     pipeline_class=pipeline_class,
-                    torch_dtype=torch_dtype,
+                    torch_dtype=sub_model_dtype,
                     provider=provider,
                     sess_options=sess_options,
                     device_map=current_device_map,
@@ -998,7 +1006,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             for module in missing_modules:
                 init_kwargs[module] = passed_class_obj.get(module, None)
         elif len(missing_modules) > 0:
-            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
+            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - set(optional_kwargs)
             raise ValueError(
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )

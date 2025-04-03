@@ -331,7 +331,7 @@ def apply_group_offloading(
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,
-    low_cpu_mem_usage=False,
+    low_cpu_mem_usage: bool = False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -378,6 +378,10 @@ def apply_group_offloading(
         use_stream (`bool`, defaults to `False`):
             If True, offloading and onloading is done asynchronously using a CUDA stream. This can be useful for
             overlapping computation and data transfer.
+        low_cpu_mem_usage (`bool`, defaults to `False`):
+            If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
+            option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
+            the CPU memory is a bottleneck but may counteract the benefits of using streams.
 
     Example:
         ```python

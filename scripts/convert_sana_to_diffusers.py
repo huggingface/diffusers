@@ -27,7 +27,10 @@ from diffusers.utils.import_utils import is_accelerate_available
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
 ckpt_ids = [
+    "Efficient-Large-Model/Sana_Sprint_0.6B_1024px/checkpoints/Sana_Sprint_0.6B_1024px.pth"
+    "Efficient-Large-Model/Sana_Sprint_1.6B_1024px/checkpoints/Sana_Sprint_1.6B_1024px.pth"
     "Efficient-Large-Model/SANA1.5_4.8B_1024px/checkpoints/SANA1.5_4.8B_1024px.pth",
+    "Efficient-Large-Model/SANA1.5_1.6B_1024px/checkpoints/SANA1.5_1.6B_1024px.pth",
     "Efficient-Large-Model/Sana_1600M_4Kpx_BF16/checkpoints/Sana_1600M_4Kpx_BF16.pth",
     "Efficient-Large-Model/Sana_1600M_2Kpx_BF16/checkpoints/Sana_1600M_2Kpx_BF16.pth",
     "Efficient-Large-Model/Sana_1600M_1024px_MultiLing/checkpoints/Sana_1600M_1024px_MultiLing.pth",
@@ -314,7 +317,6 @@ def main(args):
 
             # SCM Scheduler for Sana Sprint
             scheduler_config = {
-                "num_train_timesteps": 1000,
                 "prediction_type": "trigflow",
                 "sigma_data": 0.5,
             }
@@ -378,7 +380,8 @@ if __name__ == "__main__":
         choices=[
             "SanaMS_1600M_P1_D20",
             "SanaMS_600M_P1_D28",
-            "SanaMS_4800M_P1_D60",
+            "SanaMS1.5_1600M_P1_D20",
+            "SanaMS1.5_4800M_P1_D60",
             "SanaSprint_1600M_P1_D20",
             "SanaSprint_600M_P1_D28",
         ],
@@ -421,7 +424,7 @@ if __name__ == "__main__":
             "cross_attention_dim": 2240,
             "num_layers": 20,
         },
-        "SanaMS1.5__4800M_P1_D60": {
+        "SanaMS1.5_4800M_P1_D60": {
             "num_attention_heads": 70,
             "attention_head_dim": 32,
             "num_cross_attention_heads": 20,
