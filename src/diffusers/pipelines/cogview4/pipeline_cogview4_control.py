@@ -216,9 +216,7 @@ class CogView4ControlPipeline(DiffusionPipeline):
                 device=text_input_ids.device,
             )
             text_input_ids = torch.cat([pad_ids, text_input_ids], dim=1)
-        prompt_embeds = self.text_encoder(
-            text_input_ids.to(self.text_encoder.device), output_hidden_states=True
-        ).hidden_states[-2]
+        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=True).hidden_states[-2]
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         return prompt_embeds
