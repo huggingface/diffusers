@@ -1071,18 +1071,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # 6. Prepare micro-conditions
-        rope_interpolation_scale = (
-            (
-                self.vae_temporal_compression_ratio / frame_rate,
-                self.vae_spatial_compression_ratio,
-                self.vae_spatial_compression_ratio,
-            )
-            if not is_conditioning_image_or_video
-            else None
-        )
-
-        # 7. Denoising loop
+        # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
