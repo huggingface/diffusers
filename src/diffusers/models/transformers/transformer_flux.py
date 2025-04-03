@@ -525,7 +525,7 @@ class FluxTransformer2DModel(
                     hidden_states=hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=joint_attention_kwargs,
+                    #joint_attention_kwargs=joint_attention_kwargs,
                 )
 
             # controlnet residual
