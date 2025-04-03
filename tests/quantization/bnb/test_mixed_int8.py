@@ -221,7 +221,7 @@ class BnB8bitBasicTests(Base8bitTests):
                     self.assertTrue(module.weight.dtype == torch.int8)
 
         # test if inference works.
-        with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.no_grad() and torch.autocast(model.device.type, dtype=torch.float16):
             input_dict_for_transformer = self.get_dummy_inputs()
             model_inputs = {
                 k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
@@ -315,7 +315,7 @@ class BnB8bitBasicTests(Base8bitTests):
         _ = self.model_fp16.float()
 
         # Check that this does not throw an error
-        _ = self.model_fp16.cuda()
+        _ = self.model_fp16.to(torch_device)
 
 
 class Bnb8bitDeviceTests(Base8bitTests):
