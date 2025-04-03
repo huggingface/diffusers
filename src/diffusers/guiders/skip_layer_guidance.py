@@ -26,23 +26,18 @@ class SkipLayerGuidance(GuidanceMixin):
     """
     Skip Layer Guidance (SLG): https://github.com/Stability-AI/sd3.5
 
-    CFG is a technique used to improve generation quality and condition-following in diffusion models. It works by
-    jointly training a model on both conditional and unconditional data, and using a weighted sum of the two during
-    inference. This allows the model to tradeoff between generation quality and sample diversity.
+    SLG was introduced by StabilityAI for improving structure and anotomy coherence in generated images. It works by
+    skipping the forward pass of specified transformer blocks during the denoising process on an additional conditional
+    batch of data, apart from the conditional and unconditional batches already used in CFG
+    ([~guiders.classifier_free_guidance.ClassifierFreeGuidance]), and then scaling and shifting the CFG predictions
+    based on the difference between conditional without skipping and conditional with skipping predictions.
 
-    The original paper proposes scaling and shifting the conditional distribution based on the difference between
-    conditional and unconditional predictions. [x_pred = x_cond + scale * (x_cond - x_uncond)]
+    The intution behind SLG can be thought of as moving the CFG predicted distribution estimates further away from
+    worse versions of the conditional distribution estimates (because skipping layers is equivalent to using a worse
+    version of the model for the conditional prediction).
 
-    Diffusers implemented the scaling and shifting on the unconditional prediction instead, which is equivalent to what
-    the original paper proposed in theory. [x_pred = x_uncond + scale * (x_cond - x_uncond)]
-
-    The intution behind the original formulation can be thought of as moving the conditional distribution estimates
-    further away from the unconditional distribution estimates, while the diffusers-native implementation can be
-    thought of as moving the unconditional distribution towards the conditional distribution estimates to get rid of
-    the unconditional predictions (usually negative features like "bad quality, bad anotomy, watermarks", etc.)
-
-    The `use_original_formulation` argument can be set to `True` to use the original CFG formulation mentioned in the
-    paper. By default, we use the diffusers-native implementation that has been in the codebase for a long time.
+    Additional reading:
+    - [Guiding a Diffusion Model with a Bad Version of Itself](https://huggingface.co/papers/2406.02507)
 
     Args:
         guidance_scale (`float`, defaults to `7.5`):
