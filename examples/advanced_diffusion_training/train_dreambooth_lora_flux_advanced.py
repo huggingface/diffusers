@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -227,7 +227,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     autocast_ctx = nullcontext()
 
     with autocast_ctx:
@@ -378,7 +378,7 @@ def parse_args(input_args=None):
         default=None,
         help="the concept to use to initialize the new inserted tokens when training with "
         "--train_text_encoder_ti = True. By default, new tokens (<si><si+1>) are initialized with random value. "
-        "Alternatively, you could specify a different word/words whos value will be used as the starting point for the new inserted tokens. "
+        "Alternatively, you could specify a different word/words whose value will be used as the starting point for the new inserted tokens. "
         "--num_new_tokens_per_abstraction is ignored when initializer_concept is provided",
     )
     parser.add_argument(
@@ -662,7 +662,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            "The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. "
+            "The transformer modules to apply LoRA training on. Please specify the layers in a comma separated. "
             'E.g. - "to_k,to_q,to_v,to_out.0" will result in lora training of attention layers only. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/README_flux.md'
         ),
     )
@@ -880,9 +880,7 @@ class TokenEmbeddingsHandler:
         idx_to_text_encoder_name = {0: "clip_l", 1: "t5"}
         for idx, text_encoder in enumerate(self.text_encoders):
             train_ids = self.train_ids if idx == 0 else self.train_ids_t5
-            embeds = (
-                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
-            )
+            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.shared
             assert embeds.weight.data.shape[0] == len(self.tokenizers[idx]), "Tokenizers should be the same."
             new_token_embeddings = embeds.weight.data[train_ids]
 
@@ -904,9 +902,7 @@ class TokenEmbeddingsHandler:
     @torch.no_grad()
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
-            embeds = (
-                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
-            )
+            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.shared
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
             embeds.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
@@ -1749,7 +1745,7 @@ def main(args):
         if args.enable_t5_ti:  # whether to do pivotal tuning/textual inversion for T5 as well
             text_lora_parameters_two = []
             for name, param in text_encoder_two.named_parameters():
-                if "token_embedding" in name:
+                if "shared" in name:
                     # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
                     param.data = param.to(dtype=torch.float32)
                     param.requires_grad = True

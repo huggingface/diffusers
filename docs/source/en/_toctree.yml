@@ -77,8 +77,20 @@
     title: Outpainting
   title: Advanced inference
 - sections:
+  - local: hybrid_inference/overview
+    title: Overview
+  - local: hybrid_inference/vae_decode
+    title: VAE Decode
+  - local: hybrid_inference/vae_encode
+    title: VAE Encode
+  - local: hybrid_inference/api_reference
+    title: API Reference
+  title: Hybrid Inference
+- sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
+  - local: using-diffusers/consisid
+    title: ConsisID
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
@@ -87,6 +99,8 @@
     title: Kandinsky
   - local: using-diffusers/ip_adapter
     title: IP-Adapter
+  - local: using-diffusers/omnigen
+    title: OmniGen
   - local: using-diffusers/pag
     title: PAG
   - local: using-diffusers/controlnet
@@ -161,6 +175,8 @@
     title: gguf
   - local: quantization/torchao
     title: torchao
+  - local: quantization/quanto 
+    title: quanto
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
@@ -270,10 +286,16 @@
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
+      - local: api/models/consisid_transformer3d
+        title: ConsisIDTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
         title: CogView3PlusTransformer2DModel
+      - local: api/models/cogview4_transformer2d
+        title: CogView4Transformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
+      - local: api/models/easyanimate_transformer3d
+        title: EasyAnimateTransformer3DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/hunyuan_transformer2d
@@ -284,10 +306,14 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/lumina2_transformer2d
+        title: Lumina2Transformer2DModel
       - local: api/models/ltx_video_transformer3d
         title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
+      - local: api/models/omnigen_transformer
+        title: OmniGenTransformer2DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -302,6 +328,8 @@
         title: Transformer2DModel
       - local: api/models/transformer_temporal
         title: TransformerTemporalModel
+      - local: api/models/wan_transformer_3d
+        title: WanTransformer3DModel
       title: Transformers
     - sections:
       - local: api/models/stable_cascade_unet
@@ -330,8 +358,12 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
+      - local: api/models/autoencoderkl_magvit
+        title: AutoencoderKLMagvit
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
+      - local: api/models/autoencoder_kl_wan
+        title: AutoencoderKLWan
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
       - local: api/models/autoencoder_dc
@@ -372,6 +404,10 @@
       title: CogVideoX
     - local: api/pipelines/cogview3
       title: CogView3
+    - local: api/pipelines/cogview4
+      title: CogView4
+    - local: api/pipelines/consisid
+      title: ConsisID
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
@@ -402,6 +438,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/easyanimate
+      title: EasyAnimate
     - local: api/pipelines/flux
       title: Flux
     - local: api/pipelines/control_flux_inpaint
@@ -432,6 +470,8 @@
       title: LEDITS++
     - local: api/pipelines/ltx_video
       title: LTXVideo
+    - local: api/pipelines/lumina2
+      title: Lumina 2.0
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
@@ -442,6 +482,8 @@
       title: MultiDiffusion
     - local: api/pipelines/musicldm
       title: MusicLDM
+    - local: api/pipelines/omnigen
+      title: OmniGen
     - local: api/pipelines/pag
       title: PAG
     - local: api/pipelines/paint_by_example
@@ -454,6 +496,8 @@
       title: PixArt-Σ
     - local: api/pipelines/sana
       title: Sana
+    - local: api/pipelines/sana_sprint
+      title: Sana Sprint
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
@@ -514,6 +558,8 @@
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
+    - local: api/pipelines/wan
+      title: Wan
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines
@@ -523,6 +569,10 @@
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
+    - local: api/schedulers/ddim_cogvideox
+      title: CogVideoXDDIMScheduler
+    - local: api/schedulers/multistep_dpm_solver_cogvideox
+      title: CogVideoXDPMScheduler
     - local: api/schedulers/consistency_decoder
       title: ConsistencyDecoderScheduler
     - local: api/schedulers/cosine_dpm
@@ -592,6 +642,8 @@
       title: Attention Processor
     - local: api/activations
       title: Custom activation functions
+    - local: api/cache
+      title: Caching methods
     - local: api/normalization
       title: Custom normalization layers
     - local: api/utilities

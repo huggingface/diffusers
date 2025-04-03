@@ -219,6 +219,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         "add_time_ids",
         "mask",
         "masked_image_latents",
+        "control_image",
     ]
 
     def __init__(
@@ -726,7 +727,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         if padding_mask_crop is not None:
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                    f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
                 )
             if not isinstance(mask_image, PIL.Image.Image):
                 raise ValueError(
@@ -734,7 +735,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                     f" {type(mask_image)}."
                 )
             if output_type != "pil":
-                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is {output_type}.")
 
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
@@ -762,26 +763,6 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
             and isinstance(self.controlnet._orig_mod, ControlNetUnionModel)
         ):
             self.check_image(image, prompt, prompt_embeds)
-
-        else:
-            assert False
-
-        # Check `controlnet_conditioning_scale`
-        if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
-        ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-
-        elif (
-            isinstance(self.controlnet, ControlNetUnionModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetUnionModel)
-        ):
-            if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
 
         else:
             assert False
@@ -1370,6 +1351,8 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
 
         if not isinstance(control_image, list):
             control_image = [control_image]
+        else:
+            control_image = control_image.copy()
 
         if not isinstance(control_mode, list):
             control_mode = [control_mode]
@@ -1761,6 +1744,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    control_image = callback_outputs.pop("control_image", control_image)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

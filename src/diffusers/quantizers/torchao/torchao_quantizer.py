@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from packaging import version
 
-from ...utils import get_module_from_name, is_torch_available, is_torch_version, is_torchao_available, logging
+from ...utils import (
+    get_module_from_name,
+    is_torch_available,
+    is_torch_version,
+    is_torchao_available,
+    is_torchao_version,
+    logging,
+)
 from ..base import DiffusersQuantizer
 
 
@@ -60,6 +67,43 @@ if is_torch_available():
 
 if is_torchao_available():
     from torchao.quantization import quantize_
+
+
+def _update_torch_safe_globals():
+    safe_globals = [
+        (torch.uint1, "torch.uint1"),
+        (torch.uint2, "torch.uint2"),
+        (torch.uint3, "torch.uint3"),
+        (torch.uint4, "torch.uint4"),
+        (torch.uint5, "torch.uint5"),
+        (torch.uint6, "torch.uint6"),
+        (torch.uint7, "torch.uint7"),
+    ]
+    try:
+        from torchao.dtypes import NF4Tensor
+        from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
+        from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
+        from torchao.dtypes.uintx.uintx_layout import UintxAQTTensorImpl, UintxTensor
+
+        safe_globals.extend([UintxTensor, UInt4Tensor, UintxAQTTensorImpl, Float8AQTTensorImpl, NF4Tensor])
+
+    except (ImportError, ModuleNotFoundError) as e:
+        logger.warning(
+            "Unable to import `torchao` Tensor objects. This may affect loading checkpoints serialized with `torchao`"
+        )
+        logger.debug(e)
+
+    finally:
+        torch.serialization.add_safe_globals(safe_globals=safe_globals)
+
+
+if (
+    is_torch_available()
+    and is_torch_version(">=", "2.6.0")
+    and is_torchao_available()
+    and is_torchao_version(">=", "0.7.0")
+):
+    _update_torch_safe_globals()
 
 
 logger = logging.get_logger(__name__)
@@ -215,6 +259,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Dict[str, Any],
         unexpected_keys: List[str],
+        **kwargs,
     ):
         r"""
         Each nn.Linear layer that needs to be quantized is processsed here. First, we set the value the weight tensor,

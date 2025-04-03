@@ -30,7 +30,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -55,6 +55,7 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     required_optional_params = PipelineTesterMixin.required_optional_params
+    test_layerwise_casting = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -127,10 +128,12 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    @unittest.skip("Not supported.")
     def test_sequential_cpu_offload_forward_pass(self):
         # TODO(YiYi) need to fix later
         pass
 
+    @unittest.skip("Not supported.")
     def test_sequential_offload_forward_pass_twice(self):
         # TODO(YiYi) need to fix later
         pass
@@ -139,6 +142,76 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_single_identical(
             expected_max_diff=1e-3,
         )
+
+    def test_feed_forward_chunking(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_no_chunking = image[0, -3:, -3:, -1]
+
+        pipe.transformer.enable_forward_chunking(chunk_size=1, dim=0)
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_chunking = image[0, -3:, -3:, -1]
+
+        max_diff = np.abs(to_np(image_slice_no_chunking) - to_np(image_slice_chunking)).max()
+        self.assertLess(max_diff, 1e-4)
+
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image = pipe(**inputs)[0]
+        original_image_slice = image[0, -3:, -3:, -1]
+
+        pipe.transformer.fuse_qkv_projections()
+        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
+        # to the pipeline level.
+        pipe.transformer.fuse_qkv_projections()
+        assert check_qkv_fusion_processors_exist(
+            pipe.transformer
+        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image_fused = pipe(**inputs)[0]
+        image_slice_fused = image_fused[0, -3:, -3:, -1]
+
+        pipe.transformer.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image_disabled = pipe(**inputs)[0]
+        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."
+
+    @unittest.skip(
+        "Test not supported as `encode_prompt` is called two times separately which deivates from about 99% of the pipelines we have."
+    )
+    def test_encode_prompt_works_in_isolation(self):
+        pass
 
     def test_save_load_optional_components(self):
         components = self.get_dummy_components()
@@ -233,73 +306,9 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1e-4)
 
-    def test_feed_forward_chunking(self):
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_no_chunking = image[0, -3:, -3:, -1]
-
-        pipe.transformer.enable_forward_chunking(chunk_size=1, dim=0)
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_chunking = image[0, -3:, -3:, -1]
-
-        max_diff = np.abs(to_np(image_slice_no_chunking) - to_np(image_slice_chunking)).max()
-        self.assertLess(max_diff, 1e-4)
-
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image = pipe(**inputs)[0]
-        original_image_slice = image[0, -3:, -3:, -1]
-
-        pipe.transformer.fuse_qkv_projections()
-        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
-        # to the pipeline level.
-        pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(
-            pipe.transformer
-        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_fused = pipe(**inputs)[0]
-        image_slice_fused = image_fused[0, -3:, -3:, -1]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_disabled = pipe(**inputs)[0]
-        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
-
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
-
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class HunyuanDiTPipelineIntegrationTests(unittest.TestCase):
     prompt = "一个宇航员在骑马"
 
@@ -319,7 +328,7 @@ class HunyuanDiTPipelineIntegrationTests(unittest.TestCase):
         pipe = HunyuanDiTPipeline.from_pretrained(
             "XCLiu/HunyuanDiT-0523", revision="refs/pr/2", torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         image = pipe(

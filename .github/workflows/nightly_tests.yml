@@ -265,7 +265,7 @@ jobs:
 
       - name: Run PyTorch CUDA tests
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -414,10 +414,16 @@ jobs:
         config:
           - backend: "bitsandbytes"
             test_location: "bnb"
+            additional_deps: ["peft"]
           - backend: "gguf"
             test_location: "gguf"
+            additional_deps: []
           - backend: "torchao"
             test_location: "torchao"
+            additional_deps: []
+          - backend: "optimum_quanto"
+            test_location: "quanto"
+            additional_deps: []
     runs-on:
       group: aws-g6e-xlarge-plus
     container:
@@ -435,6 +441,9 @@ jobs:
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install -U ${{ matrix.config.backend }}
+          if [ "${{ join(matrix.config.additional_deps, ' ') }}" != "" ]; then
+              python -m uv pip install ${{ join(matrix.config.additional_deps, ' ') }}
+          fi
           python -m uv pip install pytest-reportlog
       - name: Environment
         run: |
@@ -505,7 +514,7 @@ jobs:
 #        shell: arch -arch arm64 bash {0}
 #        env:
 #          HF_HOME: /System/Volumes/Data/mnt/cache
-#          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+#          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
 #        run: |
 #          ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps \
 #            --report-log=tests_torch_mps.log \
@@ -561,7 +570,7 @@ jobs:
 #        shell: arch -arch arm64 bash {0}
 #        env:
 #          HF_HOME: /System/Volumes/Data/mnt/cache
-#          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+#          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
 #        run: |
 #          ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps \
 #            --report-log=tests_torch_mps.log \
