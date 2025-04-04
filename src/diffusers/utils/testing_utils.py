@@ -26,6 +26,7 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
+from .constants import DIFFUSERS_REQUEST_TIMEOUT
 from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -594,7 +595,7 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
             # local_path can be passed to correct images of tests
             return Path(local_path, arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]).as_posix()
         elif arry.startswith("http://") or arry.startswith("https://"):
-            response = requests.get(arry)
+            response = requests.get(arry, timeout=DIFFUSERS_REQUEST_TIMEOUT)
             response.raise_for_status()
             arry = np.load(BytesIO(response.content))
         elif os.path.isfile(arry):
@@ -615,7 +616,7 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
 
 
 def load_pt(url: str, map_location: str):
-    response = requests.get(url)
+    response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
     arry = torch.load(BytesIO(response.content), map_location=map_location)
     return arry
@@ -634,7 +635,7 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
-            image = PIL.Image.open(requests.get(image, stream=True).raw)
+            image = PIL.Image.open(requests.get(image, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT).raw)
         elif os.path.isfile(image):
             image = PIL.Image.open(image)
         else:
@@ -1161,7 +1162,7 @@ if is_torch_available():
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
         "cuda": torch.cuda.reset_max_memory_allocated,
-        "xpu": None,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
         "default": None,
