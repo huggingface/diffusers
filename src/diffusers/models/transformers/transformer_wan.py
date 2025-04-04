@@ -537,7 +537,7 @@ class WanPAGAttnProcessor2_0:
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
         else:
-            # Perturbed attention applied only when self-attention
+            # Perturbed attention applied only to self-attention path
             hidden_states = value
 
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
