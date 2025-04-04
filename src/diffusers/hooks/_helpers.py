@@ -30,7 +30,7 @@ from ..models.transformers.transformer_hunyuan_video import (
 )
 from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
 from ..models.transformers.transformer_mochi import MochiTransformerBlock
-from ..models.transformers.transformer_wan import WanTransformerBlock
+from ..models.transformers.transformer_wan import WanAttnProcessor2_0, WanPAGAttnProcessor2_0, WanTransformerBlock
 
 
 @dataclass
@@ -183,6 +183,14 @@ def _register_guidance_metadata():
         model_class=CogView4AttnProcessor,
         metadata=GuidanceMetadata(
             perturbed_attention_guidance_processor_cls=CogView4PAGAttnProcessor,
+        ),
+    )
+
+    # Wan
+    GuidanceMetadataRegistry.register(
+        model_class=WanAttnProcessor2_0,
+        metadata=GuidanceMetadata(
+            perturbed_attention_guidance_processor_cls=WanPAGAttnProcessor2_0,
         ),
     )
 

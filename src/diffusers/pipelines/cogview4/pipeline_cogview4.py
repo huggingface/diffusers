@@ -617,7 +617,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         conds = [prompt_embeds, negative_prompt_embeds, original_size, target_size, crops_coords_top_left]
-        prompt_embeds, negative_prompt_embeds, original_size, target_size, crops_coords_top_left = [[v] for v in conds]
+        prompt_embeds, negative_prompt_embeds, original_size, target_size, crops_coords_top_left = [[c] for c in conds]
 
         with self.progress_bar(total=num_inference_steps) as progress_bar, self.transformer._cache_context() as cc:
             for i, t in enumerate(timesteps):
