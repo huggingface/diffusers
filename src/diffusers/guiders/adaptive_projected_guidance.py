@@ -39,7 +39,8 @@ class AdaptiveProjectedGuidance(GuidanceMixin):
             Flawed](https://huggingface.co/papers/2305.08891).
         use_original_formulation (`bool`, defaults to `False`):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
-            we use the diffusers-native implementation that has been in the codebase for a long time.
+            we use the diffusers-native implementation that has been in the codebase for a long time. See
+            [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
     """
 
     _input_predictions = ["pred_cond", "pred_uncond"]

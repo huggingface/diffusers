@@ -109,25 +109,25 @@ class PerturbedAttentionGuidance(GuidanceMixin):
                 key = "pred_perturbed"
         self._preds[key] = pred
 
-        # Prepare denoiser for perturbed attention prediction if needed
-        if not self._is_pag_enabled():
-            return
-        should_register_pag = (self._is_cfg_enabled() and self._num_outputs_prepared == 2) or (
-            not self._is_cfg_enabled() and self._num_outputs_prepared == 1
-        )
-        if should_register_pag:
-            self._is_pag_batch = True
-            self._original_processors = _replace_attention_processors(
-                self._denoiser,
-                self.pag_applied_layers,
-                skip_context_attention=self.skip_context_attention,
-                metadata_name="perturbed_attention_guidance_processor_cls",
-            )
-        elif self._is_pag_batch:
-            # Restore the original attention processors
+        # Restore the original attention processors if previously replaced
+        if self._is_pag_batch:
             _replace_attention_processors(self._denoiser, processors=self._original_processors)
             self._is_pag_batch = False
             self._original_processors = None
+
+        # Prepare denoiser for perturbed attention prediction if needed
+        if self._is_pag_enabled():
+            should_register_pag = (self._is_cfg_enabled() and self._num_outputs_prepared == 2) or (
+                not self._is_cfg_enabled() and self._num_outputs_prepared == 1
+            )
+            if should_register_pag:
+                self._is_pag_batch = True
+                self._original_processors = _replace_attention_processors(
+                    self._denoiser,
+                    self.pag_applied_layers,
+                    skip_context_attention=self.skip_context_attention,
+                    metadata_name="perturbed_attention_guidance_processor_cls",
+                )
 
     def cleanup_models(self, denoiser: torch.nn.Module):
         self._denoiser = None

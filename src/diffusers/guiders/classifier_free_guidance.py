@@ -31,8 +31,9 @@ class ClassifierFreeGuidance(GuidanceMixin):
     The original paper proposes scaling and shifting the conditional distribution based on the difference between
     conditional and unconditional predictions. [x_pred = x_cond + scale * (x_cond - x_uncond)]
 
-    Diffusers implemented the scaling and shifting on the unconditional prediction instead, which is equivalent to what
-    the original paper proposed in theory. [x_pred = x_uncond + scale * (x_cond - x_uncond)]
+    Diffusers implemented the scaling and shifting on the unconditional prediction instead based on the [Imagen
+    paper](https://huggingface.co/papers/2205.11487), which is equivalent to what the original paper proposed in
+    theory. [x_pred = x_uncond + scale * (x_cond - x_uncond)]
 
     The intution behind the original formulation can be thought of as moving the conditional distribution estimates
     further away from the unconditional distribution estimates, while the diffusers-native implementation can be
@@ -53,7 +54,8 @@ class ClassifierFreeGuidance(GuidanceMixin):
             Flawed](https://huggingface.co/papers/2305.08891).
         use_original_formulation (`bool`, defaults to `False`):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
-            we use the diffusers-native implementation that has been in the codebase for a long time.
+            we use the diffusers-native implementation that has been in the codebase for a long time. See
+            [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
     """
 
     _input_predictions = ["pred_cond", "pred_uncond"]
