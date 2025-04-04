@@ -50,7 +50,7 @@ pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch
 pipe.to("cuda")
 
 # Increasing the threshold may lead to faster inference speeds, but may also lead to poorer quality of generated videos.
-# Smaller values between 0.02-2.0 are recommended based on the model being used. The default value is 0.05.
+# Smaller values between 0.02-0.20 are recommended based on the model being used. The default value is 0.05.
 config = FirstBlockCacheConfig(threshold=0.07)
 pipe.transformer.enable_cache(config)
 ```
