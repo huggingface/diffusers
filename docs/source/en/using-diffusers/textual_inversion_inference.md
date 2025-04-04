@@ -55,10 +55,8 @@ pipeline.load_textual_inversion(
     weight_name="easynegative.safetensors",
     token="easynegative"
 )
-
 prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 negative_prompt = "easynegative"
-
 pipeline(prompt, negative_prompt).images[0]
 ```
 
