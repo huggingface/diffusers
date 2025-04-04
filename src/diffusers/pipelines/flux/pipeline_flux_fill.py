@@ -655,7 +655,7 @@ class FluxFillPipeline(
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxImg2ImgPipeline.prepare_latents
+    # Copied from diffusers.pipelines.flux.pipeline_flux_img2img.FluxImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
         image,
