@@ -16,7 +16,11 @@ from dataclasses import dataclass
 from typing import Any, Callable, Type
 
 from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
-from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
+from ..models.transformers.transformer_cogview4 import (
+    CogView4AttnProcessor,
+    CogView4PAGAttnProcessor,
+    CogView4TransformerBlock,
+)
 from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
 from ..models.transformers.transformer_hunyuan_video import (
     HunyuanVideoSingleTransformerBlock,
@@ -45,6 +49,25 @@ class TransformerBlockRegistry:
 
     @classmethod
     def get(cls, model_class: Type) -> TransformerBlockMetadata:
+        if model_class not in cls._registry:
+            raise ValueError(f"Model class {model_class} not registered.")
+        return cls._registry[model_class]
+
+
+@dataclass
+class GuidanceMetadata:
+    perturbed_attention_guidance_processor_cls: Type = None
+
+
+class GuidanceMetadataRegistry:
+    _registry = {}
+
+    @classmethod
+    def register(cls, model_class: Type, metadata: GuidanceMetadata):
+        cls._registry[model_class] = metadata
+
+    @classmethod
+    def get(cls, model_class: Type) -> GuidanceMetadata:
         if model_class not in cls._registry:
             raise ValueError(f"Model class {model_class} not registered.")
         return cls._registry[model_class]
@@ -154,6 +177,16 @@ def _register_transformer_blocks_metadata():
     )
 
 
+def _register_guidance_metadata():
+    # CogView4
+    GuidanceMetadataRegistry.register(
+        model_class=CogView4AttnProcessor,
+        metadata=GuidanceMetadata(
+            perturbed_attention_guidance_processor_cls=CogView4PAGAttnProcessor,
+        ),
+    )
+
+
 # fmt: off
 def _skip_block_output_fn___hidden_states_0___ret___hidden_states(self, *args, **kwargs):
     hidden_states = kwargs.get("hidden_states", None)
@@ -197,3 +230,4 @@ _skip_block_output_fn_WanTransformerBlock = _skip_block_output_fn___hidden_state
 
 
 _register_transformer_blocks_metadata()
+_register_guidance_metadata()

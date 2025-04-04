@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+import re
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from ..utils import deprecate, get_logger
+
+
+if TYPE_CHECKING:
+    from ..models.attention_processor import AttentionProcessor
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -127,6 +132,72 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
     noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
     return noise_cfg
+
+
+def _replace_attention_processors(
+    module: torch.nn.Module,
+    pag_applied_layers: Optional[Union[str, List[str]]] = None,
+    skip_context_attention: bool = False,
+    processors: Optional[List[Tuple[torch.nn.Module, "AttentionProcessor"]]] = None,
+    metadata_name: Optional[str] = None,
+) -> Optional[List[Tuple[torch.nn.Module, "AttentionProcessor"]]]:
+    if processors is not None and metadata_name is not None:
+        raise ValueError("Cannot pass both `processors` and `metadata_name` at the same time.")
+    if metadata_name is not None:
+        if isinstance(pag_applied_layers, str):
+            pag_applied_layers = [pag_applied_layers]
+        return _replace_layers_with_guidance_processors(
+            module, pag_applied_layers, skip_context_attention, metadata_name
+        )
+    if processors is not None:
+        _replace_layers_with_existing_processors(processors)
+
+
+def _replace_layers_with_guidance_processors(
+    module: torch.nn.Module,
+    pag_applied_layers: List[str],
+    skip_context_attention: bool,
+    metadata_name: str,
+) -> List[Tuple[torch.nn.Module, "AttentionProcessor"]]:
+    from ..hooks._common import _ATTENTION_CLASSES
+    from ..hooks._helpers import GuidanceMetadataRegistry
+
+    processors = []
+    for name, submodule in module.named_modules():
+        if (
+            (not isinstance(submodule, _ATTENTION_CLASSES))
+            or (getattr(submodule, "processor", None) is None)
+            or not (
+                any(
+                    re.search(pag_layer, name) is not None and not _is_fake_integral_match(pag_layer, name)
+                    for pag_layer in pag_applied_layers
+                )
+            )
+        ):
+            continue
+        old_attention_processor = submodule.processor
+        metadata = GuidanceMetadataRegistry.get(old_attention_processor.__class__)
+        new_attention_processor_cls = getattr(metadata, metadata_name)
+        new_attention_processor = new_attention_processor_cls()
+        # !!! dunder methods cannot be replaced on instances !!!
+        # if "skip_context_attention" in inspect.signature(new_attention_processor.__call__).parameters:
+        #     new_attention_processor.__call__ = partial(
+        #         new_attention_processor.__call__, skip_context_attention=skip_context_attention
+        #     )
+        submodule.processor = new_attention_processor
+        processors.append((submodule, old_attention_processor))
+    return processors
+
+
+def _replace_layers_with_existing_processors(processors: List[Tuple[torch.nn.Module, "AttentionProcessor"]]) -> None:
+    for module, proc in processors:
+        module.processor = proc
+
+
+def _is_fake_integral_match(layer_id, name):
+    layer_id = layer_id.split(".")[-1]
+    name = name.split(".")[-1]
+    return layer_id.isnumeric() and name.isnumeric() and layer_id == name
 
 
 def _raise_guidance_deprecation_warning(

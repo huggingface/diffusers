@@ -131,7 +131,13 @@ except OptionalDependencyNotAvailable:
 
 else:
     _import_structure["guiders"].extend(
-        ["AdaptiveProjectedGuidance", "ClassifierFreeGuidance", "ClassifierFreeZeroStarGuidance", "SkipLayerGuidance"]
+        [
+            "AdaptiveProjectedGuidance",
+            "ClassifierFreeGuidance",
+            "ClassifierFreeZeroStarGuidance",
+            "PerturbedAttentionGuidance",
+            "SkipLayerGuidance",
+        ]
     )
     _import_structure["hooks"].extend(
         [
@@ -720,6 +726,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AdaptiveProjectedGuidance,
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
+            PerturbedAttentionGuidance,
             SkipLayerGuidance,
         )
         from .hooks import (

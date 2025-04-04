@@ -186,30 +186,22 @@ class SkipLayerGuidance(GuidanceMixin):
         pred_cond_skip: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         pred = None
-        skip_start_step = int(self.skip_layer_guidance_start * self._num_inference_steps)
-        skip_stop_step = int(self.skip_layer_guidance_stop * self._num_inference_steps)
 
         if not self._is_cfg_enabled() and not self._is_slg_enabled():
             pred = pred_cond
         elif not self._is_cfg_enabled():
-            if skip_start_step < self._step < skip_stop_step:
-                shift = pred_cond - pred_cond_skip
-                pred = pred_cond if self.use_original_formulation else pred_cond_skip
-                pred = pred + self.skip_layer_guidance_scale * shift
-            else:
-                pred = pred_cond
+            shift = pred_cond - pred_cond_skip
+            pred = pred_cond if self.use_original_formulation else pred_cond_skip
+            pred = pred + self.skip_layer_guidance_scale * shift
         elif not self._is_slg_enabled():
             shift = pred_cond - pred_uncond
             pred = pred_cond if self.use_original_formulation else pred_uncond
             pred = pred + self.guidance_scale * shift
         else:
             shift = pred_cond - pred_uncond
+            shift_skip = pred_cond - pred_cond_skip
             pred = pred_cond if self.use_original_formulation else pred_uncond
-            pred = pred + self.guidance_scale * shift
-
-            if skip_start_step < self._step < skip_stop_step:
-                shift_skip = pred_cond - pred_cond_skip
-                pred = pred + self.skip_layer_guidance_scale * shift_skip
+            pred = pred + self.guidance_scale * shift + self.skip_layer_guidance_scale * shift_skip
 
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
@@ -234,4 +226,6 @@ class SkipLayerGuidance(GuidanceMixin):
     def _is_slg_enabled(self) -> bool:
         skip_start_step = int(self.skip_layer_guidance_start * self._num_inference_steps)
         skip_stop_step = int(self.skip_layer_guidance_stop * self._num_inference_steps)
-        return skip_start_step < self._step < skip_stop_step
+        is_within_range = skip_start_step < self._step < skip_stop_step
+        is_zero = math.isclose(self.skip_layer_guidance_scale, 0.0)
+        return is_within_range and not is_zero
