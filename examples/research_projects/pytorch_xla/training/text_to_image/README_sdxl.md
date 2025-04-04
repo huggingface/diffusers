@@ -63,7 +63,7 @@ gcloud compute tpus tpu-vm ssh ${TPU_NAME} \
 --command='
 git clone -b sdxl_xla https://github.com/pytorch-tpu/diffusers.git
 cd diffusers
-cd examples/research_projects/pytorch_xla/text_to_image/
+cd examples/research_projects/pytorch_xla/training/text_to_image/
 pip3 install -r requirements.txt
 pip3 install pillow --upgrade
 cd ../../..
@@ -95,7 +95,7 @@ export PER_HOST_BATCH_SIZE=64 # This is known to work on TPU v5p
 export TRAIN_STEPS=50
 export PROFILE_START_STEP=10
 export OUTPUT_DIR=/tmp/trained-model/
-python diffusers/examples/research_projects/pytorch_xla/text_to_image/train_sdxl.py --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 --dataset_name=$DATASET_NAME --resolution=1024 --center_crop --random_flip --train_batch_size=$PER_HOST_BATCH_SIZE  --max_train_steps=$TRAIN_STEPS --measure_start_step=$PROFILE_START_STEP --learning_rate=1e-06 --mixed_precision=bf16 --profile_duration=5000 --output_dir=$OUTPUT_DIR --dataloader_num_workers=8 --loader_prefetch_size=4 --device_prefetch_size=4 --xla_gradient_checkpointing'
+python diffusers/examples/research_projects/pytorch_xla/training/text_to_image/train_sdxl.py --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 --dataset_name=$DATASET_NAME --resolution=1024 --center_crop --random_flip --train_batch_size=$PER_HOST_BATCH_SIZE  --max_train_steps=$TRAIN_STEPS --measure_start_step=$PROFILE_START_STEP --learning_rate=1e-06 --mixed_precision=bf16 --profile_duration=5000 --output_dir=$OUTPUT_DIR --dataloader_num_workers=8 --loader_prefetch_size=4 --device_prefetch_size=4 --xla_gradient_checkpointing'
 ```
 
 Pass `--print_loss` if you would like to see the loss printed at every step. Be aware that printing the loss at every step disrupts the optimized flow execution, thus the step time will be longer. 
