@@ -13,9 +13,8 @@
 # limitations under the License.
 
 import html
-
 import types
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
 import regex as re
@@ -25,12 +24,12 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.loaders import WanLoraLoaderMixin
 from diffusers.models import AutoencoderKLWan, WanTransformer3DModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.wan.pipeline_output import WanPipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.wan.pipeline_output import WanPipelineOutput
 
 
 if is_torch_xla_available():
@@ -62,7 +61,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
-    
+
         >>> # Configure STG mode options
         >>> stg_applied_layers_idx = [8] # Layer indices from 0 to 39 for 14b or 0 to 29 for 1.3b
         >>> stg_scale = 1.0 # Set 0.0 for CFG
@@ -98,6 +97,7 @@ def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
 
+
 def forward_with_stg(
     self,
     hidden_states: torch.Tensor,
@@ -107,35 +107,35 @@ def forward_with_stg(
 ) -> torch.Tensor:
     return hidden_states
 
+
 def forward_without_stg(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
-        rotary_emb: torch.Tensor,
-    ) -> torch.Tensor:
-        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb.float()
-        ).chunk(6, dim=1)
+    self,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    rotary_emb: torch.Tensor,
+) -> torch.Tensor:
+    shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
+        self.scale_shift_table + temb.float()
+    ).chunk(6, dim=1)
 
-        # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+    # 1. Self-attention
+    norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+    attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
+    hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
-        # 2. Cross-attention
-        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
-        attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
-        hidden_states = hidden_states + attn_output
+    # 2. Cross-attention
+    norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
+    attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
+    hidden_states = hidden_states + attn_output
 
-        # 3. Feed-forward
-        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
-        )
-        ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+    # 3. Feed-forward
+    norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(hidden_states)
+    ff_output = self.ffn(norm_hidden_states)
+    hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
-        return hidden_states
+    return hidden_states
+
 
 class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
@@ -386,7 +386,7 @@ class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1.0
-    
+
     @property
     def do_spatio_temporal_guidance(self):
         return self._stg_scale > 0.0
@@ -577,9 +577,7 @@ class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 if self.do_spatio_temporal_guidance:
                     for idx, block in enumerate(self.transformer.blocks):
-                        block.forward = types.MethodType(
-                                forward_without_stg, block
-                            )
+                        block.forward = types.MethodType(forward_without_stg, block)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -600,9 +598,7 @@ class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if self.do_spatio_temporal_guidance:
                         for idx, block in enumerate(self.transformer.blocks):
                             if idx in stg_applied_layers_idx:
-                                block.forward = types.MethodType(
-                                        forward_with_stg, block
-                                    )
+                                block.forward = types.MethodType(forward_with_stg, block)
                         noise_perturb = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -610,7 +606,11 @@ class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
-                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond) + self._stg_scale * (noise_pred - noise_perturb)
+                        noise_pred = (
+                            noise_uncond
+                            + guidance_scale * (noise_pred - noise_uncond)
+                            + self._stg_scale * (noise_pred - noise_perturb)
+                        )
                     else:
                         noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
