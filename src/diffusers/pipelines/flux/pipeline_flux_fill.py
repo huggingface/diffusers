@@ -504,9 +504,7 @@ class FluxFillPipeline(
         else:
             image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
-        image_latents = (
-            image_latents - self.vae.config.shift_factor
-        ) * self.vae.config.scaling_factor
+        image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         return image_latents
 
@@ -877,9 +875,7 @@ class FluxFillPipeline(
 
         # 3. Prepare prompt embeddings
         lora_scale = (
-            self.joint_attention_kwargs.get("scale", None)
-            if self.joint_attention_kwargs is not None
-            else None
+            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
         (
             prompt_embeds,
@@ -897,14 +893,8 @@ class FluxFillPipeline(
         )
 
         # 4. Prepare timesteps
-        sigmas = (
-            np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-            if sigmas is None
-            else sigmas
-        )
-        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (
-            int(width) // self.vae_scale_factor // 2
-        )
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.base_image_seq_len,
@@ -966,7 +956,6 @@ class FluxFillPipeline(
                 generator,
             )
             masked_image_latents = torch.cat((masked_image_latents, mask), dim=-1)
-
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
