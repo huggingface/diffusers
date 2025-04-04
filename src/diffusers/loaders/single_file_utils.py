@@ -2407,7 +2407,6 @@ def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
         "per_channel_statistics.channel": remove_keys_,
         "per_channel_statistics.mean-of-means": remove_keys_,
         "per_channel_statistics.mean-of-stds": remove_keys_,
-        "timestep_scale_multiplier": remove_keys_,
     }
 
     if "vae.decoder.last_time_embedder.timestep_embedder.linear_1.weight" in converted_state_dict:
