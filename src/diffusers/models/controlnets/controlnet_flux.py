@@ -366,12 +366,20 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         #joint_attention_kwargs=joint_attention_kwargs,
                     )
                 else:
-                    hidden_states = block(
-                        hidden_states=hidden_states,
-                        temb=temb,
-                        image_rotary_emb=image_rotary_emb,
-                        joint_attention_kwargs=joint_attention_kwargs,
-                    )
+                    if 'first_N_blocks' in joint_attention_kwargs:
+                        hidden_states = block(
+                            hidden_states=hidden_states,
+                            temb=temb,
+                            image_rotary_emb=image_rotary_emb,
+                            joint_attention_kwargs=joint_attention_kwargs if index_block < joint_attention_kwargs['first_N_blocks'] else None,
+                        )
+                    else:
+                        hidden_states = block(
+                            hidden_states=hidden_states,
+                            temb=temb,
+                            image_rotary_emb=image_rotary_emb,
+                            joint_attention_kwargs=joint_attention_kwargs,
+                        )
             single_block_samples = single_block_samples + (hidden_states[:, encoder_hidden_states.shape[1] :],)
 
         # controlnet block
