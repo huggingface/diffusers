@@ -519,7 +519,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+        with self.progress_bar(total=num_inference_steps) as progress_bar, self.transformer._cache_context() as cc:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
@@ -528,6 +528,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latent_model_input = latents.to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
 
+                cc.mark_state("cond")
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
@@ -537,6 +538,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 )[0]
 
                 if self.do_classifier_free_guidance:
+                    cc.mark_state("uncond")
                     noise_uncond = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
