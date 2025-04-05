@@ -44,6 +44,7 @@ from diffusers.models.attention_processor import (
     AttnProcessorNPU,
     XFormersAttnProcessor,
 )
+from diffusers.models.auto_model import AUTO_MODEL_MAPPING, AutoModel
 from diffusers.training_utils import EMAModel
 from diffusers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -1567,6 +1568,52 @@ class ModelTesterMixin:
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading3, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5))
+
+    def test_auto_model(self, expected_max_diff=5e-5):
+        if self.model_class not in list(AUTO_MODEL_MAPPING.values()):
+            self.skipTest(f"Skipping auto-model test: {self.model_class.__name__} is not in AUTO_MODEL_MAPPING")
+
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
+
+        model = model.eval()
+        model = model.to(torch_device)
+
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            model.save_pretrained(tmpdirname, safe_serialization=False)
+
+            auto_model = AutoModel.from_pretrained(tmpdirname)
+            if hasattr(auto_model, "set_default_attn_processor"):
+                auto_model.set_default_attn_processor()
+
+        auto_model = auto_model.eval()
+        auto_model = auto_model.to(torch_device)
+
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_original = model(**self.inputs_dict(0))
+                output_auto = auto_model(**self.inputs_dict(0))
+            else:
+                output_original = model(**inputs_dict)
+                output_auto = auto_model(**inputs_dict)
+
+            if isinstance(output_original, dict):
+                output_original = output_original.to_tuple()[0]
+            if isinstance(output_auto, dict):
+                output_auto = output_auto.to_tuple()[0]
+
+        max_diff = (output_original - output_auto).abs().max().item()
+        self.assertLessEqual(
+            max_diff,
+            expected_max_diff,
+            f"AutoModel forward pass diff: {max_diff} exceeds threshold {expected_max_diff}",
+        )
 
 
 @is_staging_test
