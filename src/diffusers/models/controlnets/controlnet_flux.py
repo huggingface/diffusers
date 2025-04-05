@@ -335,13 +335,13 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
 
             else:
-                if 'is_single_prod' in joint_attention_kwargs:
+                if 'has_ctln' in joint_attention_kwargs:
                     encoder_hidden_states, hidden_states = block(
                         hidden_states=hidden_states,
                         encoder_hidden_states=encoder_hidden_states,
                         temb=temb,
                         image_rotary_emb=image_rotary_emb,
-                        #joint_attention_kwargs=joint_attention_kwargs,
+                        joint_attention_kwargs=joint_attention_kwargs,
                     )
                 else:
                     encoder_hidden_states, hidden_states = block(
@@ -349,7 +349,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         encoder_hidden_states=encoder_hidden_states,
                         temb=temb,
                         image_rotary_emb=image_rotary_emb,
-                        joint_attention_kwargs=joint_attention_kwargs,
+                        #joint_attention_kwargs=joint_attention_kwargs,
                     )
             block_samples = block_samples + (hidden_states,)
 
@@ -366,19 +366,19 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
 
             else:
-                if 'is_single_prod' in joint_attention_kwargs:
+                if 'has_ctln' in joint_attention_kwargs:
                     hidden_states = block(
                         hidden_states=hidden_states,
                         temb=temb,
                         image_rotary_emb=image_rotary_emb,
-                        #joint_attention_kwargs=joint_attention_kwargs,
+                        joint_attention_kwargs=joint_attention_kwargs,
                     )
                 else:
                     hidden_states = block(
                         hidden_states=hidden_states,
                         temb=temb,
                         image_rotary_emb=image_rotary_emb,
-                        joint_attention_kwargs=joint_attention_kwargs,
+                        #joint_attention_kwargs=joint_attention_kwargs,
                     )
             single_block_samples = single_block_samples + (hidden_states[:, encoder_hidden_states.shape[1] :],)
 
