@@ -173,13 +173,17 @@ class CosmosAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
             key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
 
-        # 4. Attention
+        # 4. Prepare for GQA
+        key = key.repeat_interleave(query.size(3) // key.size(3), dim=3)
+        value = value.repeat_interleave(query.size(3) // value.size(3), dim=3)
+
+        # 5. Attention
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, enable_gqa=True
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3).type_as(query)
 
-        # 5. Output projection
+        # 6. Output projection
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
 
