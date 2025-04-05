@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ..models.attention import FeedForward, LuminaFeedForward
 from ..models.attention_processor import Attention, MochiAttention
 
 
 _ATTENTION_CLASSES = (Attention, MochiAttention)
+_FEEDFORWARD_CLASSES = (FeedForward, LuminaFeedForward)
 
 _SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks", "layers")
 _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
