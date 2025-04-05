@@ -669,6 +669,13 @@ def parse_args(input_args=None):
         ),
     )
 
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        help="The image interpolation method to use for resizing images.",
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -790,7 +797,12 @@ class DreamBoothDataset(Dataset):
         self.original_sizes = []
         self.crop_top_lefts = []
         self.pixel_values = []
-        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+
+        if args.image_interpolation_mode == "bilinear":
+            train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+        else:
+            train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.LANCZOS)
+
         train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
