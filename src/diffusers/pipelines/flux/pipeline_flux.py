@@ -906,7 +906,7 @@ class FluxPipeline(
             )
 
         # 6. Denoising loop
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+        with self.progress_bar(total=num_inference_steps) as progress_bar, self.transformer._cache_context() as cc:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
@@ -917,6 +917,7 @@ class FluxPipeline(
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
+                cc.mark_state("cond")
                 noise_pred = self.transformer(
                     hidden_states=latents,
                     timestep=timestep / 1000,
@@ -932,6 +933,8 @@ class FluxPipeline(
                 if do_true_cfg:
                     if negative_image_embeds is not None:
                         self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
+
+                    cc.mark_state("uncond")
                     neg_noise_pred = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
