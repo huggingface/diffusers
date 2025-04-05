@@ -24,7 +24,8 @@ from .guider_utils import GuidanceMixin, rescale_noise_cfg
 
 class SkipLayerGuidance(GuidanceMixin):
     """
-    Skip Layer Guidance (SLG): https://github.com/Stability-AI/sd3.5
+    Skip Layer Guidance (SLG): https://github.com/Stability-AI/sd3.5 Spatio-Temporal Guidance (STG):
+    https://huggingface.co/papers/2411.18664
 
     SLG was introduced by StabilityAI for improving structure and anotomy coherence in generated images. It works by
     skipping the forward pass of specified transformer blocks during the denoising process on an additional conditional
@@ -35,6 +36,9 @@ class SkipLayerGuidance(GuidanceMixin):
     The intution behind SLG can be thought of as moving the CFG predicted distribution estimates further away from
     worse versions of the conditional distribution estimates (because skipping layers is equivalent to using a worse
     version of the model for the conditional prediction).
+
+    STG is an improvement and follow-up work combining ideas from SLG, PAG and similar techniques for improving
+    generation quality in video diffusion models.
 
     Additional reading:
     - [Guiding a Diffusion Model with a Bad Version of Itself](https://huggingface.co/papers/2406.02507)
@@ -54,13 +58,13 @@ class SkipLayerGuidance(GuidanceMixin):
             The fraction of the total number of denoising steps after which skip layer guidance starts.
         skip_layer_guidance_stop (`float`, defaults to `0.2`):
             The fraction of the total number of denoising steps after which skip layer guidance stops.
-        skip_guidance_layers (`int` or `List[int]`, *optional*):
+        skip_layer_guidance_layers (`int` or `List[int]`, *optional*):
             The layer indices to apply skip layer guidance to. Can be a single integer or a list of integers. If not
             provided, `skip_layer_config` must be provided. The recommended values are `[7, 8, 9]` for Stable Diffusion
             3.5 Medium.
         skip_layer_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
             The configuration for the skip layer guidance. Can be a single `LayerSkipConfig` or a list of
-            `LayerSkipConfig`. If not provided, `skip_guidance_layers` must be provided.
+            `LayerSkipConfig`. If not provided, `skip_layer_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
@@ -79,7 +83,7 @@ class SkipLayerGuidance(GuidanceMixin):
         skip_layer_guidance_scale: float = 2.8,
         skip_layer_guidance_start: float = 0.01,
         skip_layer_guidance_stop: float = 0.2,
-        skip_guidance_layers: Optional[Union[int, List[int]]] = None,
+        skip_layer_guidance_layers: Optional[Union[int, List[int]]] = None,
         skip_layer_config: Union[LayerSkipConfig, List[LayerSkipConfig]] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
@@ -102,21 +106,21 @@ class SkipLayerGuidance(GuidanceMixin):
                 f"Expected `skip_layer_guidance_stop` to be between 0.0 and 1.0, but got {skip_layer_guidance_stop}."
             )
 
-        if skip_guidance_layers is None and skip_layer_config is None:
+        if skip_layer_guidance_layers is None and skip_layer_config is None:
             raise ValueError(
-                "Either `skip_guidance_layers` or `skip_layer_config` must be provided to enable Skip Layer Guidance."
+                "Either `skip_layer_guidance_layers` or `skip_layer_config` must be provided to enable Skip Layer Guidance."
             )
-        if skip_guidance_layers is not None and skip_layer_config is not None:
-            raise ValueError("Only one of `skip_guidance_layers` or `skip_layer_config` can be provided.")
+        if skip_layer_guidance_layers is not None and skip_layer_config is not None:
+            raise ValueError("Only one of `skip_layer_guidance_layers` or `skip_layer_config` can be provided.")
 
-        if skip_guidance_layers is not None:
-            if isinstance(skip_guidance_layers, int):
-                skip_guidance_layers = [skip_guidance_layers]
-            if not isinstance(skip_guidance_layers, list):
+        if skip_layer_guidance_layers is not None:
+            if isinstance(skip_layer_guidance_layers, int):
+                skip_layer_guidance_layers = [skip_layer_guidance_layers]
+            if not isinstance(skip_layer_guidance_layers, list):
                 raise ValueError(
-                    f"Expected `skip_guidance_layers` to be an int or a list of ints, but got {type(skip_guidance_layers)}."
+                    f"Expected `skip_layer_guidance_layers` to be an int or a list of ints, but got {type(skip_layer_guidance_layers)}."
                 )
-            skip_layer_config = [LayerSkipConfig(layer, fqn="auto") for layer in skip_guidance_layers]
+            skip_layer_config = [LayerSkipConfig(layer, fqn="auto") for layer in skip_layer_guidance_layers]
 
         if isinstance(skip_layer_config, LayerSkipConfig):
             skip_layer_config = [skip_layer_config]

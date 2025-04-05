@@ -13,14 +13,14 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import torch
 
 from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
-from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS
-from ._helpers import TransformerBlockRegistry
+from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS, _ATTENTION_CLASSES, _FEEDFORWARD_CLASSES
+from ._helpers import AttentionProcessorRegistry, TransformerBlockRegistry
 from .hooks import HookRegistry, ModelHook
 
 
@@ -44,9 +44,50 @@ class LayerSkipConfig:
 
     indices: List[int]
     fqn: str = "auto"
+    skip_attention: bool = True
+    skip_attention_scores: bool = False
+    skip_ff: bool = True
 
 
-class LayerSkipHook(ModelHook):
+class AttentionScoreSkipFunctionMode(torch.overrides.TorchFunctionMode):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def __torch_function__(self, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+        if func is torch.nn.functional.scaled_dot_product_attention:
+            value = kwargs.get("value", None)
+            if value is None:
+                value = args[2]
+            return value
+        return func(*args, **kwargs)
+
+
+class AttentionProcessorSkipHook(ModelHook):
+    def __init__(self, skip_processor_output_fn: Callable, skip_attention_scores: bool = False):
+        self.skip_processor_output_fn = skip_processor_output_fn
+        self.skip_attention_scores = skip_attention_scores
+
+    def new_forward(self, module: torch.nn.Module, *args, **kwargs):
+        if self.skip_attention_scores:
+            with AttentionScoreSkipFunctionMode():
+                return self.fn_ref.original_forward(*args, **kwargs)
+        else:
+            return self.skip_processor_output_fn(module, *args, **kwargs)
+
+
+class FeedForwardSkipHook(ModelHook):
+    def new_forward(self, module: torch.nn.Module, *args, **kwargs):
+        output = kwargs.get("hidden_states", None)
+        if output is None:
+            output = kwargs.get("x", None)
+        if output is None and len(args) > 0:
+            output = args[0]
+        return output
+
+
+class TransformerBlockSkipHook(ModelHook):
     def initialize_hook(self, module):
         self._metadata = TransformerBlockRegistry.get(unwrap_module(module).__class__)
         return module
@@ -81,6 +122,9 @@ def apply_layer_skip(module: torch.nn.Module, config: LayerSkipConfig) -> None:
 def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, name: Optional[str] = None) -> None:
     name = name or _LAYER_SKIP_HOOK
 
+    if config.skip_attention and config.skip_attention_scores:
+        raise ValueError("Cannot set both `skip_attention` and `skip_attention_scores` to True. Please choose one.")
+
     if config.fqn == "auto":
         for identifier in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS:
             if hasattr(module, identifier):
@@ -101,10 +145,38 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
     if len(config.indices) == 0:
         raise ValueError("Layer index list is empty. Please provide a non-empty list of layer indices to skip.")
 
+    blocks_found = False
     for i, block in enumerate(transformer_blocks):
         if i not in config.indices:
             continue
-        logger.debug(f"Apply LayerSkipHook to '{config.fqn}.{i}'")
-        registry = HookRegistry.check_if_exists_or_initialize(block)
-        hook = LayerSkipHook()
-        registry.register_hook(hook, name)
+        blocks_found = True
+        if config.skip_attention and config.skip_ff:
+            logger.debug(f"Applying TransformerBlockSkipHook to '{config.fqn}.{i}'")
+            registry = HookRegistry.check_if_exists_or_initialize(block)
+            hook = TransformerBlockSkipHook()
+            registry.register_hook(hook, name)
+        elif config.skip_attention or config.skip_attention_scores:
+            for submodule_name, submodule in block.named_modules():
+                if isinstance(submodule, _ATTENTION_CLASSES) and not submodule.is_cross_attention:
+                    logger.debug(f"Applying AttentionProcessorSkipHook to '{config.fqn}.{i}.{submodule_name}'")
+                    output_fn = AttentionProcessorRegistry.get(submodule.processor.__class__).skip_processor_output_fn
+                    registry = HookRegistry.check_if_exists_or_initialize(submodule)
+                    hook = AttentionProcessorSkipHook(output_fn, config.skip_attention_scores)
+                    registry.register_hook(hook, name)
+        elif config.skip_ff:
+            for submodule_name, submodule in block.named_modules():
+                if isinstance(submodule, _FEEDFORWARD_CLASSES):
+                    logger.debug(f"Applying FeedForwardSkipHook to '{config.fqn}.{i}.{submodule_name}'")
+                    registry = HookRegistry.check_if_exists_or_initialize(submodule)
+                    hook = FeedForwardSkipHook()
+                    registry.register_hook(hook, name)
+        else:
+            raise ValueError(
+                "At least one of `skip_attention`, `skip_attention_scores`, or `skip_ff` must be set to True."
+            )
+
+    if not blocks_found:
+        raise ValueError(
+            f"Could not find any transformer blocks matching the provided indices {config.indices} and "
+            f"fully qualified name '{config.fqn}'. Please check the indices and fqn for correctness."
+        )
