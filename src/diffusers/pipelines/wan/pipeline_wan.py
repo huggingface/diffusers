@@ -21,6 +21,7 @@ import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...guiders import ClassifierFreeGuidance, GuidanceMixin, _raise_guidance_deprecation_warning
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -380,6 +381,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        guidance: Optional[GuidanceMixin] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -443,6 +445,10 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
+
+        _raise_guidance_deprecation_warning(guidance_scale=guidance_scale)
+        if guidance is None:
+            guidance = ClassifierFreeGuidance(guidance_scale=guidance_scale)
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -519,37 +525,38 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
+        conds = [prompt_embeds, negative_prompt_embeds]
+        prompt_embeds, negative_prompt_embeds = [[c] for c in conds]
+
         with self.progress_bar(total=num_inference_steps) as progress_bar, self.transformer._cache_context() as cc:
             for i, t in enumerate(timesteps):
+                self._current_timestep = t
                 if self.interrupt:
                     continue
 
-                self._current_timestep = t
-                latent_model_input = latents.to(transformer_dtype)
-                timestep = t.expand(latents.shape[0])
+                guidance.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
+                guidance.prepare_models(self.transformer)
+                latents, prompt_embeds = guidance.prepare_inputs(
+                    latents, (prompt_embeds[0], negative_prompt_embeds[0])
+                )
 
-                cc.mark_state("cond")
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
-
-                if self.do_classifier_free_guidance:
-                    cc.mark_state("uncond")
-                    noise_uncond = self.transformer(
-                        hidden_states=latent_model_input,
+                for batch_index, (latent, condition) in enumerate(zip(latents, prompt_embeds)):
+                    cc.mark_state(f"batch_{batch_index}")
+                    latent = latent.to(transformer_dtype)
+                    timestep = t.expand(latent.shape[0])
+                    noise_pred = self.transformer(
+                        hidden_states=latent,
                         timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states=condition,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
-                    noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
+                    guidance.prepare_outputs(noise_pred)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                outputs = guidance.outputs
+                noise_pred = guidance(**outputs)
+                latents = self.scheduler.step(noise_pred, t, latents[0], return_dict=False)[0]
+                guidance.cleanup_models(self.transformer)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -558,8 +565,10 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    prompt_embeds = [callback_outputs.pop("prompt_embeds", prompt_embeds[0])]
+                    negative_prompt_embeds = [
+                        callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds[0])
+                    ]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
