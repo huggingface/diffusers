@@ -521,27 +521,35 @@ class FluxTransformer2DModel(
                 )
 
             else:
-                if 'is_single_prod' in joint_attention_kwargs:
-                    hidden_states = block(
-                        hidden_states=hidden_states,
-                        temb=temb,
-                        image_rotary_emb=image_rotary_emb,
-                        #joint_attention_kwargs=joint_attention_kwargs,
-                    )
-                else:
-                    if 'first_N_blocks' in joint_attention_kwargs:
+                if 'is_qv' in joint_attention_kwargs:
+                    if 'is_multiprod' in joint_attention_kwargs:
                         hidden_states = block(
                             hidden_states=hidden_states,
                             temb=temb,
                             image_rotary_emb=image_rotary_emb,
-                            joint_attention_kwargs=joint_attention_kwargs if index_block < joint_attention_kwargs['first_N_blocks'] else None,
+                            joint_attention_kwargs=joint_attention_kwargs,
                         )
                     else:
                         hidden_states = block(
                             hidden_states=hidden_states,
                             temb=temb,
                             image_rotary_emb=image_rotary_emb,
-                            joint_attention_kwargs=joint_attention_kwargs,
+                            #joint_attention_kwargs=joint_attention_kwargs,
+                        )
+                else:
+                    if 'is_multiprod' in joint_attention_kwargs:
+                        hidden_states = block(
+                                hidden_states=hidden_states,
+                                temb=temb,
+                                image_rotary_emb=image_rotary_emb,
+                                joint_attention_kwargs=joint_attention_kwargs,
+                        )
+                    else:
+                        hidden_states = block(
+                                hidden_states=hidden_states,
+                                temb=temb,
+                                image_rotary_emb=image_rotary_emb,
+                                #joint_attention_kwargs=joint_attention_kwargs,
                         )
 
             # controlnet residual
