@@ -21,17 +21,6 @@ The abstract from the paper is:
 This model was contributed by [ishan24](https://huggingface.co/ishan24). ❤️
 The original codebase can be found at [NVlabs/Sana](https://github.com/NVlabs/Sana), and you can find official ControlNet checkpoints on [Efficient-Large-Model's](https://huggingface.co/Efficient-Large-Model) Hub profile.
 
-## Loading from the original format
-By default the [`SanaControlNetModel`] should be loaded with [`~ModelMixin.from_pretrained`]
-```py
-from diffusers import SanaControlNetModel
-import torch
-
-controlnet = SanaControlNetModel.from_pretrained(
-    "ishan24/Sana_600M_1024px_ControlNet_diffusers",
-)
-```
-
 ## SanaControlNetModel
 [[autodoc]] SanaControlNetModel
 

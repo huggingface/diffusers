@@ -27,36 +27,6 @@ The abstract from the paper is:
 This pipeline was contributed by [ishan24](https://huggingface.co/ishan24). ❤️
 The original codebase can be found at [NVlabs/Sana](https://github.com/NVlabs/Sana), and you can find official ControlNet checkpoints on [Efficient-Large-Model's](https://huggingface.co/Efficient-Large-Model) Hub profile.
 
-## Loading from the original format
-```py
-import torch
-from diffusers import SanaControlNetModel, SanaControlNetPipeline
-from diffusers.utils import load_image
-
-controlnet = SanaControlNetModel.from_pretrained(
-    "ishan24/Sana_600M_1024px_ControlNet_diffusers",
-    torch_dtype=torch.float16
-)
-
-pipe = SanaControlNetPipeline.from_pretrained(
-    "Efficient-Large-Model/Sana_600M_1024px_diffusers",
-    variant="fp16",
-    controlnet=controlnet,
-    torch_dtype={'default': torch.bfloat16, 'transformer': torch.float16},
-)
-pipe.to('cuda')
-
-cond_image = load_image(
-    "https://huggingface.co/ishan24/Sana_600M_1024px_ControlNet_diffusers/resolve/main/hed_example.png"
-)
-prompt='a cat with a neon sign that says "Sana"'
-image = pipe(
-    prompt,
-    control_image=cond_image,
-).images[0]
-image.save("sana.png")
-```
-
 ## SanaControlNetPipeline
 [[autodoc]] SanaControlNetPipeline
 	- all
