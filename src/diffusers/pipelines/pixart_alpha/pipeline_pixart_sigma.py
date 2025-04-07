@@ -220,7 +220,10 @@ class PixArtSigmaPipeline(DiffusionPipeline):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
+        if hasattr(self.vae.config, 'decoder_block_out_channels'):
+            self.vae_scale_factor = 2 ** (len(self.vae.config.decoder_block_out_channels) - 1) if getattr(self, "vae", None) else 8
+        else:
+            self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.encode_prompt with 120->300
@@ -855,6 +858,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
                     noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
+                latents = latents[:noise_pred.shape[0], :noise_pred.shape[1], :noise_pred.shape[2], :noise_pred.shape[3]]
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
