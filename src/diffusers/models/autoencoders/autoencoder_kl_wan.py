@@ -351,24 +351,14 @@ class WanMidBlock(nn.Module):
 
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         # First residual block
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            x = self._gradient_checkpointing_func(self.resnets[0], x, feat_cache, feat_idx)
+        x = self.resnets[0](x, feat_cache, feat_idx)
 
-            for attn, resnet in zip(self.attentions, self.resnets[1:]):
-                if attn is not None:
-                    x = attn(x)
+        # Process through attention and residual blocks
+        for attn, resnet in zip(self.attentions, self.resnets[1:]):
+            if attn is not None:
+                x = attn(x)
 
-                x = self._gradient_checkpointing_func(resnet, x, feat_cache, feat_idx)
-
-        else:
-            x = self.resnets[0](x, feat_cache, feat_idx)
-
-            # Process through attention and residual blocks
-            for attn, resnet in zip(self.attentions, self.resnets[1:]):
-                if attn is not None:
-                    x = attn(x)
-
-                x = resnet(x, feat_cache, feat_idx)
+            x = resnet(x, feat_cache, feat_idx)
 
         return x
 
@@ -453,26 +443,15 @@ class WanEncoder3d(nn.Module):
         else:
             x = self.conv_in(x)
 
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            ## downsamples
-            for layer in self.down_blocks:
-                if feat_cache is not None:
-                    x = self._gradient_checkpointing_func(layer, x, feat_cache, feat_idx)
-                else:
-                    x = self._gradient_checkpointing_func(layer, x)
+        ## downsamples
+        for layer in self.down_blocks:
+            if feat_cache is not None:
+                x = layer(x, feat_cache, feat_idx)
+            else:
+                x = layer(x)
 
-            ## middle
-            x = self._gradient_checkpointing_func(self.mid_block, x, feat_cache, feat_idx)
-        else:
-            ## downsamples
-            for layer in self.down_blocks:
-                if feat_cache is not None:
-                    x = layer(x, feat_cache, feat_idx)
-                else:
-                    x = layer(x)
-
-            ## middle
-            x = self.mid_block(x, feat_cache, feat_idx)
+        ## middle
+        x = self.mid_block(x, feat_cache, feat_idx)
 
         ## head
         x = self.norm_out(x)
@@ -546,19 +525,11 @@ class WanUpBlock(nn.Module):
         Returns:
             torch.Tensor: Output tensor
         """
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for resnet in self.resnets:
-                if feat_cache is not None:
-                    x = self._gradient_checkpointing_func(resnet, x, feat_cache, feat_idx)
-                else:
-                    x = self._gradient_checkpointing_func(resnet, x)
-
-        else:
-            for resnet in self.resnets:
-                if feat_cache is not None:
-                    x = resnet(x, feat_cache, feat_idx)
-                else:
-                    x = resnet(x)
+        for resnet in self.resnets:
+            if feat_cache is not None:
+                x = resnet(x, feat_cache, feat_idx)
+            else:
+                x = resnet(x)
 
         if self.upsamplers is not None:
             if feat_cache is not None:
@@ -647,7 +618,14 @@ class WanDecoder3d(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, x, feat_cache=None, feat_idx=[0]):
+    def forward(self, x, feat_cache=None, feat_idx=[0], latent=0):
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            return self._gradient_checkpointing_func(self._decode, x, feat_cache, feat_idx, latent)
+        else:
+            return self._decode(x, feat_cache, feat_idx)
+
+    def _decode(self, x, in_cache=None, feat_idx=[0], latent=0):
+        feat_cache = in_cache.copy()
         ## conv1
         if feat_cache is not None:
             idx = feat_idx[0]
@@ -661,20 +639,12 @@ class WanDecoder3d(nn.Module):
         else:
             x = self.conv_in(x)
 
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            ## middle
-            x = self._gradient_checkpointing_func(self.mid_block, x, feat_cache, feat_idx)
+        ## middle
+        x = self.mid_block(x, feat_cache, feat_idx)
 
-            ## upsamples
-            for up_block in self.up_blocks:
-                x = self._gradient_checkpointing_func(up_block, x, feat_cache, feat_idx)
-        else:
-            ## middle
-            x = self.mid_block(x, feat_cache, feat_idx)
-
-            ## upsamples
-            for up_block in self.up_blocks:
-                x = up_block(x, feat_cache, feat_idx)
+        ## upsamples
+        for up_block in self.up_blocks:
+            x = up_block(x, feat_cache, feat_idx)
 
         ## head
         x = self.norm_out(x)
@@ -690,7 +660,8 @@ class WanDecoder3d(nn.Module):
             feat_idx[0] += 1
         else:
             x = self.conv_out(x)
-        return x
+        feat_idx[0] = 0
+        return x, feat_cache
 
 
 class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
@@ -836,9 +807,13 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for i in range(iter_):
             self._conv_idx = [0]
             if i == 0:
-                out = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                out, self._feat_map = self.decoder(
+                    x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx, latent=i
+                )
             else:
-                out_ = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                out_, self._feat_map = self.decoder(
+                    x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx, latent=i
+                )
                 out = torch.cat([out, out_], 2)
 
         out = torch.clamp(out, min=-1.0, max=1.0)
