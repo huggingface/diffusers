@@ -522,7 +522,7 @@ class FluxTransformer2DModel(
 
             else:
                 if 'is_qv' in joint_attention_kwargs:
-                    if 'is_multiprod' in joint_attention_kwargs:
+                    if ('is_multiprod' in joint_attention_kwargs) or ('fix_bg' in joint_attention_kwargs):
                         hidden_states = block(
                             hidden_states=hidden_states,
                             temb=temb,
