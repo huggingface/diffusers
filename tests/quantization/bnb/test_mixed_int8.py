@@ -379,7 +379,7 @@ class BnB8bitTrainingTests(Base8bitTests):
         model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
 
         # Step 4: Check if the gradient is not None
-        with torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.amp.autocast(torch_device, dtype=torch.float16):
             out = self.model_8bit(**model_inputs)[0]
             out.norm().backward()
 
