@@ -111,19 +111,15 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import SanaControlNetModel, SanaControlNetPipeline
+        >>> from diffusers import SanaControlNetPipeline
         >>> from diffusers.utils import load_image
 
-        >>> controlnet = SanaControlNetModel.from_pretrained(
-        ...     "ishan24/Sana_600M_1024px_ControlNet_diffusers", torch_dtype=torch.float16
-        ... )
         >>> pipe = SanaControlNetPipeline.from_pretrained(
-        ...     "Efficient-Large-Model/Sana_600M_1024px_diffusers",
+        ...     "ishan24/Sana_600M_1024px_ControlNetPlus_diffusers",
         ...     variant="fp16",
-        ...     controlnet=controlnet,
-        ...     torch_dtype={"default": torch.bfloat16, "transformer": torch.float16},
+        ...     torch_dtype={"default": torch.bfloat16, "controlnet": torch.float16, "transformer": torch.float16},
+        ...     device_map="balanced",
         ... )
-        >>> pipe.to("cuda")
         >>> cond_image = load_image(
         ...     "https://huggingface.co/ishan24/Sana_600M_1024px_ControlNet_diffusers/resolve/main/hed_example.png"
         ... )
