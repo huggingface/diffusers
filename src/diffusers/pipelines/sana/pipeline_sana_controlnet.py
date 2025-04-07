@@ -367,13 +367,7 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             prompt_embeds = prompt_embeds[0][:, select_index]
             prompt_attention_mask = prompt_attention_mask[:, select_index]
 
-        if self.transformer is not None:
-            dtype = self.transformer.dtype
-        elif self.text_encoder is not None:
-            dtype = self.text_encoder.dtype
-        else:
-            dtype = None
-
+        dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
@@ -406,6 +400,8 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds[0]
 
         if do_classifier_free_guidance:
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
+
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
@@ -956,6 +952,7 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             height, width = control_image.shape[-2:]
 
             control_image = self.vae.encode(control_image).latent
+            control_image = control_image.to(self.vae.dtype)
             control_image = control_image * self.vae.config.scaling_factor
 
         else:
@@ -992,12 +989,14 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                     continue
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
+                timestep = t.expand(latent_model_input.shape[0])
 
                 # controlnet(s) inference
+                latent_model_input = latent_model_input.to(dtype=self.controlnet.dtype)
+                prompt_embeds = prompt_embeds.to(dtype=self.controlnet.dtype)
+                control_image = control_image.to(dtype=self.controlnet.dtype)
                 controlnet_block_samples = self.controlnet(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
@@ -1010,6 +1009,9 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 )[0]
 
                 # predict noise model_output
+                latent_model_input = latent_model_input.to(dtype=self.transformer.dtype)
+                prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
+                controlnet_block_samples = controlnet_block_samples.to(dtype=self.transformer.dtype)
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,

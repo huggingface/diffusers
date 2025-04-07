@@ -24,17 +24,12 @@ The original codebase can be found at [NVlabs/Sana](https://github.com/NVlabs/Sa
 ## Loading from the original format
 By default the [`SanaControlNetModel`] should be loaded with [`~ModelMixin.from_pretrained`]
 ```py
-from diffusers import SanaControlNetModel, SanaControlNetPipeline
+from diffusers import SanaControlNetModel
 import torch
 
 controlnet = SanaControlNetModel.from_pretrained(
     "ishan24/Sana_600M_1024px_ControlNet_diffusers",
 )
-pipe = SanaControlNetPipeline.from_pretrained(
-    "Efficient-Large-Model/Sana_600M_1024px_diffusers",
-    controlnet=controlnet,
-)
-pipe.to('cuda')
 ```
 
 ## SanaControlNetModel

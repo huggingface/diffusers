@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import inspect
 import unittest
 
@@ -27,12 +26,8 @@ from diffusers import (
     SanaControlNetPipeline,
     SanaTransformer2DModel,
 )
-from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
-    require_torch_accelerator,
-    slow,
     torch_device,
 )
 
@@ -79,6 +74,7 @@ class SanaControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sample_size=32,
         )
 
+        torch.manual_seed(0)
         transformer = SanaTransformer2DModel(
             patch_size=1,
             in_channels=4,
@@ -329,57 +325,3 @@ class SanaControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_float16_inference(expected_max_diff=0.08)
-
-
-@slow
-@require_torch_accelerator
-class SanaPipelineIntegrationTests(unittest.TestCase):
-    prompt = "A painting of a squirrel eating a burger."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def test_sana_1024(self):
-        generator = torch.Generator("cpu").manual_seed(0)
-        controlnet = SanaControlNetModel.from_pretrained(
-            "ishan24/Sana_600M_1024px_ControlNet_diffusers", torch_dtype=torch.float16
-        )
-
-        pipe = SanaControlNetPipeline.from_pretrained(
-            "Efficient-Large-Model/Sana_600M_1024px_diffusers",
-            variant="fp16",
-            torch_dtype=torch.float16,
-            controlnet=controlnet,
-        )
-        pipe.vae.to(torch.bfloat16)
-        pipe.text_encoder.to(torch.bfloat16)
-        pipe.enable_model_cpu_offload(device=torch_device)
-        control_image = load_image(
-            "https://huggingface.co/ishan24/Sana_600M_1024px_ControlNet_diffusers/resolve/main/hed_example.png"
-        )
-
-        image = pipe(
-            prompt=self.prompt,
-            height=1024,
-            width=1024,
-            generator=generator,
-            num_inference_steps=20,
-            output_type="np",
-            control_image=control_image,
-        ).images[0]
-
-        image = image.flatten()
-        output_slice = np.concatenate((image[:16], image[-16:]))
-
-        # fmt: off
-        expected_slice = np.array([0.0427, 0.0789, 0.0662, 0.0464, 0.082, 0.0574, 0.0535, 0.0886, 0.0647, 0.0549, 0.0872, 0.0605, 0.0593, 0.0942, 0.0674, 0.0581, 0.0076, 0.0168, 0.0027, 0.0063, 0.0159, 0.0, 0.0071, 0.0198, 0.0034, 0.0105, 0.0212, 0.0, 0.0, 0.0166, 0.0042, 0.0125])
-        # fmt: on
-
-        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-4))

@@ -42,12 +42,9 @@ pipe = SanaControlNetPipeline.from_pretrained(
     "Efficient-Large-Model/Sana_600M_1024px_diffusers",
     variant="fp16",
     controlnet=controlnet,
-    torch_dtype=torch.float16,
+    torch_dtype={'default': torch.bfloat16, 'transformer': torch.float16},
 )
-
 pipe.to('cuda')
-pipe.vae.to(torch.bfloat16)
-pipe.text_encoder.to(torch.bfloat16)
 
 cond_image = load_image(
     "https://huggingface.co/ishan24/Sana_600M_1024px_ControlNet_diffusers/resolve/main/hed_example.png"
