@@ -23,6 +23,7 @@ from ..utils import (
     deprecate,
     get_submodule_by_name,
     is_bitsandbytes_available,
+    is_gguf_available,
     is_peft_available,
     is_peft_version,
     is_torch_version,
@@ -49,9 +50,6 @@ from .lora_conversion_utils import (
 )
 
 
-if is_bitsandbytes_available():
-    from ..quantizers.bitsandbytes import dequantize_bnb_weight
-
 _LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
 if is_torch_version(">=", "1.9.0"):
     if (
@@ -70,6 +68,49 @@ UNET_NAME = "unet"
 TRANSFORMER_NAME = "transformer"
 
 _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX = {"x_embedder": "in_channels"}
+
+
+def _dequantize_weight_for_expanded_lora(model, module):
+    if is_bitsandbytes_available():
+        from ..quantizers.bitsandbytes import dequantize_bnb_weight
+
+    if is_gguf_available():
+        from ..quantizers.gguf.utils import dequantize_gguf_tensor
+
+    is_bnb_4bit_quantized = module.weight.__class__.__name__ == "Params4bit"
+    is_gguf_quantized = module.weight.__class__.__name__ == "GGUFParameter"
+
+    if is_bnb_4bit_quantized and not is_bitsandbytes_available():
+        raise ValueError(
+            "The checkpoint seems to have been quantized with `bitsandbytes` (4bits). Install `bitsandbytes` to load quantized checkpoints."
+        )
+    if is_gguf_quantized and not is_gguf_available():
+        raise ValueError(
+            "The checkpoint seems to have been quantized with `gguf`. Install `gguf` to load quantized checkpoints."
+        )
+
+    weight_on_cpu = False
+    if not module.weight.is_cuda:
+        weight_on_cpu = True
+
+    if is_bnb_4bit_quantized:
+        module_weight = dequantize_bnb_weight(
+            module.weight.cuda() if weight_on_cpu else module.weight,
+            state=module.weight.quant_state,
+            dtype=model.dtype,
+        ).data
+    elif is_gguf_quantized:
+        module_weight = dequantize_gguf_tensor(
+            module.weight.cuda() if weight_on_cpu else module.weight,
+        )
+        module_weight = module_weight.to(model.dtype)
+    else:
+        module_weight = module.weight.data
+
+    if weight_on_cpu:
+        module_weight = module_weight.cpu()
+
+    return module_weight
 
 
 class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
@@ -1970,26 +2011,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         overwritten_params = {}
 
         is_peft_loaded = getattr(transformer, "peft_config", None) is not None
+        is_quantized = hasattr(transformer, "hf_quantizer")
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
-                is_bnb_4bit_quantized = module.weight.__class__.__name__ == "Params4bit"
-                if is_bnb_4bit_quantized and not is_bitsandbytes_available():
-                    raise ValueError(
-                        "The checkpoint seems to have been quantized with `bitsandbytes` (4bits). Install `bitsandbytes` to load quantized checkpoints."
-                    )
-                elif is_bnb_4bit_quantized:
-                    weight_on_cpu = False
-                    if not module.weight.is_cuda:
-                        weight_on_cpu = True
-                    module_weight = dequantize_bnb_weight(
-                        module.weight.cuda() if weight_on_cpu else module.weight,
-                        state=module.weight.quant_state,
-                        dtype=transformer.dtype,
-                    ).data
-                    if weight_on_cpu:
-                        module_weight = module_weight.cpu()
-                else:
-                    module_weight = module.weight.data
+                module_weight = module.weight.data
                 module_bias = module.bias.data if module.bias is not None else None
                 bias = module_bias is not None
 
@@ -2033,6 +2058,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     has_param_with_shape_update = True
                     parent_module_name, _, current_module_name = name.rpartition(".")
                     parent_module = transformer.get_submodule(parent_module_name)
+
+                    if is_quantized:
+                        module_weight = _dequantize_weight_for_expanded_lora(transformer, module)
 
                     with torch.device("meta"):
                         expanded_module = torch.nn.Linear(
@@ -2134,7 +2162,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         base_weight_param_name: str = None,
     ) -> "torch.Size":
         def _get_weight_shape(weight: torch.Tensor):
-            return weight.quant_state.shape if weight.__class__.__name__ == "Params4bit" else weight.shape
+            if weight.__class__.__name__ == "Params4bit":
+                return weight.quant_state.shape
+            elif weight.__class__.__name__ == "GGUFParameter":
+                return weight.quant_shape
+            else:
+                return weight.shape
 
         if base_module is not None:
             return _get_weight_shape(base_module.weight)
