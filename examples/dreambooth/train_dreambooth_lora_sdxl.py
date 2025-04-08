@@ -673,6 +673,9 @@ def parse_args(input_args=None):
         "--image_interpolation_mode",
         type=str,
         default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
         help="The image interpolation method to use for resizing images.",
     )
 
@@ -800,7 +803,7 @@ class DreamBoothDataset(Dataset):
 
         interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
         if interpolation is None:
-            raise ValueError(f"Unsupported interpolation mode.")
+            raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
         train_resize = transforms.Resize(size, interpolation=interpolation)
 
         train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
