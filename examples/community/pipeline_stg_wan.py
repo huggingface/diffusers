@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import html
+import types
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
@@ -20,15 +21,15 @@ import regex as re
 import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
-from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...loaders import WanLoraLoaderMixin
-from ...models import AutoencoderKLWan, WanTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
-from ...video_processor import VideoProcessor
-from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import WanPipelineOutput
+from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
+from diffusers.loaders import WanLoraLoaderMixin
+from diffusers.models import AutoencoderKLWan, WanTransformer3DModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.wan.pipeline_output import WanPipelineOutput
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
+from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
+from diffusers.utils.torch_utils import randn_tensor
+from diffusers.video_processor import VideoProcessor
 
 
 if is_torch_xla_available():
@@ -46,19 +47,24 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> from diffusers.utils import export_to_video
-        >>> from diffusers import AutoencoderKLWan, WanPipeline
+        >>> from diffusers import AutoencoderKLWan
         >>> from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+        >>> from examples.community.pipeline_stg_wan import WanSTGPipeline
 
         >>> # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
         >>> model_id = "Wan-AI/Wan2.1-T2V-14B-Diffusers"
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> pipe = WanSTGPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> flow_shift = 5.0  # 5.0 for 720P, 3.0 for 480P
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
         >>> pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+
+        >>> # Configure STG mode options
+        >>> stg_applied_layers_idx = [8] # Layer indices from 0 to 39 for 14b or 0 to 29 for 1.3b
+        >>> stg_scale = 1.0 # Set 0.0 for CFG
 
         >>> output = pipe(
         ...     prompt=prompt,
@@ -67,6 +73,8 @@ EXAMPLE_DOC_STRING = """
         ...     width=1280,
         ...     num_frames=81,
         ...     guidance_scale=5.0,
+        ...     stg_applied_layers_idx=stg_applied_layers_idx,
+        ...     stg_scale=stg_scale,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=16)
         ```
@@ -90,7 +98,46 @@ def prompt_clean(text):
     return text
 
 
-class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
+def forward_with_stg(
+    self,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    rotary_emb: torch.Tensor,
+) -> torch.Tensor:
+    return hidden_states
+
+
+def forward_without_stg(
+    self,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    rotary_emb: torch.Tensor,
+) -> torch.Tensor:
+    shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
+        self.scale_shift_table + temb.float()
+    ).chunk(6, dim=1)
+
+    # 1. Self-attention
+    norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+    attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
+    hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+
+    # 2. Cross-attention
+    norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
+    attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
+    hidden_states = hidden_states + attn_output
+
+    # 3. Feed-forward
+    norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(hidden_states)
+    ff_output = self.ffn(norm_hidden_states)
+    hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+
+    return hidden_states
+
+
+class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using Wan.
 
@@ -341,6 +388,10 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         return self._guidance_scale > 1.0
 
     @property
+    def do_spatio_temporal_guidance(self):
+        return self._stg_scale > 0.0
+
+    @property
     def num_timesteps(self):
         return self._num_timesteps
 
@@ -380,6 +431,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        stg_applied_layers_idx: Optional[List[int]] = [3, 8, 16],
+        stg_scale: Optional[float] = 0.0,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -458,14 +511,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             callback_on_step_end_tensor_inputs,
         )
 
-        if num_frames % self.vae_scale_factor_temporal != 1:
-            logger.warning(
-                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
-            )
-            num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
-        num_frames = max(num_frames, 1)
-
         self._guidance_scale = guidance_scale
+        self._stg_scale = stg_scale
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
@@ -528,6 +575,10 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latent_model_input = latents.to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
 
+                if self.do_spatio_temporal_guidance:
+                    for idx, block in enumerate(self.transformer.blocks):
+                        block.forward = types.MethodType(forward_without_stg, block)
+
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
@@ -544,7 +595,24 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
-                    noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
+                    if self.do_spatio_temporal_guidance:
+                        for idx, block in enumerate(self.transformer.blocks):
+                            if idx in stg_applied_layers_idx:
+                                block.forward = types.MethodType(forward_with_stg, block)
+                        noise_perturb = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=prompt_embeds,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                        noise_pred = (
+                            noise_uncond
+                            + guidance_scale * (noise_pred - noise_uncond)
+                            + self._stg_scale * (noise_pred - noise_perturb)
+                        )
+                    else:
+                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
