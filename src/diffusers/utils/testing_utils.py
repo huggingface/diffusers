@@ -18,7 +18,7 @@ from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 import PIL.Image
@@ -1292,9 +1292,9 @@ if is_torch_available():
 # below codes are copied from https://github.com/huggingface/transformers/blob/main/src/transformers/testing_utils.py#L3090
 
 # Type definition of key used in `Expectations` class.
-DeviceProperties = tuple[Union[str, None], Union[int, None]]
+DeviceProperties = Tuple[Union[str, None], Union[int, None]]
 
-@functools.cache
+@functools.lru_cache
 def get_device_properties() -> DeviceProperties:
     """
     Get environment device properties.
@@ -1319,7 +1319,12 @@ def get_device_properties() -> DeviceProperties:
         return (torch_device, None)
 
 
-class Expectations(UserDict[DeviceProperties, Any]):
+if TYPE_CHECKING:
+    DevicePropertiesUserDict = UserDict[DeviceProperties, Any]
+else:
+    DevicePropertiesUserDict = UserDict
+
+class Expectations(DevicePropertiesUserDict):
     def get_expectation(self) -> Any:
         """
         Find best matching expectation based on environment device properties.
