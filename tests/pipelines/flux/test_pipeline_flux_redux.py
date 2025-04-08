@@ -8,15 +8,16 @@ import torch
 from diffusers import FluxPipeline, FluxPriorReduxPipeline
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     numpy_cosine_similarity_distance,
-    require_big_gpu_with_torch_cuda,
+    require_big_accelerator,
     slow,
     torch_device,
 )
 
 
 @slow
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxReduxSlowTests(unittest.TestCase):
     pipeline_class = FluxPriorReduxPipeline
@@ -27,12 +28,12 @@ class FluxReduxSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, seed=0):
         init_image = load_image(
@@ -59,7 +60,7 @@ class FluxReduxSlowTests(unittest.TestCase):
             self.base_repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
         )
         pipe_redux.to(torch_device)
-        pipe_base.enable_model_cpu_offload()
+        pipe_base.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         base_pipeline_inputs = self.get_base_pipeline_inputs(torch_device)

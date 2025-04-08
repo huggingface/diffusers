@@ -490,6 +490,10 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
         return self._num_timesteps
 
     @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def attention_kwargs(self):
         return self._attention_kwargs
 
@@ -622,6 +626,7 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._interrupt = False
+        self._current_timestep = None
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -694,9 +699,8 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare micro-conditions
-        latent_frame_rate = frame_rate / self.vae_temporal_compression_ratio
         rope_interpolation_scale = (
-            1 / latent_frame_rate,
+            self.vae_temporal_compression_ratio / frame_rate,
             self.vae_spatial_compression_ratio,
             self.vae_spatial_compression_ratio,
         )
@@ -706,6 +710,8 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
+                self._current_timestep = t
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = latent_model_input.to(prompt_embeds.dtype)

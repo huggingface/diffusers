@@ -108,31 +108,16 @@ def prompt_clean(text):
     return text
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor,
-    latents_mean: torch.Tensor,
-    latents_std: torch.Tensor,
-    generator: Optional[torch.Generator] = None,
-    sample_mode: str = "sample",
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        encoder_output.latent_dist.mean = (encoder_output.latent_dist.mean - latents_mean) * latents_std
-        encoder_output.latent_dist.logvar = torch.clamp(
-            (encoder_output.latent_dist.logvar - latents_mean) * latents_std, -30.0, 20.0
-        )
-        encoder_output.latent_dist.std = torch.exp(0.5 * encoder_output.latent_dist.logvar)
-        encoder_output.latent_dist.var = torch.exp(encoder_output.latent_dist.logvar)
         return encoder_output.latent_dist.sample(generator)
     elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        encoder_output.latent_dist.mean = (encoder_output.latent_dist.mean - latents_mean) * latents_std
-        encoder_output.latent_dist.logvar = torch.clamp(
-            (encoder_output.latent_dist.logvar - latents_mean) * latents_std, -30.0, 20.0
-        )
-        encoder_output.latent_dist.std = torch.exp(0.5 * encoder_output.latent_dist.logvar)
-        encoder_output.latent_dist.var = torch.exp(encoder_output.latent_dist.logvar)
         return encoder_output.latent_dist.mode()
     elif hasattr(encoder_output, "latents"):
-        return (encoder_output.latents - latents_mean) * latents_std
+        return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
@@ -235,8 +220,13 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds
 
-    def encode_image(self, image: PipelineImageInput):
-        image = self.image_processor(images=image, return_tensors="pt").to(self.device)
+    def encode_image(
+        self,
+        image: PipelineImageInput,
+        device: Optional[torch.device] = None,
+    ):
+        device = device or self._execution_device
+        image = self.image_processor(images=image, return_tensors="pt").to(device)
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
         return image_embeds.hidden_states[-2]
 
@@ -331,9 +321,19 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         width,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
+        if image is not None and image_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `image`: {image} and `image_embeds`: {image_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        if image is None and image_embeds is None:
+            raise ValueError(
+                "Provide either `image` or `prompt_embeds`. Cannot leave both `image` and `image_embeds` undefined."
+            )
+        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
             raise ValueError("`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is" f" {type(image)}")
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -412,12 +412,14 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if isinstance(generator, list):
             latent_condition = [
-                retrieve_latents(self.vae.encode(video_condition), latents_mean, latents_std, g) for g in generator
+                retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
             ]
             latent_condition = torch.cat(latent_condition)
         else:
-            latent_condition = retrieve_latents(self.vae.encode(video_condition), latents_mean, latents_std, generator)
+            latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
+
+        latent_condition = (latent_condition - latents_mean) * latents_std
 
         mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
         mask_lat_size[:, :, list(range(1, num_frames))] = 0
@@ -471,6 +473,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
+        image_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -520,6 +523,12 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
+                provided, text embeddings are generated from the `negative_prompt` input argument.
+            image_embeds (`torch.Tensor`, *optional*):
+                Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not provided,
+                image embeddings are generated from the `image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -564,8 +573,16 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             width,
             prompt_embeds,
             negative_prompt_embeds,
+            image_embeds,
             callback_on_step_end_tensor_inputs,
         )
+
+        if num_frames % self.vae_scale_factor_temporal != 1:
+            logger.warning(
+                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
+            )
+            num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+        num_frames = max(num_frames, 1)
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
@@ -600,7 +617,8 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
-        image_embeds = self.encode_image(image)
+        if image_embeds is None:
+            image_embeds = self.encode_image(image, device)
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
         image_embeds = image_embeds.to(transformer_dtype)
 
