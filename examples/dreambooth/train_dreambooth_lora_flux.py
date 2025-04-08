@@ -182,7 +182,7 @@ def log_validation(
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
-    autocast_ctx = torch.autocast(accelerator.device.type)
+    autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
 
     # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
     with torch.no_grad():
