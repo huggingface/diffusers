@@ -39,6 +39,7 @@ from diffusers.utils.testing_utils import (
     require_peft_version_greater,
     require_transformers_version_greater,
     torch_device,
+    skip_mps,
 )
 
 
@@ -1562,6 +1563,7 @@ class PeftLoraLoaderMixinTests:
                 "output with no lora and output with lora disabled should give same results",
             )
 
+    @skip_mps
     @pytest.mark.xfail(
         condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
