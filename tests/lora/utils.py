@@ -38,8 +38,8 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_peft_version_greater,
     require_transformers_version_greater,
-    torch_device,
     skip_mps,
+    torch_device,
 )
 
 
