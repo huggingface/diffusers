@@ -2243,9 +2243,7 @@ class PeftLoraLoaderMixinTests:
         pipe_float8_e4m3_fp32 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
         pipe_float8_e4m3_fp32(**inputs, generator=torch.manual_seed(0))[0]
 
-        pipe_float8_e4m3_bf16 = initialize_pipeline(
-            storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16
-        )
+        pipe_float8_e4m3_bf16 = initialize_pipeline(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
         pipe_float8_e4m3_bf16(**inputs, generator=torch.manual_seed(0))[0]
 
     @require_peft_version_greater("0.14.0")
