@@ -296,7 +296,7 @@ def dequantize_and_replace(
     )
     if not has_been_replaced:
         logger.warning(
-            "For some reason the model has not been properly dequantized. You might see unexpected behavior."
+            "Some linear modules were not dequantized. This could lead to unexpected behaviour. Please check your model."
         )
 
     return model
