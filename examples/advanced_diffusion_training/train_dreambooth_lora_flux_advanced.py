@@ -239,9 +239,10 @@ def log_validation(
     for _ in range(args.num_validation_images):
         with autocast_ctx:
             image = pipeline(
-                    prompt_embeds=prompt_embeds,
-                    pooled_prompt_embeds=pooled_prompt_embeds,
-                    generator=generator).images[0]
+                prompt_embeds=prompt_embeds,
+                pooled_prompt_embeds=pooled_prompt_embeds,
+                generator=generator
+            ).images[0]
             images.append(image)
 
     for tracker in accelerator.trackers:
