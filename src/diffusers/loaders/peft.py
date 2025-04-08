@@ -396,6 +396,9 @@ class PeftAdapterMixin:
                         # We only want to call prepare_model_for_compiled_hotswap once
                         self._prepare_lora_hotswap_kwargs = None
 
+                # Set peft config loaded flag to True if module has been successfully injected and incompatible keys retrieved
+                if not self._hf_peft_config_loaded:
+                    self._hf_peft_config_loaded = True
             except Exception as e:
                 # In case `inject_adapter_in_model()` was unsuccessful even before injecting the `peft_config`.
                 if hasattr(self, "peft_config"):
