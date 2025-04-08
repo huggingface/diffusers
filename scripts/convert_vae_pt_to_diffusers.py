@@ -13,6 +13,7 @@ from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
     renew_vae_attention_paths,
     renew_vae_resnet_paths,
 )
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 
 
 def custom_convert_ldm_vae_checkpoint(checkpoint, config):
@@ -122,7 +123,8 @@ def vae_pt_to_vae_diffuser(
 ):
     # Only support V1
     r = requests.get(
-        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml",
+        timeout=DIFFUSERS_REQUEST_TIMEOUT,
     )
     io_obj = io.BytesIO(r.content)
 
