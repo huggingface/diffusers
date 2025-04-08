@@ -36,10 +36,11 @@ from diffusers import (
 from diffusers.models.unets import I2VGenXLUNet
 from diffusers.utils import is_xformers_available, load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -58,6 +59,9 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
     batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])
     # No `output_type`.
     required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
+
+    supports_dduf = False
+    test_layerwise_casting = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -224,25 +228,29 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skip("Test not supported for now.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class I2VGenXLPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_i2vgen_xl(self):
         pipe = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"

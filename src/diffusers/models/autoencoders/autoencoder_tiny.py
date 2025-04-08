@@ -154,10 +154,6 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self.register_to_config(block_out_channels=decoder_block_out_channels)
         self.register_to_config(force_upcast=False)
 
-    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (EncoderTiny, DecoderTiny)):
-            module.gradient_checkpointing = value
-
     def scale_latents(self, x: torch.Tensor) -> torch.Tensor:
         """raw latents -> [0, 1]"""
         return x.div(2 * self.latent_magnitude).add(self.latent_shift).clamp(0, 1)
@@ -310,7 +306,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self, x: torch.Tensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
     ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
         if self.use_slicing and x.shape[0] > 1:
-            output = [self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x) for x_slice in x.split(1)]
+            output = [
+                self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x_slice) for x_slice in x.split(1)
+            ]
             output = torch.cat(output)
         else:
             output = self._tiled_decode(x) if self.use_tiling else self.decoder(x)
@@ -341,7 +339,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         # as if we were loading the latents from an RGBA uint8 image.
         unscaled_enc = self.unscale_latents(scaled_enc / 255.0)
 
-        dec = self.decode(unscaled_enc)
+        dec = self.decode(unscaled_enc).sample
 
         if not return_dict:
             return (dec,)

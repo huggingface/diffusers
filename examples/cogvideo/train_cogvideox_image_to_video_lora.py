@@ -61,7 +61,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -722,7 +722,7 @@ def log_validation(
     # pipe.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
 
     videos = []
     for _ in range(args.num_validation_videos):
@@ -872,10 +872,9 @@ def prepare_rotary_positional_embeddings(
         crops_coords=grid_crops_coords,
         grid_size=(grid_height, grid_width),
         temporal_size=num_frames,
+        device=device,
     )
 
-    freqs_cos = freqs_cos.to(device=device)
-    freqs_sin = freqs_sin.to(device=device)
     return freqs_cos, freqs_sin
 
 

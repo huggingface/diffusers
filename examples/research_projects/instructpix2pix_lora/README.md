@@ -2,6 +2,34 @@
 This extended LoRA training script was authored by [Aiden-Frost](https://github.com/Aiden-Frost).
 This is an experimental LoRA extension of [this example](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py). This script provides further support add LoRA layers for unet model.
 
+## Running locally with PyTorch
+### Installing the dependencies
+
+Before running the scripts, make sure to install the library's training dependencies:
+
+**Important**
+
+To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
+```bash
+git clone https://github.com/huggingface/diffusers
+cd diffusers
+pip install .
+```
+
+Then cd in the example folder  and run
+```bash
+pip install -r requirements.txt
+```
+
+And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+
+```bash
+accelerate config
+```
+
+Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
+
+
 ## Training script example
 
 ```bash
@@ -9,7 +37,7 @@ export MODEL_ID="timbrooks/instruct-pix2pix"
 export DATASET_ID="instruction-tuning-sd/cartoonization"
 export OUTPUT_DIR="instructPix2Pix-cartoonization"
 
-accelerate launch finetune_instruct_pix2pix.py \
+accelerate launch train_instruct_pix2pix_lora.py \
   --pretrained_model_name_or_path=$MODEL_ID \
   --dataset_name=$DATASET_ID \
   --enable_xformers_memory_efficient_attention \
@@ -24,7 +52,10 @@ accelerate launch finetune_instruct_pix2pix.py \
   --rank=4 \
   --output_dir=$OUTPUT_DIR \
   --report_to=wandb \
-  --push_to_hub
+  --push_to_hub \
+  --original_image_column="original_image" \
+  --edited_image_column="cartoonized_image" \
+  --edit_prompt_column="edit_prompt"
 ```
 
 ## Inference

@@ -1,4 +1,6 @@
-<!--Copyright 2024 Marigold authors and The HuggingFace Team. All rights reserved.
+<!--
+Copyright 2023-2025 Marigold Team, ETH Zürich. All rights reserved.
+Copyright 2024-2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -10,67 +12,120 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Marigold Pipelines for Computer Vision Tasks
+# Marigold Computer Vision
 
 ![marigold](https://marigoldmonodepth.github.io/images/teaser_collage_compressed.jpg)
 
-Marigold was proposed in [Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation](https://huggingface.co/papers/2312.02145), a CVPR 2024 Oral paper by [Bingxin Ke](http://www.kebingxin.com/), [Anton Obukhov](https://www.obukhov.ai/), [Shengyu Huang](https://shengyuh.github.io/), [Nando Metzger](https://nandometzger.github.io/), [Rodrigo Caye Daudt](https://rcdaudt.github.io/), and [Konrad Schindler](https://scholar.google.com/citations?user=FZuNgqIAAAAJ&hl=en).
-The idea is to repurpose the rich generative prior of Text-to-Image Latent Diffusion Models (LDMs) for traditional computer vision tasks.
-Initially, this idea was explored to fine-tune Stable Diffusion for Monocular Depth Estimation, as shown in the teaser above.
-Later,
-- [Tianfu Wang](https://tianfwang.github.io/) trained the first Latent Consistency Model (LCM) of Marigold, which unlocked fast single-step inference;
-- [Kevin Qu](https://www.linkedin.com/in/kevin-qu-b3417621b/?locale=en_US) extended the approach to Surface Normals Estimation;
-- [Anton Obukhov](https://www.obukhov.ai/) contributed the pipelines and documentation into diffusers (enabled and supported by [YiYi Xu](https://yiyixuxu.github.io/) and [Sayak Paul](https://sayak.dev/)).
+Marigold was proposed in 
+[Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation](https://huggingface.co/papers/2312.02145), 
+a CVPR 2024 Oral paper by 
+[Bingxin Ke](http://www.kebingxin.com/), 
+[Anton Obukhov](https://www.obukhov.ai/), 
+[Shengyu Huang](https://shengyuh.github.io/), 
+[Nando Metzger](https://nandometzger.github.io/), 
+[Rodrigo Caye Daudt](https://rcdaudt.github.io/), and 
+[Konrad Schindler](https://scholar.google.com/citations?user=FZuNgqIAAAAJ&hl=en).
+The core idea is to **repurpose the generative prior of Text-to-Image Latent Diffusion Models (LDMs) for traditional 
+computer vision tasks**.
+This approach was explored by fine-tuning Stable Diffusion for **Monocular Depth Estimation**, as demonstrated in the 
+teaser above.
 
-The abstract from the paper is:
-
-*Monocular depth estimation is a fundamental computer vision task. Recovering 3D depth from a single image is geometrically ill-posed and requires scene understanding, so it is not surprising that the rise of deep learning has led to a breakthrough. The impressive progress of monocular depth estimators has mirrored the growth in model capacity, from relatively modest CNNs to large Transformer architectures. Still, monocular depth estimators tend to struggle when presented with images with unfamiliar content and layout, since their knowledge of the visual world is restricted by the data seen during training, and challenged by zero-shot generalization to new domains. This motivates us to explore whether the extensive priors captured in recent generative diffusion models can enable better, more generalizable depth estimation. We introduce Marigold, a method for affine-invariant monocular depth estimation that is derived from Stable Diffusion and retains its rich prior knowledge. The estimator can be fine-tuned in a couple of days on a single GPU using only synthetic training data. It delivers state-of-the-art performance across a wide range of datasets, including over 20% performance gains in specific cases. Project page: https://marigoldmonodepth.github.io.*
-
-## Available Pipelines
-
-Each pipeline supports one Computer Vision task, which takes an input RGB image as input and produces a *prediction* of the modality of interest, such as a depth map of the input image.
-Currently, the following tasks are implemented:
-
-| Pipeline                                                                                                                                    | Predicted Modalities                                                                                             |                                                                       Demos                                                                        |
-|---------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------:|
-| [MarigoldDepthPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/marigold/pipeline_marigold_depth.py)     | [Depth](https://en.wikipedia.org/wiki/Depth_map), [Disparity](https://en.wikipedia.org/wiki/Binocular_disparity) | [Fast Demo (LCM)](https://huggingface.co/spaces/prs-eth/marigold-lcm), [Slow Original Demo (DDIM)](https://huggingface.co/spaces/prs-eth/marigold) |
-| [MarigoldNormalsPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/marigold/pipeline_marigold_normals.py) | [Surface normals](https://en.wikipedia.org/wiki/Normal_mapping)                                                  |                                   [Fast Demo (LCM)](https://huggingface.co/spaces/prs-eth/marigold-normals-lcm)                                    |
-
-
-## Available Checkpoints
-
-The original checkpoints can be found under the [PRS-ETH](https://huggingface.co/prs-eth/) Hugging Face organization.
+Marigold was later extended in the follow-up paper, 
+[Marigold: Affordable Adaptation of Diffusion-Based Image Generators for Image Analysis](https://huggingface.co/papers/2312.02145), 
+authored by 
+[Bingxin Ke](http://www.kebingxin.com/), 
+[Kevin Qu](https://www.linkedin.com/in/kevin-qu-b3417621b/?locale=en_US), 
+[Tianfu Wang](https://tianfwang.github.io/), 
+[Nando Metzger](https://nandometzger.github.io/), 
+[Shengyu Huang](https://shengyuh.github.io/), 
+[Bo Li](https://www.linkedin.com/in/bobboli0202/), 
+[Anton Obukhov](https://www.obukhov.ai/), and 
+[Konrad Schindler](https://scholar.google.com/citations?user=FZuNgqIAAAAJ&hl=en).
+This work expanded Marigold to support new modalities such as **Surface Normals** and **Intrinsic Image Decomposition** 
+(IID), introduced a training protocol for **Latent Consistency Models** (LCM), and demonstrated **High-Resolution** (HR) 
+processing capability.
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines. Also, to know more about reducing the memory usage of this pipeline, refer to the ["Reduce memory usage"] section [here](../../using-diffusers/svd#reduce-memory-usage).
+The early Marigold models (`v1-0` and earlier) were optimized for best results with at least 10 inference steps.
+LCM models were later developed to enable high-quality inference in just 1 to 4 steps.
+Marigold models `v1-1` and later use the DDIM scheduler to achieve optimal 
+results in as few as 1 to 4 steps.
+
+</Tip>
+
+## Available Pipelines
+
+Each pipeline is tailored for a specific computer vision task, processing an input RGB image and generating a 
+corresponding prediction.
+Currently, the following computer vision tasks are implemented:
+
+| Pipeline                                                                                                                                          | Recommended Model Checkpoints                                                                                                                                                                           |                              Spaces (Interactive Apps)                               | Predicted Modalities                                                                                                                                                               |
+|---------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------:|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [MarigoldDepthPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/marigold/pipeline_marigold_depth.py)           | [prs-eth/marigold-depth-v1-1](https://huggingface.co/prs-eth/marigold-depth-v1-1)                                                                                                                       |          [Depth Estimation](https://huggingface.co/spaces/prs-eth/marigold)          | [Depth](https://en.wikipedia.org/wiki/Depth_map), [Disparity](https://en.wikipedia.org/wiki/Binocular_disparity)                                                                   |
+| [MarigoldNormalsPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/marigold/pipeline_marigold_normals.py)       | [prs-eth/marigold-normals-v1-1](https://huggingface.co/prs-eth/marigold-normals-v1-1)                                                                                                                   | [Surface Normals Estimation](https://huggingface.co/spaces/prs-eth/marigold-normals) | [Surface normals](https://en.wikipedia.org/wiki/Normal_mapping)                                                                                                                    |
+| [MarigoldIntrinsicsPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/marigold/pipeline_marigold_intrinsics.py) | [prs-eth/marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1),<br>[prs-eth/marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1) | [Intrinsic Image Decomposition](https://huggingface.co/spaces/prs-eth/marigold-iid)  | [Albedo](https://en.wikipedia.org/wiki/Albedo), [Materials](https://www.n.aiq3d.com/wiki/roughnessmetalnessao-map), [Lighting](https://en.wikipedia.org/wiki/Diffuse_reflection)   |
+
+## Available Checkpoints
+
+All original checkpoints are available under the [PRS-ETH](https://huggingface.co/prs-eth/) organization on Hugging Face.
+They are designed for use with diffusers pipelines and the [original codebase](https://github.com/prs-eth/marigold), which can also be used to train 
+new model checkpoints.
+The following is a summary of the recommended checkpoints, all of which produce reliable results with 1 to 4 steps. 
+
+| Checkpoint                                                                                          | Modality     | Comment                                                                                                                                                                              |
+|-----------------------------------------------------------------------------------------------------|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [prs-eth/marigold-depth-v1-1](https://huggingface.co/prs-eth/marigold-depth-v1-1)                   | Depth        | Affine-invariant depth prediction assigns each pixel a value between 0 (near plane) and 1 (far plane), with both planes determined by the model during inference.                    |
+| [prs-eth/marigold-normals-v0-1](https://huggingface.co/prs-eth/marigold-normals-v0-1)               | Normals      | The surface normals predictions are unit-length 3D vectors in the screen space camera, with values in the range from -1 to 1.                                                        |
+| [prs-eth/marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1) | Intrinsics   | InteriorVerse decomposition is comprised of Albedo and two BRDF material properties: Roughness and Metallicity.                                                                      | 
+| [prs-eth/marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)     | Intrinsics   | HyperSim decomposition of an image &nbsp\\(I\\)&nbsp is comprised of Albedo &nbsp\\(A\\), Diffuse shading &nbsp\\(S\\), and Non-diffuse residual &nbsp\\(R\\): &nbsp\\(I = A*S+R\\). |
+
+<Tip>
+
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff 
+between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to 
+efficiently load the same components into multiple pipelines. 
+Also, to know more about reducing the memory usage of this pipeline, refer to the ["Reduce memory usage"] section 
+[here](../../using-diffusers/svd#reduce-memory-usage).
 
 </Tip>
 
 <Tip warning={true}>
 
-Marigold pipelines were designed and tested only with `DDIMScheduler` and `LCMScheduler`.
-Depending on the scheduler, the number of inference steps required to get reliable predictions varies, and there is no universal value that works best across schedulers.
-Because of that, the default value of `num_inference_steps` in the `__call__` method of the pipeline is set to `None` (see the API reference).
-Unless set explicitly, its value will be taken from the checkpoint configuration `model_index.json`.
-This is done to ensure high-quality predictions when calling the pipeline with just the `image` argument.
+Marigold pipelines were designed and tested with the scheduler embedded in the model checkpoint.
+The optimal number of inference steps varies by scheduler, with no universal value that works best across all cases.
+To accommodate this, the `num_inference_steps` parameter in the pipeline's `__call__` method defaults to `None` (see the 
+API reference).
+Unless set explicitly, it inherits the value from the `default_denoising_steps` field in the checkpoint configuration 
+file (`model_index.json`).
+This ensures high-quality predictions when invoking the pipeline with only the `image` argument.
 
 </Tip>
 
-See also Marigold [usage examples](marigold_usage).
+See also Marigold [usage examples](../../using-diffusers/marigold_usage).
 
-## MarigoldDepthPipeline
+## Marigold Depth Prediction API
+
 [[autodoc]] MarigoldDepthPipeline
-	- all
 	- __call__
 
-## MarigoldNormalsPipeline
-[[autodoc]] MarigoldNormalsPipeline
-	- all
-	- __call__
-
-## MarigoldDepthOutput
 [[autodoc]] pipelines.marigold.pipeline_marigold_depth.MarigoldDepthOutput
 
-## MarigoldNormalsOutput
+[[autodoc]] pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_depth
+
+## Marigold Normals Estimation API
+[[autodoc]] MarigoldNormalsPipeline
+	- __call__
+
 [[autodoc]] pipelines.marigold.pipeline_marigold_normals.MarigoldNormalsOutput
+
+[[autodoc]] pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_normals
+
+## Marigold Intrinsic Image Decomposition API
+
+[[autodoc]] MarigoldIntrinsicsPipeline
+	- __call__
+
+[[autodoc]] pipelines.marigold.pipeline_marigold_intrinsics.MarigoldIntrinsicsOutput
+
+[[autodoc]] pipelines.marigold.marigold_image_processing.MarigoldImageProcessor.visualize_intrinsics

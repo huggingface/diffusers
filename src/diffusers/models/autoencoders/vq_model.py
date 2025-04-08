@@ -71,6 +71,9 @@ class VQModel(ModelMixin, ConfigMixin):
             Type of normalization layer to use. Can be one of `"group"` or `"spatial"`.
     """
 
+    _skip_layerwise_casting_patterns = ["quantize"]
+    _supports_group_offloading = False
+
     @register_to_config
     def __init__(
         self,

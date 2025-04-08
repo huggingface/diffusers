@@ -207,17 +207,10 @@ class MochiDownBlock3D(nn.Module):
             conv_cache_key = f"resnet_{i}"
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    resnet,
                     hidden_states,
-                    conv_cache=conv_cache.get(conv_cache_key),
+                    conv_cache.get(conv_cache_key),
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -312,15 +305,8 @@ class MochiMidBlock3D(nn.Module):
             conv_cache_key = f"resnet_{i}"
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    resnet, hidden_states, conv_cache.get(conv_cache_key)
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -393,17 +379,10 @@ class MochiUpBlock3D(nn.Module):
             conv_cache_key = f"resnet_{i}"
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
-
-                    return create_forward
-
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    resnet,
                     hidden_states,
-                    conv_cache=conv_cache.get(conv_cache_key),
+                    conv_cache.get(conv_cache_key),
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -447,7 +426,9 @@ class FourierFeatures(nn.Module):
         w = w.repeat(num_channels)[None, :, None, None, None]  # [1, num_channels * num_freqs, 1, 1, 1]
 
         # Interleaved repeat of input channels to match w
-        h = inputs.repeat_interleave(num_freqs, dim=1)  # [B, C * num_freqs, T, H, W]
+        h = inputs.repeat_interleave(
+            num_freqs, dim=1, output_size=inputs.shape[1] * num_freqs
+        )  # [B, C * num_freqs, T, H, W]
         # Scale channels by frequency.
         h = w * h
 
@@ -516,6 +497,8 @@ class MochiEncoder3D(nn.Module):
         self.norm_out = MochiChunkedGroupNorm3D(block_out_channels[-1])
         self.proj_out = nn.Linear(block_out_channels[-1], 2 * out_channels, bias=False)
 
+        self.gradient_checkpointing = False
+
     def forward(
         self, hidden_states: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
@@ -531,21 +514,14 @@ class MochiEncoder3D(nn.Module):
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def create_forward(*inputs):
-                    return module(*inputs)
-
-                return create_forward
-
-            hidden_states, new_conv_cache["block_in"] = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.block_in), hidden_states, conv_cache=conv_cache.get("block_in")
+            hidden_states, new_conv_cache["block_in"] = self._gradient_checkpointing_func(
+                self.block_in, hidden_states, conv_cache.get("block_in")
             )
 
             for i, down_block in enumerate(self.down_blocks):
                 conv_cache_key = f"down_block_{i}"
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(down_block), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    down_block, hidden_states, conv_cache.get(conv_cache_key)
                 )
         else:
             hidden_states, new_conv_cache["block_in"] = self.block_in(
@@ -648,21 +624,14 @@ class MochiDecoder3D(nn.Module):
 
         # 1. Mid
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def create_custom_forward(module):
-                def create_forward(*inputs):
-                    return module(*inputs)
-
-                return create_forward
-
-            hidden_states, new_conv_cache["block_in"] = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.block_in), hidden_states, conv_cache=conv_cache.get("block_in")
+            hidden_states, new_conv_cache["block_in"] = self._gradient_checkpointing_func(
+                self.block_in, hidden_states, conv_cache.get("block_in")
             )
 
             for i, up_block in enumerate(self.up_blocks):
                 conv_cache_key = f"up_block_{i}"
-                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(up_block), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                hidden_states, new_conv_cache[conv_cache_key] = self._gradient_checkpointing_func(
+                    up_block, hidden_states, conv_cache.get(conv_cache_key)
                 )
         else:
             hidden_states, new_conv_cache["block_in"] = self.block_in(
@@ -818,10 +787,6 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (MochiEncoder3D, MochiDecoder3D)):
-            module.gradient_checkpointing = value
 
     def enable_tiling(
         self,

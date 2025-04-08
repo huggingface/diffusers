@@ -5,6 +5,8 @@
     title: 快速入门
   - local: stable_diffusion
     title: 有效和高效的扩散
+  - local: consisid 
+    title: 身份保持的文本到视频生成
   - local: installation
     title: 安装
   title: 开始
