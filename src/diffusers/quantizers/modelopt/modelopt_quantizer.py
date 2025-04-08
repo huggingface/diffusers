@@ -21,8 +21,6 @@ if is_torch_available():
 if is_accelerate_available():
     from accelerate.utils import set_module_tensor_to_device
 
-if is_nvidia_modelopt_available():
-    from .utils import _replace_with_modelopt_layers
 
 logger = logging.get_logger(__name__)
 
@@ -112,9 +110,8 @@ class ModelOptQuantizer(DiffusersQuantizer):
         if self.pre_quantized:
             setattr(module, tensor_name, param_value)
         else:
-            config = self.quantization_config.get_config_from_quant_type()
             set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
-            module = mtq.calibrate(module, algorithm=config["algorithm"])
+            mtq.compress(module)
             module.weight.requires_grad = False
 
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
@@ -139,6 +136,9 @@ class ModelOptQuantizer(DiffusersQuantizer):
         keep_in_fp32_modules: List[str] = [],
         **kwargs,
     ):
+        # ModelOpt imports diffusers internally. This is here to prevent circular imports
+        import modelopt.torch.quantization as mtq
+
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert
 
         if not isinstance(self.modules_to_not_convert, list):
@@ -147,10 +147,7 @@ class ModelOptQuantizer(DiffusersQuantizer):
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
 
         config = self.quantization_config.get_config_from_quant_type()
-        model = _replace_with_modelopt_layers(
-            model,
-            quantization_config=config,
-        )
+        mtq.quantize(model, config)
         model.config.quantization_config = self.quantization_config
 
     def _process_model_after_weight_loading(self, model, **kwargs):
