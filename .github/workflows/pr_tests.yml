@@ -2,8 +2,7 @@ name: Fast tests for PRs
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - "src/diffusers/**.py"
       - "benchmarks/**.py"
@@ -64,6 +63,7 @@ jobs:
         run: |
           python utils/check_copies.py
           python utils/check_dummies.py
+          python utils/check_support_list.py
           make deps_table_check_updated
       - name: Check if failure
         if: ${{ failure() }}
@@ -120,7 +120,8 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate
+        pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
       run: |
@@ -266,6 +267,7 @@ jobs:
         # TODO (sayakpaul, DN6): revisit `--no-deps`
         python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        python -m uv pip install -U tokenizers
         pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment

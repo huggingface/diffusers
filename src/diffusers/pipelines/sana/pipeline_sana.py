@@ -16,10 +16,11 @@ import html
 import inspect
 import re
 import urllib.parse as ul
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
@@ -31,6 +32,7 @@ from ...utils import (
     USE_PEFT_BACKEND,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -46,6 +48,13 @@ from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
 from .pipeline_output import SanaPipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 if is_bs4_available():
@@ -54,6 +63,49 @@ if is_bs4_available():
 if is_ftfy_available():
     import ftfy
 
+
+ASPECT_RATIO_4096_BIN = {
+    "0.25": [2048.0, 8192.0],
+    "0.26": [2048.0, 7936.0],
+    "0.27": [2048.0, 7680.0],
+    "0.28": [2048.0, 7424.0],
+    "0.32": [2304.0, 7168.0],
+    "0.33": [2304.0, 6912.0],
+    "0.35": [2304.0, 6656.0],
+    "0.4": [2560.0, 6400.0],
+    "0.42": [2560.0, 6144.0],
+    "0.48": [2816.0, 5888.0],
+    "0.5": [2816.0, 5632.0],
+    "0.52": [2816.0, 5376.0],
+    "0.57": [3072.0, 5376.0],
+    "0.6": [3072.0, 5120.0],
+    "0.68": [3328.0, 4864.0],
+    "0.72": [3328.0, 4608.0],
+    "0.78": [3584.0, 4608.0],
+    "0.82": [3584.0, 4352.0],
+    "0.88": [3840.0, 4352.0],
+    "0.94": [3840.0, 4096.0],
+    "1.0": [4096.0, 4096.0],
+    "1.07": [4096.0, 3840.0],
+    "1.13": [4352.0, 3840.0],
+    "1.21": [4352.0, 3584.0],
+    "1.29": [4608.0, 3584.0],
+    "1.38": [4608.0, 3328.0],
+    "1.46": [4864.0, 3328.0],
+    "1.67": [5120.0, 3072.0],
+    "1.75": [5376.0, 3072.0],
+    "2.0": [5632.0, 2816.0],
+    "2.09": [5888.0, 2816.0],
+    "2.4": [6144.0, 2560.0],
+    "2.5": [6400.0, 2560.0],
+    "2.89": [6656.0, 2304.0],
+    "3.0": [6912.0, 2304.0],
+    "3.11": [7168.0, 2304.0],
+    "3.62": [7424.0, 2048.0],
+    "3.75": [7680.0, 2048.0],
+    "3.88": [7936.0, 2048.0],
+    "4.0": [8192.0, 2048.0],
+}
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -148,8 +200,8 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
     def __init__(
         self,
-        tokenizer: AutoTokenizer,
-        text_encoder: AutoModelForCausalLM,
+        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        text_encoder: Gemma2PreTrainedModel,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
         scheduler: DPMSolverMultistepScheduler,
@@ -166,6 +218,93 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             else 32
         )
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
+
+    def _get_gemma_prompt_embeds(
+        self,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        dtype: torch.dtype,
+        clean_caption: bool = False,
+        max_sequence_length: int = 300,
+        complex_human_instruction: Optional[List[str]] = None,
+    ):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                prompt to be encoded
+            device: (`torch.device`, *optional*):
+                torch device to place the resulting embeddings on
+            clean_caption (`bool`, defaults to `False`):
+                If `True`, the function will preprocess and clean the provided caption before encoding.
+            max_sequence_length (`int`, defaults to 300): Maximum sequence length to use for the prompt.
+            complex_human_instruction (`list[str]`, defaults to `complex_human_instruction`):
+                If `complex_human_instruction` is not empty, the function will use the complex Human instruction for
+                the prompt.
+        """
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+
+        if getattr(self, "tokenizer", None) is not None:
+            self.tokenizer.padding_side = "right"
+
+        prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
+
+        # prepare complex human instruction
+        if not complex_human_instruction:
+            max_length_all = max_sequence_length
+        else:
+            chi_prompt = "\n".join(complex_human_instruction)
+            prompt = [chi_prompt + p for p in prompt]
+            num_chi_prompt_tokens = len(self.tokenizer.encode(chi_prompt))
+            max_length_all = num_chi_prompt_tokens + max_sequence_length - 2
+
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=max_length_all,
+            truncation=True,
+            add_special_tokens=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+
+        prompt_attention_mask = text_inputs.attention_mask
+        prompt_attention_mask = prompt_attention_mask.to(device)
+
+        prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)
+        prompt_embeds = prompt_embeds[0].to(dtype=dtype, device=device)
+
+        return prompt_embeds, prompt_attention_mask
 
     def encode_prompt(
         self,
@@ -215,6 +354,13 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         if device is None:
             device = self._execution_device
 
+        if self.transformer is not None:
+            dtype = self.transformer.dtype
+        elif self.text_encoder is not None:
+            dtype = self.text_encoder.dtype
+        else:
+            dtype = None
+
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, SanaLoraLoaderMixin):
@@ -231,49 +377,25 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        self.tokenizer.padding_side = "right"
+        if getattr(self, "tokenizer", None) is not None:
+            self.tokenizer.padding_side = "right"
 
         # See Section 3.1. of the paper.
         max_length = max_sequence_length
         select_index = [0] + list(range(-max_length + 1, 0))
 
         if prompt_embeds is None:
-            prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
-
-            # prepare complex human instruction
-            if not complex_human_instruction:
-                max_length_all = max_length
-            else:
-                chi_prompt = "\n".join(complex_human_instruction)
-                prompt = [chi_prompt + p for p in prompt]
-                num_chi_prompt_tokens = len(self.tokenizer.encode(chi_prompt))
-                max_length_all = num_chi_prompt_tokens + max_length - 2
-
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=max_length_all,
-                truncation=True,
-                add_special_tokens=True,
-                return_tensors="pt",
+            prompt_embeds, prompt_attention_mask = self._get_gemma_prompt_embeds(
+                prompt=prompt,
+                device=device,
+                dtype=dtype,
+                clean_caption=clean_caption,
+                max_sequence_length=max_sequence_length,
+                complex_human_instruction=complex_human_instruction,
             )
-            text_input_ids = text_inputs.input_ids
 
-            prompt_attention_mask = text_inputs.attention_mask
-            prompt_attention_mask = prompt_attention_mask.to(device)
-
-            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)
-            prompt_embeds = prompt_embeds[0][:, select_index]
+            prompt_embeds = prompt_embeds[:, select_index]
             prompt_attention_mask = prompt_attention_mask[:, select_index]
-
-        if self.transformer is not None:
-            dtype = self.transformer.dtype
-        elif self.text_encoder is not None:
-            dtype = self.text_encoder.dtype
-        else:
-            dtype = None
-
-        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
@@ -284,25 +406,15 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt
-            uncond_tokens = self._text_preprocessing(uncond_tokens, clean_caption=clean_caption)
-            max_length = prompt_embeds.shape[1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_attention_mask=True,
-                add_special_tokens=True,
-                return_tensors="pt",
+            negative_prompt = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt
+            negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
+                prompt=negative_prompt,
+                device=device,
+                dtype=dtype,
+                clean_caption=clean_caption,
+                max_sequence_length=max_sequence_length,
+                complex_human_instruction=False,
             )
-            negative_prompt_attention_mask = uncond_input.attention_mask
-            negative_prompt_attention_mask = negative_prompt_attention_mask.to(device)
-
-            negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device), attention_mask=negative_prompt_attention_mask
-            )
-            negative_prompt_embeds = negative_prompt_embeds[0]
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -611,7 +723,7 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        clean_caption: bool = True,
+        clean_caption: bool = False,
         use_resolution_binning: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
@@ -726,7 +838,9 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         # 1. Check inputs. Raise error if not correct
         if use_resolution_binning:
-            if self.transformer.config.sample_size == 64:
+            if self.transformer.config.sample_size == 128:
+                aspect_ratio_bin = ASPECT_RATIO_4096_BIN
+            elif self.transformer.config.sample_size == 64:
                 aspect_ratio_bin = ASPECT_RATIO_2048_BIN
             elif self.transformer.config.sample_size == 32:
                 aspect_ratio_bin = ASPECT_RATIO_1024_BIN
@@ -824,6 +938,7 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
+                timestep = timestep * self.transformer.config.timestep_scale
 
                 # predict noise model_output
                 noise_pred = self.transformer(
@@ -864,11 +979,21 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
         if output_type == "latent":
             image = latents
         else:
             latents = latents.to(self.vae.dtype)
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            try:
+                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            except torch.cuda.OutOfMemoryError as e:
+                warnings.warn(
+                    f"{e}. \n"
+                    f"Try to use VAE tiling for large images. For example: \n"
+                    f"pipe.vae.enable_tiling(tile_sample_min_width=512, tile_sample_min_height=512)"
+                )
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
 

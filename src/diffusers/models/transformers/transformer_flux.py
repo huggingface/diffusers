@@ -18,7 +18,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
@@ -32,9 +31,10 @@ from ...models.attention_processor import (
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.import_utils import is_torch_npu_available
 from ...utils.torch_utils import maybe_allow_in_graph
+from ..cache_utils import CacheMixin
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 
@@ -44,20 +44,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @maybe_allow_in_graph
 class FluxSingleTransformerBlock(nn.Module):
-    r"""
-    A Transformer block following the MMDiT architecture, introduced in Stable Diffusion 3.
-
-    Reference: https://arxiv.org/abs/2403.03206
-
-    Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        context_pre_only (`bool`): Boolean to determine if we should add some blocks associated with the
-            processing of `context` conditions.
-    """
-
-    def __init__(self, dim, num_attention_heads, attention_head_dim, mlp_ratio=4.0):
+    def __init__(self, dim: int, num_attention_heads: int, attention_head_dim: int, mlp_ratio: float = 4.0):
         super().__init__()
         self.mlp_hidden_dim = int(dim * mlp_ratio)
 
@@ -67,9 +54,15 @@ class FluxSingleTransformerBlock(nn.Module):
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
         if is_torch_npu_available():
+            deprecation_message = (
+                "Defaulting to FluxAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
+                "should be set explicitly using the `set_attn_processor` method."
+            )
+            deprecate("npu_processor", "0.34.0", deprecation_message)
             processor = FluxAttnProcessor2_0_NPU()
         else:
             processor = FluxAttnProcessor2_0()
+
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
@@ -85,11 +78,11 @@ class FluxSingleTransformerBlock(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        image_rotary_emb=None,
-        joint_attention_kwargs=None,
-    ):
+        hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> torch.Tensor:
         residual = hidden_states
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
         mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
@@ -112,32 +105,14 @@ class FluxSingleTransformerBlock(nn.Module):
 
 @maybe_allow_in_graph
 class FluxTransformerBlock(nn.Module):
-    r"""
-    A Transformer block following the MMDiT architecture, introduced in Stable Diffusion 3.
-
-    Reference: https://arxiv.org/abs/2403.03206
-
-    Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        context_pre_only (`bool`): Boolean to determine if we should add some blocks associated with the
-            processing of `context` conditions.
-    """
-
-    def __init__(self, dim, num_attention_heads, attention_head_dim, qk_norm="rms_norm", eps=1e-6):
+    def __init__(
+        self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6
+    ):
         super().__init__()
 
         self.norm1 = AdaLayerNormZero(dim)
-
         self.norm1_context = AdaLayerNormZero(dim)
 
-        if hasattr(F, "scaled_dot_product_attention"):
-            processor = FluxAttnProcessor2_0()
-        else:
-            raise ValueError(
-                "The current PyTorch version does not support the `scaled_dot_product_attention` function."
-            )
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
@@ -147,7 +122,7 @@ class FluxTransformerBlock(nn.Module):
             out_dim=dim,
             context_pre_only=False,
             bias=True,
-            processor=processor,
+            processor=FluxAttnProcessor2_0(),
             qk_norm=qk_norm,
             eps=eps,
         )
@@ -158,18 +133,14 @@ class FluxTransformerBlock(nn.Module):
         self.norm2_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff_context = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
 
-        # let chunk size default to None
-        self._chunk_size = None
-        self._chunk_dim = 0
-
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        image_rotary_emb=None,
-        joint_attention_kwargs=None,
-    ):
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
@@ -220,27 +191,42 @@ class FluxTransformerBlock(nn.Module):
 
 
 class FluxTransformer2DModel(
-    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, FluxTransformer2DLoadersMixin
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, FluxTransformer2DLoadersMixin, CacheMixin
 ):
     """
     The Transformer model introduced in Flux.
 
     Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
 
-    Parameters:
-        patch_size (`int`): Patch size to turn the input data into small patches.
-        in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
-        num_layers (`int`, *optional*, defaults to 18): The number of layers of MMDiT blocks to use.
-        num_single_layers (`int`, *optional*, defaults to 18): The number of layers of single DiT blocks to use.
-        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
-        num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
-        joint_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        pooled_projection_dim (`int`): Number of dimensions to use when projecting the `pooled_projections`.
-        guidance_embeds (`bool`, defaults to False): Whether to use guidance embeddings.
+    Args:
+        patch_size (`int`, defaults to `1`):
+            Patch size to turn the input data into small patches.
+        in_channels (`int`, defaults to `64`):
+            The number of channels in the input.
+        out_channels (`int`, *optional*, defaults to `None`):
+            The number of channels in the output. If not specified, it defaults to `in_channels`.
+        num_layers (`int`, defaults to `19`):
+            The number of layers of dual stream DiT blocks to use.
+        num_single_layers (`int`, defaults to `38`):
+            The number of layers of single stream DiT blocks to use.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of dimensions to use for each attention head.
+        num_attention_heads (`int`, defaults to `24`):
+            The number of attention heads to use.
+        joint_attention_dim (`int`, defaults to `4096`):
+            The number of dimensions to use for the joint attention (embedding/channel dimension of
+            `encoder_hidden_states`).
+        pooled_projection_dim (`int`, defaults to `768`):
+            The number of dimensions to use for the pooled projection.
+        guidance_embeds (`bool`, defaults to `False`):
+            Whether to use guidance embeddings for guidance-distilled variant of the model.
+        axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
+            The dimensions to use for the rotary positional embeddings.
     """
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
 
     @register_to_config
     def __init__(
@@ -259,7 +245,7 @@ class FluxTransformer2DModel(
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.inner_dim = num_attention_heads * attention_head_dim
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
@@ -267,20 +253,20 @@ class FluxTransformer2DModel(
             CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
         )
         self.time_text_embed = text_time_guidance_cls(
-            embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
+            embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
         )
 
-        self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
-        self.x_embedder = nn.Linear(self.config.in_channels, self.inner_dim)
+        self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
+        self.x_embedder = nn.Linear(in_channels, self.inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
             [
                 FluxTransformerBlock(
                     dim=self.inner_dim,
-                    num_attention_heads=self.config.num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
                 )
-                for i in range(self.config.num_layers)
+                for _ in range(num_layers)
             ]
         )
 
@@ -288,10 +274,10 @@ class FluxTransformer2DModel(
             [
                 FluxSingleTransformerBlock(
                     dim=self.inner_dim,
-                    num_attention_heads=self.config.num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
                 )
-                for i in range(self.config.num_single_layers)
+                for _ in range(num_single_layers)
             ]
         )
 
@@ -400,10 +386,6 @@ class FluxTransformer2DModel(
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -418,16 +400,16 @@ class FluxTransformer2DModel(
         controlnet_single_block_samples=None,
         return_dict: bool = True,
         controlnet_blocks_repeat: bool = False,
-    ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
         The [`FluxTransformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
+            hidden_states (`torch.Tensor` of shape `(batch_size, image_sequence_length, in_channels)`):
                 Input `hidden_states`.
-            encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, text_sequence_length, joint_attention_dim)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
+            pooled_projections (`torch.Tensor` of shape `(batch_size, projection_dim)`): Embeddings projected
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
@@ -498,24 +480,12 @@ class FluxTransformer2DModel(
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     temb,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
 
             else:
@@ -542,23 +512,11 @@ class FluxTransformer2DModel(
 
         for index_block, block in enumerate(self.single_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     temb,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
 
             else:

@@ -22,7 +22,7 @@ import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
-from ...utils import BaseOutput, deprecate, is_torch_version, logging
+from ...utils import BaseOutput, deprecate, logging
 from ...utils.torch_utils import apply_freeu
 from ..attention import BasicTransformerBlock
 from ..attention_processor import (
@@ -324,25 +324,7 @@ class DownBlockMotion(nn.Module):
         blocks = zip(self.resnets, self.motion_modules)
         for resnet, motion_module in blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet),
-                        hidden_states,
-                        temb,
-                        use_reentrant=False,
-                    )
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
-
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 hidden_states = resnet(input_tensor=hidden_states, temb=temb)
 
@@ -514,23 +496,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         blocks = list(zip(self.resnets, self.attentions, self.motion_modules))
         for i, (resnet, attn, motion_module) in enumerate(blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 hidden_states = resnet(input_tensor=hidden_states, temb=temb)
 
@@ -543,10 +509,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                 return_dict=False,
             )[0]
 
-            hidden_states = motion_module(
-                hidden_states,
-                num_frames=num_frames,
-            )
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -733,23 +696,7 @@ class CrossAttnUpBlockMotion(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 hidden_states = resnet(input_tensor=hidden_states, temb=temb)
 
@@ -762,10 +709,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                 return_dict=False,
             )[0]
 
-            hidden_states = motion_module(
-                hidden_states,
-                num_frames=num_frames,
-            )
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -896,24 +840,7 @@ class UpBlockMotion(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet),
-                        hidden_states,
-                        temb,
-                        use_reentrant=False,
-                    )
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 hidden_states = resnet(input_tensor=hidden_states, temb=temb)
 
@@ -1080,34 +1007,12 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
             )[0]
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(motion_module),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
+                hidden_states = self._gradient_checkpointing_func(
+                    motion_module, hidden_states, None, None, None, num_frames, None
                 )
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
-                hidden_states = motion_module(
-                    hidden_states,
-                    num_frames=num_frames,
-                )
+                hidden_states = motion_module(hidden_states, None, None, None, num_frames, None)
                 hidden_states = resnet(input_tensor=hidden_states, temb=temb)
 
         return hidden_states
@@ -1301,6 +1206,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
     """
 
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["norm"]
 
     @register_to_config
     def __init__(
@@ -1965,10 +1871,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
 
         self.set_attn_processor(processor)
 
-    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (CrossAttnDownBlockMotion, DownBlockMotion, CrossAttnUpBlockMotion, UpBlockMotion)):
-            module.gradient_checkpointing = value
-
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float) -> None:
         r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
@@ -2114,10 +2016,11 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
             is_mps = sample.device.type == "mps"
+            is_npu = sample.device.type == "npu"
             if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
+                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
             else:
-                dtype = torch.int32 if is_mps else torch.int64
+                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
@@ -2156,7 +2059,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
             aug_emb = self.add_embedding(add_embeds)
 
         emb = emb if aug_emb is None else emb + aug_emb
-        emb = emb.repeat_interleave(repeats=num_frames, dim=0)
+        emb = emb.repeat_interleave(num_frames, dim=0, output_size=emb.shape[0] * num_frames)
 
         if self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
             if "image_embeds" not in added_cond_kwargs:
@@ -2165,7 +2068,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             image_embeds = self.encoder_hid_proj(image_embeds)
-            image_embeds = [image_embed.repeat_interleave(repeats=num_frames, dim=0) for image_embed in image_embeds]
+            image_embeds = [
+                image_embed.repeat_interleave(num_frames, dim=0, output_size=image_embed.shape[0] * num_frames)
+                for image_embed in image_embeds
+            ]
             encoder_hidden_states = (encoder_hidden_states, image_embeds)
 
         # 2. pre-process

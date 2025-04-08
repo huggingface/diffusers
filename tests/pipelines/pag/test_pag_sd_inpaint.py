@@ -30,10 +30,11 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -48,7 +49,6 @@ from ..test_pipelines_common import (
     PipelineFromPipeTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -60,7 +60,6 @@ class StableDiffusionPAGInpaintPipelineFastTests(
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineFromPipeTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionPAGInpaintPipeline
@@ -244,9 +243,16 @@ class StableDiffusionPAGInpaintPipelineFastTests(
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol=1e-3, rtol=1e-3)
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusionPAGInpaintPipeline
     repo_id = "runwayml/stable-diffusion-v1-5"
@@ -254,12 +260,12 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", seed=0, guidance_scale=7.0):
         img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
@@ -284,7 +290,7 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
 
     def test_pag_cfg(self):
         pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
@@ -292,7 +298,7 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 512, 512, 3)
-        print(image_slice.flatten())
+
         expected_slice = np.array(
             [0.38793945, 0.4111328, 0.47924805, 0.39208984, 0.4165039, 0.41674805, 0.37060547, 0.36791992, 0.40625]
         )
@@ -302,7 +308,7 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
 
     def test_pag_uncond(self):
         pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device, guidance_scale=0.0)

@@ -6,12 +6,16 @@ import torch
 import torch.nn as nn
 
 from diffusers import (
+    AuraFlowPipeline,
+    AuraFlowTransformer2DModel,
+    FluxControlPipeline,
     FluxPipeline,
     FluxTransformer2DModel,
     GGUFQuantizationConfig,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
 )
+from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     is_gguf_available,
     nightly,
@@ -19,6 +23,7 @@ from diffusers.utils.testing_utils import (
     require_accelerate,
     require_big_gpu_with_torch_cuda,
     require_gguf_version_greater_or_equal,
+    require_peft_backend,
     torch_device,
 )
 
@@ -54,7 +59,8 @@ class GGUFSingleFileTesterMixin:
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear) and hasattr(module.weight, "quant_type"):
                 assert module.weight.dtype == torch.uint8
-                assert module.bias.dtype == torch.float32
+                if module.bias is not None:
+                    assert module.bias.dtype == self.torch_dtype
 
     def test_gguf_memory_usage(self):
         quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
@@ -377,3 +383,122 @@ class SD35MediumGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase
         )
         max_diff = numpy_cosine_similarity_distance(expected_slice, output_slice)
         assert max_diff < 1e-4
+
+
+class AuraFlowGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+    ckpt_path = "https://huggingface.co/city96/AuraFlow-v0.3-gguf/blob/main/aura_flow_0.3-Q2_K.gguf"
+    torch_dtype = torch.bfloat16
+    model_cls = AuraFlowTransformer2DModel
+    expected_memory_use_in_gb = 4
+
+    def setUp(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_dummy_inputs(self):
+        return {
+            "hidden_states": torch.randn((1, 4, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
+                torch_device, self.torch_dtype
+            ),
+            "encoder_hidden_states": torch.randn(
+                (1, 512, 2048),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+        }
+
+    def test_pipeline_inference(self):
+        quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
+        transformer = self.model_cls.from_single_file(
+            self.ckpt_path, quantization_config=quantization_config, torch_dtype=self.torch_dtype
+        )
+        pipe = AuraFlowPipeline.from_pretrained(
+            "fal/AuraFlow-v0.3", transformer=transformer, torch_dtype=self.torch_dtype
+        )
+        pipe.enable_model_cpu_offload()
+
+        prompt = "a pony holding a sign that says hello"
+        output = pipe(
+            prompt=prompt, num_inference_steps=2, generator=torch.Generator("cpu").manual_seed(0), output_type="np"
+        ).images[0]
+        output_slice = output[:3, :3, :].flatten()
+        expected_slice = np.array(
+            [
+                0.46484375,
+                0.546875,
+                0.64453125,
+                0.48242188,
+                0.53515625,
+                0.59765625,
+                0.47070312,
+                0.5078125,
+                0.5703125,
+                0.42773438,
+                0.50390625,
+                0.5703125,
+                0.47070312,
+                0.515625,
+                0.57421875,
+                0.45898438,
+                0.48632812,
+                0.53515625,
+                0.4453125,
+                0.5078125,
+                0.56640625,
+                0.47851562,
+                0.5234375,
+                0.57421875,
+                0.48632812,
+                0.5234375,
+                0.56640625,
+            ]
+        )
+        max_diff = numpy_cosine_similarity_distance(expected_slice, output_slice)
+        assert max_diff < 1e-4
+
+
+@require_peft_backend
+@nightly
+@require_big_gpu_with_torch_cuda
+@require_accelerate
+@require_gguf_version_greater_or_equal("0.10.0")
+class FluxControlLoRAGGUFTests(unittest.TestCase):
+    def test_lora_loading(self):
+        ckpt_path = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
+        transformer = FluxTransformer2DModel.from_single_file(
+            ckpt_path,
+            quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+            torch_dtype=torch.bfloat16,
+        )
+        pipe = FluxControlPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev",
+            transformer=transformer,
+            torch_dtype=torch.bfloat16,
+        ).to("cuda")
+        pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
+
+        prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+        control_image = load_image(
+            "https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/control_image_robot_canny.png"
+        )
+
+        output = pipe(
+            prompt=prompt,
+            control_image=control_image,
+            height=256,
+            width=256,
+            num_inference_steps=10,
+            guidance_scale=30.0,
+            output_type="np",
+            generator=torch.manual_seed(0),
+        ).images
+
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.8047, 0.8359, 0.8711, 0.6875, 0.7070, 0.7383, 0.5469, 0.5820, 0.6641])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3)

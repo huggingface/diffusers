@@ -29,8 +29,6 @@ from ..attention_processor import (
 from ..embeddings import TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..unets.unet_2d_blocks import (
-    CrossAttnDownBlock2D,
-    DownBlock2D,
     UNetMidBlock2DCrossAttn,
     get_down_block,
 )
@@ -599,10 +597,6 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
-    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         sample: torch.Tensor,
@@ -611,12 +605,13 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         controlnet_cond: List[torch.Tensor],
         control_type: torch.Tensor,
         control_type_idx: List[int],
-        conditioning_scale: float = 1.0,
+        conditioning_scale: Union[float, List[float]] = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        from_multi: bool = False,
         guess_mode: bool = False,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple[Tuple[torch.Tensor, ...], torch.Tensor]]:
@@ -653,6 +648,8 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Additional conditions for the Stable Diffusion XL UNet.
             cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
+            from_multi (`bool`, defaults to `False`):
+                Use standard scaling when called from `MultiControlNetUnionModel`.
             guess_mode (`bool`, defaults to `False`):
                 In this mode, the ControlNet encoder tries its best to recognize the input content of the input even if
                 you remove all prompts. A `guidance_scale` between 3.0 and 5.0 is recommended.
@@ -664,6 +661,9 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 If `return_dict` is `True`, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
                 returned where the first element is the sample tensor.
         """
+        if isinstance(conditioning_scale, float):
+            conditioning_scale = [conditioning_scale] * len(controlnet_cond)
+
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
 
@@ -681,10 +681,11 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
             is_mps = sample.device.type == "mps"
+            is_npu = sample.device.type == "npu"
             if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
+                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
             else:
-                dtype = torch.int32 if is_mps else torch.int64
+                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
@@ -747,12 +748,16 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         inputs = []
         condition_list = []
 
-        for cond, control_idx in zip(controlnet_cond, control_type_idx):
+        for cond, control_idx, scale in zip(controlnet_cond, control_type_idx, conditioning_scale):
             condition = self.controlnet_cond_embedding(cond)
             feat_seq = torch.mean(condition, dim=(2, 3))
             feat_seq = feat_seq + self.task_embedding[control_idx]
-            inputs.append(feat_seq.unsqueeze(1))
-            condition_list.append(condition)
+            if from_multi:
+                inputs.append(feat_seq.unsqueeze(1))
+                condition_list.append(condition)
+            else:
+                inputs.append(feat_seq.unsqueeze(1) * scale)
+                condition_list.append(condition * scale)
 
         condition = sample
         feat_seq = torch.mean(condition, dim=(2, 3))
@@ -764,10 +769,13 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             x = layer(x)
 
         controlnet_cond_fuser = sample * 0.0
-        for idx, condition in enumerate(condition_list[:-1]):
+        for (idx, condition), scale in zip(enumerate(condition_list[:-1]), conditioning_scale):
             alpha = self.spatial_ch_projs(x[:, idx])
             alpha = alpha.unsqueeze(-1).unsqueeze(-1)
-            controlnet_cond_fuser += condition + alpha
+            if from_multi:
+                controlnet_cond_fuser += condition + alpha
+            else:
+                controlnet_cond_fuser += condition + alpha * scale
 
         sample = sample + controlnet_cond_fuser
 
@@ -811,12 +819,13 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # 6. scaling
         if guess_mode and not self.config.global_pool_conditions:
             scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1, device=sample.device)  # 0.1 to 1.0
-            scales = scales * conditioning_scale
+            if from_multi:
+                scales = scales * conditioning_scale[0]
             down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
             mid_block_res_sample = mid_block_res_sample * scales[-1]  # last one
-        else:
-            down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
-            mid_block_res_sample = mid_block_res_sample * conditioning_scale
+        elif from_multi:
+            down_block_res_samples = [sample * conditioning_scale[0] for sample in down_block_res_samples]
+            mid_block_res_sample = mid_block_res_sample * conditioning_scale[0]
 
         if self.config.global_pool_conditions:
             down_block_res_samples = [

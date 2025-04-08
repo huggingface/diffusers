@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
     def validate_environment(self, *args, **kwargs):
-        if not torch.cuda.is_available():
+        if not (torch.cuda.is_available() or torch.xpu.is_available()):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
             raise ImportError(
@@ -135,6 +135,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
+        **kwargs,
     ):
         import bitsandbytes as bnb
 
@@ -235,18 +236,20 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float16
         return torch_dtype
 
-    # (sayakpaul): I think it could be better to disable custom `device_map`s
-    # for the first phase of the integration in the interest of simplicity.
-    # Commenting this for discussions on the PR.
-    # def update_device_map(self, device_map):
-    #     if device_map is None:
-    #         device_map = {"": torch.cuda.current_device()}
-    #         logger.info(
-    #             "The device_map was not initialized. "
-    #             "Setting device_map to {'':torch.cuda.current_device()}. "
-    #             "If you want to use the model for inference, please set device_map ='auto' "
-    #         )
-    #     return device_map
+    def update_device_map(self, device_map):
+        if device_map is None:
+            if torch.xpu.is_available():
+                current_device = f"xpu:{torch.xpu.current_device()}"
+            else:
+                current_device = f"cuda:{torch.cuda.current_device()}"
+            device_map = {"": current_device}
+            logger.info(
+                "The device_map was not initialized. "
+                "Setting device_map to {"
+                ": {current_device}}. "
+                "If you want to use the model for inference, please set device_map ='auto' "
+            )
+        return device_map
 
     def _process_model_before_weight_loading(
         self,
@@ -289,9 +292,9 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             model, modules_to_not_convert=self.modules_to_not_convert, quantization_config=self.quantization_config
         )
         model.config.quantization_config = self.quantization_config
+        model.is_loaded_in_4bit = True
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
-        model.is_loaded_in_4bit = True
         model.is_4bit_serializable = self.is_serializable
         return model
 
@@ -313,7 +316,10 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             logger.info(
                 "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to GPU. After dequantization, will move the model back to CPU again to preserve the previous device."
             )
-            model.to(torch.cuda.current_device())
+            if torch.xpu.is_available():
+                model.to(torch.xpu.current_device())
+            else:
+                model.to(torch.cuda.current_device())
 
         model = dequantize_and_replace(
             model, self.modules_to_not_convert, quantization_config=self.quantization_config
@@ -344,7 +350,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
     def validate_environment(self, *args, **kwargs):
-        if not torch.cuda.is_available():
+        if not (torch.cuda.is_available() or torch.xpu.is_available()):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
             raise ImportError(
@@ -400,16 +406,21 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float16
         return torch_dtype
 
-    # # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.update_device_map
-    # def update_device_map(self, device_map):
-    #     if device_map is None:
-    #         device_map = {"": torch.cuda.current_device()}
-    #         logger.info(
-    #             "The device_map was not initialized. "
-    #             "Setting device_map to {'':torch.cuda.current_device()}. "
-    #             "If you want to use the model for inference, please set device_map ='auto' "
-    #         )
-    #     return device_map
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.update_device_map
+    def update_device_map(self, device_map):
+        if device_map is None:
+            if torch.xpu.is_available():
+                current_device = f"xpu:{torch.xpu.current_device()}"
+            else:
+                current_device = f"cuda:{torch.cuda.current_device()}"
+            device_map = {"": current_device}
+            logger.info(
+                "The device_map was not initialized. "
+                "Setting device_map to {"
+                ": {current_device}}. "
+                "If you want to use the model for inference, please set device_map ='auto' "
+            )
+        return device_map
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
         if target_dtype != torch.int8:
@@ -446,6 +457,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
+        **kwargs,
     ):
         import bitsandbytes as bnb
 
@@ -493,11 +505,10 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
 
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer._process_model_after_weight_loading with 4bit->8bit
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
-        model.is_loaded_in_8bit = True
         model.is_8bit_serializable = self.is_serializable
         return model
 
-    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer._process_model_before_weight_loading
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer._process_model_before_weight_loading with 4bit->8bit
     def _process_model_before_weight_loading(
         self,
         model: "ModelMixin",
@@ -539,6 +550,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             model, modules_to_not_convert=self.modules_to_not_convert, quantization_config=self.quantization_config
         )
         model.config.quantization_config = self.quantization_config
+        model.is_loaded_in_8bit = True
 
     @property
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.is_serializable

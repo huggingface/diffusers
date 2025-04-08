@@ -519,7 +519,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         remaining_keys = list(sds_sd.keys())
         te_state_dict = {}
         if remaining_keys:
-            if not all(k.startswith("lora_te1") for k in remaining_keys):
+            if not all(k.startswith("lora_te") for k in remaining_keys):
                 raise ValueError(f"Incompatible keys detected: \n\n {', '.join(remaining_keys)}")
             for key in remaining_keys:
                 if not key.endswith("lora_down.weight"):
@@ -557,6 +557,135 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
 
         new_state_dict = {**ait_sd, **te_state_dict}
         return new_state_dict
+
+    def _convert_mixture_state_dict_to_diffusers(state_dict):
+        new_state_dict = {}
+
+        def _convert(original_key, diffusers_key, state_dict, new_state_dict):
+            down_key = f"{original_key}.lora_down.weight"
+            down_weight = state_dict.pop(down_key)
+            lora_rank = down_weight.shape[0]
+
+            up_weight_key = f"{original_key}.lora_up.weight"
+            up_weight = state_dict.pop(up_weight_key)
+
+            alpha_key = f"{original_key}.alpha"
+            alpha = state_dict.pop(alpha_key)
+
+            # scale weight by alpha and dim
+            scale = alpha / lora_rank
+            # calculate scale_down and scale_up
+            scale_down = scale
+            scale_up = 1.0
+            while scale_down * 2 < scale_up:
+                scale_down *= 2
+                scale_up /= 2
+            down_weight = down_weight * scale_down
+            up_weight = up_weight * scale_up
+
+            diffusers_down_key = f"{diffusers_key}.lora_A.weight"
+            new_state_dict[diffusers_down_key] = down_weight
+            new_state_dict[diffusers_down_key.replace(".lora_A.", ".lora_B.")] = up_weight
+
+        all_unique_keys = {
+            k.replace(".lora_down.weight", "").replace(".lora_up.weight", "").replace(".alpha", "")
+            for k in state_dict
+            if not k.startswith(("lora_unet_"))
+        }
+        assert all(k.startswith(("lora_transformer_", "lora_te1_")) for k in all_unique_keys), f"{all_unique_keys=}"
+
+        has_te_keys = False
+        for k in all_unique_keys:
+            if k.startswith("lora_transformer_single_transformer_blocks_"):
+                i = int(k.split("lora_transformer_single_transformer_blocks_")[-1].split("_")[0])
+                diffusers_key = f"single_transformer_blocks.{i}"
+            elif k.startswith("lora_transformer_transformer_blocks_"):
+                i = int(k.split("lora_transformer_transformer_blocks_")[-1].split("_")[0])
+                diffusers_key = f"transformer_blocks.{i}"
+            elif k.startswith("lora_te1_"):
+                has_te_keys = True
+                continue
+            else:
+                raise NotImplementedError
+
+            if "attn_" in k:
+                if "_to_out_0" in k:
+                    diffusers_key += ".attn.to_out.0"
+                elif "_to_add_out" in k:
+                    diffusers_key += ".attn.to_add_out"
+                elif any(qkv in k for qkv in ["to_q", "to_k", "to_v"]):
+                    remaining = k.split("attn_")[-1]
+                    diffusers_key += f".attn.{remaining}"
+                elif any(add_qkv in k for add_qkv in ["add_q_proj", "add_k_proj", "add_v_proj"]):
+                    remaining = k.split("attn_")[-1]
+                    diffusers_key += f".attn.{remaining}"
+
+            _convert(k, diffusers_key, state_dict, new_state_dict)
+
+        if has_te_keys:
+            layer_pattern = re.compile(r"lora_te1_text_model_encoder_layers_(\d+)")
+            attn_mapping = {
+                "q_proj": ".self_attn.q_proj",
+                "k_proj": ".self_attn.k_proj",
+                "v_proj": ".self_attn.v_proj",
+                "out_proj": ".self_attn.out_proj",
+            }
+            mlp_mapping = {"fc1": ".mlp.fc1", "fc2": ".mlp.fc2"}
+            for k in all_unique_keys:
+                if not k.startswith("lora_te1_"):
+                    continue
+
+                match = layer_pattern.search(k)
+                if not match:
+                    continue
+                i = int(match.group(1))
+                diffusers_key = f"text_model.encoder.layers.{i}"
+
+                if "attn" in k:
+                    for key_fragment, suffix in attn_mapping.items():
+                        if key_fragment in k:
+                            diffusers_key += suffix
+                            break
+                elif "mlp" in k:
+                    for key_fragment, suffix in mlp_mapping.items():
+                        if key_fragment in k:
+                            diffusers_key += suffix
+                            break
+
+                _convert(k, diffusers_key, state_dict, new_state_dict)
+
+        remaining_all_unet = False
+        if state_dict:
+            remaining_all_unet = all(k.startswith("lora_unet_") for k in state_dict)
+        if remaining_all_unet:
+            keys = list(state_dict.keys())
+            for k in keys:
+                state_dict.pop(k)
+
+        if len(state_dict) > 0:
+            raise ValueError(
+                f"Expected an empty state dict at this point but its has these keys which couldn't be parsed: {list(state_dict.keys())}."
+            )
+
+        transformer_state_dict = {
+            f"transformer.{k}": v for k, v in new_state_dict.items() if not k.startswith("text_model.")
+        }
+        te_state_dict = {f"text_encoder.{k}": v for k, v in new_state_dict.items() if k.startswith("text_model.")}
+        return {**transformer_state_dict, **te_state_dict}
+
+    # This is  weird.
+    # https://huggingface.co/sayakpaul/different-lora-from-civitai/tree/main?show_file_info=sharp_detailed_foot.safetensors
+    # has both `peft` and non-peft state dict.
+    has_peft_state_dict = any(k.startswith("transformer.") for k in state_dict)
+    if has_peft_state_dict:
+        state_dict = {k: v for k, v in state_dict.items() if k.startswith("transformer.")}
+        return state_dict
+    # Another weird one.
+    has_mixture = any(
+        k.startswith("lora_transformer_") and ("lora_down" in k or "lora_up" in k or "alpha" in k) for k in state_dict
+    )
+    if has_mixture:
+        return _convert_mixture_state_dict_to_diffusers(state_dict)
 
     return _convert_sd_scripts_to_ai_toolkit(state_dict)
 
@@ -968,6 +1097,305 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
 
     if len(original_state_dict) > 0:
         raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
+
+    for key in list(converted_state_dict.keys()):
+        converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
+
+    return converted_state_dict
+
+
+def _convert_hunyuan_video_lora_to_diffusers(original_state_dict):
+    converted_state_dict = {k: original_state_dict.pop(k) for k in list(original_state_dict.keys())}
+
+    def remap_norm_scale_shift_(key, state_dict):
+        weight = state_dict.pop(key)
+        shift, scale = weight.chunk(2, dim=0)
+        new_weight = torch.cat([scale, shift], dim=0)
+        state_dict[key.replace("final_layer.adaLN_modulation.1", "norm_out.linear")] = new_weight
+
+    def remap_txt_in_(key, state_dict):
+        def rename_key(key):
+            new_key = key.replace("individual_token_refiner.blocks", "token_refiner.refiner_blocks")
+            new_key = new_key.replace("adaLN_modulation.1", "norm_out.linear")
+            new_key = new_key.replace("txt_in", "context_embedder")
+            new_key = new_key.replace("t_embedder.mlp.0", "time_text_embed.timestep_embedder.linear_1")
+            new_key = new_key.replace("t_embedder.mlp.2", "time_text_embed.timestep_embedder.linear_2")
+            new_key = new_key.replace("c_embedder", "time_text_embed.text_embedder")
+            new_key = new_key.replace("mlp", "ff")
+            return new_key
+
+        if "self_attn_qkv" in key:
+            weight = state_dict.pop(key)
+            to_q, to_k, to_v = weight.chunk(3, dim=0)
+            state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_q"))] = to_q
+            state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_k"))] = to_k
+            state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_v"))] = to_v
+        else:
+            state_dict[rename_key(key)] = state_dict.pop(key)
+
+    def remap_img_attn_qkv_(key, state_dict):
+        weight = state_dict.pop(key)
+        if "lora_A" in key:
+            state_dict[key.replace("img_attn_qkv", "attn.to_q")] = weight
+            state_dict[key.replace("img_attn_qkv", "attn.to_k")] = weight
+            state_dict[key.replace("img_attn_qkv", "attn.to_v")] = weight
+        else:
+            to_q, to_k, to_v = weight.chunk(3, dim=0)
+            state_dict[key.replace("img_attn_qkv", "attn.to_q")] = to_q
+            state_dict[key.replace("img_attn_qkv", "attn.to_k")] = to_k
+            state_dict[key.replace("img_attn_qkv", "attn.to_v")] = to_v
+
+    def remap_txt_attn_qkv_(key, state_dict):
+        weight = state_dict.pop(key)
+        if "lora_A" in key:
+            state_dict[key.replace("txt_attn_qkv", "attn.add_q_proj")] = weight
+            state_dict[key.replace("txt_attn_qkv", "attn.add_k_proj")] = weight
+            state_dict[key.replace("txt_attn_qkv", "attn.add_v_proj")] = weight
+        else:
+            to_q, to_k, to_v = weight.chunk(3, dim=0)
+            state_dict[key.replace("txt_attn_qkv", "attn.add_q_proj")] = to_q
+            state_dict[key.replace("txt_attn_qkv", "attn.add_k_proj")] = to_k
+            state_dict[key.replace("txt_attn_qkv", "attn.add_v_proj")] = to_v
+
+    def remap_single_transformer_blocks_(key, state_dict):
+        hidden_size = 3072
+
+        if "linear1.lora_A.weight" in key or "linear1.lora_B.weight" in key:
+            linear1_weight = state_dict.pop(key)
+            if "lora_A" in key:
+                new_key = key.replace("single_blocks", "single_transformer_blocks").removesuffix(
+                    ".linear1.lora_A.weight"
+                )
+                state_dict[f"{new_key}.attn.to_q.lora_A.weight"] = linear1_weight
+                state_dict[f"{new_key}.attn.to_k.lora_A.weight"] = linear1_weight
+                state_dict[f"{new_key}.attn.to_v.lora_A.weight"] = linear1_weight
+                state_dict[f"{new_key}.proj_mlp.lora_A.weight"] = linear1_weight
+            else:
+                split_size = (hidden_size, hidden_size, hidden_size, linear1_weight.size(0) - 3 * hidden_size)
+                q, k, v, mlp = torch.split(linear1_weight, split_size, dim=0)
+                new_key = key.replace("single_blocks", "single_transformer_blocks").removesuffix(
+                    ".linear1.lora_B.weight"
+                )
+                state_dict[f"{new_key}.attn.to_q.lora_B.weight"] = q
+                state_dict[f"{new_key}.attn.to_k.lora_B.weight"] = k
+                state_dict[f"{new_key}.attn.to_v.lora_B.weight"] = v
+                state_dict[f"{new_key}.proj_mlp.lora_B.weight"] = mlp
+
+        elif "linear1.lora_A.bias" in key or "linear1.lora_B.bias" in key:
+            linear1_bias = state_dict.pop(key)
+            if "lora_A" in key:
+                new_key = key.replace("single_blocks", "single_transformer_blocks").removesuffix(
+                    ".linear1.lora_A.bias"
+                )
+                state_dict[f"{new_key}.attn.to_q.lora_A.bias"] = linear1_bias
+                state_dict[f"{new_key}.attn.to_k.lora_A.bias"] = linear1_bias
+                state_dict[f"{new_key}.attn.to_v.lora_A.bias"] = linear1_bias
+                state_dict[f"{new_key}.proj_mlp.lora_A.bias"] = linear1_bias
+            else:
+                split_size = (hidden_size, hidden_size, hidden_size, linear1_bias.size(0) - 3 * hidden_size)
+                q_bias, k_bias, v_bias, mlp_bias = torch.split(linear1_bias, split_size, dim=0)
+                new_key = key.replace("single_blocks", "single_transformer_blocks").removesuffix(
+                    ".linear1.lora_B.bias"
+                )
+                state_dict[f"{new_key}.attn.to_q.lora_B.bias"] = q_bias
+                state_dict[f"{new_key}.attn.to_k.lora_B.bias"] = k_bias
+                state_dict[f"{new_key}.attn.to_v.lora_B.bias"] = v_bias
+                state_dict[f"{new_key}.proj_mlp.lora_B.bias"] = mlp_bias
+
+        else:
+            new_key = key.replace("single_blocks", "single_transformer_blocks")
+            new_key = new_key.replace("linear2", "proj_out")
+            new_key = new_key.replace("q_norm", "attn.norm_q")
+            new_key = new_key.replace("k_norm", "attn.norm_k")
+            state_dict[new_key] = state_dict.pop(key)
+
+    TRANSFORMER_KEYS_RENAME_DICT = {
+        "img_in": "x_embedder",
+        "time_in.mlp.0": "time_text_embed.timestep_embedder.linear_1",
+        "time_in.mlp.2": "time_text_embed.timestep_embedder.linear_2",
+        "guidance_in.mlp.0": "time_text_embed.guidance_embedder.linear_1",
+        "guidance_in.mlp.2": "time_text_embed.guidance_embedder.linear_2",
+        "vector_in.in_layer": "time_text_embed.text_embedder.linear_1",
+        "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
+        "double_blocks": "transformer_blocks",
+        "img_attn_q_norm": "attn.norm_q",
+        "img_attn_k_norm": "attn.norm_k",
+        "img_attn_proj": "attn.to_out.0",
+        "txt_attn_q_norm": "attn.norm_added_q",
+        "txt_attn_k_norm": "attn.norm_added_k",
+        "txt_attn_proj": "attn.to_add_out",
+        "img_mod.linear": "norm1.linear",
+        "img_norm1": "norm1.norm",
+        "img_norm2": "norm2",
+        "img_mlp": "ff",
+        "txt_mod.linear": "norm1_context.linear",
+        "txt_norm1": "norm1.norm",
+        "txt_norm2": "norm2_context",
+        "txt_mlp": "ff_context",
+        "self_attn_proj": "attn.to_out.0",
+        "modulation.linear": "norm.linear",
+        "pre_norm": "norm.norm",
+        "final_layer.norm_final": "norm_out.norm",
+        "final_layer.linear": "proj_out",
+        "fc1": "net.0.proj",
+        "fc2": "net.2",
+        "input_embedder": "proj_in",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {
+        "txt_in": remap_txt_in_,
+        "img_attn_qkv": remap_img_attn_qkv_,
+        "txt_attn_qkv": remap_txt_attn_qkv_,
+        "single_blocks": remap_single_transformer_blocks_,
+        "final_layer.adaLN_modulation.1": remap_norm_scale_shift_,
+    }
+
+    # Some folks attempt to make their state dict compatible with diffusers by adding "transformer." prefix to all keys
+    # and use their custom code. To make sure both "original" and "attempted diffusers" loras work as expected, we make
+    # sure that both follow the same initial format by stripping off the "transformer." prefix.
+    for key in list(converted_state_dict.keys()):
+        if key.startswith("transformer."):
+            converted_state_dict[key[len("transformer.") :]] = converted_state_dict.pop(key)
+        if key.startswith("diffusion_model."):
+            converted_state_dict[key[len("diffusion_model.") :]] = converted_state_dict.pop(key)
+
+    # Rename and remap the state dict keys
+    for key in list(converted_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    # Add back the "transformer." prefix
+    for key in list(converted_state_dict.keys()):
+        converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
+
+    return converted_state_dict
+
+
+def _convert_non_diffusers_lumina2_lora_to_diffusers(state_dict):
+    # Remove "diffusion_model." prefix from keys.
+    state_dict = {k[len("diffusion_model.") :]: v for k, v in state_dict.items()}
+    converted_state_dict = {}
+
+    def get_num_layers(keys, pattern):
+        layers = set()
+        for key in keys:
+            match = re.search(pattern, key)
+            if match:
+                layers.add(int(match.group(1)))
+        return len(layers)
+
+    def process_block(prefix, index, convert_norm):
+        # Process attention qkv: pop lora_A and lora_B weights.
+        lora_down = state_dict.pop(f"{prefix}.{index}.attention.qkv.lora_A.weight")
+        lora_up = state_dict.pop(f"{prefix}.{index}.attention.qkv.lora_B.weight")
+        for attn_key in ["to_q", "to_k", "to_v"]:
+            converted_state_dict[f"{prefix}.{index}.attn.{attn_key}.lora_A.weight"] = lora_down
+        for attn_key, weight in zip(["to_q", "to_k", "to_v"], torch.split(lora_up, [2304, 768, 768], dim=0)):
+            converted_state_dict[f"{prefix}.{index}.attn.{attn_key}.lora_B.weight"] = weight
+
+        # Process attention out weights.
+        converted_state_dict[f"{prefix}.{index}.attn.to_out.0.lora_A.weight"] = state_dict.pop(
+            f"{prefix}.{index}.attention.out.lora_A.weight"
+        )
+        converted_state_dict[f"{prefix}.{index}.attn.to_out.0.lora_B.weight"] = state_dict.pop(
+            f"{prefix}.{index}.attention.out.lora_B.weight"
+        )
+
+        # Process feed-forward weights for layers 1, 2, and 3.
+        for layer in range(1, 4):
+            converted_state_dict[f"{prefix}.{index}.feed_forward.linear_{layer}.lora_A.weight"] = state_dict.pop(
+                f"{prefix}.{index}.feed_forward.w{layer}.lora_A.weight"
+            )
+            converted_state_dict[f"{prefix}.{index}.feed_forward.linear_{layer}.lora_B.weight"] = state_dict.pop(
+                f"{prefix}.{index}.feed_forward.w{layer}.lora_B.weight"
+            )
+
+        if convert_norm:
+            converted_state_dict[f"{prefix}.{index}.norm1.linear.lora_A.weight"] = state_dict.pop(
+                f"{prefix}.{index}.adaLN_modulation.1.lora_A.weight"
+            )
+            converted_state_dict[f"{prefix}.{index}.norm1.linear.lora_B.weight"] = state_dict.pop(
+                f"{prefix}.{index}.adaLN_modulation.1.lora_B.weight"
+            )
+
+    noise_refiner_pattern = r"noise_refiner\.(\d+)\."
+    num_noise_refiner_layers = get_num_layers(state_dict.keys(), noise_refiner_pattern)
+    for i in range(num_noise_refiner_layers):
+        process_block("noise_refiner", i, convert_norm=True)
+
+    context_refiner_pattern = r"context_refiner\.(\d+)\."
+    num_context_refiner_layers = get_num_layers(state_dict.keys(), context_refiner_pattern)
+    for i in range(num_context_refiner_layers):
+        process_block("context_refiner", i, convert_norm=False)
+
+    core_transformer_pattern = r"layers\.(\d+)\."
+    num_core_transformer_layers = get_num_layers(state_dict.keys(), core_transformer_pattern)
+    for i in range(num_core_transformer_layers):
+        process_block("layers", i, convert_norm=True)
+
+    if len(state_dict) > 0:
+        raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
+
+    for key in list(converted_state_dict.keys()):
+        converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
+
+    return converted_state_dict
+
+
+def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
+    converted_state_dict = {}
+    original_state_dict = {k[len("diffusion_model.") :]: v for k, v in state_dict.items()}
+
+    num_blocks = len({k.split("blocks.")[1].split(".")[0] for k in original_state_dict})
+    is_i2v_lora = any("k_img" in k for k in original_state_dict) and any("v_img" in k for k in original_state_dict)
+
+    for i in range(num_blocks):
+        # Self-attention
+        for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
+            converted_state_dict[f"blocks.{i}.attn1.{c}.lora_A.weight"] = original_state_dict.pop(
+                f"blocks.{i}.self_attn.{o}.lora_A.weight"
+            )
+            converted_state_dict[f"blocks.{i}.attn1.{c}.lora_B.weight"] = original_state_dict.pop(
+                f"blocks.{i}.self_attn.{o}.lora_B.weight"
+            )
+
+        # Cross-attention
+        for o, c in zip(["q", "k", "v", "o"], ["to_q", "to_k", "to_v", "to_out.0"]):
+            converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = original_state_dict.pop(
+                f"blocks.{i}.cross_attn.{o}.lora_A.weight"
+            )
+            converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
+                f"blocks.{i}.cross_attn.{o}.lora_B.weight"
+            )
+
+        if is_i2v_lora:
+            for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
+                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = original_state_dict.pop(
+                    f"blocks.{i}.cross_attn.{o}.lora_A.weight"
+                )
+                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = original_state_dict.pop(
+                    f"blocks.{i}.cross_attn.{o}.lora_B.weight"
+                )
+
+        # FFN
+        for o, c in zip(["ffn.0", "ffn.2"], ["net.0.proj", "net.2"]):
+            converted_state_dict[f"blocks.{i}.ffn.{c}.lora_A.weight"] = original_state_dict.pop(
+                f"blocks.{i}.{o}.lora_A.weight"
+            )
+            converted_state_dict[f"blocks.{i}.ffn.{c}.lora_B.weight"] = original_state_dict.pop(
+                f"blocks.{i}.{o}.lora_B.weight"
+            )
+
+    if len(original_state_dict) > 0:
+        raise ValueError(f"`state_dict` should be empty at this point but has {original_state_dict.keys()=}")
 
     for key in list(converted_state_dict.keys()):
         converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)

@@ -17,12 +17,14 @@ import gc
 import json
 import os
 import random
+import re
 import shutil
 import sys
 import tempfile
 import traceback
 import unittest
 import unittest.mock as mock
+import warnings
 
 import numpy as np
 import PIL.Image
@@ -66,6 +68,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     get_python_version,
@@ -75,9 +78,13 @@ from diffusers.utils.testing_utils import (
     nightly,
     require_compel,
     require_flax,
+    require_hf_hub_version_greater,
     require_onnxruntime,
+    require_peft_backend,
+    require_peft_version_greater,
     require_torch_2,
-    require_torch_gpu,
+    require_torch_accelerator,
+    require_transformers_version_greater,
     run_test_in_subprocess,
     slow,
     torch_device,
@@ -981,6 +988,18 @@ class DownloadTests(unittest.TestCase):
             assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
             assert len(files) == 14
 
+    def test_download_dduf_with_custom_pipeline_raises_error(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.download(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", custom_pipeline="my_pipeline"
+            )
+
+    def test_download_dduf_with_connected_pipeline_raises_error(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.download(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
+            )
+
     def test_get_pipeline_class_from_flax(self):
         flax_config = {"_class_name": "FlaxStableDiffusionPipeline"}
         config = {"_class_name": "StableDiffusionPipeline"}
@@ -1136,7 +1155,7 @@ class CustomPipelineTests(unittest.TestCase):
         assert conf_1 == conf_2
 
     @slow
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_download_from_git(self):
         # Because adaptive_avg_pool2d_backward_cuda
         # does not have a deterministic implementation.
@@ -1350,7 +1369,7 @@ class PipelineFastTests(unittest.TestCase):
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 64, 64, 3)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_pipe_false_offload_warn(self):
         unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -1368,11 +1387,11 @@ class PipelineFastTests(unittest.TestCase):
             feature_extractor=self.dummy_extractor,
         )
 
-        sd.enable_model_cpu_offload()
+        sd.enable_model_cpu_offload(device=torch_device)
 
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         with CaptureLogger(logger) as cap_logger:
-            sd.to("cuda")
+            sd.to(torch_device)
 
         assert "It is strongly recommended against doing so" in str(cap_logger)
 
@@ -1802,6 +1821,55 @@ class PipelineFastTests(unittest.TestCase):
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
 
+    @parameterized.expand([torch.float32, torch.float16])
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_load_dduf_from_hub(self, dtype):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir, torch_dtype=dtype
+            ).to(torch_device)
+            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
+            pipe.save_pretrained(tmpdir)
+            loaded_pipe = DiffusionPipeline.from_pretrained(tmpdir, torch_dtype=dtype).to(torch_device)
+
+            out_2 = loaded_pipe(
+                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
+            ).images
+
+        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_load_dduf_from_hub_local_files_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
+            ).to(torch_device)
+            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
+            local_files_pipe = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir, local_files_only=True
+            ).to(torch_device)
+            out_2 = local_files_pipe(
+                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
+            ).images
+
+        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
+
+    def test_dduf_raises_error_with_custom_pipeline(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", custom_pipeline="my_pipeline"
+            )
+
+    def test_dduf_raises_error_with_connected_pipeline(self):
+        with self.assertRaises(NotImplementedError):
+            _ = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
+            )
+
     def test_wrong_model(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         with self.assertRaises(ValueError) as error_context:
@@ -1812,21 +1880,42 @@ class PipelineFastTests(unittest.TestCase):
         assert "is of type" in str(error_context.exception)
         assert "but should be" in str(error_context.exception)
 
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_dduf_load_sharded_checkpoint_diffusion_model(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe = DiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-flux-dev-pipe-sharded-checkpoint-DDUF",
+                dduf_file="tiny-flux-dev-pipe-sharded-checkpoint.dduf",
+                cache_dir=tmpdir,
+            ).to(torch_device)
+
+            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
+            pipe.save_pretrained(tmpdir)
+            loaded_pipe = DiffusionPipeline.from_pretrained(tmpdir).to(torch_device)
+
+            out_2 = loaded_pipe(
+                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
+            ).images
+
+        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_smart_download(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
@@ -2018,7 +2107,7 @@ class PipelineSlowTests(unittest.TestCase):
 
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
         pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.enable_attention_slicing()
 
         compel = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)
@@ -2045,19 +2134,19 @@ class PipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineNightlyTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_ddpm_ddim_equality_batched(self):
         seed = 0
@@ -2090,3 +2179,264 @@ class PipelineNightlyTests(unittest.TestCase):
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
+
+
+@slow
+@require_torch_2
+@require_torch_accelerator
+@require_peft_backend
+@require_peft_version_greater("0.14.0")
+@is_torch_compile
+class TestLoraHotSwappingForPipeline(unittest.TestCase):
+    """Test that hotswapping does not result in recompilation in a pipeline.
+
+    We're not extensively testing the hotswapping functionality since it is implemented in PEFT and is extensively
+    tested there. The goal of this test is specifically to ensure that hotswapping with diffusers does not require
+    recompilation.
+
+    See
+    https://github.com/huggingface/peft/blob/eaab05e18d51fb4cce20a73c9acd82a00c013b83/tests/test_gpu_examples.py#L4252
+    for the analogous PEFT test.
+
+    """
+
+    def tearDown(self):
+        # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
+        # there will be recompilation errors, as torch caches the model when run in the same process.
+        super().tearDown()
+        torch._dynamo.reset()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def get_unet_lora_config(self, lora_rank, lora_alpha, target_modules):
+        # from diffusers test_models_unet_2d_condition.py
+        from peft import LoraConfig
+
+        unet_lora_config = LoraConfig(
+            r=lora_rank,
+            lora_alpha=lora_alpha,
+            target_modules=target_modules,
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        return unet_lora_config
+
+    def get_lora_state_dicts(self, modules_to_save, adapter_name):
+        from peft import get_peft_model_state_dict
+
+        state_dicts = {}
+        for module_name, module in modules_to_save.items():
+            if module is not None:
+                state_dicts[f"{module_name}_lora_layers"] = get_peft_model_state_dict(
+                    module, adapter_name=adapter_name
+                )
+        return state_dicts
+
+    def get_dummy_input(self):
+        pipeline_inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "num_inference_steps": 5,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+            "return_dict": False,
+        }
+        return pipeline_inputs
+
+    def check_pipeline_hotswap(self, do_compile, rank0, rank1, target_modules0, target_modules1=None):
+        """
+        Check that hotswapping works on a pipeline.
+
+        Steps:
+        - create 2 LoRA adapters and save them
+        - load the first adapter
+        - hotswap the second adapter
+        - check that the outputs are correct
+        - optionally compile the model
+
+        Note: We set rank == alpha here because save_lora_adapter does not save the alpha scalings, thus the test would
+        fail if the values are different. Since rank != alpha does not matter for the purpose of this test, this is
+        fine.
+        """
+        # create 2 adapters with different ranks and alphas
+        dummy_input = self.get_dummy_input()
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        alpha0, alpha1 = rank0, rank1
+        max_rank = max([rank0, rank1])
+        if target_modules1 is None:
+            target_modules1 = target_modules0[:]
+        lora_config0 = self.get_unet_lora_config(rank0, alpha0, target_modules0)
+        lora_config1 = self.get_unet_lora_config(rank1, alpha1, target_modules1)
+
+        torch.manual_seed(0)
+        pipeline.unet.add_adapter(lora_config0, adapter_name="adapter0")
+        output0_before = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
+
+        torch.manual_seed(1)
+        pipeline.unet.add_adapter(lora_config1, adapter_name="adapter1")
+        pipeline.unet.set_adapter("adapter1")
+        output1_before = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
+
+        # sanity check
+        tol = 1e-3
+        assert not np.allclose(output0_before, output1_before, atol=tol, rtol=tol)
+        assert not (output0_before == 0).all()
+        assert not (output1_before == 0).all()
+
+        with tempfile.TemporaryDirectory() as tmp_dirname:
+            # save the adapter checkpoints
+            lora0_state_dicts = self.get_lora_state_dicts({"unet": pipeline.unet}, adapter_name="adapter0")
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=os.path.join(tmp_dirname, "adapter0"), safe_serialization=True, **lora0_state_dicts
+            )
+            lora1_state_dicts = self.get_lora_state_dicts({"unet": pipeline.unet}, adapter_name="adapter1")
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=os.path.join(tmp_dirname, "adapter1"), safe_serialization=True, **lora1_state_dicts
+            )
+            del pipeline
+
+            # load the first adapter
+            pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+            if do_compile or (rank0 != rank1):
+                # no need to prepare if the model is not compiled or if the ranks are identical
+                pipeline.enable_lora_hotswap(target_rank=max_rank)
+
+            file_name0 = os.path.join(tmp_dirname, "adapter0", "pytorch_lora_weights.safetensors")
+            file_name1 = os.path.join(tmp_dirname, "adapter1", "pytorch_lora_weights.safetensors")
+
+            pipeline.load_lora_weights(file_name0)
+            if do_compile:
+                pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead")
+
+            output0_after = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
+
+            # sanity check: still same result
+            assert np.allclose(output0_before, output0_after, atol=tol, rtol=tol)
+
+            # hotswap the 2nd adapter
+            pipeline.load_lora_weights(file_name1, hotswap=True, adapter_name="default_0")
+            output1_after = pipeline(**dummy_input, generator=torch.manual_seed(0))[0]
+
+            # sanity check: since it's the same LoRA, the results should be identical
+            assert np.allclose(output1_before, output1_after, atol=tol, rtol=tol)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_pipeline(self, rank0, rank1):
+        self.check_pipeline_hotswap(
+            do_compile=False, rank0=rank0, rank1=rank1, target_modules0=["to_q", "to_k", "to_v", "to_out.0"]
+        )
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_pipline_linear(self, rank0, rank1):
+        # It's important to add this context to raise an error on recompilation
+        target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_pipline_conv2d(self, rank0, rank1):
+        # It's important to add this context to raise an error on recompilation
+        target_modules = ["conv", "conv1", "conv2"]
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
+
+    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    def test_hotswapping_compiled_pipline_both_linear_and_conv2d(self, rank0, rank1):
+        # It's important to add this context to raise an error on recompilation
+        target_modules = ["to_q", "conv"]
+        with torch._dynamo.config.patch(error_on_recompile=True):
+            self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
+
+    def test_enable_lora_hotswap_called_after_adapter_added_raises(self):
+        # ensure that enable_lora_hotswap is called before loading the first adapter
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        pipeline.unet.add_adapter(lora_config)
+        msg = re.escape("Call `enable_lora_hotswap` before loading the first adapter.")
+        with self.assertRaisesRegex(RuntimeError, msg):
+            pipeline.enable_lora_hotswap(target_rank=32)
+
+    def test_enable_lora_hotswap_called_after_adapter_added_warns(self):
+        # ensure that enable_lora_hotswap is called before loading the first adapter
+        from diffusers.loaders.peft import logger
+
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        pipeline.unet.add_adapter(lora_config)
+        msg = (
+            "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
+        )
+        with self.assertLogs(logger=logger, level="WARNING") as cm:
+            pipeline.enable_lora_hotswap(target_rank=32, check_compiled="warn")
+            assert any(msg in log for log in cm.output)
+
+    def test_enable_lora_hotswap_called_after_adapter_added_ignore(self):
+        # check possibility to ignore the error/warning
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        pipeline.unet.add_adapter(lora_config)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")  # Capture all warnings
+            pipeline.enable_lora_hotswap(target_rank=32, check_compiled="warn")
+            self.assertEqual(len(w), 0, f"Expected no warnings, but got: {[str(warn.message) for warn in w]}")
+
+    def test_enable_lora_hotswap_wrong_check_compiled_argument_raises(self):
+        # check that wrong argument value raises an error
+        lora_config = self.get_unet_lora_config(8, 8, target_modules=["to_q"])
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        pipeline.unet.add_adapter(lora_config)
+        msg = re.escape("check_compiles should be one of 'error', 'warn', or 'ignore', got 'wrong-argument' instead.")
+        with self.assertRaisesRegex(ValueError, msg):
+            pipeline.enable_lora_hotswap(target_rank=32, check_compiled="wrong-argument")
+
+    def test_hotswap_second_adapter_targets_more_layers_raises(self):
+        # check the error and log
+        from diffusers.loaders.peft import logger
+
+        # at the moment, PEFT requires the 2nd adapter to target the same or a subset of layers
+        target_modules0 = ["to_q"]
+        target_modules1 = ["to_q", "to_k"]
+        with self.assertRaises(RuntimeError):  # peft raises RuntimeError
+            with self.assertLogs(logger=logger, level="ERROR") as cm:
+                self.check_pipeline_hotswap(
+                    do_compile=True, rank0=8, rank1=8, target_modules0=target_modules0, target_modules1=target_modules1
+                )
+                assert any("Hotswapping adapter0 was unsuccessful" in log for log in cm.output)
+
+    def test_hotswap_component_not_supported_raises(self):
+        # right now, not some components don't support hotswapping, e.g. the text_encoder
+        from peft import LoraConfig
+
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+        lora_config0 = LoraConfig(target_modules=["q_proj"])
+        lora_config1 = LoraConfig(target_modules=["q_proj"])
+
+        pipeline.text_encoder.add_adapter(lora_config0, adapter_name="adapter0")
+        pipeline.text_encoder.add_adapter(lora_config1, adapter_name="adapter1")
+
+        with tempfile.TemporaryDirectory() as tmp_dirname:
+            # save the adapter checkpoints
+            lora0_state_dicts = self.get_lora_state_dicts(
+                {"text_encoder": pipeline.text_encoder}, adapter_name="adapter0"
+            )
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=os.path.join(tmp_dirname, "adapter0"), safe_serialization=True, **lora0_state_dicts
+            )
+            lora1_state_dicts = self.get_lora_state_dicts(
+                {"text_encoder": pipeline.text_encoder}, adapter_name="adapter1"
+            )
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=os.path.join(tmp_dirname, "adapter1"), safe_serialization=True, **lora1_state_dicts
+            )
+            del pipeline
+
+            # load the first adapter
+            pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
+            file_name0 = os.path.join(tmp_dirname, "adapter0", "pytorch_lora_weights.safetensors")
+            file_name1 = os.path.join(tmp_dirname, "adapter1", "pytorch_lora_weights.safetensors")
+
+            pipeline.load_lora_weights(file_name0)
+            msg = re.escape(
+                "At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`"
+            )
+            with self.assertRaisesRegex(ValueError, msg):
+                pipeline.load_lora_weights(file_name1, hotswap=True, adapter_name="default_0")

@@ -77,7 +77,7 @@ def calculate_shift(
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
-    max_shift: float = 1.16,
+    max_shift: float = 1.15,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
@@ -205,16 +205,22 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
             scheduler=scheduler,
         )
 
-        self.vae_spatial_compression_ratio = self.vae.spatial_compression_ratio if hasattr(self, "vae") else 32
-        self.vae_temporal_compression_ratio = self.vae.temporal_compression_ratio if hasattr(self, "vae") else 8
-        self.transformer_spatial_patch_size = self.transformer.config.patch_size if hasattr(self, "transformer") else 1
+        self.vae_spatial_compression_ratio = (
+            self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 32
+        )
+        self.vae_temporal_compression_ratio = (
+            self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
+        )
+        self.transformer_spatial_patch_size = (
+            self.transformer.config.patch_size if getattr(self, "transformer", None) is not None else 1
+        )
         self.transformer_temporal_patch_size = (
-            self.transformer.config.patch_size_t if hasattr(self, "transformer") else 1
+            self.transformer.config.patch_size_t if getattr(self, "transformer") is not None else 1
         )
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
         self.tokenizer_max_length = (
-            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 128
+            self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 128
         )
 
         self.default_height = 512
@@ -481,19 +487,21 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
     ) -> torch.Tensor:
         height = height // self.vae_spatial_compression_ratio
         width = width // self.vae_spatial_compression_ratio
-        num_frames = (
-            (num_frames - 1) // self.vae_temporal_compression_ratio + 1 if latents is None else latents.size(2)
-        )
+        num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
 
         shape = (batch_size, num_channels_latents, num_frames, height, width)
         mask_shape = (batch_size, 1, num_frames, height, width)
 
         if latents is not None:
-            conditioning_mask = latents.new_zeros(shape)
+            conditioning_mask = latents.new_zeros(mask_shape)
             conditioning_mask[:, :, 0] = 1.0
             conditioning_mask = self._pack_latents(
                 conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-            )
+            ).squeeze(-1)
+            if latents.ndim != 3 or latents.shape[:2] != conditioning_mask.shape:
+                raise ValueError(
+                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is {conditioning_mask.shape + (num_channels_latents,)}."
+                )
             return latents.to(device=device, dtype=dtype), conditioning_mask
 
         if isinstance(generator, list):
@@ -543,6 +551,10 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         return self._num_timesteps
 
     @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def attention_kwargs(self):
         return self._attention_kwargs
 
@@ -571,6 +583,8 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        decode_timestep: Union[float, List[float]] = 0.0,
+        decode_noise_scale: Optional[Union[float, List[float]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -625,6 +639,10 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
             negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
+            decode_timestep (`float`, defaults to `0.0`):
+                The timestep at which generated video is decoded.
+            decode_noise_scale (`float`, defaults to `None`):
+                The interpolation factor between random noise and denoised latents at the decode timestep.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -672,6 +690,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._interrupt = False
+        self._current_timestep = None
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -735,10 +754,10 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         mu = calculate_shift(
             video_sequence_length,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -752,9 +771,8 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare micro-conditions
-        latent_frame_rate = frame_rate / self.vae_temporal_compression_ratio
         rope_interpolation_scale = (
-            1 / latent_frame_rate,
+            self.vae_temporal_compression_ratio / frame_rate,
             self.vae_spatial_compression_ratio,
             self.vae_spatial_compression_ratio,
         )
@@ -764,6 +782,8 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
+                self._current_timestep = t
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = latent_model_input.to(prompt_embeds.dtype)
@@ -849,7 +869,25 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
             latents = latents.to(prompt_embeds.dtype)
-            video = self.vae.decode(latents, return_dict=False)[0]
+
+            if not self.vae.config.timestep_conditioning:
+                timestep = None
+            else:
+                noise = torch.randn(latents.shape, generator=generator, device=device, dtype=latents.dtype)
+                if not isinstance(decode_timestep, list):
+                    decode_timestep = [decode_timestep] * batch_size
+                if decode_noise_scale is None:
+                    decode_noise_scale = decode_timestep
+                elif not isinstance(decode_noise_scale, list):
+                    decode_noise_scale = [decode_noise_scale] * batch_size
+
+                timestep = torch.tensor(decode_timestep, device=device, dtype=latents.dtype)
+                decode_noise_scale = torch.tensor(decode_noise_scale, device=device, dtype=latents.dtype)[
+                    :, None, None, None, None
+                ]
+                latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+            video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         # Offload all models

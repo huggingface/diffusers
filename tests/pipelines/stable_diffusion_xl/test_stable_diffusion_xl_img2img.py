@@ -42,7 +42,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -57,7 +57,6 @@ from ..test_pipelines_common import (
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -76,6 +75,8 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
         {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
+
+    supports_dduf = False
 
     def get_dummy_components(self, skip_first_text_encoder=False, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -264,51 +265,9 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
-    # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
+    @unittest.skip("Skip for now.")
     def test_save_load_optional_components(self):
         pass
-
-    def test_stable_diffusion_xl_img2img_negative_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward without prompt embeds
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        negative_prompt = 3 * ["this is a negative prompt"]
-        inputs["negative_prompt"] = negative_prompt
-        inputs["prompt"] = 3 * [inputs["prompt"]]
-
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
-
-        # forward with prompt embeds
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        negative_prompt = 3 * ["this is a negative prompt"]
-        prompt = 3 * [inputs.pop("prompt")]
-
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = sd_pipe.encode_prompt(prompt, negative_prompt=negative_prompt)
-
-        output = sd_pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-        )
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
     def test_ip_adapter(self):
         expected_pipe_slice = None
@@ -334,7 +293,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -343,12 +302,12 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -517,7 +476,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
 
 
 class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionXLImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
@@ -637,7 +596,7 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -646,12 +605,12 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -695,92 +654,15 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
             > 1e-4
         )
 
-    def test_stable_diffusion_xl_img2img_negative_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward without prompt embeds
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        negative_prompt = 3 * ["this is a negative prompt"]
-        inputs["negative_prompt"] = negative_prompt
-        inputs["prompt"] = 3 * [inputs["prompt"]]
-
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
-
-        # forward with prompt embeds
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        negative_prompt = 3 * ["this is a negative prompt"]
-        prompt = 3 * [inputs.pop("prompt")]
-
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = sd_pipe.encode_prompt(prompt, negative_prompt=negative_prompt)
-
-        output = sd_pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-        )
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
-
-    def test_stable_diffusion_xl_img2img_prompt_embeds_only(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward without prompt embeds
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        inputs["prompt"] = 3 * [inputs["prompt"]]
-
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
-
-        # forward with prompt embeds
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        prompt = 3 * [inputs.pop("prompt")]
-
-        (
-            prompt_embeds,
-            _,
-            pooled_prompt_embeds,
-            _,
-        ) = sd_pipe.encode_prompt(prompt)
-
-        output = sd_pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-        )
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
-
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    @unittest.skip("We test this functionality elsewhere already.")
     def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
+        pass
 
 
 @slow

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.33.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1283,8 +1283,8 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Get the text embedding for conditioning
-                prompt_embeds = batch["prompt_embeds"]
-                pooled_prompt_embeds = batch["pooled_prompt_embeds"]
+                prompt_embeds = batch["prompt_embeds"].to(dtype=weight_dtype)
+                pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(dtype=weight_dtype)
 
                 # controlnet(s) inference
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)

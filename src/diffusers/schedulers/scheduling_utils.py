@@ -19,6 +19,7 @@ from typing import Optional, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
+from typing_extensions import Self
 
 from ..utils import BaseOutput, PushToHubMixin
 
@@ -99,7 +100,7 @@ class SchedulerMixin(PushToHubMixin):
         subfolder: Optional[str] = None,
         return_unused_kwargs=False,
         **kwargs,
-    ):
+    ) -> Self:
         r"""
         Instantiate a scheduler from a pre-defined JSON configuration file in a local directory or Hub repository.
 
