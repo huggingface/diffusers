@@ -791,89 +791,90 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
     )
 
     # ComfyUI.
-    state_dict = {k.replace("diffusion_model.", "lora_unet_"): v for k, v in state_dict.items()}
-    state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te_"): v for k, v in state_dict.items()}
+    if not has_mixture:
+        state_dict = {k.replace("diffusion_model.", "lora_unet_"): v for k, v in state_dict.items()}
+        state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te_"): v for k, v in state_dict.items()}
 
-    has_position_embedding = any("position_embedding" in k for k in state_dict)
-    if has_position_embedding:
-        zero_status_pe = state_dict_all_zero(state_dict, "position_embedding")
-        if zero_status_pe:
-            logger.info(
-                "The `position_embedding` LoRA params are all zeros which make them ineffective. "
-                "So, we will purge them out of the curret state dict to make loading possible."
-            )
+        has_position_embedding = any("position_embedding" in k for k in state_dict)
+        if has_position_embedding:
+            zero_status_pe = state_dict_all_zero(state_dict, "position_embedding")
+            if zero_status_pe:
+                logger.info(
+                    "The `position_embedding` LoRA params are all zeros which make them ineffective. "
+                    "So, we will purge them out of the curret state dict to make loading possible."
+                )
 
-        else:
-            logger.info(
-                "The state_dict has position_embedding LoRA params and we currently do not support them. "
-                "Open an issue if you need this supported - https://github.com/huggingface/diffusers/issues/new."
-            )
-        state_dict = {k: v for k, v in state_dict.items() if "position_embedding" not in k}
+            else:
+                logger.info(
+                    "The state_dict has position_embedding LoRA params and we currently do not support them. "
+                    "Open an issue if you need this supported - https://github.com/huggingface/diffusers/issues/new."
+                )
+            state_dict = {k: v for k, v in state_dict.items() if "position_embedding" not in k}
 
-    has_t5xxl = any(k.startswith("text_encoders.t5xxl.transformer.") for k in state_dict)
-    if has_t5xxl:
-        zero_status_t5 = state_dict_all_zero(state_dict, "text_encoders.t5xxl")
-        if zero_status_t5:
-            logger.info(
-                "The `t5xxl` LoRA params are all zeros which make them ineffective. "
-                "So, we will purge them out of the curret state dict to make loading possible."
-            )
-        else:
-            logger.info(
-                "T5-xxl keys found in the state dict, which are currently unsupported. We will filter them out."
-                "Open an issue if this is a problem - https://github.com/huggingface/diffusers/issues/new."
-            )
-        state_dict = {k: v for k, v in state_dict.items() if not k.startswith("text_encoders.t5xxl.transformer.")}
+        has_t5xxl = any(k.startswith("text_encoders.t5xxl.transformer.") for k in state_dict)
+        if has_t5xxl:
+            zero_status_t5 = state_dict_all_zero(state_dict, "text_encoders.t5xxl")
+            if zero_status_t5:
+                logger.info(
+                    "The `t5xxl` LoRA params are all zeros which make them ineffective. "
+                    "So, we will purge them out of the curret state dict to make loading possible."
+                )
+            else:
+                logger.info(
+                    "T5-xxl keys found in the state dict, which are currently unsupported. We will filter them out."
+                    "Open an issue if this is a problem - https://github.com/huggingface/diffusers/issues/new."
+                )
+            state_dict = {k: v for k, v in state_dict.items() if not k.startswith("text_encoders.t5xxl.transformer.")}
 
-    has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
-    if has_diffb:
-        zero_status_diff_b = state_dict_all_zero(state_dict, ".diff_b")
-        if zero_status_diff_b:
+        has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
+        if has_diffb:
+            zero_status_diff_b = state_dict_all_zero(state_dict, ".diff_b")
+            if zero_status_diff_b:
+                logger.info(
+                    "The `diff_b` LoRA params are all zeros which make them ineffective. "
+                    "So, we will purge them out of the curret state dict to make loading possible."
+                )
+            else:
+                logger.info(
+                    "`diff_b` keys found in the state dict which are currently unsupported. "
+                    "So, we will filter out those keys. Open an issue if this is a problem - "
+                    "https://github.com/huggingface/diffusers/issues/new."
+                )
+            state_dict = {k: v for k, v in state_dict.items() if ".diff_b" not in k}
+
+        has_norm_diff = any(".norm" in k and ".diff" in k for k in state_dict)
+        if has_norm_diff:
+            zero_status_diff = state_dict_all_zero(state_dict, ".diff")
+            if zero_status_diff:
+                logger.info(
+                    "The `diff` LoRA params are all zeros which make them ineffective. "
+                    "So, we will purge them out of the curret state dict to make loading possible."
+                )
+            else:
+                logger.info(
+                    "Normalization diff keys found in the state dict which are currently unsupported. "
+                    "So, we will filter out those keys. Open an issue if this is a problem - "
+                    "https://github.com/huggingface/diffusers/issues/new."
+                )
+            state_dict = {k: v for k, v in state_dict.items() if ".norm" not in k and ".diff" not in k}
+
+        limit_substrings = ["lora_down", "lora_up"]
+        if any("alpha" in k for k in state_dict):
+            limit_substrings.append("alpha")
+
+        state_dict = {
+            _custom_replace(k, limit_substrings): v
+            for k, v in state_dict.items()
+            if k.startswith(("lora_unet_", "lora_te_"))
+        }
+
+        if any("text_projection" in k for k in state_dict):
             logger.info(
-                "The `diff_b` LoRA params are all zeros which make them ineffective. "
-                "So, we will purge them out of the curret state dict to make loading possible."
-            )
-        else:
-            logger.info(
-                "`diff_b` keys found in the state dict which are currently unsupported. "
+                "`text_projection` keys found in the `state_dict` which are unexpected. "
                 "So, we will filter out those keys. Open an issue if this is a problem - "
                 "https://github.com/huggingface/diffusers/issues/new."
             )
-        state_dict = {k: v for k, v in state_dict.items() if ".diff_b" not in k}
-
-    has_norm_diff = any(".norm" in k and ".diff" in k for k in state_dict)
-    if has_norm_diff:
-        zero_status_diff = state_dict_all_zero(state_dict, ".diff")
-        if zero_status_diff:
-            logger.info(
-                "The `diff` LoRA params are all zeros which make them ineffective. "
-                "So, we will purge them out of the curret state dict to make loading possible."
-            )
-        else:
-            logger.info(
-                "Normalization diff keys found in the state dict which are currently unsupported. "
-                "So, we will filter out those keys. Open an issue if this is a problem - "
-                "https://github.com/huggingface/diffusers/issues/new."
-            )
-        state_dict = {k: v for k, v in state_dict.items() if ".norm" not in k and ".diff" not in k}
-
-    limit_substrings = ["lora_down", "lora_up"]
-    if any("alpha" in k for k in state_dict):
-        limit_substrings.append("alpha")
-
-    state_dict = {
-        _custom_replace(k, limit_substrings): v
-        for k, v in state_dict.items()
-        if k.startswith(("lora_unet_", "lora_te_"))
-    }
-
-    if any("text_projection" in k for k in state_dict):
-        logger.info(
-            "`text_projection` keys found in the `state_dict` which are unexpected. "
-            "So, we will filter out those keys. Open an issue if this is a problem - "
-            "https://github.com/huggingface/diffusers/issues/new."
-        )
-        state_dict = {k: v for k, v in state_dict.items() if "text_projection" not in k}
+            state_dict = {k: v for k, v in state_dict.items() if "text_projection" not in k}
 
     if has_mixture:
         return _convert_mixture_state_dict_to_diffusers(state_dict)
