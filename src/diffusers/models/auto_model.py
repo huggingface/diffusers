@@ -12,159 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import OrderedDict
+import importlib
+import os
+from typing import Optional, Union
 
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
-from .adapter import MultiAdapter, T2IAdapter
-from .autoencoders.autoencoder_asym_kl import AsymmetricAutoencoderKL
-from .autoencoders.autoencoder_dc import AutoencoderDC
-from .autoencoders.autoencoder_kl import AutoencoderKL
-from .autoencoders.autoencoder_kl_allegro import AutoencoderKLAllegro
-from .autoencoders.autoencoder_kl_cogvideox import AutoencoderKLCogVideoX
-from .autoencoders.autoencoder_kl_hunyuan_video import AutoencoderKLHunyuanVideo
-from .autoencoders.autoencoder_kl_ltx import AutoencoderKLLTXVideo
-from .autoencoders.autoencoder_kl_magvit import AutoencoderKLMagvit
-from .autoencoders.autoencoder_kl_mochi import AutoencoderKLMochi
-from .autoencoders.autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
-from .autoencoders.autoencoder_kl_wan import AutoencoderKLWan
-from .autoencoders.autoencoder_oobleck import AutoencoderOobleck
-from .autoencoders.autoencoder_tiny import AutoencoderTiny
-from .autoencoders.consistency_decoder_vae import ConsistencyDecoderVAE
-from .autoencoders.vq_model import VQModel
-from .controlnets.controlnet import ControlNetModel
-from .controlnets.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
-from .controlnets.controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
-from .controlnets.controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
-from .controlnets.controlnet_sparsectrl import SparseControlNetModel
-from .controlnets.controlnet_union import ControlNetUnionModel
-from .controlnets.controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
-from .transformers.auraflow_transformer_2d import AuraFlowTransformer2DModel
-from .transformers.cogvideox_transformer_3d import CogVideoXTransformer3DModel
-from .transformers.consisid_transformer_3d import ConsisIDTransformer3DModel
-from .transformers.dit_transformer_2d import DiTTransformer2DModel
-from .transformers.hunyuan_transformer_2d import HunyuanDiT2DModel
-from .transformers.latte_transformer_3d import LatteTransformer3DModel
-from .transformers.lumina_nextdit2d import LuminaNextDiT2DModel
-from .transformers.pixart_transformer_2d import PixArtTransformer2DModel
-from .transformers.prior_transformer import PriorTransformer
-from .transformers.sana_transformer import SanaTransformer2DModel
-from .transformers.stable_audio_transformer import StableAudioDiTModel
-from .transformers.t5_film_transformer import T5FilmDecoder
-from .transformers.transformer_allegro import AllegroTransformer3DModel
-from .transformers.transformer_cogview3plus import CogView3PlusTransformer2DModel
-from .transformers.transformer_cogview4 import CogView4Transformer2DModel
-from .transformers.transformer_easyanimate import EasyAnimateTransformer3DModel
-from .transformers.transformer_flux import FluxTransformer2DModel
-from .transformers.transformer_hunyuan_video import HunyuanVideoTransformer3DModel
-from .transformers.transformer_ltx import LTXVideoTransformer3DModel
-from .transformers.transformer_lumina2 import Lumina2Transformer2DModel
-from .transformers.transformer_mochi import MochiTransformer3DModel
-from .transformers.transformer_omnigen import OmniGenTransformer2DModel
-from .transformers.transformer_sd3 import SD3Transformer2DModel
-from .transformers.transformer_temporal import TransformerTemporalModel
-from .transformers.transformer_wan import WanTransformer3DModel
-from .unets.unet_1d import UNet1DModel
-from .unets.unet_2d import UNet2DModel
-from .unets.unet_2d_condition import UNet2DConditionModel
-from .unets.unet_3d_condition import UNet3DConditionModel
-from .unets.unet_i2vgen_xl import I2VGenXLUNet
-from .unets.unet_kandinsky3 import Kandinsky3UNet
-from .unets.unet_motion_model import MotionAdapter, UNetMotionModel
-from .unets.unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
-from .unets.unet_stable_cascade import StableCascadeUNet
-from .unets.uvit_2d import UVit2DModel
-
-
-AUTO_MODEL_MAPPING = OrderedDict(
-    [
-        ("multi-adapter", MultiAdapter),
-        ("t2i-adapter", T2IAdapter),
-        ("asym-autoencoder-kl", AsymmetricAutoencoderKL),
-        ("autoencoder-dc", AutoencoderDC),
-        ("autoencoder-kl-allegro", AutoencoderKLAllegro),
-        ("autoencoder-kl-cogvideox", AutoencoderKLCogVideoX),
-        ("autoencoder-kl-hunyuan-video", AutoencoderKLHunyuanVideo),
-        ("autoencoder-kl-ltx", AutoencoderKLLTXVideo),
-        ("autoencoder-kl-magvit", AutoencoderKLMagvit),
-        ("autoencoder-kl-mochi", AutoencoderKLMochi),
-        ("autoencoder-kl-temporal-decoder", AutoencoderKLTemporalDecoder),
-        ("autoencoder-kl-wan", AutoencoderKLWan),
-        ("autoencoder-kl", AutoencoderKL),
-        ("autoencoder-oobleck", AutoencoderOobleck),
-        ("autoencoder-tiny", AutoencoderTiny),
-        ("consistency-decoder-vae", ConsistencyDecoderVAE),
-        ("vq-model", VQModel),
-        ("controlnet-flux", FluxControlNetModel),
-        ("controlnet-flux-multi", FluxMultiControlNetModel),
-        ("controlnet-hunyuan", HunyuanDiT2DControlNetModel),
-        ("controlnet-hunyuan-multi", HunyuanDiT2DMultiControlNetModel),
-        ("controlnet-sd3", SD3ControlNetModel),
-        ("controlnet-sd3-multi", SD3MultiControlNetModel),
-        ("controlnet-sparse", SparseControlNetModel),
-        ("controlnet-union", ControlNetUnionModel),
-        ("controlnet-xs-adapter", ControlNetXSAdapter),
-        ("controlnet-xs", UNetControlNetXSModel),
-        ("controlnet", ControlNetModel),
-        ("auraflow-transformer-2d", AuraFlowTransformer2DModel),
-        ("cogvideox-transformer-3d", CogVideoXTransformer3DModel),
-        ("consisid-transformer-3d", ConsisIDTransformer3DModel),
-        ("dit-transformer-2d", DiTTransformer2DModel),
-        ("hunyuan-transformer-2d", HunyuanDiT2DModel),
-        ("latte-transformer-3d", LatteTransformer3DModel),
-        ("lumina-nextdit2d", LuminaNextDiT2DModel),
-        ("pixart-transformer-2d", PixArtTransformer2DModel),
-        ("prior-transformer", PriorTransformer),
-        ("sana-transformer", SanaTransformer2DModel),
-        ("stable-audio-transformer", StableAudioDiTModel),
-        ("t5-film-decoder", T5FilmDecoder),
-        ("allegro-transformer-3d", AllegroTransformer3DModel),
-        ("cogview3plus-transformer-2d", CogView3PlusTransformer2DModel),
-        ("cogview4-transformer-2d", CogView4Transformer2DModel),
-        ("easyanimate-transformer-3d", EasyAnimateTransformer3DModel),
-        ("flux-transformer-2d", FluxTransformer2DModel),
-        ("hunyuan-video-transformer-3d", HunyuanVideoTransformer3DModel),
-        ("ltx-video-transformer-3d", LTXVideoTransformer3DModel),
-        ("lumina2-transformer-2d", Lumina2Transformer2DModel),
-        ("mochi-transformer-3d", MochiTransformer3DModel),
-        ("omnigen-transformer-2d", OmniGenTransformer2DModel),
-        ("sd3-transformer-2d", SD3Transformer2DModel),
-        ("transformer-temporal", TransformerTemporalModel),
-        ("wan-transformer-3d", WanTransformer3DModel),
-        ("unet-1d", UNet1DModel),
-        ("unet-2d", UNet2DModel),
-        ("unet-2d-condition", UNet2DConditionModel),
-        ("unet-3d-condition", UNet3DConditionModel),
-        ("i2vgen-xl-unet", I2VGenXLUNet),
-        ("kandinsky3-unet", Kandinsky3UNet),
-        ("motion-adapter", MotionAdapter),
-        ("unet-motion", UNetMotionModel),
-        ("unet-spatio-temporal", UNetSpatioTemporalConditionModel),
-        ("stable-cascade-unet", StableCascadeUNet),
-        ("uvit-2d", UVit2DModel),
-    ]
-)
-
-SUPPORTED_TASKS_MAPPINGS = [AUTO_MODEL_MAPPING]
-
-
-def _get_task_class(mapping, model_class_name, throw_error_if_not_exist: bool = True):
-    def get_model(model_class_name):
-        for task_mapping in SUPPORTED_TASKS_MAPPINGS:
-            for model_name, model in task_mapping.items():
-                if model.__name__ == model_class_name:
-                    return model_name
-
-    model_name = get_model(model_class_name)
-
-    if model_name is not None:
-        task_class = mapping.get(model_name, None)
-        if task_class is not None:
-            return task_class
-
-    if throw_error_if_not_exist:
-        raise ValueError(f"AutoModel can't find a model linked to {model_class_name} for {model_name}")
 
 
 class AutoModel(ConfigMixin):
@@ -179,7 +33,7 @@ class AutoModel(ConfigMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_or_path, **kwargs):
+    def from_pretrained(cls, pretrained_model_or_path: Optional[Union[str, os.PathLike]] = None, **kwargs):
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 
@@ -305,7 +159,11 @@ class AutoModel(ConfigMixin):
         config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
-        model_cls = _get_task_class(AUTO_MODEL_MAPPING, orig_class_name)
+        library = importlib.import_module("diffusers")
+
+        model_cls = getattr(library, orig_class_name, None)
+        if model_cls is None:
+            raise ValueError(f"AutoModel can't find a model linked to {orig_class_name}.")
 
         kwargs = {**load_config_kwargs, **kwargs}
         return model_cls.from_pretrained(pretrained_model_or_path, **kwargs)

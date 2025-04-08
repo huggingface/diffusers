@@ -44,7 +44,7 @@ from diffusers.models.attention_processor import (
     AttnProcessorNPU,
     XFormersAttnProcessor,
 )
-from diffusers.models.auto_model import AUTO_MODEL_MAPPING, AutoModel
+from diffusers.models.auto_model import AutoModel
 from diffusers.training_utils import EMAModel
 from diffusers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -1570,9 +1570,6 @@ class ModelTesterMixin:
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5))
 
     def test_auto_model(self, expected_max_diff=5e-5):
-        if self.model_class not in list(AUTO_MODEL_MAPPING.values()):
-            self.skipTest(f"Skipping auto-model test: {self.model_class.__name__} is not in AUTO_MODEL_MAPPING")
-
         if self.forward_requires_fresh_args:
             model = self.model_class(**self.init_dict)
         else:
