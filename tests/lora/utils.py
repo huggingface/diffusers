@@ -1603,9 +1603,10 @@ class PeftLoraLoaderMixinTests:
                         tower_name for tower_name in possible_tower_names if hasattr(pipe.transformer, tower_name)
                     ]
                     if len(filtered_tower_names) == 0:
-                        pytest.xfail(
-                            reason=f"`pipe.transformer` didn't have any of the following attributes: {possible_tower_names}."
+                        reason = (
+                            f"`pipe.transformer` didn't have any of the following attributes: {possible_tower_names}."
                         )
+                        raise ValueError(reason)
                     for tower_name in filtered_tower_names:
                         transformer_tower = getattr(pipe.transformer, tower_name)
                         has_attn1 = any("attn1" in name for name in named_modules)
