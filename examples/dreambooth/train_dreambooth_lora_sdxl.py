@@ -798,10 +798,10 @@ class DreamBoothDataset(Dataset):
         self.crop_top_lefts = []
         self.pixel_values = []
 
-        if args.image_interpolation_mode == "bilinear":
-            train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-        else:
-            train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.LANCZOS)
+        interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+        if interpolation is None:
+            raise ValueError(f"Unsupported interpolation mode.")
+        train_resize = transforms.Resize(size, interpolation=interpolation)
 
         train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
