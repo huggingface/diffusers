@@ -42,7 +42,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
-from transformers import CLIPTokenizer, PretrainedConfig, T5TokenizerFast, LlamaForCausalLM
+from transformers import CLIPTokenizer, PretrainedConfig, T5TokenizerFast, PreTrainedTokenizerFast
 
 import diffusers
 from diffusers import (
@@ -165,10 +165,10 @@ def load_text_encoders(class_one, class_two, class_three, class_four):
     text_encoder_three = class_three.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_3", revision=args.revision, variant=args.variant
     )
-    # text_encoder_four = class_four.from_pretrained(
-    #     args.pretrained_model_name_or_path, subfolder="text_encoder_4", revision=args.revision, variant=args.variant
-    # )
-    return text_encoder_one, text_encoder_two, text_encoder_three
+    text_encoder_four = class_four.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder_4", revision=args.revision, variant=args.variant
+    )
+    return text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four
 
 
 def log_validation(
@@ -919,26 +919,53 @@ def _encode_prompt_with_llama3(
     prompt: str,
     max_sequence_length: int = 128,
     device=None,
+    attention_mask=None,
     text_input_ids=None,
     num_images_per_prompt: int = 1,
 ):
-    device = device or self._execution_device
-    dtype = dtype or self.text_encoder_4.dtype
 
-    prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
 
-    text_inputs = self.tokenizer_4(
-        prompt,
-        padding="max_length",
-        max_length=min(max_sequence_length, self.tokenizer_4.model_max_length),
-        truncation=True,
-        add_special_tokens=True,
-        return_tensors="pt",
+    if tokenizer is not None:
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=min(max_sequence_length, tokenizer.model_max_length),
+            truncation=True,
+            add_special_tokens=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        attention_mask = text_inputs.attention_mask
+    else:
+        if text_input_ids is None:
+            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
+        if attention_mask is None:
+            raise ValueError("attention_mask must be provided when the tokenizer is not specified")
+
+    if hasattr(text_encoder, "module"):
+        dtype = text_encoder.module.dtype
+    else:
+        dtype = text_encoder.dtype
+
+
+    outputs = text_encoder(
+        text_input_ids.to(device),
+        attention_mask=attention_mask.to(device),
+        output_hidden_states=True,
+        output_attentions=True,
     )
-    text_input_ids = text_inputs.input_ids
-    attention_mask = text_inputs.attention_mask
-    untruncated_ids = self.tokenizer_4(prompt, padding="longest", return_tensors="pt").input_ids
+
+    prompt_embeds = outputs.hidden_states[1:]
+    prompt_embeds = torch.stack(prompt_embeds, dim=0)
+    prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+    _, _, seq_len, dim = prompt_embeds.shape
+
+    # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+    prompt_embeds = prompt_embeds.repeat(1, 1, num_images_per_prompt, 1)
+    prompt_embeds = prompt_embeds.view(-1, batch_size * num_images_per_prompt, seq_len, dim)
+    return prompt_embeds
+
 def _encode_prompt_with_t5(
     text_encoder,
     tokenizer,
@@ -948,7 +975,6 @@ def _encode_prompt_with_t5(
     device=None,
     text_input_ids=None,
 ):
-    prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
 
     if tokenizer is not None:
@@ -989,16 +1015,16 @@ def _encode_prompt_with_clip(
     prompt: str,
     device=None,
     text_input_ids=None,
+    max_sequence_length=218,
     num_images_per_prompt: int = 1,
 ):
-    prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
 
     if tokenizer is not None:
         text_inputs = tokenizer(
             prompt,
             padding="max_length",
-            max_length=77,
+            max_length=min(max_sequence_length, 218),
             truncation=True,
             return_overflowing_tokens=False,
             return_length=False,
@@ -1016,6 +1042,7 @@ def _encode_prompt_with_clip(
         dtype = text_encoder.module.dtype
     else:
         dtype = text_encoder.dtype
+
     # Use pooled output of CLIPTextModel
     prompt_embeds = prompt_embeds.pooler_output
     prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -1035,36 +1062,56 @@ def encode_prompt(
     device=None,
     num_images_per_prompt: int = 1,
     text_input_ids_list=None,
+    llama_attention_mask=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
 
-    if hasattr(text_encoders[0], "module"):
-        dtype = text_encoders[0].module.dtype
-    else:
-        dtype = text_encoders[0].dtype
-
-    pooled_prompt_embeds = _encode_prompt_with_clip(
+    pooled_prompt_embeds_1 = _encode_prompt_with_clip(
         text_encoder=text_encoders[0],
         tokenizer=tokenizers[0],
         prompt=prompt,
+        max_sequence_length=max_sequence_length,
         device=device if device is not None else text_encoders[0].device,
         num_images_per_prompt=num_images_per_prompt,
         text_input_ids=text_input_ids_list[0] if text_input_ids_list else None,
     )
 
-    prompt_embeds = _encode_prompt_with_t5(
+    pooled_prompt_embeds_2 = _encode_prompt_with_clip(
         text_encoder=text_encoders[1],
         tokenizer=tokenizers[1],
-        max_sequence_length=max_sequence_length,
         prompt=prompt,
-        num_images_per_prompt=num_images_per_prompt,
+        max_sequence_length=max_sequence_length,
         device=device if device is not None else text_encoders[1].device,
+        num_images_per_prompt=num_images_per_prompt,
         text_input_ids=text_input_ids_list[1] if text_input_ids_list else None,
     )
 
-    text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
+    pooled_prompt_embeds = torch.cat([pooled_prompt_embeds_1, pooled_prompt_embeds_2], dim=-1)
 
-    return prompt_embeds, pooled_prompt_embeds, text_ids
+    t5_prompt_embeds = _encode_prompt_with_t5(
+        text_encoder=text_encoders[2],
+        tokenizer=tokenizers[2],
+        max_sequence_length=max_sequence_length,
+        prompt=prompt,
+        num_images_per_prompt=num_images_per_prompt,
+        device=device if device is not None else text_encoders[2].device,
+        text_input_ids=text_input_ids_list[2] if text_input_ids_list else None,
+    )
+
+    llama3_prompt_embeds = _encode_prompt_with_llama3(
+        text_encoder=text_encoders[3],
+        tokenizer=tokenizers[3],
+        max_sequence_length=max_sequence_length,
+        prompt=prompt,
+        num_images_per_prompt=num_images_per_prompt,
+        device=device if device is not None else text_encoders[3].device,
+        text_input_ids=text_input_ids_list[3] if text_input_ids_list else None,
+        attention_mask=llama_attention_mask
+    )
+
+    prompt_embeds = [t5_prompt_embeds, llama3_prompt_embeds]
+
+    return prompt_embeds, pooled_prompt_embeds
 
 
 def main(args):
@@ -1134,7 +1181,7 @@ def main(args):
                 torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
-            pipeline = FluxPipeline.from_pretrained(
+            pipeline = HiDreamImagePipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 revision=args.revision,
@@ -1182,9 +1229,19 @@ def main(args):
         subfolder="tokenizer",
         revision=args.revision,
     )
-    tokenizer_two = T5TokenizerFast.from_pretrained(
+    tokenizer_two = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer_2",
+        revision=args.revision,
+    )
+    tokenizer_three = T5TokenizerFast.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_3",
+        revision=args.revision,
+    )
+    tokenizer_four = PreTrainedTokenizerFast.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_4",
         revision=args.revision,
     )
 
@@ -1196,19 +1253,30 @@ def main(args):
         args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_2"
     )
 
+    text_encoder_cls_three = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_3"
+    )
+
+    text_encoder_cls_four = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_4"
+    )
+
     # Load scheduler and models
     noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="scheduler"
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
+    text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(text_encoder_cls_one,
+                                                                                                   text_encoder_cls_two,
+                                                                                                   text_encoder_cls_three,
+                                                                                                   text_encoder_cls_four)
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
         revision=args.revision,
         variant=args.variant,
     )
-    transformer = FluxTransformer2DModel.from_pretrained(
+    transformer = HiDreamImageTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     )
 
@@ -1217,6 +1285,8 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
+    text_encoder_three.requires_grad_(False)
+    text_encoder_four.requires_grad_(False)
 
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -1236,6 +1306,8 @@ def main(args):
     transformer.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_three.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_four.to(accelerator.device, dtype=weight_dtype)
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
@@ -1299,7 +1371,7 @@ def main(args):
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-            FluxPipeline.save_lora_weights(
+            HiDreamImagePipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
@@ -1319,7 +1391,7 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict = FluxPipeline.lora_state_dict(input_dir)
+        lora_state_dict = HiDreamImagePipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
             f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
@@ -1474,37 +1546,37 @@ def main(args):
     )
 
     if not args.train_text_encoder:
-        tokenizers = [tokenizer_one, tokenizer_two]
-        text_encoders = [text_encoder_one, text_encoder_two]
+        tokenizers = [tokenizer_one, tokenizer_two, tokenizer_three, tokenizer_four]
+        text_encoders = [text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four]
 
         def compute_text_embeddings(prompt, text_encoders, tokenizers):
             with torch.no_grad():
-                prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
+                prompt_embeds, pooled_prompt_embeds = encode_prompt(
                     text_encoders, tokenizers, prompt, args.max_sequence_length
                 )
                 prompt_embeds = prompt_embeds.to(accelerator.device)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
-                text_ids = text_ids.to(accelerator.device)
-            return prompt_embeds, pooled_prompt_embeds, text_ids
+
+            return prompt_embeds, pooled_prompt_embeds
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
-        instance_prompt_hidden_states, instance_pooled_prompt_embeds, instance_text_ids = compute_text_embeddings(
+        instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
         )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         if not args.train_text_encoder:
-            class_prompt_hidden_states, class_pooled_prompt_embeds, class_text_ids = compute_text_embeddings(
+            class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings(
                 args.class_prompt, text_encoders, tokenizers
             )
 
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
-        del text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
+        del text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four, tokenizer_one, tokenizer_two, tokenizer_three, tokenizer_four
         free_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
@@ -1515,11 +1587,10 @@ def main(args):
         if not args.train_text_encoder:
             prompt_embeds = instance_prompt_hidden_states
             pooled_prompt_embeds = instance_pooled_prompt_embeds
-            text_ids = instance_text_ids
             if args.with_prior_preservation:
                 prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
                 pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, class_pooled_prompt_embeds], dim=0)
-                text_ids = torch.cat([text_ids, class_text_ids], dim=0)
+
         # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts)
         # we need to tokenize and encode the batch prompts on all training steps
         else:
@@ -1535,9 +1606,9 @@ def main(args):
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
-    vae_config_shift_factor = vae.config.shift_factor
+
     vae_config_scaling_factor = vae.config.scaling_factor
-    vae_config_block_out_channels = vae.config.block_out_channels
+
     if args.cache_latents:
         latents_cache = []
         for batch in tqdm(train_dataloader, desc="Caching latents"):
@@ -1678,7 +1749,7 @@ def main(args):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     if not args.train_text_encoder:
-                        prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
+                        prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(
                             prompts, text_encoders, tokenizers
                         )
                     else:
@@ -1686,7 +1757,7 @@ def main(args):
                         tokens_two = tokenize_prompt(
                             tokenizer_two, prompts, max_sequence_length=args.max_sequence_length
                         )
-                        prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
+                        prompt_embeds, pooled_prompt_embeds = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two],
                             tokenizers=[None, None],
                             text_input_ids_list=[tokens_one, tokens_two],
@@ -1697,7 +1768,7 @@ def main(args):
                 else:
                     elems_to_repeat = len(prompts)
                     if args.train_text_encoder:
-                        prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
+                        prompt_embeds, pooled_prompt_embeds = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two],
                             tokenizers=[None, None],
                             text_input_ids_list=[
@@ -1715,18 +1786,12 @@ def main(args):
                 else:
                     pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.sample()
+
                 model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
                 vae_scale_factor = 2 ** (len(vae_config_block_out_channels) - 1)
 
-                latent_image_ids = FluxPipeline._prepare_latent_image_ids(
-                    model_input.shape[0],
-                    model_input.shape[2] // 2,
-                    model_input.shape[3] // 2,
-                    accelerator.device,
-                    weight_dtype,
-                )
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
                 bsz = model_input.shape[0]
@@ -1743,44 +1808,21 @@ def main(args):
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
-                # Add noise according to flow matching.
-                # zt = (1 - texp) * x + texp * z1
+
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
-
-                packed_noisy_model_input = FluxPipeline._pack_latents(
-                    noisy_model_input,
-                    batch_size=model_input.shape[0],
-                    num_channels_latents=model_input.shape[1],
-                    height=model_input.shape[2],
-                    width=model_input.shape[3],
-                )
-
-                # handle guidance
-                if unwrap_model(transformer).config.guidance_embeds:
-                    guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
-                    guidance = guidance.expand(model_input.shape[0])
-                else:
-                    guidance = None
 
                 # Predict the noise residual
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
-                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
-                    timestep=timesteps / 1000,
-                    guidance=guidance,
+                    timestep=timesteps,
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
+                    img_sizes=img_sizes,
+                    img_ids=img_ids,
                     return_dict=False,
                 )[0]
-                model_pred = FluxPipeline._unpack_latents(
-                    model_pred,
-                    height=model_input.shape[2] * vae_scale_factor,
-                    width=model_input.shape[3] * vae_scale_factor,
-                    vae_scale_factor=vae_scale_factor,
-                )
+                model_pred = -model_pred
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
@@ -1869,14 +1911,19 @@ def main(args):
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
                 if not args.train_text_encoder:
-                    text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
+                    text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three, text_encoder_cls_four)
                     text_encoder_one.to(weight_dtype)
                     text_encoder_two.to(weight_dtype)
-                pipeline = FluxPipeline.from_pretrained(
+                    text_encoder_three.to(weight_dtype)
+                    text_encoder_four.to(weight_dtype)
+
+                pipeline = HiDreamImagePipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
                     text_encoder=unwrap_model(text_encoder_one),
                     text_encoder_2=unwrap_model(text_encoder_two),
+                    text_encoder_3=unwrap_model(text_encoder_three),
+                    text_encoder_4=unwrap_model(text_encoder_four),
                     transformer=unwrap_model(transformer),
                     revision=args.revision,
                     variant=args.variant,
@@ -1914,7 +1961,7 @@ def main(args):
         else:
             text_encoder_lora_layers = None
 
-        FluxPipeline.save_lora_weights(
+        HiDreamImagePipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
@@ -1922,7 +1969,7 @@ def main(args):
 
         # Final inference
         # Load previous pipeline
-        pipeline = FluxPipeline.from_pretrained(
+        pipeline = HiDreamImagePipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             revision=args.revision,
             variant=args.variant,
