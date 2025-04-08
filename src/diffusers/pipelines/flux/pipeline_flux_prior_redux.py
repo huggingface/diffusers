@@ -386,7 +386,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         image_width: Optional[int] = 1024,
         image_height: Optional[int] = 1024,
-        repeat: Optional[int] = 0,
         return_dict: bool = True,
     ):
         r"""
@@ -601,13 +600,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         # scale & concatenate image and text embeddings
         if is_qv:
-            if repeat == 0:
-                prompt_embeds = image_embeds_bg
-            else:
-                prompt_embeds = image_embeds_bg
-                for index in range(repeat):
-                    prompt_embeds =  torch.cat([prompt_embeds, image_embeds_bg],dim=1)
-            
+            prompt_embeds = image_embeds_bg
             for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
                 prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
         else:
