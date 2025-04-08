@@ -618,13 +618,13 @@ class WanDecoder3d(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, x, feat_cache=None, feat_idx=[0], latent=0):
+    def forward(self, x, feat_cache=None, feat_idx=[0]):
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            return self._gradient_checkpointing_func(self._decode, x, feat_cache, feat_idx, latent)
+            return self._gradient_checkpointing_func(self._decode, x, feat_cache, feat_idx)
         else:
             return self._decode(x, feat_cache, feat_idx)
 
-    def _decode(self, x, in_cache=None, feat_idx=[0], latent=0):
+    def _decode(self, x, in_cache=None, feat_idx=[0]):
         feat_cache = in_cache.copy()
         ## conv1
         if feat_cache is not None:
@@ -808,11 +808,11 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             self._conv_idx = [0]
             if i == 0:
                 out, self._feat_map = self.decoder(
-                    x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx, latent=i
+                    x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx
                 )
             else:
                 out_, self._feat_map = self.decoder(
-                    x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx, latent=i
+                    x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx
                 )
                 out = torch.cat([out, out_], 2)
 
