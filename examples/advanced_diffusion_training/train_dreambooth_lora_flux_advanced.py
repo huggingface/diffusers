@@ -24,7 +24,7 @@ import re
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -239,9 +239,7 @@ def log_validation(
     for _ in range(args.num_validation_images):
         with autocast_ctx:
             image = pipeline(
-                prompt_embeds=prompt_embeds,
-                pooled_prompt_embeds=pooled_prompt_embeds,
-                generator=generator
+                prompt_embeds=prompt_embeds, pooled_prompt_embeds=pooled_prompt_embeds, generator=generator
             ).images[0]
             images.append(image)
 
@@ -663,7 +661,9 @@ def parse_args(input_args=None):
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for transformer params")
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for transformer params"
+    )
     parser.add_argument(
         "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
     )
@@ -2222,7 +2222,7 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     if not freeze_text_encoder:
-                        if args.train_text_encoder: # text encoder tuning
+                        if args.train_text_encoder:  # text encoder tuning
                             params_to_clip = itertools.chain(transformer.parameters(), text_encoder_one.parameters())
                         elif pure_textual_inversion:
                             if args.enable_t5_ti:
@@ -2230,17 +2230,18 @@ def main(args):
                                     text_encoder_one.parameters(), text_encoder_two.parameters()
                                 )
                             else:
-                                params_to_clip = itertools.chain(
-                                    text_encoder_one.parameters()
-                                )
+                                params_to_clip = itertools.chain(text_encoder_one.parameters())
                         else:
                             if args.enable_t5_ti:
                                 params_to_clip = itertools.chain(
-                                    transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()
+                                    transformer.parameters(),
+                                    text_encoder_one.parameters(),
+                                    text_encoder_two.parameters(),
                                 )
                             else:
-                                params_to_clip = itertools.chain(transformer.parameters(),
-                                                                 text_encoder_one.parameters())
+                                params_to_clip = itertools.chain(
+                                    transformer.parameters(), text_encoder_one.parameters()
+                                )
                     else:
                         params_to_clip = itertools.chain(transformer.parameters())
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
@@ -2284,7 +2285,8 @@ def main(args):
                         accelerator.save_state(save_path)
                         if args.train_text_encoder_ti:
                             embedding_handler.save_embeddings(
-                                f"{args.output_dir}/{Path(args.output_dir).name}_emb_checkpoint_{global_step}.safetensors")
+                                f"{args.output_dir}/{Path(args.output_dir).name}_emb_checkpoint_{global_step}.safetensors"
+                            )
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -2297,7 +2299,7 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
-                if freeze_text_encoder: # no text encoder one, two optimizations
+                if freeze_text_encoder:  # no text encoder one, two optimizations
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
                     text_encoder_one.to(weight_dtype)
                     text_encoder_two.to(weight_dtype)
