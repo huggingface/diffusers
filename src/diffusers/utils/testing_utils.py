@@ -1289,7 +1289,7 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
 
 
-# below codes are copied from https://github.com/huggingface/transformers/blob/main/src/transformers/testing_utils.py#L3090
+# Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers/testing_utils.py#L3090
 
 # Type definition of key used in `Expectations` class.
 DeviceProperties = Tuple[Union[str, None], Union[int, None]]
