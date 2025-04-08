@@ -2586,9 +2586,9 @@ class FluxAttnProcessor2_0:
                 prod_mask_downsamples.append(prod_mask_downsample)
                 
             hidden_states_img = F.scaled_dot_product_attention(
-                query[:,:,prod_embeds_dim:,:], 
-                key[:,:,prod_embeds_dim:,:], 
-                value[:,:,prod_embeds_dim:,:], 
+                query[:,:,len(prod_masks)*prod_embeds_dim:,:], 
+                key[:,:,len(prod_masks)*prod_embeds_dim:,:], 
+                value[:,:,len(prod_masks)*prod_embeds_dim:,:], 
                 attn_mask=None, 
                 dropout_p=0.0, 
                 is_causal=False
