@@ -36,6 +36,7 @@ deps = {
     "GitPython": "GitPython<3.1.19",
     "scipy": "scipy",
     "onnx": "onnx",
+    "torchprofile": "torchprofile>=0.0.4",
     "optimum_quanto": "optimum_quanto>=0.2.6",
     "gguf": "gguf>=0.10.0",
     "torchao": "torchao>=0.7.0",

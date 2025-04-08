@@ -129,6 +129,7 @@ _deps = [
     "GitPython<3.1.19",
     "scipy",
     "onnx",
+    "torchprofile>=0.0.4",
     "optimum_quanto>=0.2.6",
     "gguf>=0.10.0",
     "torchao>=0.7.0",
@@ -245,7 +246,7 @@ extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
 extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
-extras["nvidia_modelopt"] = deps_list("nvidia_modelopt", "onnx", "pulp", "accelerate")
+extras["nvidia_modelopt"] = deps_list("nvidia_modelopt", "onnx", "pulp", "torchprofile", "torchvision", "accelerate")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
