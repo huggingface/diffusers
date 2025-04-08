@@ -263,11 +263,19 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         )
 
     @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_block_scale(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
     @unittest.skip("Not supported in Flux.")
     def test_modify_padding_mode(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
 
@@ -363,9 +371,8 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 lora_load_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
                 self.assertTrue(
-                    cap_logger.out.startswith(
-                        "The provided state dict contains normalization layers in addition to LoRA layers"
-                    )
+                    "The provided state dict contains normalization layers in addition to LoRA layers"
+                    in cap_logger.out
                 )
                 self.assertTrue(len(pipe.transformer._transformer_norm_layers) > 0)
 
@@ -384,7 +391,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.load_lora_weights(norm_state_dict)
 
         self.assertTrue(
-            cap_logger.out.startswith("Unsupported keys found in state dict when trying to load normalization layers")
+            "Unsupported keys found in state dict when trying to load normalization layers" in cap_logger.out
         )
 
     def test_lora_parameter_expanded_shapes(self):
@@ -784,11 +791,19 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         self.assertTrue(pipe.transformer.config.in_channels == in_features * 2)
 
     @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_block_scale(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
     @unittest.skip("Not supported in Flux.")
     def test_modify_padding_mode(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
 

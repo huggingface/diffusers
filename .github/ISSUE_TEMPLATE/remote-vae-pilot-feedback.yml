@@ -1,0 +1,38 @@
+name: "\U0001F31F Remote VAE"
+description: Feedback for remote VAE pilot
+labels: [ "Remote VAE" ]
+
+body:
+  - type: textarea
+    id: positive
+    validations:
+      required: true
+    attributes:
+      label: Did you like the remote VAE solution?
+      description: |
+        If you liked it, we would appreciate it if you could elaborate what you liked.
+
+  - type: textarea
+    id: feedback
+    validations:
+      required: true
+    attributes:
+      label: What can be improved about the current solution?
+      description: |
+        Let us know the things you would like to see improved. Note that we will work optimizing the solution once the pilot is over and we have usage.
+
+  - type: textarea
+    id: others
+    validations:
+      required: true
+    attributes:
+      label: What other VAEs you would like to see if the pilot goes well?
+      description: |
+        Provide a list of the VAEs you would like to see in the future if the pilot goes well.
+
+  - type: textarea
+    id: additional-info
+    attributes:
+      label: Notify the members of the team
+      description: |
+        Tag the following folks when submitting this feedback: @hlky @sayakpaul

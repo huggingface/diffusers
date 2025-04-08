@@ -26,6 +26,7 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
+from .constants import DIFFUSERS_REQUEST_TIMEOUT
 from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -100,6 +101,8 @@ if is_torch_available():
             # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
             mps_backend_registered = hasattr(torch.backends, "mps")
             torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
+
+    from .torch_utils import get_torch_cuda_device_capability
 
 
 def torch_all_close(a, b, *args, **kwargs):
@@ -282,6 +285,20 @@ def require_torch_gpu(test_case):
     )
 
 
+def require_torch_cuda_compatibility(expected_compute_capability):
+    def decorator(test_case):
+        if not torch.cuda.is_available():
+            return unittest.skip(test_case)
+        else:
+            current_compute_capability = get_torch_cuda_device_capability()
+            return unittest.skipUnless(
+                float(current_compute_capability) == float(expected_compute_capability),
+                "Test not supported for this compute capability.",
+            )
+
+    return decorator
+
+
 # These decorators are for accelerator-specific behaviours that are not GPU-specific
 def require_torch_accelerator(test_case):
     """Decorator marking a test that requires an accelerator backend and PyTorch."""
@@ -302,6 +319,21 @@ def require_torch_multi_gpu(test_case):
     import torch
 
     return unittest.skipUnless(torch.cuda.device_count() > 1, "test requires multiple GPUs")(test_case)
+
+
+def require_torch_multi_accelerator(test_case):
+    """
+    Decorator marking a test that requires a multi-accelerator setup (in PyTorch). These tests are skipped on a machine
+    without multiple hardware accelerators.
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    return unittest.skipUnless(
+        torch.cuda.device_count() > 1 or torch.xpu.device_count() > 1, "test requires multiple hardware accelerators"
+    )(test_case)
 
 
 def require_torch_accelerator_with_fp16(test_case):
@@ -335,6 +367,31 @@ def require_big_gpu_with_torch_cuda(test_case):
     total_memory = device_properties.total_memory / (1024**3)
     return unittest.skipUnless(
         total_memory >= BIG_GPU_MEMORY, f"test requires a GPU with at least {BIG_GPU_MEMORY} GB memory"
+    )(test_case)
+
+
+def require_big_accelerator(test_case):
+    """
+    Decorator marking a test that requires a bigger hardware accelerator (24GB) for execution. Some example pipelines:
+    Flux, SD3, Cog, etc.
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    if not (torch.cuda.is_available() or torch.xpu.is_available()):
+        return unittest.skip("test requires PyTorch CUDA")(test_case)
+
+    if torch.xpu.is_available():
+        device_properties = torch.xpu.get_device_properties(0)
+    else:
+        device_properties = torch.cuda.get_device_properties(0)
+
+    total_memory = device_properties.total_memory / (1024**3)
+    return unittest.skipUnless(
+        total_memory >= BIG_GPU_MEMORY,
+        f"test requires a hardware accelerator with at least {BIG_GPU_MEMORY} GB memory",
     )(test_case)
 
 
@@ -538,7 +595,7 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
             # local_path can be passed to correct images of tests
             return Path(local_path, arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]).as_posix()
         elif arry.startswith("http://") or arry.startswith("https://"):
-            response = requests.get(arry)
+            response = requests.get(arry, timeout=DIFFUSERS_REQUEST_TIMEOUT)
             response.raise_for_status()
             arry = np.load(BytesIO(response.content))
         elif os.path.isfile(arry):
@@ -558,10 +615,10 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
     return arry
 
 
-def load_pt(url: str):
-    response = requests.get(url)
+def load_pt(url: str, map_location: str):
+    response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
-    arry = torch.load(BytesIO(response.content))
+    arry = torch.load(BytesIO(response.content), map_location=map_location)
     return arry
 
 
@@ -578,7 +635,7 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
-            image = PIL.Image.open(requests.get(image, stream=True).raw)
+            image = PIL.Image.open(requests.get(image, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT).raw)
         elif os.path.isfile(image):
             image = PIL.Image.open(image)
         else:
@@ -1105,7 +1162,7 @@ if is_torch_available():
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
         "cuda": torch.cuda.reset_max_memory_allocated,
-        "xpu": None,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
         "default": None,

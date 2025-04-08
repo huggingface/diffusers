@@ -34,7 +34,7 @@ from ....models.resnet import ResnetBlockCondNorm2D
 from ....models.transformers.dual_transformer_2d import DualTransformer2DModel
 from ....models.transformers.transformer_2d import Transformer2DModel
 from ....models.unets.unet_2d_condition import UNet2DConditionOutput
-from ....utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ....utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ....utils.torch_utils import apply_freeu
 
 
@@ -963,10 +963,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def enable_freeu(self, s1, s2, b1, b2):
         r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
 
@@ -1597,21 +1593,7 @@ class DownBlockFlat(nn.Module):
 
         for resnet in self.resnets:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
-                    )
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 hidden_states = resnet(hidden_states, temb)
 
@@ -1734,23 +1716,7 @@ class CrossAttnDownBlockFlat(nn.Module):
 
         for i, (resnet, attn) in enumerate(blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1876,21 +1842,7 @@ class UpBlockFlat(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                if is_torch_version(">=", "1.11.0"):
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
-                    )
-                else:
-                    hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
-                    )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 hidden_states = resnet(hidden_states, temb)
 
@@ -2035,23 +1987,7 @@ class CrossAttnUpBlockFlat(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2230,25 +2166,9 @@ class UNetMidBlockFlat(nn.Module):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 if attn is not None:
                     hidden_states = attn(hidden_states, temb=temb)
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 if attn is not None:
                     hidden_states = attn(hidden_states, temb=temb)
@@ -2377,17 +2297,6 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2396,12 +2305,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                hidden_states = self._gradient_checkpointing_func(resnet, hidden_states, temb)
             else:
                 hidden_states = attn(
                     hidden_states,

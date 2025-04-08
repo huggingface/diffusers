@@ -35,11 +35,7 @@ from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..transformers.transformer_temporal import TransformerTemporalModel
 from .unet_3d_blocks import (
-    CrossAttnDownBlock3D,
-    CrossAttnUpBlock3D,
-    DownBlock3D,
     UNetMidBlock3DCrossAttn,
-    UpBlock3D,
     get_down_block,
     get_up_block,
 )
@@ -436,11 +432,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         self.set_attn_processor(processor)
 
-    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel._set_gradient_checkpointing
-    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
-            module.gradient_checkpointing = value
-
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1, s2, b1, b2):
         r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
@@ -601,7 +592,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 3. time + FPS embeddings.
         emb = t_emb + fps_emb
-        emb = emb.repeat_interleave(repeats=num_frames, dim=0)
+        emb = emb.repeat_interleave(num_frames, dim=0, output_size=emb.shape[0] * num_frames)
 
         # 4. context embeddings.
         # The context embeddings consist of both text embeddings from the input prompt
@@ -629,7 +620,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         image_emb = self.context_embedding(image_embeddings)
         image_emb = image_emb.view(-1, self.config.in_channels, self.config.cross_attention_dim)
         context_emb = torch.cat([context_emb, image_emb], dim=1)
-        context_emb = context_emb.repeat_interleave(repeats=num_frames, dim=0)
+        context_emb = context_emb.repeat_interleave(num_frames, dim=0, output_size=context_emb.shape[0] * num_frames)
 
         image_latents = image_latents.permute(0, 2, 1, 3, 4).reshape(
             image_latents.shape[0] * image_latents.shape[2],

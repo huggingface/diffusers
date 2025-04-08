@@ -49,6 +49,7 @@ from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2P
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -418,7 +419,7 @@ def convert_to_np(image, resolution):
 
 
 def download_image(url):
-    image = PIL.Image.open(requests.get(url, stream=True).raw)
+    image = PIL.Image.open(requests.get(url, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT).raw)
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
@@ -695,7 +696,7 @@ def main():
         )
         # We need to ensure that the original and the edited images undergo the same
         # augmentation transforms.
-        images = np.concatenate([original_images, edited_images])
+        images = np.stack([original_images, edited_images])
         images = torch.tensor(images)
         images = 2 * (images / 255) - 1
         return train_transforms(images)
@@ -706,7 +707,7 @@ def main():
         # Since the original and edited images were concatenated before
         # applying the transformations, we need to separate them and reshape
         # them accordingly.
-        original_images, edited_images = preprocessed_images.chunk(2)
+        original_images, edited_images = preprocessed_images
         original_images = original_images.reshape(-1, 3, args.resolution, args.resolution)
         edited_images = edited_images.reshape(-1, 3, args.resolution, args.resolution)
 

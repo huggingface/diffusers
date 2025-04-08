@@ -89,7 +89,9 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sample_size=128,
         )
         torch.manual_seed(0)
-        text_encoder = ChatGLMModel.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
+        text_encoder = ChatGLMModel.from_pretrained(
+            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.float32
+        )
         tokenizer = ChatGLMTokenizer.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
 
         components = {

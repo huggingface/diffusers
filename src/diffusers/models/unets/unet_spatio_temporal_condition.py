@@ -320,10 +320,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
         self.set_attn_processor(processor)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
         """
@@ -435,9 +431,11 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         sample = sample.flatten(0, 1)
         # Repeat the embeddings num_video_frames times
         # emb: [batch, channels] -> [batch * frames, channels]
-        emb = emb.repeat_interleave(num_frames, dim=0)
+        emb = emb.repeat_interleave(num_frames, dim=0, output_size=emb.shape[0] * num_frames)
         # encoder_hidden_states: [batch, 1, channels] -> [batch * frames, 1, channels]
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(num_frames, dim=0)
+        encoder_hidden_states = encoder_hidden_states.repeat_interleave(
+            num_frames, dim=0, output_size=encoder_hidden_states.shape[0] * num_frames
+        )
 
         # 2. pre-process
         sample = self.conv_in(sample)
