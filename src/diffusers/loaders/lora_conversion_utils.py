@@ -827,7 +827,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
 
     has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
     if has_diffb:
-        zero_status_diff_b = state_dict_all_zero(state_dict, "diff_b")
+        zero_status_diff_b = state_dict_all_zero(state_dict, ".diff_b")
         if zero_status_diff_b:
             logger.info(
                 "The `diff_b` LoRA params are all zeros which make them ineffective. "
@@ -839,11 +839,11 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 "So, we will filter out those keys. Open an issue if this is a problem - "
                 "https://github.com/huggingface/diffusers/issues/new."
             )
-        state_dict = {k: v for k, v in state_dict.items() if "diff_b" not in k}
+        state_dict = {k: v for k, v in state_dict.items() if ".diff_b" not in k}
 
-    has_norm_diff = any("norm" in k and "diff" in k for k in state_dict)
+    has_norm_diff = any(".norm" in k and ".diff" in k for k in state_dict)
     if has_norm_diff:
-        zero_status_diff = state_dict_all_zero(state_dict, "diff")
+        zero_status_diff = state_dict_all_zero(state_dict, ".diff")
         if zero_status_diff:
             logger.info(
                 "The `diff` LoRA params are all zeros which make them ineffective. "
@@ -855,7 +855,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 "So, we will filter out those keys. Open an issue if this is a problem - "
                 "https://github.com/huggingface/diffusers/issues/new."
             )
-        state_dict = {k: v for k, v in state_dict.items() if "norm" not in k and "diff" not in k}
+        state_dict = {k: v for k, v in state_dict.items() if ".norm" not in k and ".diff" not in k}
 
     limit_substrings = ["lora_down", "lora_up"]
     if any("alpha" in k for k in state_dict):
