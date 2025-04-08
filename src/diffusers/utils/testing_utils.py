@@ -18,7 +18,7 @@ from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -1294,6 +1294,7 @@ if is_torch_available():
 # Type definition of key used in `Expectations` class.
 DeviceProperties = Tuple[Union[str, None], Union[int, None]]
 
+
 @functools.lru_cache
 def get_device_properties() -> DeviceProperties:
     """
@@ -1324,6 +1325,7 @@ if TYPE_CHECKING:
 else:
     DevicePropertiesUserDict = UserDict
 
+
 class Expectations(DevicePropertiesUserDict):
     def get_expectation(self) -> Any:
         """
@@ -1338,9 +1340,8 @@ class Expectations(DevicePropertiesUserDict):
     @staticmethod
     def score(key: DeviceProperties, other: DeviceProperties) -> int:
         """
-        Returns score indicating how similar two instances of the `Properties` tuple are.
-        Points are calculated using bits, but documented as int.
-        Rules are as follows:
+        Returns score indicating how similar two instances of the `Properties` tuple are. Points are calculated using
+        bits, but documented as int. Rules are as follows:
             * Matching `type` gives 8 points.
             * Semi-matching `type`, for example cuda and rocm, gives 4 points.
             * Matching `major` (compute capability major version) gives 2 points.

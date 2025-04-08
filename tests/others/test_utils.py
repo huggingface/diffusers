@@ -181,6 +181,7 @@ class DeprecateTester(unittest.TestCase):
         assert str(warning.warning) == "This message is better!!!"
         assert "diffusers/tests/others/test_utils.py" in warning.filename
 
+
 # Copied from https://github.com/huggingface/transformers/blob/main/tests/utils/test_expectations.py
 class ExpectationsTester(unittest.TestCase):
     def test_expectations(self):
