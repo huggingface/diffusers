@@ -1525,8 +1525,9 @@ class ModelTesterMixin:
             or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
         )
 
+    @parameterized.expand([False, True])
     @require_torch_gpu
-    def test_group_offloading(self):
+    def test_group_offloading(self, record_stream):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
 
@@ -1566,7 +1567,9 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
-        model.enable_group_offload(torch_device, offload_type="leaf_level", use_stream=True)
+        model.enable_group_offload(
+            torch_device, offload_type="leaf_level", use_stream=True, record_stream=record_stream
+        )
         output_with_group_offloading4 = run_forward(model)
 
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5))
