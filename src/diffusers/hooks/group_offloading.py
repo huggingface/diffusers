@@ -489,8 +489,14 @@ def _apply_group_offloading_block_level(
         stream (`torch.cuda.Stream`, *optional*):
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
-        record_stream: TODO
-        low_cpu_mem_usage: TODO
+        record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
+            as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to the
+            [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) more
+            details.
+        low_cpu_mem_usage (`bool`, defaults to `False`):
+            If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
+            option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
+            the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
 
     # Create module groups for ModuleList and Sequential blocks
@@ -586,8 +592,14 @@ def _apply_group_offloading_leaf_level(
         stream (`torch.cuda.Stream`, *optional*):
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
-        record_stream: TODO
-        low_cpu_mem_usage: TODO
+        record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
+            as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to the
+            [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) more
+            details.
+        low_cpu_mem_usage (`bool`, defaults to `False`):
+            If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
+            option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
+            the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
 
     # Create module groups for leaf modules and apply group offloading hooks
