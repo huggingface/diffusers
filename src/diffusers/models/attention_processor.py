@@ -2360,7 +2360,6 @@ class FluxAttnProcessor2_0:
         image_rotary_emb: Optional[torch.Tensor] = None,
         is_qv: Optional[bool] = False, # thesea modified for quick validation
         product_ratio: Optional[float] = None, # theseam modified for quick validation
-        repeat: Optional[int] = 0, # theseam modified for quick validation
         bg_mask: Optional[torch.Tensor] = None, # thesea modified for quick validation
         prod_masks: Optional[torch.Tensor] = None, # thesea modified for quick validation
         txt_masks: Optional[torch.Tensor] = None, # thesea modified for text mask
@@ -2502,8 +2501,7 @@ class FluxAttnProcessor2_0:
         elif is_qv:
             attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
             prod_embeds_dim = 512 + int(729 * product_ratio)
-            img_embeds_dim = int(729*(1+repeat))
-            num_of_prompts = int ((query.size(-2) - img_embeds_dim - 4096)/prod_embeds_dim)
+            num_of_prompts = int ((query.size(-2) - 729 - 4096)/prod_embeds_dim)
             if num_of_prompts != len(prod_masks):
                 raise ValueError(
                     f"Length of prod_masks ({len(prod_masks)}) must match number of prompts {num_of_prompts}"
@@ -2527,7 +2525,7 @@ class FluxAttnProcessor2_0:
             
 
             # bg related attention mask
-            attention_mask[len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + img_embeds_dim, len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + img_embeds_dim] = torch.ones(img_embeds_dim, img_embeds_dim)
+            attention_mask[len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + 729, len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + 729] = torch.ones(729, 729)
             mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
                 bg_mask[0],
                 1,
@@ -2536,10 +2534,11 @@ class FluxAttnProcessor2_0:
             )
             mask_downsample_t2i = mask_downsample_t2i.to(device=query.device)
             mask_downsample_t2i = mask_downsample_t2i.squeeze()
-            mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(img_embeds_dim , 1).to(device=query.device)
+            mask_downsample_t2i_tensor = mask_downsample_t2i.repeat(729, 1).to(device=query.device)
             mask_downsample_t2i_tensor_transpose = mask_downsample_t2i_tensor.transpose(0, 1).to(device=query.device)
-            attention_mask[len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + img_embeds_dim,-4096:] = mask_downsample_t2i_tensor
-            attention_mask[-4096:, len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + img_embeds_dim] = mask_downsample_t2i_tensor_transpose   
+            attention_mask[len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + 729,-4096:] = mask_downsample_t2i_tensor
+            attention_mask[-4096:, len(prod_masks)*prod_embeds_dim:len(prod_masks)*prod_embeds_dim + 729] = mask_downsample_t2i_tensor_transpose   
+
 
             attention_mask[-4096:,-4096:] = 1
                 
@@ -2586,9 +2585,9 @@ class FluxAttnProcessor2_0:
                 prod_mask_downsamples.append(prod_mask_downsample)
                 
             hidden_states_img = F.scaled_dot_product_attention(
-                query[:,:,prod_embeds_dim:,:], 
-                key[:,:,prod_embeds_dim:,:], 
-                value[:,:,prod_embeds_dim:,:], 
+                query[:,:,-4825:,:], 
+                key[:,:,-4825:,:], 
+                value[:,:,-4825:,:], 
                 attn_mask=None, 
                 dropout_p=0.0, 
                 is_causal=False
