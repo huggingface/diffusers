@@ -70,7 +70,7 @@ TRANSFORMER_NAME = "transformer"
 _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX = {"x_embedder": "in_channels"}
 
 
-def _dequantize_weight_for_expanded_lora(model, module):
+def _maybe_dequantize_weight_for_expanded_lora(model, module):
     if is_bitsandbytes_available():
         from ..quantizers.bitsandbytes import dequantize_bnb_weight
 
@@ -2060,8 +2060,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     parent_module = transformer.get_submodule(parent_module_name)
 
                     if is_quantized:
-                        module_weight = _dequantize_weight_for_expanded_lora(transformer, module)
+                        module_weight = _maybe_dequantize_weight_for_expanded_lora(transformer, module)
 
+                    # TODO: consider if this layer needs to be a quantized layer as well if `is_quantized` is True.
                     with torch.device("meta"):
                         expanded_module = torch.nn.Linear(
                             in_features, out_features, bias=bias, dtype=module_weight.dtype
