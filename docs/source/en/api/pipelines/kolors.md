@@ -14,6 +14,7 @@ specific language governing permissions and limitations under the License.
 
 <div class="flex flex-wrap space-x-1">
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+  <img alt="MPS" src="https://img.shields.io/badge/MPS-000000?style=flat&logo=apple&logoColor=white%22">
 </div>
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/kolors/kolors_header_collage.png)

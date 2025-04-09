@@ -11,6 +11,7 @@ from diffusion import sampling
 from torch import nn
 
 from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 
 
 MODELS_MAP = {
@@ -74,7 +75,7 @@ class DiffusionUncond(nn.Module):
 
 def download(model_name):
     url = MODELS_MAP[model_name]["url"]
-    r = requests.get(url, stream=True)
+    r = requests.get(url, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
 
     local_filename = f"./{model_name}.ckpt"
     with open(local_filename, "wb") as fp:

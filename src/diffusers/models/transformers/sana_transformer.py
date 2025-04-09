@@ -326,6 +326,10 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             Whether to use elementwise affinity in the normalization layer.
         norm_eps (`float`, defaults to `1e-6`):
             The epsilon value for the normalization layer.
+        qk_norm (`str`, *optional*, defaults to `None`):
+            The normalization to use for the query and key.
+        timestep_scale (`float`, defaults to `1.0`):
+            The scale to use for the timesteps.
     """
 
     _supports_gradient_checkpointing = True
@@ -355,6 +359,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         guidance_embeds: bool = False,
         guidance_embeds_scale: float = 0.1,
         qk_norm: Optional[str] = None,
+        timestep_scale: float = 1.0,
     ) -> None:
         super().__init__()
 
