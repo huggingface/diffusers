@@ -1575,7 +1575,6 @@ def main(args):
                 f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
                 f"This inconsistency may result in the learning rate scheduler not functioning properly."
             )
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
