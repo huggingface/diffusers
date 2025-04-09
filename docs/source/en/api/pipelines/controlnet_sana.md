@@ -32,5 +32,5 @@ The original codebase can be found at [NVlabs/Sana](https://github.com/NVlabs/Sa
 	- all
 	- __call__
 
-## SanaControlNetPipelineOutput
-[[autodoc]] pipelines.controlnet_sana.SanaControlNetPipelineOutput
+## SanaPipelineOutput
+[[autodoc]] pipelines.sana.pipeline_output.SanaPipelineOutput
