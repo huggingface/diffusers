@@ -1041,7 +1041,7 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                     timestep=timestep.to(dtype=transformer_dtype),
                     return_dict=False,
                     attention_kwargs=self.attention_kwargs,
-                    controlnet_block_samples=controlnet_block_samples.to(dtype=transformer_dtype),
+                    controlnet_block_samples=tuple(t.to(dtype=transformer_dtype) for t in controlnet_block_samples),
                 )[0]
                 noise_pred = noise_pred.float()
 
