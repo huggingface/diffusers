@@ -105,7 +105,7 @@ import torch
 
 pipe = HunyuanVideoPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
-    torch_dtype={'transformer': torch.bfloat16, 'default': torch.float16},
+    torch_dtype={"transformer": torch.bfloat16, "default": torch.float16},
 )
 print(pipe.transformer.dtype, pipe.vae.dtype)  # (torch.bfloat16, torch.float16)
 ```
