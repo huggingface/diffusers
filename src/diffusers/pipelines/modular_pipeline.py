@@ -139,12 +139,30 @@ class BlockState:
 
 
 @dataclass
+class ComponentSpec:
+    """Specification for a pipeline component."""
+    name: str
+    type_hint: Type
+    description: Optional[str] = None
+    default: Any = None # you can create a default component if it is a stateless class like scheduler, guider or image processor
+    default_class_name: Union[str, List[str], Tuple[str, str]] = None  # Either "class_name" or ["module", "class_name"]
+    default_repo: Optional[Union[str, List[str]]] = None # either "repo" or ["repo", "subfolder"]
+
+@dataclass 
+class ConfigSpec:
+    """Specification for a pipeline configuration parameter."""
+    name: str
+    default: Any
+    description: Optional[str] = None
+
+
+@dataclass
 class InputParam:
     name: str
+    type_hint: Any = None
     default: Any = None
     required: bool = False
     description: str = ""
-    type_hint: Any = Any
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -152,8 +170,8 @@ class InputParam:
 @dataclass 
 class OutputParam:
     name: str
+    type_hint: Any
     description: str = ""
-    type_hint: Any = Any
 
     def __repr__(self):
         return f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
@@ -338,49 +356,40 @@ def make_doc_string(inputs, intermediates_inputs, outputs, description=""):
     return output
 
 
-@dataclass
-class ComponentSpec:
-    """Specification for a pipeline component."""
-    name: str
-    type_hint: Optional[Type] = None
-    description: Optional[str] = None
-    default: Any = None # you can create a default component if it is a stateless class like scheduler, guider or image processor
-    default_class_name: Union[str, List[str], Tuple[str, str]]  # Either "class_name" or ["module", "class_name"]
-    default_repo: Optional[Union[str, List[str]]] = None # either "repo" or ["repo", "subfolder"]
-
-@dataclass 
-class ConfigSpec:
-    """Specification for a pipeline configuration parameter."""
-    name: str
-    default: Any
-    description: Optional[str] = None
-    type_hint: Optional[Type] = None
 
 class PipelineBlock:
-
-    component_specs: List[ComponentSpec] = []
-    config_specs: List[ConfigSpec] = []
+    
     model_name = None
     
     @property
     def description(self) -> str:
         """Description of the block. Must be implemented by subclasses."""
         raise NotImplementedError("description method must be implemented in subclasses")
+
+    @property
+    def components(self) -> List[ComponentSpec]:
+        return []
     
+    @property
+    def configs(self) -> List[ConfigSpec]:
+        return []
+    
+    
+    # YiYi TODO: can we combine inputs and intermediates_inputs? the difference is inputs are immutable
     @property
     def inputs(self) -> List[InputParam]:
         """List of input parameters. Must be implemented by subclasses."""
-        raise NotImplementedError("inputs method must be implemented in subclasses")
+        return []
 
     @property
     def intermediates_inputs(self) -> List[InputParam]:
         """List of intermediate input parameters. Must be implemented by subclasses."""
-        raise NotImplementedError("intermediates_inputs method must be implemented in subclasses")
+        return []
 
     @property
     def intermediates_outputs(self) -> List[OutputParam]:
         """List of intermediate output parameters. Must be implemented by subclasses."""
-        raise NotImplementedError("intermediates_outputs method must be implemented in subclasses")
+        return []
 
     # Adding outputs attributes here for consistency between PipelineBlock/AutoPipelineBlocks/SequentialPipelineBlocks
     @property
@@ -403,10 +412,6 @@ class PipelineBlock:
                 input_names.append(input_param.name)
         return input_names
 
-    def __init__(self):
-        self.components: Dict[str, Any] = {}
-        self.auxiliaries: Dict[str, Any] = {}
-        self.configs: Dict[str, Any] = {}
 
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         raise NotImplementedError("__call__ method must be implemented in subclasses")
