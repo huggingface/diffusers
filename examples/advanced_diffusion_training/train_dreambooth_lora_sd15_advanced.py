@@ -725,9 +725,9 @@ class TokenEmbeddingsHandler:
         idx = 0
         for tokenizer, text_encoder in zip(self.tokenizers, self.text_encoders):
             assert isinstance(inserting_toks, list), "inserting_toks should be a list of strings."
-            assert all(isinstance(tok, str) for tok in inserting_toks), (
-                "All elements in inserting_toks should be strings."
-            )
+            assert all(
+                isinstance(tok, str) for tok in inserting_toks
+            ), "All elements in inserting_toks should be strings."
 
             self.inserting_toks = inserting_toks
             special_tokens_dict = {"additional_special_tokens": self.inserting_toks}
@@ -747,9 +747,9 @@ class TokenEmbeddingsHandler:
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[f"original_embeddings_{idx}"] = (
-                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
-            )
+            self.embeddings_settings[
+                f"original_embeddings_{idx}"
+            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)

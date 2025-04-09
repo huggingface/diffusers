@@ -120,9 +120,9 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert "pag_scale" not in inspect.signature(pipe.__call__).parameters, (
-            f"`pag_scale` should not be a call parameter of the base pipeline {pipe.__class__.__name__}."
-        )
+        assert (
+            "pag_scale" not in inspect.signature(pipe.__call__).parameters
+        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe.__class__.__name__}."
         out = pipe(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0

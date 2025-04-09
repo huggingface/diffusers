@@ -17,6 +17,7 @@
 import requests
 from packaging.version import parse
 
+
 # GitHub repository details
 USER = "huggingface"
 REPO = "diffusers"
