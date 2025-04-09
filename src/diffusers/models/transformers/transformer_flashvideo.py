@@ -31,9 +31,6 @@ from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
 
 
-# NOTE: currently a copy of cogvideox_transformer_3d.py
-
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -215,6 +212,21 @@ class FlashVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Ca
             Scaling factor to apply in 3D positional embeddings across spatial dimensions.
         temporal_interpolation_scale (`float`, defaults to `1.0`):
             Scaling factor to apply in 3D positional embeddings across temporal dimensions.
+        use_rotary_positional_embeddings (`bool`, defaults to `False`):
+            Whether to use rotary positional embeddings (RoPE) for the attention layers.
+        use_learned_positional_embeddings (`bool`, defaults to `False`):
+            Whether to use learned positional embeddings for the attention layers. Note that at the time of writing
+            FlashVideo checkpoints do not use learned positional embeddings.
+        patch_bias (`bool`, defaults to `True`):
+            Whether to use a bias in the convolutional projection of the patch embedding layer.
+        use_time_size_embedding (`bool`, defaults to `True`):
+            Whether to use a new timestep embedding which adds information about the number of latent frames to
+            the timestep embedding. This is used in FlashVideo Stage 2 (but not Stage 1) checkpoints, and not used by
+            CogVideoX models.
+        use_noise_timestep_embedding (`bool`, defaults to `True`):
+            Whether to add a new timestep embedding which adds information about the noise timestep used for latent
+            degradation to the timestep embedding. This is used in FlashVideo Stage 2 (but not Stage 1) checkpoints,
+            and not used by CogVideoX models.
     """
 
     _skip_layerwise_casting_patterns = ["patch_embed", "norm"]
@@ -252,6 +264,8 @@ class FlashVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Ca
         use_rotary_positional_embeddings: bool = False,
         use_learned_positional_embeddings: bool = False,
         patch_bias: bool = True,
+        use_time_size_embedding: bool = True,
+        use_noise_timestep_embedding: bool = True,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -295,6 +309,22 @@ class FlashVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Ca
             self.ofs_embedding = TimestepEmbedding(
                 ofs_embed_dim, ofs_embed_dim, timestep_activation_fn
             )  # same as time embeddings, for ofs
+
+        # TODO: I believe the OFS embedding from CogVideoX1.5 is different from either the time size embedding or the
+        # noise timestep embedding from FlashVideo.
+        # NOTE: this is new to the FlashVideo DiT as compared to the base CogVideoX DiT.
+        # Handle time size and noise timestep embeddings. These have the same shape as the normal time embeddings.
+        self.time_size_proj = None
+        self.time_size_embedding = None
+        if use_time_size_embedding:
+            self.time_size_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
+            self.time_size_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
+
+        self.noise_timestep_proj = None
+        self.noise_timestep_embedding = None
+        if use_noise_timestep_embedding:
+            self.noise_timestep_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
+            self.noise_timestep_embedding = TimestepEmbedding(inner_dim, flip_sin_to_cos, freq_shift)
 
         # 3. Define spatio-temporal transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -441,6 +471,8 @@ class FlashVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Ca
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
+        noise_timestep: Optional[Union[int, float, torch.LongTensor]] = None,
+        time_size_tensor: Optional[torch.LongTensor] = None,
         ofs: Optional[Union[int, float, torch.LongTensor]] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -478,6 +510,26 @@ class FlashVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Ca
             ofs_emb = ofs_emb.to(dtype=hidden_states.dtype)
             ofs_emb = self.ofs_embedding(ofs_emb)
             emb = emb + ofs_emb
+
+        # NOTE: this is new to the FlashVideo DiT as compared to the base CogVideoX DiT.
+        # Handle time step and noise timestep embeddings, if using
+        if self.time_size_embedding is not None:
+            # Explicitly prepare num_frames as a 1D tensor for the sinusoidal timestep embedding
+            if time_size_tensor is not None:
+                time_size_tensor = torch.full((batch_size,), num_frames)
+            time_size_emb = self.time_size_proj(time_size_tensor)
+            time_size_emb = time_size_emb.to(dtype=hidden_states.dtype)
+            time_size_emb = self.time_size_embedding(time_size_emb)
+            emb = emb + time_size_emb
+
+        if self.noise_timestep_embedding is not None:
+            # Explicitly prepare noise_timestep as a 1D tensor for the sinusoidal timestep embedding
+            if not isinstance(noise_timestep, torch.Tensor):
+                noise_timestep = torch.full((batch_size,), noise_timestep)
+            noise_timestep_emb = self.noise_timestep_proj(noise_timestep)
+            noise_timestep_emb = noise_timestep_emb.to(dtype=hidden_states.dtype)
+            noise_timestep_emb = self.noise_timestep_embedding(noise_timestep_emb)
+            emb = emb + noise_timestep_emb
 
         # 2. Patch embedding
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
