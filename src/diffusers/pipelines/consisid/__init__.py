@@ -8,6 +8,7 @@ from ...utils import (
     is_torch_available,
     is_transformers_available,
 )
+from ...utils.import_utils import is_opencv_available
 
 
 _dummy_objects = {}
@@ -15,22 +16,22 @@ _import_structure = {}
 
 
 try:
-    if not (is_transformers_available() and is_torch_available()):
+    if not (is_transformers_available() and is_torch_available() and is_opencv_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ...utils import dummy_torch_and_transformers_objects  # noqa F403
+    from ...utils import dummy_torch_and_transformers_and_opencv_objects  # noqa F403
 
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_opencv_objects))
 else:
     _import_structure["pipeline_consisid"] = ["ConsisIDPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
-        if not (is_transformers_available() and is_torch_available()):
+        if not (is_transformers_available() and is_torch_available() and is_opencv_available()):
             raise OptionalDependencyNotAvailable()
 
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *
+        from ...utils.dummy_torch_and_transformers_and_opencv_objects import *
     else:
         from .pipeline_consisid import ConsisIDPipeline
 
