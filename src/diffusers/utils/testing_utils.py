@@ -1388,15 +1388,13 @@ GenericAlias = List[int]
 
 
 class TemporaryDirectory:
-    """Create and return a temporary directory.  This has the same
-    behavior as mkdtemp but can be used as a context manager.  For
-    example:
+    """Create and return a temporary directory. This has the same
+    behavior as mkdtemp but can be used as a context manager. For example:
 
         with TemporaryDirectory() as tmpdir:
             ...
 
-    Upon exiting the context, the directory and everything contained
-    in it are removed.
+    Upon exiting the context, the directory and everything contained in it are removed.
     """
 
     def __init__(self, suffix=None, prefix=None, dir=None, ignore_cleanup_errors=False):
