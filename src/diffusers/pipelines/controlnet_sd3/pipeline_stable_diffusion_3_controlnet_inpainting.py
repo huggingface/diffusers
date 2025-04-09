@@ -1125,7 +1125,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
 
             for control_image_ in control_image:
                 control_image_ = self.prepare_image_with_mask(
-                    image=control_image,
+                    image=control_image_,
                     mask=control_mask,
                     width=width,
                     height=height,
