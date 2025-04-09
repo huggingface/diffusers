@@ -262,7 +262,7 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipeline = AutoPipelineForImage2Image.from_pretrained(
             self.repo_id, enable_pag=True, torch_dtype=torch.float16, pag_applied_layers=["blocks.(4|17)"]
         )
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device, guidance_scale=0.0, pag_scale=1.8)

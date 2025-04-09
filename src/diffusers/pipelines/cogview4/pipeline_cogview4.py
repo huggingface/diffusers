@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -22,6 +22,7 @@ from transformers import AutoTokenizer, GlmModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
+from ...loaders import CogView4LoraLoaderMixin
 from ...models import AutoencoderKL, CogView4Transformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -133,7 +134,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class CogView4Pipeline(DiffusionPipeline):
+class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using CogView4.
 
@@ -212,9 +213,7 @@ class CogView4Pipeline(DiffusionPipeline):
                 device=text_input_ids.device,
             )
             text_input_ids = torch.cat([pad_ids, text_input_ids], dim=1)
-        prompt_embeds = self.text_encoder(
-            text_input_ids.to(self.text_encoder.device), output_hidden_states=True
-        ).hidden_states[-2]
+        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=True).hidden_states[-2]
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         return prompt_embeds
@@ -389,6 +388,14 @@ class CogView4Pipeline(DiffusionPipeline):
         return self._num_timesteps
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -413,6 +420,7 @@ class CogView4Pipeline(DiffusionPipeline):
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         output_type: str = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -526,6 +534,8 @@ class CogView4Pipeline(DiffusionPipeline):
             negative_prompt_embeds,
         )
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # Default call parameters
@@ -603,6 +613,7 @@ class CogView4Pipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 latent_model_input = latents.to(transformer_dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -615,6 +626,7 @@ class CogView4Pipeline(DiffusionPipeline):
                     original_size=original_size,
                     target_size=target_size,
                     crop_coords=crops_coords_top_left,
+                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -627,6 +639,7 @@ class CogView4Pipeline(DiffusionPipeline):
                         original_size=original_size,
                         target_size=target_size,
                         crop_coords=crops_coords_top_left,
+                        attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
 
@@ -651,6 +664,8 @@ class CogView4Pipeline(DiffusionPipeline):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
+        self._current_timestep = None
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
