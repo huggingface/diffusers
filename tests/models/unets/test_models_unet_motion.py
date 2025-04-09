@@ -15,7 +15,6 @@
 
 import copy
 import os
-import tempfile
 import unittest
 
 import numpy as np
@@ -25,6 +24,7 @@ from diffusers import MotionAdapter, UNet2DConditionModel, UNetMotionModel
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     enable_full_determinism,
     floats_tensor,
     torch_device,
@@ -127,7 +127,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_motion_modules(tmpdirname)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "diffusion_pytorch_model.safetensors")))
 
@@ -211,7 +211,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
         model.to(torch_device)
         model.eval()
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_pretrained(tmpdirname, safe_serialization=False)
             torch.manual_seed(0)
             new_model = self.model_class.from_pretrained(tmpdirname)
@@ -238,7 +238,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
         model.to(torch_device)
         model.eval()
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_pretrained(tmpdirname, variant="fp16", safe_serialization=False)
 
             torch.manual_seed(0)

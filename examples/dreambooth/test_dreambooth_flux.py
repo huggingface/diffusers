@@ -17,9 +17,9 @@ import logging
 import os
 import shutil
 import sys
-import tempfile
 
 from diffusers import DiffusionPipeline, FluxTransformer2DModel
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 sys.path.append("..")
@@ -40,7 +40,7 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
     script_path = "examples/dreambooth/train_dreambooth_flux.py"
 
     def test_dreambooth(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
@@ -63,7 +63,7 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_dreambooth_checkpointing(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2
             # Should create checkpoints at steps 2, 4
@@ -139,7 +139,7 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))
 
     def test_dreambooth_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}
@@ -162,7 +162,7 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
             )
 
     def test_dreambooth_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}

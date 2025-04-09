@@ -1,5 +1,3 @@
-import tempfile
-
 import torch
 
 from diffusers import (
@@ -8,6 +6,7 @@ from diffusers import (
     DPMSolverSinglestepScheduler,
     UniPCMultistepScheduler,
 )
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -44,7 +43,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
             # copy over dummy past residuals
             scheduler.model_outputs = dummy_past_residuals[: scheduler.config.solver_order]
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
@@ -74,7 +73,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
             # copy over dummy past residuals (must be after setting timesteps)
             scheduler.model_outputs = dummy_past_residuals[: scheduler.config.solver_order]
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals

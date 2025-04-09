@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import tempfile
 import unittest
 from typing import List
 
@@ -30,6 +29,7 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import Attention
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     enable_full_determinism,
     is_torch_available,
     is_torchao_available,
@@ -316,7 +316,7 @@ class TorchAoTest(unittest.TestCase):
                 expected_slice = expected_slice_auto
             else:
                 expected_slice = expected_slice_offload
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as offload_folder:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as offload_folder:
                 quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
                 quantized_model = FluxTransformer2DModel.from_pretrained(
                     "hf-internal-testing/tiny-flux-pipe",
@@ -340,7 +340,7 @@ class TorchAoTest(unittest.TestCase):
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
                 self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as offload_folder:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as offload_folder:
                 quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
                 quantized_model = FluxTransformer2DModel.from_pretrained(
                     "hf-internal-testing/tiny-flux-sharded",
@@ -576,7 +576,7 @@ class TorchAoSerializationTest(unittest.TestCase):
     def _check_serialization_expected_slice(self, quant_method, quant_method_kwargs, expected_slice, device):
         quantized_model = self.get_dummy_model(quant_method, quant_method_kwargs, device)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             quantized_model.save_pretrained(tmp_dir, safe_serialization=False)
             loaded_quantized_model = FluxTransformer2DModel.from_pretrained(
                 tmp_dir, torch_dtype=torch.bfloat16, use_safetensors=False
@@ -728,7 +728,7 @@ class SlowTorchAoTests(unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0].flatten()[:128]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             pipe.transformer.save_pretrained(tmp_dir, safe_serialization=False)
             pipe.remove_all_hooks()
             del pipe.transformer

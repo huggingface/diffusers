@@ -1,5 +1,4 @@
 import math
-import tempfile
 from typing import List, Optional
 
 import numpy as np
@@ -21,6 +20,7 @@ from diffusers.models.attention_processor import (
     SlicedAttnAddedKVProcessor,
 )
 from diffusers.optimization import get_scheduler
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 class SdeDragPipeline(DiffusionPipeline):
@@ -320,7 +320,7 @@ class SdeDragPipeline(DiffusionPipeline):
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as save_lora_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as save_lora_dir:
             StableDiffusionLoraLoaderMixin.save_lora_weights(
                 save_directory=save_lora_dir,
                 unet_lora_layers=unet_lora_layers,

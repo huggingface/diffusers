@@ -7,7 +7,7 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import DDPMScheduler, UNet2DConditionModel
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.pipelines.deepfloyd_if import IFWatermarker
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import TemporaryDirectory, torch_device
 
 from ..test_pipelines_common import to_np
 
@@ -203,7 +203,7 @@ class IFPipelineTesterMixin:
 
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)
@@ -257,7 +257,7 @@ class IFPipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)

@@ -1,11 +1,11 @@
 import gc
-import tempfile
 import unittest
 
 from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
 from diffusers.models.attention_processor import Attention
 from diffusers.utils import is_optimum_quanto_available, is_torch_available
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     nightly,
     numpy_cosine_similarity_distance,
     require_accelerate,
@@ -143,7 +143,7 @@ class QuantoBaseTesterMixin:
         with torch.no_grad():
             model_output = model(**inputs)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.save_pretrained(tmp_dir)
             saved_model = self.model_cls.from_pretrained(
                 tmp_dir,

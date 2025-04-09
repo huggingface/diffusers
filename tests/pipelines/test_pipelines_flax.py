@@ -14,13 +14,12 @@
 # limitations under the License.
 
 import os
-import tempfile
 import unittest
 
 import numpy as np
 
 from diffusers.utils import is_flax_available
-from diffusers.utils.testing_utils import require_flax, slow
+from diffusers.utils.testing_utils import TemporaryDirectory, require_flax, slow
 
 
 if is_flax_available():
@@ -35,7 +34,7 @@ if is_flax_available():
 @require_flax
 class DownloadTests(unittest.TestCase):
     def test_download_only_pytorch(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             # pipeline has Flax weights
             _ = FlaxDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname

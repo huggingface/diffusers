@@ -27,7 +27,6 @@ https://github.com/huggingface/transformers/blob/main/utils/update_metadata.py
 
 import argparse
 import os
-import tempfile
 
 import pandas as pd
 from datasets import Dataset
@@ -38,6 +37,7 @@ from diffusers.pipelines.auto_pipeline import (
     AUTO_INPAINT_PIPELINES_MAPPING,
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
 )
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 PIPELINE_TAG_JSON = "pipeline_tags.json"
@@ -91,7 +91,7 @@ def update_metadata(commit_sha: str):
     with open(hub_pipeline_tags_json) as f:
         hub_pipeline_tags_json = f.read()
 
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+    with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
         pipelines_dataset.to_json(os.path.join(tmp_dir, PIPELINE_TAG_JSON))
 
         with open(os.path.join(tmp_dir, PIPELINE_TAG_JSON)) as f:

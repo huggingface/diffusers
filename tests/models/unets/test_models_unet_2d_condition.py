@@ -16,7 +16,6 @@
 import copy
 import gc
 import os
-import tempfile
 import unittest
 from collections import OrderedDict
 
@@ -35,6 +34,7 @@ from diffusers.models.embeddings import ImageProjection, IPAdapterFaceIDImagePro
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -748,7 +748,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             sample = model(**inputs_dict).sample
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")))
             torch.manual_seed(0)
@@ -1098,7 +1098,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             lora_sample_1 = model(**inputs_dict).sample
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_attn_procs(tmpdirname)
             model.unload_lora()
 
@@ -1132,7 +1132,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with self.assertWarns(FutureWarning) as warning:
                 model.save_attn_procs(tmpdirname)
 

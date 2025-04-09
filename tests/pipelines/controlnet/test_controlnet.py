@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import tempfile
 import traceback
 import unittest
 
@@ -34,6 +33,7 @@ from diffusers import (
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -486,7 +486,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             try:
                 # save_pretrained is not implemented for Multi-ControlNet
                 pipe.save_pretrained(tmpdir)
@@ -714,7 +714,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             try:
                 # save_pretrained is not implemented for Multi-ControlNet
                 pipe.save_pretrained(tmpdir)

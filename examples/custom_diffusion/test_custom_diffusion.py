@@ -16,7 +16,8 @@
 import logging
 import os
 import sys
-import tempfile
+
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 sys.path.append("..")
@@ -32,7 +33,7 @@ logger.addHandler(stream_handler)
 
 class CustomDiffusion(ExamplesTestsAccelerate):
     def test_custom_diffusion(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/custom_diffusion/train_custom_diffusion.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
@@ -57,7 +58,7 @@ class CustomDiffusion(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "<new1>.bin")))
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/custom_diffusion/train_custom_diffusion.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
@@ -79,7 +80,7 @@ class CustomDiffusion(ExamplesTestsAccelerate):
             self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/custom_diffusion/train_custom_diffusion.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe

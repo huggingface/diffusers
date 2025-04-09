@@ -15,7 +15,6 @@
 
 import gc
 import random
-import tempfile
 import unittest
 
 import numpy as np
@@ -37,6 +36,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -186,7 +186,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)
@@ -212,7 +212,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
             pipe_loaded.to(torch_device)

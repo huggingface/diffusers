@@ -1,9 +1,9 @@
-import tempfile
 import unittest
 
 import torch
 
 from diffusers import PNDMScheduler
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -37,7 +37,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             # copy over dummy past residuals
             scheduler.ets = dummy_past_residuals[:]
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
@@ -73,7 +73,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             # copy over dummy past residuals (must be after setting timesteps)
             scheduler.ets = dummy_past_residuals[:]
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals

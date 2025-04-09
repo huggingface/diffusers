@@ -15,7 +15,6 @@
 
 import copy
 import gc
-import tempfile
 import unittest
 
 import numpy as np
@@ -35,6 +34,7 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     enable_full_determinism,
     load_image,
     numpy_cosine_similarity_distance,
@@ -866,7 +866,7 @@ class StableDiffusionXLPipelineFastTests(
         sd_pipe = StableDiffusionXLPipeline(**components).to(torch_device)
         pipes.append(sd_pipe)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd_pipe.save_pretrained(tmpdirname)
             sd_pipe = StableDiffusionXLPipeline.from_pretrained(tmpdirname).to(torch_device)
         pipes.append(sd_pipe)

@@ -1,10 +1,9 @@
-import tempfile
 from typing import Dict, List, Tuple
 
 import torch
 
 from diffusers import LCMScheduler
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import TemporaryDirectory, torch_device
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -118,7 +117,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
             sample = self.dummy_sample
             residual = 0.1 * sample
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 

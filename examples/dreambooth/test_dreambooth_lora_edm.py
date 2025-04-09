@@ -16,9 +16,10 @@
 import logging
 import os
 import sys
-import tempfile
 
 import safetensors
+
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 sys.path.append("..")
@@ -34,7 +35,7 @@ logger.addHandler(stream_handler)
 
 class DreamBoothLoRASDXLWithEDM(ExamplesTestsAccelerate):
     def test_dreambooth_lora_sdxl_with_edm(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/dreambooth/train_dreambooth_lora_sdxl.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
@@ -67,7 +68,7 @@ class DreamBoothLoRASDXLWithEDM(ExamplesTestsAccelerate):
             self.assertTrue(starts_with_unet)
 
     def test_dreambooth_lora_playground(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/dreambooth/train_dreambooth_lora_sdxl.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-playground-v2-5-pipe

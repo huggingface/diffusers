@@ -15,7 +15,6 @@
 import gc
 import inspect
 import os
-import tempfile
 import unittest
 
 import numpy as np
@@ -24,6 +23,7 @@ from transformers import AutoTokenizer, T5Config, T5EncoderModel
 
 from diffusers import AllegroPipeline, AllegroTransformer3DModel, AutoencoderKLAllegro, DDIMScheduler
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_hf_hub_version_greater,
@@ -320,7 +320,7 @@ class AllegroPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTes
 
         pipeline_out = pipe(**inputs)[0].cpu()
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
             pipe.save_pretrained(tmpdir, safe_serialization=True)
             export_folder_as_dduf(dduf_filename, folder_path=tmpdir)

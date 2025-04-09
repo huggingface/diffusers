@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import inspect
-import tempfile
 import unittest
 
 import numpy as np
@@ -32,6 +31,7 @@ from diffusers import (
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    TemporaryDirectory,
     enable_full_determinism,
     torch_device,
 )
@@ -200,7 +200,7 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         logger.setLevel(diffusers.logging.INFO)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:

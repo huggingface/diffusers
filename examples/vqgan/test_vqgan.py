@@ -19,12 +19,11 @@ import logging
 import os
 import shutil
 import sys
-import tempfile
 
 import torch
 
 from diffusers import VQModel
-from diffusers.utils.testing_utils import require_timm
+from diffusers.utils.testing_utils import TemporaryDirectory, require_timm
 
 
 sys.path.append("..")
@@ -88,7 +87,7 @@ class TextToImage(ExamplesTestsAccelerate):
         return vqmodel_config_path, discriminator_config_path
 
     def test_vqmodel(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
             test_args = f"""
                 examples/vqgan/train_vqgan.py
@@ -115,7 +114,7 @@ class TextToImage(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "vqmodel", "diffusion_pytorch_model.safetensors")))
 
     def test_vqmodel_checkpointing(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2
@@ -199,7 +198,7 @@ class TextToImage(ExamplesTestsAccelerate):
             )
 
     def test_vqmodel_checkpointing_use_ema(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2
@@ -283,7 +282,7 @@ class TextToImage(ExamplesTestsAccelerate):
             )
 
     def test_vqmodel_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
             # Run training script with checkpointing
             # max_train_steps == 6, checkpointing_steps == 2, checkpoints_total_limit == 2
@@ -321,7 +320,7 @@ class TextToImage(ExamplesTestsAccelerate):
             self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
     def test_vqmodel_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             vqmodel_config_path, discriminator_config_path = self.get_vq_and_discriminator_configs(tmpdir)
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2

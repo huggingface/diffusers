@@ -1,4 +1,3 @@
-import tempfile
 import unittest
 
 import numpy as np
@@ -7,7 +6,7 @@ import torch
 
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import TemporaryDirectory, torch_device
 
 
 class AttnAddedKVProcessorTests(unittest.TestCase):
@@ -114,7 +113,7 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # save the converted model
             pipe.save_pretrained(tmpdir)
 

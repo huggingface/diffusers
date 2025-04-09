@@ -16,9 +16,10 @@
 import logging
 import os
 import sys
-import tempfile
 
 import safetensors
+
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 sys.path.append("..")
@@ -39,7 +40,7 @@ class DreamBoothLoRASANA(ExamplesTestsAccelerate):
     transformer_layer_type = "transformer_blocks.0.attn1.to_k"
 
     def test_dreambooth_lora_sana(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
@@ -72,7 +73,7 @@ class DreamBoothLoRASANA(ExamplesTestsAccelerate):
             self.assertTrue(starts_with_transformer)
 
     def test_dreambooth_lora_latent_caching(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
@@ -106,7 +107,7 @@ class DreamBoothLoRASANA(ExamplesTestsAccelerate):
             self.assertTrue(starts_with_transformer)
 
     def test_dreambooth_lora_layers(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
@@ -142,7 +143,7 @@ class DreamBoothLoRASANA(ExamplesTestsAccelerate):
             self.assertTrue(starts_with_transformer)
 
     def test_dreambooth_lora_sana_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}
@@ -166,7 +167,7 @@ class DreamBoothLoRASANA(ExamplesTestsAccelerate):
             )
 
     def test_dreambooth_lora_sana_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}

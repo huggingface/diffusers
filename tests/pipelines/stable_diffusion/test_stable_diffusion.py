@@ -15,7 +15,6 @@
 
 
 import gc
-import tempfile
 import time
 import traceback
 import unittest
@@ -44,6 +43,7 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    TemporaryDirectory,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -428,7 +428,7 @@ class StableDiffusionPipelineFastTests(
         assert image is not None
 
         # check that there's no error when saving a pipeline with one of the models being None
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe = StableDiffusionPipeline.from_pretrained(tmpdirname)
 

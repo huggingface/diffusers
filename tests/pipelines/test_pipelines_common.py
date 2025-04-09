@@ -2,7 +2,6 @@ import gc
 import inspect
 import json
 import os
-import tempfile
 import unittest
 import uuid
 from typing import Any, Callable, Dict, Union
@@ -48,6 +47,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    TemporaryDirectory,
     backend_empty_cache,
     require_accelerate_version_greater,
     require_accelerator,
@@ -1136,7 +1136,7 @@ class PipelineTesterMixin:
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         logger.setLevel(diffusers.logging.INFO)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:
@@ -1401,7 +1401,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
             for component in pipe_loaded.components.values():
@@ -1444,7 +1444,7 @@ class PipelineTesterMixin:
         torch.manual_seed(0)
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             for component in pipe_loaded.components.values():
@@ -1975,7 +1975,7 @@ class PipelineTesterMixin:
         ]
         variant = "fp16"
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, variant=variant, safe_serialization=False)
 
             with open(f"{tmpdir}/model_index.json", "r") as f:
@@ -1999,7 +1999,7 @@ class PipelineTesterMixin:
                 has_nan = torch.isnan(tensor).any()
             return has_nan
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, variant=variant, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, variant=variant)
 
@@ -2026,7 +2026,7 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         variant = "fp16"
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # Don't save with variants.
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
@@ -2181,7 +2181,7 @@ class PipelineTesterMixin:
 
         pipeline_out = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
             pipe.save_pretrained(tmpdir, safe_serialization=True)
             export_folder_as_dduf(dduf_filename, folder_path=tmpdir)
@@ -2292,7 +2292,7 @@ class PipelineTesterMixin:
 
         specified_key = next(iter(components.keys()))
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname, safe_serialization=False)
             torch_dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, torch_dtype=torch_dtype_dict)
@@ -2355,7 +2355,7 @@ class PipelinePushToHubTester(unittest.TestCase):
         )
         text_encoder = CLIPTextModel(text_encoder_config)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
             vocab_path = os.path.join(tmpdir, "vocab.json")
             with open(vocab_path, "w") as f:
@@ -2392,7 +2392,7 @@ class PipelinePushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.repo_id)
 
         # Push to hub via save_pretrained
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             pipeline.save_pretrained(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
 
         new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
@@ -2416,7 +2416,7 @@ class PipelinePushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.org_repo_id)
 
         # Push to hub via save_pretrained
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=self.org_repo_id)
 
         new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")

@@ -1,10 +1,10 @@
-import tempfile
 import unittest
 
 import numpy as np
 import torch
 
 from diffusers import ScoreSdeVeScheduler
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 class ScoreSdeVeSchedulerTest(unittest.TestCase):
@@ -66,7 +66,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
@@ -97,7 +97,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 

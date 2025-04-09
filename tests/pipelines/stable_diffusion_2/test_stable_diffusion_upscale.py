@@ -15,7 +15,6 @@
 
 import gc
 import random
-import tempfile
 import unittest
 
 import numpy as np
@@ -25,6 +24,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableDiffusionUpscalePipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -358,7 +358,7 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(device)
         pipes.append(sd_pipe)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd_pipe.save_pretrained(tmpdirname)
             sd_pipe = StableDiffusionUpscalePipeline.from_pretrained(tmpdirname).to(device)
         pipes.append(sd_pipe)

@@ -1,10 +1,10 @@
 import os
-import tempfile
 import unittest
 
 import torch
 
 from diffusers.loaders.lora_base import LoraBaseMixin
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 class UtilityMethodDeprecationTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class UtilityMethodDeprecationTests(unittest.TestCase):
         assert "Using the `_fetch_state_dict()` method from" in warning_message
 
     def test_best_guess_weight_name_cls_method_raises_warning(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             state_dict = torch.nn.Linear(3, 3).state_dict()
             torch.save(state_dict, os.path.join(tmpdir, "pytorch_lora_weights.bin"))
 

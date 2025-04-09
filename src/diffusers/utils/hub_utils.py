@@ -18,7 +18,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -45,6 +44,8 @@ from huggingface_hub.utils import (
 )
 from packaging import version
 from requests import HTTPError
+
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 from .. import __version__
 from .constants import (
@@ -542,7 +543,7 @@ class PushToHubMixin:
         if "Scheduler" not in self.__class__.__name__:
             save_kwargs.update({"variant": variant})
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             self.save_pretrained(tmpdir, **save_kwargs)
 
             # Update model card if needed:

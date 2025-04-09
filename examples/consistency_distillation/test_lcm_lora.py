@@ -16,9 +16,10 @@
 import logging
 import os
 import sys
-import tempfile
 
 import safetensors
+
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 sys.path.append("..")
@@ -34,7 +35,7 @@ logger.addHandler(stream_handler)
 
 class TextToImageLCM(ExamplesTestsAccelerate):
     def test_text_to_image_lcm_lora_sdxl(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/consistency_distillation/train_lcm_distill_lora_sdxl.py
                 --pretrained_teacher_model hf-internal-testing/tiny-stable-diffusion-xl-pipe
@@ -61,7 +62,7 @@ class TextToImageLCM(ExamplesTestsAccelerate):
             self.assertTrue(is_lora)
 
     def test_text_to_image_lcm_lora_sdxl_checkpointing(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/consistency_distillation/train_lcm_distill_lora_sdxl.py
                 --pretrained_teacher_model hf-internal-testing/tiny-stable-diffusion-xl-pipe

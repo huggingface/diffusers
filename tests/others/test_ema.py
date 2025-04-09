@@ -13,14 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tempfile
 import unittest
 
 import torch
 
 from diffusers import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
+from diffusers.utils.testing_utils import TemporaryDirectory, enable_full_determinism, skip_mps, torch_device
 
 
 enable_full_determinism()
@@ -62,7 +61,7 @@ class EMAModelTests(unittest.TestCase):
     def test_from_pretrained(self):
         # Save the model parameters to a temporary directory
         unet, ema_unet = self.get_models()
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             ema_unet.save_pretrained(tmpdir)
 
             # Load the EMA model from the saved directory
@@ -167,7 +166,7 @@ class EMAModelTests(unittest.TestCase):
         unet, ema_unet = self.get_models()
         noisy_latents, timesteps, encoder_hidden_states = self.get_dummy_inputs()
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             ema_unet.save_pretrained(tmpdir)
             loaded_unet = UNet2DConditionModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel)
             loaded_unet = loaded_unet.to(unet.device)
@@ -217,7 +216,7 @@ class EMAModelTestsForeach(unittest.TestCase):
     def test_from_pretrained(self):
         # Save the model parameters to a temporary directory
         unet, ema_unet = self.get_models()
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             ema_unet.save_pretrained(tmpdir)
 
             # Load the EMA model from the saved directory
@@ -322,7 +321,7 @@ class EMAModelTestsForeach(unittest.TestCase):
         unet, ema_unet = self.get_models()
         noisy_latents, timesteps, encoder_hidden_states = self.get_dummy_inputs()
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             ema_unet.save_pretrained(tmpdir)
             loaded_unet = UNet2DConditionModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel)
             loaded_unet = loaded_unet.to(unet.device)

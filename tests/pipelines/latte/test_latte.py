@@ -15,7 +15,6 @@
 
 import gc
 import inspect
-import tempfile
 import unittest
 
 import numpy as np
@@ -32,6 +31,7 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -280,7 +280,7 @@ class LattePipelineFastTests(
 
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)

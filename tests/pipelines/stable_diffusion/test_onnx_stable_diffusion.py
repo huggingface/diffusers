@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tempfile
 import unittest
 
 import numpy as np
@@ -27,7 +26,13 @@ from diffusers import (
     OnnxStableDiffusionPipeline,
     PNDMScheduler,
 )
-from diffusers.utils.testing_utils import is_onnx_available, nightly, require_onnxruntime, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
+    is_onnx_available,
+    nightly,
+    require_onnxruntime,
+    require_torch_gpu,
+)
 
 from ..test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
@@ -366,7 +371,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert image is not None
 
         # check that there's no error when saving a pipeline with one of the models being None
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe = OnnxStableDiffusionPipeline.from_pretrained(tmpdirname)
 

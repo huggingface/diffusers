@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -28,7 +27,7 @@ from diffusers import (
     logging,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.utils.testing_utils import CaptureLogger
+from diffusers.utils.testing_utils import CaptureLogger, TemporaryDirectory
 
 
 class SampleObject(ConfigMixin):
@@ -152,7 +151,7 @@ class ConfigTester(unittest.TestCase):
         assert config["d"] == "for diffusion"
         assert config["e"] == [1, 3]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             obj.save_config(tmpdirname)
             new_obj = SampleObject.from_config(SampleObject.load_config(tmpdirname))
             new_config = new_obj.config
@@ -276,7 +275,7 @@ class ConfigTester(unittest.TestCase):
         # make sure that default config has all keys in `_use_default_values`
         assert set(config_dict.keys()) == set(config.config._use_default_values)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             config.save_config(tmpdirname)
 
             # now loading it with SampleObject2 should put f into `_use_default_values`

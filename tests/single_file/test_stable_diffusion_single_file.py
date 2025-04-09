@@ -1,5 +1,4 @@
 import gc
-import tempfile
 import unittest
 
 import torch
@@ -8,6 +7,7 @@ from diffusers import EulerDiscreteScheduler, StableDiffusionInstructPix2PixPipe
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     backend_empty_cache,
     enable_full_determinism,
     nightly,
@@ -64,7 +64,7 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
         super().test_single_file_format_inference_is_same_as_pretrained(expected_max_diff=1e-3)
 
     def test_single_file_legacy_scheduler_loading(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)

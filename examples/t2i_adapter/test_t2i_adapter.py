@@ -16,7 +16,8 @@
 import logging
 import os
 import sys
-import tempfile
+
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 sys.path.append("..")
@@ -32,7 +33,7 @@ logger.addHandler(stream_handler)
 
 class T2IAdapter(ExamplesTestsAccelerate):
     def test_t2i_adapter_sdxl(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/t2i_adapter/train_t2i_adapter_sdxl.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-xl-pipe

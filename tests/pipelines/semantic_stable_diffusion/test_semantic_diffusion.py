@@ -15,7 +15,6 @@
 
 import gc
 import random
-import tempfile
 import unittest
 
 import numpy as np
@@ -25,6 +24,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.semantic_stable_diffusion import SemanticStableDiffusionPipeline as StableDiffusionPipeline
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     enable_full_determinism,
     floats_tensor,
     nightly,
@@ -229,7 +229,7 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         assert image is not None
 
         # check that there's no error when saving a pipeline with one of the models being None
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe = StableDiffusionPipeline.from_pretrained(tmpdirname)
 

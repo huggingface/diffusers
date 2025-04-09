@@ -1,6 +1,5 @@
 import gc
 import random
-import tempfile
 import unittest
 
 import numpy as np
@@ -22,6 +21,7 @@ from diffusers.utils import load_image, logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    TemporaryDirectory,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -273,7 +273,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs).frames[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
             for component in pipe_loaded.components.values():
@@ -316,7 +316,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         inputs = self.get_dummy_inputs(generator_device)
         output = pipe(**inputs).frames[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             for component in pipe_loaded.components.values():
@@ -353,7 +353,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         logger.setLevel(diffusers.logging.INFO)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:

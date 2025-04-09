@@ -1,5 +1,4 @@
 import gc
-import tempfile
 import unittest
 
 import torch
@@ -8,6 +7,7 @@ from diffusers import ControlNetModel, StableDiffusionControlNetPipeline
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -111,7 +111,7 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weights_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weights_name, tmpdir)
 
@@ -139,7 +139,7 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
             controlnet=controlnet,
         )
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weights_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weights_name, tmpdir)
 
@@ -172,7 +172,7 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
             controlnet=controlnet,
         )
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weights_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weights_name, tmpdir)
 

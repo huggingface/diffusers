@@ -20,7 +20,6 @@ import random
 import re
 import shutil
 import sys
-import tempfile
 import traceback
 import unittest
 import unittest.mock as mock
@@ -68,6 +67,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    TemporaryDirectory,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -121,7 +121,7 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
         ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             ddpm.save_pretrained(tmpdirname)
             new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
             new_ddpm.to(torch_device)
@@ -160,7 +160,7 @@ class DownloadTests(unittest.TestCase):
         if torch_device == "mps":
             return
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe", cache_dir=tmpdirname)
 
@@ -184,7 +184,7 @@ class DownloadTests(unittest.TestCase):
             ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
 
     def test_less_downloads_passed_object(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             cached_folder = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
             )
@@ -206,7 +206,7 @@ class DownloadTests(unittest.TestCase):
         if torch_device == "mps":
             return
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
@@ -234,7 +234,7 @@ class DownloadTests(unittest.TestCase):
             ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
 
     def test_download_only_pytorch(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             # pipeline has Flax weights
             tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
@@ -250,7 +250,7 @@ class DownloadTests(unittest.TestCase):
             assert not any(f.endswith(".safetensors") for f in files)
 
     def test_force_safetensors_error(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             # pipeline has Flax weights
             with self.assertRaises(EnvironmentError):
                 tmpdirname = DiffusionPipeline.download(
@@ -261,7 +261,7 @@ class DownloadTests(unittest.TestCase):
                 )
 
     def test_download_safetensors(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             # pipeline has Flax weights
             tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe-safetensors",
@@ -278,7 +278,7 @@ class DownloadTests(unittest.TestCase):
 
     def test_download_safetensors_index(self):
         for variant in ["fp16", None]:
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 tmpdirname = DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
                     cache_dir=tmpdirname,
@@ -302,7 +302,7 @@ class DownloadTests(unittest.TestCase):
 
     def test_download_bin_index(self):
         for variant in ["fp16", None]:
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 tmpdirname = DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
                     cache_dir=tmpdirname,
@@ -325,7 +325,7 @@ class DownloadTests(unittest.TestCase):
                 assert not any(".safetensors" in f for f in files)
 
     def test_download_no_openvino_by_default(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-open-vino",
                 cache_dir=tmpdirname,
@@ -339,7 +339,7 @@ class DownloadTests(unittest.TestCase):
             assert not any("openvino_" in f for f in files)
 
     def test_download_no_onnx_by_default(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-xl-pipe",
                 cache_dir=tmpdirname,
@@ -355,7 +355,7 @@ class DownloadTests(unittest.TestCase):
 
     @require_onnxruntime
     def test_download_onnx_by_default_for_onnx_pipelines(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-random-OnnxStableDiffusionPipeline",
                 cache_dir=tmpdirname,
@@ -394,7 +394,7 @@ class DownloadTests(unittest.TestCase):
         generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None)
             pipe_2 = pipe_2.to(torch_device)
@@ -413,7 +413,7 @@ class DownloadTests(unittest.TestCase):
         generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname)
             pipe_2 = pipe_2.to(torch_device)
@@ -461,7 +461,7 @@ class DownloadTests(unittest.TestCase):
 
         # first check that with local files only the pipeline can only be used if cached
         with self.assertRaises(FileNotFoundError):
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 orig_pipe = DiffusionPipeline.from_pretrained(
                     "hf-internal-testing/tiny-stable-diffusion-torch", local_files_only=True, cache_dir=tmpdirname
                 )
@@ -490,7 +490,7 @@ class DownloadTests(unittest.TestCase):
     def test_download_from_variant_folder(self):
         for use_safetensors in [False, True]:
             other_format = ".bin" if use_safetensors else ".safetensors"
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants",
                     cache_dir=tmpdirname,
@@ -512,7 +512,7 @@ class DownloadTests(unittest.TestCase):
             this_format = ".safetensors" if use_safetensors else ".bin"
             variant = "fp16"
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants",
                     cache_dir=tmpdirname,
@@ -537,7 +537,7 @@ class DownloadTests(unittest.TestCase):
             this_format = ".safetensors" if use_safetensors else ".bin"
             variant = "no_ema"
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants",
                     cache_dir=tmpdirname,
@@ -564,7 +564,7 @@ class DownloadTests(unittest.TestCase):
         # the `text_encoder`. Their checkpoints can be sharded.
         for use_safetensors in [True, False]:
             for variant in ["fp16", None]:
-                with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+                with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                     tmpdirname = DiffusionPipeline.download(
                         "hf-internal-testing/tiny-stable-diffusion-pipe-variants-right-format",
                         safety_checker=None,
@@ -590,7 +590,7 @@ class DownloadTests(unittest.TestCase):
 
         for is_local in [True, False]:
             with CaptureLogger(logger) as cap_logger:
-                with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+                with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                     local_repo_id = repo_id
                     if is_local:
                         local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
@@ -608,7 +608,7 @@ class DownloadTests(unittest.TestCase):
         use_safetensors = True
 
         # text encoder is missing no variant weights, so the following can't work
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with self.assertRaises(OSError) as error_context:
                 tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
@@ -619,7 +619,7 @@ class DownloadTests(unittest.TestCase):
             assert "Error no file name" in str(error_context.exception)
 
         # text encoder has fp16 variants so we can load it
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             tmpdirname = StableDiffusionPipeline.download(
                 "hf-internal-testing/stable-diffusion-broken-variants",
                 use_safetensors=use_safetensors,
@@ -637,7 +637,7 @@ class DownloadTests(unittest.TestCase):
         use_safetensors = False
 
         # text encoder is missing Non-variant weights, so the following can't work
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with self.assertRaises(OSError) as error_context:
                 tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
@@ -648,7 +648,7 @@ class DownloadTests(unittest.TestCase):
             assert "Error no file name" in str(error_context.exception)
 
         # text encoder has fp16 variants so we can load it
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             tmpdirname = StableDiffusionPipeline.download(
                 "hf-internal-testing/stable-diffusion-broken-variants",
                 use_safetensors=use_safetensors,
@@ -666,7 +666,7 @@ class DownloadTests(unittest.TestCase):
         use_safetensors = True
 
         # text encoder is missing no_ema variant weights, so the following can't work
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with self.assertRaises(OSError) as error_context:
                 tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
@@ -682,7 +682,7 @@ class DownloadTests(unittest.TestCase):
         use_safetensors = False
 
         # text encoder is missing no_ema variant weights, so the following can't work
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with self.assertRaises(OSError) as error_context:
                 tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
@@ -706,7 +706,7 @@ class DownloadTests(unittest.TestCase):
                 generator = torch.manual_seed(0)
                 out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
-                with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+                with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                     pipe.save_pretrained(tmpdirname, variant=variant, safe_serialization=use_safe)
                     pipe_2 = StableDiffusionPipeline.from_pretrained(
                         tmpdirname, safe_serialization=use_safe, variant=variant
@@ -728,7 +728,7 @@ class DownloadTests(unittest.TestCase):
         num_tokens = len(pipe.tokenizer)
 
         # single token load local
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             ten = {"<*>": torch.ones((32,))}
             torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
 
@@ -744,7 +744,7 @@ class DownloadTests(unittest.TestCase):
             assert out.shape == (1, 128, 128, 3)
 
         # single token load local with weight name
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             ten = {"<**>": 2 * torch.ones((1, 32))}
             torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
 
@@ -760,7 +760,7 @@ class DownloadTests(unittest.TestCase):
             assert out.shape == (1, 128, 128, 3)
 
         # multi token load
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             ten = {"<***>": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])}
             torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
 
@@ -783,7 +783,7 @@ class DownloadTests(unittest.TestCase):
             assert out.shape == (1, 128, 128, 3)
 
         # multi token load a1111
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             ten = {
                 "string_to_param": {
                     "*": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])
@@ -811,8 +811,8 @@ class DownloadTests(unittest.TestCase):
             assert out.shape == (1, 128, 128, 3)
 
         # multi embedding load
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname1:
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname2:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname1:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname2:
                 ten = {"<*****>": torch.ones((32,))}
                 torch.save(ten, os.path.join(tmpdirname1, "learned_embeds.bin"))
 
@@ -977,7 +977,7 @@ class DownloadTests(unittest.TestCase):
 
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             # pipeline has Flax weights
             tmpdirname = DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files")
             all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
@@ -1141,7 +1141,7 @@ class CustomPipelineTests(unittest.TestCase):
             scheduler=DDIMScheduler(),
         )
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname, safe_serialization=False)
 
             pipe_new = CustomPipeline.from_pretrained(tmpdirname)
@@ -1186,14 +1186,14 @@ class CustomPipelineTests(unittest.TestCase):
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe = DiffusionPipeline.from_pretrained(tmpdirname)
 
             assert pipe.scheduler.__class__.__name__ == "PNDMScheduler"
 
         # let's make sure that changing the scheduler is correctly reflected
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
             pipe.save_pretrained(tmpdirname)
             pipe = DiffusionPipeline.from_pretrained(tmpdirname)
@@ -1546,7 +1546,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_save_safe_serialization(self):
         pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipeline.save_pretrained(tmpdirname, safe_serialization=True)
 
             # Validate that the VAE safetensor exists and are of the correct format
@@ -1573,7 +1573,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_no_pytorch_download_when_doing_safetensors(self):
         # by default we don't download
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             _ = StableDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", cache_dir=tmpdirname
             )
@@ -1593,7 +1593,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_no_safetensors_download_when_doing_pytorch(self):
         use_safetensors = False
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             _ = StableDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all",
                 cache_dir=tmpdirname,
@@ -1632,7 +1632,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert sd.config.requires_safety_checker is True
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd.save_pretrained(tmpdirname)
 
             # Test that passing None works
@@ -1644,7 +1644,7 @@ class PipelineFastTests(unittest.TestCase):
             assert sd.config.safety_checker == (None, None)
             assert sd.config.feature_extractor == (None, None)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd.save_pretrained(tmpdirname)
 
             # Test that loading previous None works
@@ -1686,7 +1686,7 @@ class PipelineFastTests(unittest.TestCase):
             assert sd.config.safety_checker == (None, None)
             assert sd.config.feature_extractor == (None, None)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd.save_pretrained(tmpdirname)
 
             # Test that partially loading works
@@ -1708,7 +1708,7 @@ class PipelineFastTests(unittest.TestCase):
             assert sd.config.safety_checker != (None, None)
             assert sd.config.feature_extractor != (None, None)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd.save_pretrained(tmpdirname)
             sd = StableDiffusionPipeline.from_pretrained(tmpdirname, feature_extractor=self.dummy_extractor)
 
@@ -1722,7 +1722,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert sd.name_or_path == model_path
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd.save_pretrained(tmpdirname)
             sd = DiffusionPipeline.from_pretrained(tmpdirname)
 
@@ -1825,7 +1825,7 @@ class PipelineFastTests(unittest.TestCase):
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
     def test_load_dduf_from_hub(self, dtype):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe = DiffusionPipeline.from_pretrained(
                 "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir, torch_dtype=dtype
             ).to(torch_device)
@@ -1843,7 +1843,7 @@ class PipelineFastTests(unittest.TestCase):
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
     def test_load_dduf_from_hub_local_files_only(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe = DiffusionPipeline.from_pretrained(
                 "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
             ).to(torch_device)
@@ -1883,7 +1883,7 @@ class PipelineFastTests(unittest.TestCase):
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
     def test_dduf_load_sharded_checkpoint_diffusion_model(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe = DiffusionPipeline.from_pretrained(
                 "hf-internal-testing/tiny-flux-dev-pipe-sharded-checkpoint-DDUF",
                 dduf_file="tiny-flux-dev-pipe-sharded-checkpoint.dduf",
@@ -1919,7 +1919,7 @@ class PipelineSlowTests(unittest.TestCase):
 
     def test_smart_download(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             _ = DiffusionPipeline.from_pretrained(model_id, cache_dir=tmpdirname, force_download=True)
             local_repo_name = "--".join(["models"] + model_id.split("/"))
             snapshot_dir = os.path.join(tmpdirname, local_repo_name, "snapshots")
@@ -1941,7 +1941,7 @@ class PipelineSlowTests(unittest.TestCase):
     def test_warning_unused_kwargs(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
         logger = logging.get_logger("diffusers.pipelines")
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with CaptureLogger(logger) as cap_logger:
                 DiffusionPipeline.from_pretrained(
                     model_id,
@@ -1972,7 +1972,7 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             ddpm.save_pretrained(tmpdirname)
             new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
             new_ddpm.to(torch_device)
@@ -2069,14 +2069,14 @@ class PipelineSlowTests(unittest.TestCase):
 
         from diffusers import FlaxStableDiffusionPipeline
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe_pt.save_pretrained(tmpdirname)
 
             pipe_flax, params = FlaxStableDiffusionPipeline.from_pretrained(
                 tmpdirname, safety_checker=None, from_pt=True
             )
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe_flax.save_pretrained(tmpdirname, params=params)
             pipe_pt_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None, from_flax=True)
             pipe_pt_2.to(torch_device)
@@ -2282,7 +2282,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         assert not (output0_before == 0).all()
         assert not (output1_before == 0).all()
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dirname:
             # save the adapter checkpoints
             lora0_state_dicts = self.get_lora_state_dicts({"unet": pipeline.unet}, adapter_name="adapter0")
             StableDiffusionPipeline.save_lora_weights(
@@ -2413,7 +2413,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         pipeline.text_encoder.add_adapter(lora_config0, adapter_name="adapter0")
         pipeline.text_encoder.add_adapter(lora_config1, adapter_name="adapter1")
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dirname:
             # save the adapter checkpoints
             lora0_state_dicts = self.get_lora_state_dicts(
                 {"text_encoder": pipeline.text_encoder}, adapter_name="adapter0"

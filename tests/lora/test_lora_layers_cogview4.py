@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import sys
-import tempfile
 import unittest
 
 import numpy as np
@@ -21,7 +20,13 @@ import torch
 from transformers import AutoTokenizer, GlmModel
 
 from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
+    floats_tensor,
+    require_peft_backend,
+    skip_mps,
+    torch_device,
+)
 
 
 sys.path.append(".")
@@ -128,7 +133,7 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 pipe.save_pretrained(tmpdirname)
 
                 pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)

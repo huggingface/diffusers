@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gc
-import tempfile
 import unittest
 
 import numpy as np
@@ -31,6 +30,7 @@ from diffusers import (
 from diffusers.utils import is_accelerate_version
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    TemporaryDirectory,
     backend_empty_cache,
     is_bitsandbytes_available,
     is_torch_available,
@@ -718,7 +718,7 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         Test whether it is possible to serialize a model in 8-bit. Uses most typical params as default.
         """
         self.assertTrue("_pre_quantization_dtype" in self.model_0.config)
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             self.model_0.save_pretrained(tmpdirname)
 
             config = SD3Transformer2DModel.load_config(tmpdirname)
@@ -749,7 +749,7 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         self.assertTrue(torch.equal(out_0, out_1))
 
     def test_serialization_sharded(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             self.model_0.save_pretrained(tmpdirname, max_shard_size="200MB")
 
             config = SD3Transformer2DModel.load_config(tmpdirname)

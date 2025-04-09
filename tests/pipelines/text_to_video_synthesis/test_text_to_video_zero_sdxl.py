@@ -15,7 +15,6 @@
 
 import gc
 import inspect
-import tempfile
 import unittest
 
 import numpy as np
@@ -24,6 +23,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     enable_full_determinism,
     nightly,
     require_accelerate_version_greater,
@@ -299,7 +299,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         inputs = self.get_dummy_inputs(self.generator_device)
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
             pipe_loaded.to(torch_device)

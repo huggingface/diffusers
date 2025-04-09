@@ -16,7 +16,8 @@
 import logging
 import os
 import sys
-import tempfile
+
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 
 sys.path.append("..")
@@ -32,7 +33,7 @@ logger.addHandler(stream_handler)
 
 class TextualInversionSdxl(ExamplesTestsAccelerate):
     def test_textual_inversion_sdxl(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion_sdxl.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-sdxl-pipe
@@ -58,7 +59,7 @@ class TextualInversionSdxl(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "learned_embeds.safetensors")))
 
     def test_textual_inversion_sdxl_checkpointing(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion_sdxl.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-sdxl-pipe
@@ -90,7 +91,7 @@ class TextualInversionSdxl(ExamplesTestsAccelerate):
             )
 
     def test_textual_inversion_sdxl_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion_sdxl.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-sdxl-pipe

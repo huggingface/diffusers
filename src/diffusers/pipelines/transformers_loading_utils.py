@@ -14,11 +14,12 @@
 # limitations under the License.
 import contextlib
 import os
-import tempfile
 from typing import TYPE_CHECKING, Dict
 
 from huggingface_hub import DDUFEntry
 from tqdm import tqdm
+
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 from ..utils import is_safetensors_available, is_transformers_available, is_transformers_version
 
@@ -44,7 +45,7 @@ def _load_tokenizer_from_dduf(
     files. There is an extra cost of extracting the files, but of limited impact as the tokenizer files are usually
     small-ish.
     """
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+    with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
         for entry_name, entry in dduf_entries.items():
             if entry_name.startswith(name + "/"):
                 tmp_entry_path = os.path.join(tmp_dir, *entry_name.split("/"))
@@ -91,7 +92,7 @@ def _load_transformers_model_from_dduf(
             "You can install it with: `pip install --upgrade transformers`"
         )
 
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+    with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
         from transformers import AutoConfig, GenerationConfig
 
         tmp_config_file = os.path.join(tmp_dir, "config.json")

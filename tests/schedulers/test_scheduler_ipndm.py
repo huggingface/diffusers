@@ -1,9 +1,9 @@
-import tempfile
 import unittest
 
 import torch
 
 from diffusers import IPNDMScheduler
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -34,7 +34,7 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
             if time_step is None:
                 time_step = scheduler.timesteps[len(scheduler.timesteps) // 2]
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
@@ -73,7 +73,7 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
             if time_step is None:
                 time_step = scheduler.timesteps[len(scheduler.timesteps) // 2]
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals

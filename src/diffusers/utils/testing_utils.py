@@ -8,12 +8,15 @@ import multiprocessing
 import os
 import random
 import re
+import shutil
 import struct
 import sys
 import tempfile
 import time
 import unittest
 import urllib.parse
+import warnings
+import weakref
 from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
@@ -1377,3 +1380,84 @@ class Expectations(DevicePropertiesUserDict):
 
     def __repr__(self):
         return f"{self.data}"
+
+
+# This is for Python 3.8/3.9 support of ignore_cleanup_errors
+
+GenericAlias = List[int]
+
+
+class TemporaryDirectory:
+    """Create and return a temporary directory.  This has the same
+    behavior as mkdtemp but can be used as a context manager.  For
+    example:
+
+        with TemporaryDirectory() as tmpdir:
+            ...
+
+    Upon exiting the context, the directory and everything contained
+    in it are removed.
+    """
+
+    def __init__(self, suffix=None, prefix=None, dir=None, ignore_cleanup_errors=False):
+        self.name = tempfile.mkdtemp(suffix, prefix, dir)
+        self._ignore_cleanup_errors = ignore_cleanup_errors
+        self._finalizer = weakref.finalize(
+            self,
+            self._cleanup,
+            self.name,
+            warn_message="Implicitly cleaning up {!r}".format(self),
+            ignore_errors=self._ignore_cleanup_errors,
+        )
+
+    @classmethod
+    def _rmtree(cls, name, ignore_errors=False):
+        def onerror(func, path, exc_info):
+            if issubclass(exc_info[0], PermissionError):
+
+                def resetperms(path):
+                    try:
+                        os.chflags(path, 0)
+                    except AttributeError:
+                        pass
+                    os.chmod(path, 0o700)
+
+                try:
+                    if path != name:
+                        resetperms(os.path.dirname(path))
+                    resetperms(path)
+
+                    try:
+                        os.unlink(path)
+                    # PermissionError is raised on FreeBSD for directories
+                    except (IsADirectoryError, PermissionError):
+                        cls._rmtree(path, ignore_errors=ignore_errors)
+                except FileNotFoundError:
+                    pass
+            elif issubclass(exc_info[0], FileNotFoundError):
+                pass
+            else:
+                if not ignore_errors:
+                    raise
+
+        shutil.rmtree(name, onerror=onerror)
+
+    @classmethod
+    def _cleanup(cls, name, warn_message, ignore_errors=False):
+        cls._rmtree(name, ignore_errors=ignore_errors)
+        warnings.warn(warn_message, ResourceWarning)
+
+    def __repr__(self):
+        return "<{} {!r}>".format(self.__class__.__name__, self.name)
+
+    def __enter__(self):
+        return self.name
+
+    def __exit__(self, exc, value, tb):
+        self.cleanup()
+
+    def cleanup(self):
+        if self._finalizer.detach() or os.path.exists(self.name):
+            self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+
+    __class_getitem__ = classmethod(GenericAlias)

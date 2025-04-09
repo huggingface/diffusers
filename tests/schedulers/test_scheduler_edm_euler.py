@@ -1,11 +1,11 @@
 import inspect
-import tempfile
 import unittest
 from typing import Dict, List, Tuple
 
 import torch
 
 from diffusers import EDMEulerScheduler
+from diffusers.utils.testing_utils import TemporaryDirectory
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -89,7 +89,7 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
