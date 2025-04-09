@@ -87,9 +87,7 @@ To create the package for PyPI.
 import os
 import re
 import sys
-
 from setuptools import Command, find_packages, setup
-
 
 # IMPORTANT:
 # 1. all dependencies should be listed here with their version requirements if any
