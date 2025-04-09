@@ -1057,7 +1057,7 @@ def main(args):
 
     if args.train_text_encoder and unwrap_model(text_encoder).dtype != torch.float32:
         raise ValueError(
-            f"Text encoder loaded as datatype {unwrap_model(text_encoder).dtype}." f" {low_precision_error_string}"
+            f"Text encoder loaded as datatype {unwrap_model(text_encoder).dtype}. {low_precision_error_string}"
         )
 
     # Enable TF32 for faster training on Ampere GPUs,

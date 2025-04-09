@@ -653,15 +653,15 @@ def main():
     try:
         # Gets the resolution of the timm transformation after centercrop
         timm_centercrop_transform = timm_transform.transforms[1]
-        assert isinstance(
-            timm_centercrop_transform, transforms.CenterCrop
-        ), f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
+        assert isinstance(timm_centercrop_transform, transforms.CenterCrop), (
+            f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
+        )
         timm_model_resolution = timm_centercrop_transform.size[0]
         # Gets final normalization
         timm_model_normalization = timm_transform.transforms[-1]
-        assert isinstance(
-            timm_model_normalization, transforms.Normalize
-        ), f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
+        assert isinstance(timm_model_normalization, transforms.Normalize), (
+            f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
+        )
     except AssertionError as e:
         raise NotImplementedError(e)
     # Enable flash attention if asked
