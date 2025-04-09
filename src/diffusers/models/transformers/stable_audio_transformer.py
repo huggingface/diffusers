@@ -21,16 +21,12 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.attention import FeedForward
-from ...models.attention_processor import (
-    Attention,
-    AttentionProcessor,
-    StableAudioAttnProcessor2_0,
-)
-from ...models.modeling_utils import ModelMixin
-from ...models.transformers.transformer_2d import Transformer2DModelOutput
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import FeedForward
+from ..attention_processor import Attention, AttentionProcessor, StableAudioAttnProcessor2_0
+from ..modeling_utils import ModelMixin
+from ..transformers.transformer_2d import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
