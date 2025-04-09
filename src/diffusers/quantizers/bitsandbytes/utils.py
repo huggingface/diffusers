@@ -139,10 +139,12 @@ def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name
             models by reducing the precision of the weights and activations, thus making models more efficient in terms
             of both storage and computation.
     """
-    model, has_been_replaced = _replace_with_bnb_linear(
-        model, modules_to_not_convert, current_key_name, quantization_config
-    )
+    model, _ = _replace_with_bnb_linear(model, modules_to_not_convert, current_key_name, quantization_config)
 
+    has_been_replaced = any(
+        isinstance(replaced_module, (bnb.nn.Linear4bit, bnb.nn.Linear8bitLt))
+        for _, replaced_module in model.named_modules()
+    )
     if not has_been_replaced:
         logger.warning(
             "You are loading your model in 8bit or 4bit but no linear modules were found in your model."
@@ -283,16 +285,18 @@ def dequantize_and_replace(
     modules_to_not_convert=None,
     quantization_config=None,
 ):
-    model, has_been_replaced = _dequantize_and_replace(
+    model, _ = _dequantize_and_replace(
         model,
         dtype=model.dtype,
         modules_to_not_convert=modules_to_not_convert,
         quantization_config=quantization_config,
     )
-
+    has_been_replaced = any(
+        isinstance(replaced_module, torch.nn.Linear) for _, replaced_module in model.named_modules()
+    )
     if not has_been_replaced:
         logger.warning(
-            "For some reason the model has not been properly dequantized. You might see unexpected behavior."
+            "Some linear modules were not dequantized. This could lead to unexpected behaviour. Please check your model."
         )
 
     return model
