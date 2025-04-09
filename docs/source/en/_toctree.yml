@@ -265,6 +265,8 @@
     sections:
     - local: api/models/overview
       title: Overview
+    - local: api/models/auto_model
+      title: AutoModel
     - sections:
       - local: api/models/controlnet
         title: ControlNetModel
