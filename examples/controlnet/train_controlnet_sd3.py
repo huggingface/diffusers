@@ -53,6 +53,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3, free_memory
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.testing_utils import backend_empty_cache
 from diffusers.utils.torch_utils import is_compiled_module
 
 
@@ -118,7 +119,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_v
 
     del pipeline
     gc.collect()
-    torch.cuda.empty_cache()
+    backend_empty_cache(accelerator.device.type)
 
     pipeline = StableDiffusion3ControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -131,7 +132,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_v
         variant=args.variant,
         torch_dtype=weight_dtype,
     )
-    pipeline.enable_model_cpu_offload()
+    pipeline.enable_model_cpu_offload(device=accelerator.device.type)
     pipeline.set_progress_bar_config(disable=True)
 
     image_logs = []
