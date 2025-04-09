@@ -634,7 +634,6 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
-        control_mode=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
@@ -771,18 +770,6 @@ class StableDiffusion3ControlNetInpaintingPipeline(
                 raise ValueError(f"control_guidance_start: {start} can't be smaller than 0.")
             if end > 1.0:
                 raise ValueError(f"control_guidance_end: {end} can't be larger than 1.0.")
-
-        # Check `control_mode`
-        if isinstance(controlnet, SD3MultiControlNetModel):
-            for _control_mode, _controlnet in zip(control_mode, self.controlnet.nets):
-                if _control_mode >= _controlnet.config.num_control_type:
-                    raise ValueError(f"control_mode: must be lower than {_controlnet.config.num_control_type}.")
-
-            if not isinstance(control_mode, list) or not isinstance(image, list):
-                raise ValueError("Expected both `control_mode` and `image` to be lists.")
-
-            elif len(control_mode) != len(image):
-                raise ValueError(f"Expected len(control_mode) == len(image), got {len(control_mode)} and {len(image)}")
 
         if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
             raise ValueError(
