@@ -78,11 +78,11 @@ class AuraFlowPatchEmbed(nn.Module):
         h_max, w_max = int(self.pos_embed_max_size**0.5), int(self.pos_embed_max_size**0.5)
         original_pe_indexes = original_pe_indexes.view(h_max, w_max)
         starth = h_max // 2 - h_p // 2
-        endh = starth + h_p
-        startw = w_max // 2 - w_p // 2
-        endw = startw + w_p
-        original_pe_indexes = original_pe_indexes[starth:endh, startw:endw]
-        return original_pe_indexes.flatten()
+        startw = w_max // 2 - w_p // 2        
+        narrowed = torch.narrow(original_pe_indexes, 0, starth, h_p)
+        narrowed = torch.narrow(narrowed, 1, startw, w_p)
+        
+        return narrowed.flatten()
 
     def forward(self, latent):
         batch_size, num_channels, height, width = latent.size()
