@@ -459,6 +459,12 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             image_array_list = []
             mask_list = []
             is_product_list = []
+
+            if len(image) != len(layer_type):
+                raise ValueError(
+                    f"number of images ({len(image)}) must match the number of layers {len(layer_type)}"
+                )
+            
             for img, img_type in zip(image, layer_type):
                 if 'product' in img_type or 'Product' in img_type:
                     is_product_list.append('true')
@@ -600,6 +606,12 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         # scale & concatenate image and text embeddings
         if is_qv:
+            num_of_prod_imgs = int(image_embeds_prods.shape[1]/729)
+            if len(prompt_embeds_list) != num_of_prod_imgs:
+                raise ValueError(
+                    f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {num_of_prod_imgs}"
+                )
+            
             prompt_embeds = image_embeds_bg
             for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
                 prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
