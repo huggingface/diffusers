@@ -40,6 +40,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_wan"] = ["AutoencoderKLWan"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
+    _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
@@ -119,6 +120,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderTiny,
+            AutoencoderVidTok,
             ConsistencyDecoderVAE,
             VQModel,
         )
