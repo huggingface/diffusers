@@ -12,6 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # Stable Diffusion 3
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+  <img alt="MPS" src="https://img.shields.io/badge/MPS-000000?style=flat&logo=apple&logoColor=white%22">
+</div>
+
 Stable Diffusion 3 (SD3) was proposed in [Scaling Rectified Flow Transformers for High-Resolution Image Synthesis](https://arxiv.org/pdf/2403.03206.pdf) by Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas Muller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, Dustin Podell, Tim Dockhorn, Zion English, Kyle Lacey, Alex Goodwin, Yannik Marek, and Robin Rombach.
 
 The abstract from the paper is:
@@ -77,7 +82,7 @@ from diffusers import StableDiffusion3Pipeline
 from transformers import SiglipVisionModel, SiglipImageProcessor
 
 image_encoder_id = "google/siglip-so400m-patch14-384"
-ip_adapter_id = "guiyrt/InstantX-SD3.5-Large-IP-Adapter-diffusers"
+ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
 
 feature_extractor = SiglipImageProcessor.from_pretrained(
     image_encoder_id,

@@ -38,7 +38,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -54,7 +54,6 @@ from ..test_pipelines_common import (
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     SDFunctionTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -66,7 +65,6 @@ class StableDiffusionXLPipelineFastTests(
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLPipeline
@@ -244,93 +242,15 @@ class StableDiffusionXLPipelineFastTests(
         inputs["sigmas"] = sigma_schedule
         output_sigmas = sd_pipe(**inputs).images
 
-        assert (
-            np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3
-        ), "ays timesteps and ays sigmas should have the same outputs"
-        assert (
-            np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3
-        ), "use ays timesteps should have different outputs"
-        assert (
-            np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3
-        ), "use ays sigmas should have different outputs"
-
-    def test_stable_diffusion_xl_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward without prompt embeds
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt"] = 2 * [inputs["prompt"]]
-        inputs["num_images_per_prompt"] = 2
-
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
-
-        # forward with prompt embeds
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = 2 * [inputs.pop("prompt")]
-
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = sd_pipe.encode_prompt(prompt)
-
-        output = sd_pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+        assert np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3, (
+            "ays timesteps and ays sigmas should have the same outputs"
         )
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
-
-    def test_stable_diffusion_xl_negative_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward without prompt embeds
-        inputs = self.get_dummy_inputs(torch_device)
-        negative_prompt = 3 * ["this is a negative prompt"]
-        inputs["negative_prompt"] = negative_prompt
-        inputs["prompt"] = 3 * [inputs["prompt"]]
-
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
-
-        # forward with prompt embeds
-        inputs = self.get_dummy_inputs(torch_device)
-        negative_prompt = 3 * ["this is a negative prompt"]
-        prompt = 3 * [inputs.pop("prompt")]
-
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = sd_pipe.encode_prompt(prompt, negative_prompt=negative_prompt)
-
-        output = sd_pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+        assert np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3, (
+            "use ays timesteps should have different outputs"
         )
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3, (
+            "use ays sigmas should have different outputs"
+        )
 
     def test_ip_adapter(self):
         expected_pipe_slice = None
@@ -345,10 +265,7 @@ class StableDiffusionXLPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
         components = self.get_dummy_components()
@@ -357,12 +274,12 @@ class StableDiffusionXLPipelineFastTests(
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe.enable_model_cpu_offload()
+        sd_pipe.enable_model_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe.enable_sequential_cpu_offload()
+        sd_pipe.enable_sequential_cpu_offload(device=torch_device)
         pipes.append(sd_pipe)
 
         image_slices = []
@@ -377,41 +294,9 @@ class StableDiffusionXLPipelineFastTests(
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
-    def test_stable_diffusion_xl_img2img_prompt_embeds_only(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward without prompt embeds
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        inputs["prompt"] = 3 * [inputs["prompt"]]
-
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
-
-        # forward with prompt embeds
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        prompt = 3 * [inputs.pop("prompt")]
-
-        (
-            prompt_embeds,
-            _,
-            pooled_prompt_embeds,
-            _,
-        ) = sd_pipe.encode_prompt(prompt)
-
-        output = sd_pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-        )
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
 
     def test_stable_diffusion_two_xl_mixture_of_denoiser_fast(self):
         components = self.get_dummy_components()
@@ -857,9 +742,9 @@ class StableDiffusionXLPipelineFastTests(
             inputs_1 = {**inputs, **{"denoising_end": split_1, "output_type": "latent"}}
             latents = pipe_1(**inputs_1).images[0]
 
-            assert (
-                expected_steps_1 == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps_1 == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
             with self.assertRaises(ValueError) as cm:
                 inputs_2 = {
@@ -886,9 +771,9 @@ class StableDiffusionXLPipelineFastTests(
             pipe_3(**inputs_3).images[0]
 
             assert expected_steps_3 == done_steps[len(expected_steps_1) + len(expected_steps_2) :]
-            assert (
-                expected_steps == done_steps
-            ), f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            assert expected_steps == done_steps, (
+                f"Failure with {scheduler_cls.__name__} and {num_steps} and {split_1} and {split_2}"
+            )
 
         for steps in [7, 11, 20]:
             for split_1, split_2 in zip([0.19, 0.32], [0.81, 0.68]):

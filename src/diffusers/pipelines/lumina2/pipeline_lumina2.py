@@ -13,17 +13,19 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import Lumina2LoraLoaderMixin
 from ...models import AutoencoderKL
 from ...models.transformers.transformer_lumina2 import Lumina2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -46,9 +48,9 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import Lumina2Text2ImgPipeline
+        >>> from diffusers import Lumina2Pipeline
 
-        >>> pipe = Lumina2Text2ImgPipeline.from_pretrained("Alpha-VLLM/Lumina-Image-2.0", torch_dtype=torch.bfloat16)
+        >>> pipe = Lumina2Pipeline.from_pretrained("Alpha-VLLM/Lumina-Image-2.0", torch_dtype=torch.bfloat16)
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
@@ -132,7 +134,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class Lumina2Text2ImgPipeline(DiffusionPipeline):
+class Lumina2Pipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Lumina-T2I.
 
@@ -142,13 +144,10 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`AutoModel`]):
-            Frozen text-encoder. Lumina-T2I uses
-            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.AutoModel), specifically the
-            [t5-v1_1-xxl](https://huggingface.co/Alpha-VLLM/tree/main/t5-v1_1-xxl) variant.
-        tokenizer (`AutoModel`):
-            Tokenizer of class
-            [AutoModel](https://huggingface.co/docs/transformers/model_doc/t5#transformers.AutoModel).
+        text_encoder ([`Gemma2PreTrainedModel`]):
+            Frozen Gemma2 text-encoder.
+        tokenizer (`GemmaTokenizer` or `GemmaTokenizerFast`):
+            Gemma tokenizer.
         transformer ([`Transformer2DModel`]):
             A text conditioned `Transformer2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
@@ -164,8 +163,8 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         transformer: Lumina2Transformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
-        text_encoder: AutoModel,
-        tokenizer: AutoTokenizer,
+        text_encoder: Gemma2PreTrainedModel,
+        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
     ):
         super().__init__()
 
@@ -483,6 +482,10 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
     def guidance_scale(self):
         return self._guidance_scale
 
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
     # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
@@ -514,6 +517,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         system_prompt: Optional[str] = None,
@@ -575,6 +579,10 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
+            attention_kwargs:
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -603,6 +611,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -697,6 +706,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
                     return_dict=False,
+                    attention_kwargs=self.attention_kwargs,
                 )[0]
 
                 # perform normalization-based guidance scale on a truncated timestep interval
@@ -707,6 +717,7 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
                         encoder_hidden_states=negative_prompt_embeds,
                         encoder_attention_mask=negative_prompt_attention_mask,
                         return_dict=False,
+                        attention_kwargs=self.attention_kwargs,
                     )[0]
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
                     # apply normalization after classifier-free guidance
@@ -757,3 +768,23 @@ class Lumina2Text2ImgPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
+
+
+class Lumina2Text2ImgPipeline(Lumina2Pipeline):
+    def __init__(
+        self,
+        transformer: Lumina2Transformer2DModel,
+        scheduler: FlowMatchEulerDiscreteScheduler,
+        vae: AutoencoderKL,
+        text_encoder: Gemma2PreTrainedModel,
+        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+    ):
+        deprecation_message = "`Lumina2Text2ImgPipeline` has been renamed to `Lumina2Pipeline` and will be removed in a future version. Please use `Lumina2Pipeline` instead."
+        deprecate("diffusers.pipelines.lumina2.pipeline_lumina2.Lumina2Text2ImgPipeline", "0.34", deprecation_message)
+        super().__init__(
+            transformer=transformer,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+        )

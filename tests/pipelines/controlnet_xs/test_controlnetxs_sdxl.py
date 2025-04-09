@@ -57,7 +57,6 @@ from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -68,7 +67,6 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLControlNetXSPipeline
@@ -201,6 +199,10 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
     @require_torch_accelerator
     # Copied from test_controlnet_sdxl.py
     def test_stable_diffusion_xl_offloads(self):
@@ -284,49 +286,6 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
-
-    # Copied from test_stable_diffusion_xl.py
-    def test_stable_diffusion_xl_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward without prompt embeds
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt"] = 2 * [inputs["prompt"]]
-        inputs["num_images_per_prompt"] = 2
-
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
-
-        # forward with prompt embeds
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = 2 * [inputs.pop("prompt")]
-
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = sd_pipe.encode_prompt(prompt)
-
-        output = sd_pipe(
-            **inputs,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-        )
-        image_slice_2 = output.images[0, -3:, -3:, -1]
-
-        # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1.1e-4
-
-    # Copied from test_stable_diffusion_xl.py
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
 
     # Copied from test_controlnetxs.py
     def test_to_dtype(self):

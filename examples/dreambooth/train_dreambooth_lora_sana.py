@@ -170,7 +170,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
 
     images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
@@ -1064,7 +1064,7 @@ def main(args):
         lora_state_dict = SanaPipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
-            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
+            f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
         }
         transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
         incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")

@@ -98,7 +98,9 @@ class KolorsPAGPipelineFastTests(
             sample_size=128,
         )
         torch.manual_seed(0)
-        text_encoder = ChatGLMModel.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
+        text_encoder = ChatGLMModel.from_pretrained(
+            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.float32
+        )
         tokenizer = ChatGLMTokenizer.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
 
         components = {
@@ -138,9 +140,9 @@ class KolorsPAGPipelineFastTests(
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert (
-            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
+            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        )
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0
@@ -252,3 +254,6 @@ class KolorsPAGPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_encode_prompt_works_in_isolation(self):
+        return super().test_encode_prompt_works_in_isolation(atol=1e-3, rtol=1e-3)

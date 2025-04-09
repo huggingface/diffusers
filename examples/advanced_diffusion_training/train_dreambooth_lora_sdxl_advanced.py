@@ -71,6 +71,7 @@ from diffusers.utils import (
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -101,7 +102,7 @@ def determine_scheduler_type(pretrained_model_name_or_path, revision):
 def save_model_card(
     repo_id: str,
     use_dora: bool,
-    images=None,
+    images: list = None,
     base_model: str = None,
     train_text_encoder=False,
     train_text_encoder_ti=False,
@@ -111,20 +112,17 @@ def save_model_card(
     repo_folder=None,
     vae_path=None,
 ):
-    img_str = "widget:\n"
     lora = "lora" if not use_dora else "dora"
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"""
-        - text: '{validation_prompt if validation_prompt else ' ' }'
-          output:
-            url:
-                "image_{i}.png"
-        """
-    if not images:
-        img_str += f"""
-        - text: '{instance_prompt}'
-        """
+
+    widget_dict = []
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            widget_dict.append(
+                {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
+            )
+    else:
+        widget_dict.append({"text": instance_prompt})
     embeddings_filename = f"{repo_folder}_emb"
     instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
     ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
@@ -169,23 +167,7 @@ pipeline.load_textual_inversion(state_dict["clip_g"], token=[{ti_keys}], text_en
 to trigger concept `{key}` → use `{tokens}` in your prompt \n
 """
 
-    yaml = f"""---
-tags:
-- stable-diffusion-xl
-- stable-diffusion-xl-diffusers
-- diffusers-training
-- text-to-image
-- diffusers
-- {lora}
-- template:sd-lora
-{img_str}
-base_model: {base_model}
-instance_prompt: {instance_prompt}
-license: openrail++
----
-"""
-
-    model_card = f"""
+    model_description = f"""
 # SDXL LoRA DreamBooth - {repo_id}
 
 <Gallery />
@@ -234,8 +216,25 @@ Special VAE used for training: {vae_path}.
 
 {license}
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="openrail++",
+        base_model=base_model,
+        prompt=instance_prompt,
+        model_description=model_description,
+        widget=widget_dict,
+    )
+    tags = [
+        "text-to-image",
+        "stable-diffusion-xl",
+        "stable-diffusion-xl-diffusers",
+        "text-to-image",
+        "diffusers",
+        lora,
+        "template:sd-lora",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
 
 
 def log_validation(
@@ -269,7 +268,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
     if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
@@ -773,7 +772,7 @@ def parse_args(input_args=None):
         action="store_true",
         default=False,
         help=(
-            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -891,9 +890,9 @@ class TokenEmbeddingsHandler:
         idx = 0
         for tokenizer, text_encoder in zip(self.tokenizers, self.text_encoders):
             assert isinstance(inserting_toks, list), "inserting_toks should be a list of strings."
-            assert all(
-                isinstance(tok, str) for tok in inserting_toks
-            ), "All elements in inserting_toks should be strings."
+            assert all(isinstance(tok, str) for tok in inserting_toks), (
+                "All elements in inserting_toks should be strings."
+            )
 
             self.inserting_toks = inserting_toks
             special_tokens_dict = {"additional_special_tokens": self.inserting_toks}
@@ -913,9 +912,9 @@ class TokenEmbeddingsHandler:
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = (
+                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            )
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)
@@ -1648,7 +1647,7 @@ def main(args):
 
         lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
 
-        unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
+        unet_state_dict = {f"{k.replace('unet.', '')}": v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
         incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
         if incompatible_keys is not None:
@@ -1875,7 +1874,7 @@ def main(args):
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
 
-    # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
+    # if --train_text_encoder_ti we need add_special_tokens to be True for textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
 
     if not train_dataset.custom_instance_prompts:

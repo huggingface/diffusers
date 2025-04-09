@@ -365,6 +365,12 @@ class FromSingleFileMixin:
 
         is_legacy_loading = False
 
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
+
         # We shouldn't allow configuring individual models components through a Pipeline creation method
         # These model kwargs should be deprecated
         scaling_factor = kwargs.get("scaling_factor", None)

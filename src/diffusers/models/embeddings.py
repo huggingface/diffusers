@@ -139,7 +139,9 @@ def get_3d_sincos_pos_embed(
 
     # 3. Concat
     pos_embed_spatial = pos_embed_spatial[None, :, :]
-    pos_embed_spatial = pos_embed_spatial.repeat_interleave(temporal_size, dim=0)  # [T, H*W, D // 4 * 3]
+    pos_embed_spatial = pos_embed_spatial.repeat_interleave(
+        temporal_size, dim=0, output_size=pos_embed_spatial.shape[0] * temporal_size
+    )  # [T, H*W, D // 4 * 3]
 
     pos_embed_temporal = pos_embed_temporal[:, None, :]
     pos_embed_temporal = pos_embed_temporal.repeat_interleave(
@@ -334,7 +336,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
             " `from_numpy` is no longer required."
             "  Pass `output_type='pt' to use the new version now."
         )
-        deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
+        deprecate("output_type=='np'", "0.34.0", deprecation_message, standard_warn=False)
         return get_1d_sincos_pos_embed_from_grid_np(embed_dim=embed_dim, pos=pos)
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
@@ -1152,10 +1154,13 @@ def get_1d_rotary_pos_embed(
         / linear_factor
     )  # [D/2]
     freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
+    is_npu = freqs.device.type == "npu"
+    if is_npu:
+        freqs = freqs.float()
     if use_real and repeat_interleave_real:
         # flux, hunyuan-dit, cogvideox
-        freqs_cos = freqs.cos().repeat_interleave(2, dim=1).float()  # [S, D]
-        freqs_sin = freqs.sin().repeat_interleave(2, dim=1).float()  # [S, D]
+        freqs_cos = freqs.cos().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
+        freqs_sin = freqs.sin().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
         return freqs_cos, freqs_sin
     elif use_real:
         # stable audio, allegro
@@ -2582,6 +2587,11 @@ class MultiIPAdapterImageProjection(nn.Module):
     def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
         super().__init__()
         self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
+
+    @property
+    def num_ip_adapters(self) -> int:
+        """Number of IP-Adapters loaded."""
+        return len(self.image_projection_layers)
 
     def forward(self, image_embeds: List[torch.Tensor]):
         projected_image_embeds = []

@@ -184,7 +184,14 @@ class StableDiffusionControlNetInpaintPipeline(
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+        "control_image",
+        "mask",
+        "masked_image_latents",
+    ]
 
     def __init__(
         self,
@@ -650,7 +657,7 @@ class StableDiffusionControlNetInpaintPipeline(
         if padding_mask_crop is not None:
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                    f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
                 )
             if not isinstance(mask_image, PIL.Image.Image):
                 raise ValueError(
@@ -658,7 +665,7 @@ class StableDiffusionControlNetInpaintPipeline(
                     f" {type(mask_image)}."
                 )
             if output_type != "pil":
-                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is {output_type}.")
 
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
@@ -1476,6 +1483,7 @@ class StableDiffusionControlNetInpaintPipeline(
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    control_image = callback_outputs.pop("control_image", control_image)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

@@ -14,6 +14,10 @@
 
 # Lumina2
 
+<div class="flex flex-wrap space-x-1">
+  <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
+</div>
+
 [Lumina Image 2.0: A Unified and Efficient Image Generative Model](https://huggingface.co/Alpha-VLLM/Lumina-Image-2.0) is a 2 billion parameter flow-based diffusion transformer capable of generating diverse images from text descriptions.
 
 The abstract from the paper is:
@@ -32,14 +36,14 @@ Single file loading for Lumina Image 2.0 is available for the `Lumina2Transforme
 
 ```python
 import torch
-from diffusers import Lumina2Transformer2DModel, Lumina2Text2ImgPipeline
+from diffusers import Lumina2Transformer2DModel, Lumina2Pipeline
 
 ckpt_path = "https://huggingface.co/Alpha-VLLM/Lumina-Image-2.0/blob/main/consolidated.00-of-01.pth"
 transformer = Lumina2Transformer2DModel.from_single_file(
     ckpt_path, torch_dtype=torch.bfloat16
 )
 
-pipe = Lumina2Text2ImgPipeline.from_pretrained(
+pipe = Lumina2Pipeline.from_pretrained(
     "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, torch_dtype=torch.bfloat16
 )
 pipe.enable_model_cpu_offload()
@@ -56,7 +60,7 @@ image.save("lumina-single-file.png")
 GGUF Quantized checkpoints for the `Lumina2Transformer2DModel` can be loaded via `from_single_file` with the `GGUFQuantizationConfig` 
 
 ```python
-from diffusers import Lumina2Transformer2DModel, Lumina2Text2ImgPipeline, GGUFQuantizationConfig 
+from diffusers import Lumina2Transformer2DModel, Lumina2Pipeline, GGUFQuantizationConfig 
 
 ckpt_path = "https://huggingface.co/calcuis/lumina-gguf/blob/main/lumina2-q4_0.gguf"
 transformer = Lumina2Transformer2DModel.from_single_file(
@@ -65,7 +69,7 @@ transformer = Lumina2Transformer2DModel.from_single_file(
     torch_dtype=torch.bfloat16,
 )
 
-pipe = Lumina2Text2ImgPipeline.from_pretrained(
+pipe = Lumina2Pipeline.from_pretrained(
     "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, torch_dtype=torch.bfloat16
 )
 pipe.enable_model_cpu_offload()
@@ -76,8 +80,8 @@ image = pipe(
 image.save("lumina-gguf.png")
 ```
 
-## Lumina2Text2ImgPipeline
+## Lumina2Pipeline
 
-[[autodoc]] Lumina2Text2ImgPipeline
+[[autodoc]] Lumina2Pipeline
   - all
   - __call__

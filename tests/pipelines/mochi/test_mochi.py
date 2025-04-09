@@ -23,6 +23,7 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, MochiPipeline, MochiTransformer3DModel
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     nightly,
     numpy_cosine_similarity_distance,
@@ -32,13 +33,13 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import FasterCacheTesterMixin, PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class MochiPipelineFastTests(PipelineTesterMixin, FasterCacheTesterMixin, unittest.TestCase):
     pipeline_class = MochiPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -58,13 +59,13 @@ class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_layerwise_casting = True
     test_group_offloading = True
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 2):
         torch.manual_seed(0)
         transformer = MochiTransformer3DModel(
             patch_size=2,
             num_attention_heads=2,
             attention_head_dim=8,
-            num_layers=2,
+            num_layers=num_layers,
             pooled_projection_dim=16,
             in_channels=12,
             out_channels=None,
@@ -274,18 +275,18 @@ class MochiPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_mochi(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         videos = pipe(

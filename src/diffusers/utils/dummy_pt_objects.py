@@ -2,6 +2,21 @@
 from ..utils import DummyObject, requires_backends
 
 
+class FasterCacheConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class HookRegistry(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -30,6 +45,10 @@ class PyramidAttentionBroadcastConfig(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
+
+
+def apply_faster_cache(*args, **kwargs):
+    requires_backends(apply_faster_cache, ["torch"])
 
 
 def apply_pyramid_attention_broadcast(*args, **kwargs):
@@ -171,6 +190,21 @@ class AutoencoderKLLTXVideo(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AutoencoderKLMagvit(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AutoencoderKLMochi(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -201,6 +235,21 @@ class AutoencoderKLTemporalDecoder(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AutoencoderKLWan(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AutoencoderOobleck(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -217,6 +266,21 @@ class AutoencoderOobleck(metaclass=DummyObject):
 
 
 class AutoencoderTiny(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class AutoModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -367,6 +431,21 @@ class ControlNetXSAdapter(metaclass=DummyObject):
 
 
 class DiTTransformer2DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class EasyAnimateTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -831,6 +910,21 @@ class Transformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class TransformerTemporalModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class UNet1DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -952,6 +1046,21 @@ class UVit2DModel(metaclass=DummyObject):
 
 
 class VQModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class WanTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -1760,6 +1869,21 @@ class SASolverScheduler(metaclass=DummyObject):
 
 
 class SchedulerMixin(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class SCMScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

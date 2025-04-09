@@ -134,19 +134,6 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def _check_archive_and_maybe_raise_error(checkpoint_file, format_list):
-    """
-    Check format of the archive
-    """
-    with safetensors.safe_open(checkpoint_file, framework="pt") as f:
-        metadata = f.metadata()
-        if metadata is not None and metadata.get("format") not in format_list:
-            raise OSError(
-                f"The safetensors archive passed at {checkpoint_file} does not contain the valid metadata. Make sure "
-                "you save your model with the `save_pretrained` method."
-            )
-
-
 def _determine_param_device(param_name: str, device_map: Optional[Dict[str, Union[int, str, torch.device]]]):
     """
     Find the device of param_name from the device_map.
@@ -183,7 +170,6 @@ def load_state_dict(
                 # tensors are loaded on cpu
                 with dduf_entries[checkpoint_file].as_mmap() as mm:
                     return safetensors.torch.load(mm)
-            _check_archive_and_maybe_raise_error(checkpoint_file, format_list=["pt", "flax"])
             if disable_mmap:
                 return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
@@ -219,7 +205,7 @@ def load_state_dict(
                     ) from e
         except (UnicodeDecodeError, ValueError):
             raise OSError(
-                f"Unable to load weights from checkpoint file for '{checkpoint_file}' " f"at '{checkpoint_file}'. "
+                f"Unable to load weights from checkpoint file for '{checkpoint_file}' at '{checkpoint_file}'. "
             )
 
 
@@ -259,6 +245,9 @@ def load_model_dict_into_meta(
             ):
                 param = param.to(torch.float32)
                 set_module_kwargs["dtype"] = torch.float32
+            # For quantizers have save weights using torch.float8_e4m3fn
+            elif hf_quantizer is not None and param.dtype == getattr(torch, "float8_e4m3fn", None):
+                pass
             else:
                 param = param.to(dtype)
                 set_module_kwargs["dtype"] = dtype
@@ -306,7 +295,9 @@ def load_model_dict_into_meta(
         elif is_quantized and (
             hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=param_device)
         ):
-            hf_quantizer.create_quantized_param(model, param, param_name, param_device, state_dict, unexpected_keys)
+            hf_quantizer.create_quantized_param(
+                model, param, param_name, param_device, state_dict, unexpected_keys, dtype=dtype
+            )
         else:
             set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
 

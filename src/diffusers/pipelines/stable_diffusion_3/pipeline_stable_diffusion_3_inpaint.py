@@ -17,10 +17,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import (
-    BaseImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    PreTrainedModel,
+    SiglipImageProcessor,
+    SiglipVisionModel,
     T5EncoderModel,
     T5TokenizerFast,
 )
@@ -196,9 +196,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         tokenizer_3 (`T5TokenizerFast`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        image_encoder (`PreTrainedModel`, *optional*):
+        image_encoder (`SiglipVisionModel`, *optional*):
             Pre-trained Vision Model for IP Adapter.
-        feature_extractor (`BaseImageProcessor`, *optional*):
+        feature_extractor (`SiglipImageProcessor`, *optional*):
             Image processor for IP Adapter.
     """
 
@@ -217,8 +217,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
-        image_encoder: PreTrainedModel = None,
-        feature_extractor: BaseImageProcessor = None,
+        image_encoder: Optional[SiglipVisionModel] = None,
+        feature_extractor: Optional[SiglipImageProcessor] = None,
     ):
         super().__init__()
 
@@ -1258,7 +1258,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
                     f"Incorrect configuration settings! The config of `pipeline.transformer`: {self.transformer.config} expects"
                     f" {self.transformer.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
                     f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    f" = {num_channels_latents + num_channels_masked_image + num_channels_mask}. Please verify the config of"
                     " `pipeline.transformer` or your `mask_image` or `image` input."
                 )
         elif num_channels_transformer != 16:

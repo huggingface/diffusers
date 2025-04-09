@@ -77,6 +77,16 @@
     title: Outpainting
   title: Advanced inference
 - sections:
+  - local: hybrid_inference/overview
+    title: Overview
+  - local: hybrid_inference/vae_decode
+    title: VAE Decode
+  - local: hybrid_inference/vae_encode
+    title: VAE Encode
+  - local: hybrid_inference/api_reference
+    title: API Reference
+  title: Hybrid Inference
+- sections:
   - local: using-diffusers/cogvideox
     title: CogVideoX
   - local: using-diffusers/consisid
@@ -165,6 +175,8 @@
     title: gguf
   - local: quantization/torchao
     title: torchao
+  - local: quantization/quanto 
+    title: quanto
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
@@ -253,6 +265,8 @@
     sections:
     - local: api/models/overview
       title: Overview
+    - local: api/models/auto_model
+      title: AutoModel
     - sections:
       - local: api/models/controlnet
         title: ControlNetModel
@@ -282,6 +296,8 @@
         title: CogView4Transformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
+      - local: api/models/easyanimate_transformer3d
+        title: EasyAnimateTransformer3DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/hunyuan_transformer2d
@@ -314,6 +330,8 @@
         title: Transformer2DModel
       - local: api/models/transformer_temporal
         title: TransformerTemporalModel
+      - local: api/models/wan_transformer_3d
+        title: WanTransformer3DModel
       title: Transformers
     - sections:
       - local: api/models/stable_cascade_unet
@@ -342,8 +360,12 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
+      - local: api/models/autoencoderkl_magvit
+        title: AutoencoderKLMagvit
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
+      - local: api/models/autoencoder_kl_wan
+        title: AutoencoderKLWan
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
       - local: api/models/autoencoder_dc
@@ -418,6 +440,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/easyanimate
+      title: EasyAnimate
     - local: api/pipelines/flux
       title: Flux
     - local: api/pipelines/control_flux_inpaint
@@ -474,6 +498,8 @@
       title: PixArt-Σ
     - local: api/pipelines/sana
       title: Sana
+    - local: api/pipelines/sana_sprint
+      title: Sana Sprint
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
@@ -534,6 +560,8 @@
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
+    - local: api/pipelines/wan
+      title: Wan
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines
@@ -543,6 +571,10 @@
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
+    - local: api/schedulers/ddim_cogvideox
+      title: CogVideoXDDIMScheduler
+    - local: api/schedulers/multistep_dpm_solver_cogvideox
+      title: CogVideoXDPMScheduler
     - local: api/schedulers/consistency_decoder
       title: ConsistencyDecoderScheduler
     - local: api/schedulers/cosine_dpm

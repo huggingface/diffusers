@@ -213,7 +213,9 @@ class Attention(nn.Module):
             self.norm_q = LpNorm(p=2, dim=-1, eps=eps)
             self.norm_k = LpNorm(p=2, dim=-1, eps=eps)
         else:
-            raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None,'layer_norm','fp32_layer_norm','rms_norm'")
+            raise ValueError(
+                f"unknown qk_norm: {qk_norm}. Should be one of None, 'layer_norm', 'fp32_layer_norm', 'layer_norm_across_heads', 'rms_norm', 'rms_norm_across_heads', 'l2'."
+            )
 
         if cross_attention_norm is None:
             self.norm_cross = None
@@ -272,12 +274,20 @@ class Attention(nn.Module):
             self.to_add_out = None
 
         if qk_norm is not None and added_kv_proj_dim is not None:
-            if qk_norm == "fp32_layer_norm":
+            if qk_norm == "layer_norm":
+                self.norm_added_q = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+                self.norm_added_k = nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+            elif qk_norm == "fp32_layer_norm":
                 self.norm_added_q = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
                 self.norm_added_k = FP32LayerNorm(dim_head, elementwise_affine=False, bias=False, eps=eps)
             elif qk_norm == "rms_norm":
                 self.norm_added_q = RMSNorm(dim_head, eps=eps)
                 self.norm_added_k = RMSNorm(dim_head, eps=eps)
+            elif qk_norm == "rms_norm_across_heads":
+                # Wan applies qk norm across all heads
+                # Wan also doesn't apply a q norm
+                self.norm_added_q = None
+                self.norm_added_k = RMSNorm(dim_head * kv_heads, eps=eps)
             else:
                 raise ValueError(
                     f"unknown qk_norm: {qk_norm}. Should be one of `None,'layer_norm','fp32_layer_norm','rms_norm'`"
@@ -731,10 +741,14 @@ class Attention(nn.Module):
 
         if out_dim == 3:
             if attention_mask.shape[0] < batch_size * head_size:
-                attention_mask = attention_mask.repeat_interleave(head_size, dim=0)
+                attention_mask = attention_mask.repeat_interleave(
+                    head_size, dim=0, output_size=attention_mask.shape[0] * head_size
+                )
         elif out_dim == 4:
             attention_mask = attention_mask.unsqueeze(1)
-            attention_mask = attention_mask.repeat_interleave(head_size, dim=1)
+            attention_mask = attention_mask.repeat_interleave(
+                head_size, dim=1, output_size=attention_mask.shape[1] * head_size
+            )
 
         return attention_mask
 
@@ -1408,7 +1422,7 @@ class JointAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError("JointAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
@@ -2325,7 +2339,9 @@ class FluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -2778,9 +2794,8 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
 
             # IP-adapter
             ip_query = hidden_states_query_proj
-            ip_attn_output = None
-            # for ip-adapter
-            # TODO: support for multiple adapters
+            ip_attn_output = torch.zeros_like(hidden_states)
+
             for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
                 ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
             ):
@@ -2791,12 +2806,14 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
                 ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
                 # the output of sdp = (batch, num_heads, seq_len, head_dim)
                 # TODO: add support for attn.scale when we move to Torch 2.1
-                ip_attn_output = F.scaled_dot_product_attention(
+                current_ip_hidden_states = F.scaled_dot_product_attention(
                     ip_query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
                 )
-                ip_attn_output = ip_attn_output.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-                ip_attn_output = scale * ip_attn_output
-                ip_attn_output = ip_attn_output.to(ip_query.dtype)
+                current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
+                    batch_size, -1, attn.heads * head_dim
+                )
+                current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
+                ip_attn_output += scale * current_ip_hidden_states
 
             return hidden_states, encoder_hidden_states, ip_attn_output
         else:
@@ -3693,8 +3710,10 @@ class StableAudioAttnProcessor2_0:
         if kv_heads != attn.heads:
             # if GQA or MQA, repeat the key/value heads to reach the number of query heads.
             heads_per_kv_head = attn.heads // kv_heads
-            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1)
-            value = torch.repeat_interleave(value, heads_per_kv_head, dim=1)
+            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1, output_size=key.shape[1] * heads_per_kv_head)
+            value = torch.repeat_interleave(
+                value, heads_per_kv_head, dim=1, output_size=value.shape[1] * heads_per_kv_head
+            )
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)
@@ -6000,6 +6019,11 @@ class SanaLinearAttnProcessor2_0:
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
         key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)

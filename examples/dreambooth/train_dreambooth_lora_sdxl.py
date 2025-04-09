@@ -118,7 +118,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# {'SDXL' if 'playground' not in base_model else 'Playground'} LoRA DreamBooth - {repo_id}
+# {"SDXL" if "playground" not in base_model else "Playground"} LoRA DreamBooth - {repo_id}
 
 <Gallery />
 
@@ -203,17 +203,17 @@ def log_validation(
 
         pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
-    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
+    pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
     if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
         autocast_ctx = nullcontext()
     else:
-        autocast_ctx = torch.autocast(accelerator.device.type)
+        autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
 
     with autocast_ctx:
         images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
@@ -669,6 +669,16 @@ def parse_args(input_args=None):
         ),
     )
 
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -790,7 +800,12 @@ class DreamBoothDataset(Dataset):
         self.original_sizes = []
         self.crop_top_lefts = []
         self.pixel_values = []
-        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+
+        interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+        if interpolation is None:
+            raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
+        train_resize = transforms.Resize(size, interpolation=interpolation)
+
         train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
@@ -1271,7 +1286,7 @@ def main(args):
 
         lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
 
-        unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
+        unet_state_dict = {f"{k.replace('unet.', '')}": v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
         incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
         if incompatible_keys is not None:

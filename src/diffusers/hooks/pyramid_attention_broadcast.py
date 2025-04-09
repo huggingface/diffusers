@@ -26,8 +26,8 @@ from .hooks import HookRegistry, ModelHook
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+_PYRAMID_ATTENTION_BROADCAST_HOOK = "pyramid_attention_broadcast"
 _ATTENTION_CLASSES = (Attention, MochiAttention)
-
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks")
 _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
 _CROSS_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks")
@@ -87,7 +87,7 @@ class PyramidAttentionBroadcastConfig:
 
     def __repr__(self) -> str:
         return (
-            f"PyramidAttentionBroadcastConfig("
+            f"PyramidAttentionBroadcastConfig(\n"
             f"  spatial_attention_block_skip_range={self.spatial_attention_block_skip_range},\n"
             f"  temporal_attention_block_skip_range={self.temporal_attention_block_skip_range},\n"
             f"  cross_attention_block_skip_range={self.cross_attention_block_skip_range},\n"
@@ -175,10 +175,7 @@ class PyramidAttentionBroadcastHook(ModelHook):
         return module
 
 
-def apply_pyramid_attention_broadcast(
-    module: torch.nn.Module,
-    config: PyramidAttentionBroadcastConfig,
-):
+def apply_pyramid_attention_broadcast(module: torch.nn.Module, config: PyramidAttentionBroadcastConfig):
     r"""
     Apply [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588) to a given pipeline.
 
@@ -311,4 +308,4 @@ def _apply_pyramid_attention_broadcast_hook(
     """
     registry = HookRegistry.check_if_exists_or_initialize(module)
     hook = PyramidAttentionBroadcastHook(timestep_skip_range, block_skip_range, current_timestep_callback)
-    registry.register_hook(hook, "pyramid_attention_broadcast")
+    registry.register_hook(hook, _PYRAMID_ATTENTION_BROADCAST_HOOK)

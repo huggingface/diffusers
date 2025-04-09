@@ -28,9 +28,10 @@ from diffusers import (
     PixArtTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -109,84 +110,10 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
+    @unittest.skip("Not supported.")
     def test_sequential_cpu_offload_forward_pass(self):
         # TODO(PVP, Sayak) need to fix later
         return
-
-    def test_save_load_optional_components(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-
-        prompt = inputs["prompt"]
-        generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
-        output_type = inputs["output_type"]
-
-        (
-            prompt_embeds,
-            prompt_attention_mask,
-            negative_prompt_embeds,
-            negative_prompt_attention_mask,
-        ) = pipe.encode_prompt(prompt)
-
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "prompt_attention_mask": prompt_attention_mask,
-            "negative_prompt": None,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "negative_prompt_attention_mask": negative_prompt_attention_mask,
-            "generator": generator,
-            "num_inference_steps": num_inference_steps,
-            "output_type": output_type,
-            "use_resolution_binning": False,
-        }
-
-        # set all optional components to None
-        for optional_component in pipe._optional_components:
-            setattr(pipe, optional_component, None)
-
-        output = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
-
-        for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
-            )
-
-        inputs = self.get_dummy_inputs(torch_device)
-
-        generator = inputs["generator"]
-        num_inference_steps = inputs["num_inference_steps"]
-        output_type = inputs["output_type"]
-
-        # inputs with prompt converted to embeddings
-        inputs = {
-            "prompt_embeds": prompt_embeds,
-            "prompt_attention_mask": prompt_attention_mask,
-            "negative_prompt": None,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "negative_prompt_attention_mask": negative_prompt_attention_mask,
-            "generator": generator,
-            "num_inference_steps": num_inference_steps,
-            "output_type": output_type,
-            "use_resolution_binning": False,
-        }
-
-        output_loaded = pipe_loaded(**inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, 1e-4)
 
     def test_inference(self):
         device = "cpu"
@@ -312,6 +239,10 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    @unittest.skip("Test is already covered through encode_prompt isolation.")
+    def test_save_load_optional_components(self):
+        pass
+
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
@@ -329,9 +260,9 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(
-            pipe.transformer
-        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_processors_exist(pipe.transformer), (
+            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        )
         assert check_qkv_fusion_matches_attn_procs_length(
             pipe.transformer, pipe.transformer.original_attn_processors
         ), "Something wrong with the attention processors concerning the fused QKV projections."
@@ -345,19 +276,19 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     ckpt_id_1024 = "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS"
     ckpt_id_512 = "PixArt-alpha/PixArt-Sigma-XL-2-512-MS"
@@ -366,18 +297,18 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_pixart_1024(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         prompt = self.prompt
 
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
@@ -397,7 +328,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         pipe = PixArtSigmaPipeline.from_pretrained(
             self.ckpt_id_1024, transformer=transformer, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
 
@@ -413,7 +344,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(0)
 
         pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
         height, width = 1024, 768
@@ -452,7 +383,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         pipe = PixArtSigmaPipeline.from_pretrained(
             self.ckpt_id_1024, transformer=transformer, torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         prompt = self.prompt
         height, width = 512, 768

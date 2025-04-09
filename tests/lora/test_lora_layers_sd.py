@@ -33,11 +33,12 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -101,7 +102,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     # Keeping this test here makes sense because it doesn't look any integration
     # (value assertions on logits).
     @slow
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_integration_move_lora_cpu(self):
         path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
@@ -158,7 +159,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
                 self.assertTrue(m.weight.device != torch.device("cpu"))
 
     @slow
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_integration_move_lora_dora_cpu(self):
         from peft import LoraConfig
 
@@ -209,18 +210,18 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 @slow
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 @require_peft_backend
 class LoraIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_integration_logits_with_scale(self):
         path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -378,7 +379,7 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/Counterfeit-V2.5", safety_checker=None)
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         lora_model_id = "hf-internal-testing/civitai-light-shadow-lora"
         lora_filename = "light_and_shadow.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -400,7 +401,7 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/Counterfeit-V2.5", safety_checker=None)
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         lora_model_id = "hf-internal-testing/civitai-light-shadow-lora"
         lora_filename = "light_and_shadow.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -656,7 +657,7 @@ class LoraIntegrationTests(unittest.TestCase):
         See: https://github.com/huggingface/diffusers/issues/5606
         """
         pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
-        pipeline.enable_sequential_cpu_offload()
+        pipeline.enable_sequential_cpu_offload(device=torch_device)
         civitai_path = hf_hub_download("ybelkada/test-ahi-civitai", "ahi_lora_weights.safetensors")
         pipeline.load_lora_weights(civitai_path, adapter_name="ahri")
 

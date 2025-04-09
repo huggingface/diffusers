@@ -31,10 +31,11 @@ from diffusers import (
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -180,9 +181,9 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             [0.576259, 0.6132097, 0.41703486, 0.603196, 0.62062526, 0.4655338, 0.5434324, 0.5660727, 0.65433365]
         )
 
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
+            f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        )
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=1e-1)
@@ -192,25 +193,25 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class Kandinsky3Img2ImgPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_kandinskyV3_img2img(self):
         pipe = AutoPipelineForImage2Image.from_pretrained(
             "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)

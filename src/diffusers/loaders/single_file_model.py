@@ -37,8 +37,11 @@ from .single_file_utils import (
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
+    convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
+    convert_wan_transformer_to_diffusers,
+    convert_wan_vae_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
     create_vae_diffusers_config_from_ldm,
@@ -116,6 +119,18 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "Lumina2Transformer2DModel": {
         "checkpoint_mapping_fn": convert_lumina2_to_diffusers,
         "default_subfolder": "transformer",
+    },
+    "SanaTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_sana_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "WanTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "AutoencoderKLWan": {
+        "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
+        "default_subfolder": "vae",
     },
 }
 
@@ -245,6 +260,12 @@ class FromOriginalModelMixin:
         device = kwargs.pop("device", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
+
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
         else:
@@ -261,6 +282,7 @@ class FromOriginalModelMixin:
         if quantization_config is not None:
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
             hf_quantizer.validate_environment()
+            torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
 
         else:
             hf_quantizer = None

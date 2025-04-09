@@ -37,7 +37,6 @@ from torch import Tensor, nn
 from typing_extensions import Self
 
 from .. import __version__
-from ..hooks import apply_group_offloading, apply_layerwise_casting
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -166,8 +165,12 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
 
     # 2. If no dtype modifying hooks are attached, return the dtype of the first floating point parameter/buffer
     last_dtype = None
-    for param in parameter.parameters():
+
+    for name, param in parameter.named_parameters():
         last_dtype = param.dtype
+        if parameter._keep_in_fp32_modules and any(m in name for m in parameter._keep_in_fp32_modules):
+            continue
+
         if param.is_floating_point():
             return param.dtype
 
@@ -500,6 +503,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
         """
+        from ..hooks import apply_layerwise_casting
 
         user_provided_patterns = True
         if skip_modules_pattern is None:
@@ -542,6 +546,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         num_blocks_per_group: Optional[int] = None,
         non_blocking: bool = False,
         use_stream: bool = False,
+        record_stream: bool = False,
+        low_cpu_mem_usage=False,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -565,6 +571,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             ... )
             ```
         """
+        from ..hooks import apply_group_offloading
+
         if getattr(self, "enable_tiling", None) is not None and getattr(self, "use_tiling", False) and use_stream:
             msg = (
                 "Applying group offloading on autoencoders, with CUDA streams, may not work as expected if the first "
@@ -580,7 +588,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
         apply_group_offloading(
-            self, onload_device, offload_device, offload_type, num_blocks_per_group, non_blocking, use_stream
+            self,
+            onload_device,
+            offload_device,
+            offload_type,
+            num_blocks_per_group,
+            non_blocking,
+            use_stream,
+            record_stream,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
     def save_pretrained(
@@ -878,6 +894,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1178,7 +1200,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer.preprocess_model(
                 model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
             )
-        print(keep_in_fp32_modules)
+
         # Now that the model is loaded, we can determine the device_map
         device_map = _determine_device_map(
             model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
