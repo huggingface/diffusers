@@ -76,13 +76,11 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, unet=unet, scheduler=scheduler, movq=movq
         )
-        movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(
-            vae_scale_factor=movq_scale_factor,
-            vae_latent_channels=self.movq.config.latent_channels,
-            resample="bicubic",
-            reducing_gap=1,
-        )
+        kwargs = {}
+        if self.movq:
+            kwargs["vae_scale_factor"] = 2 ** (len(self.movq.config.block_out_channels) - 1)
+            kwargs["vae_latent_channels"] = self.movq.config.latent_channels
+        self.image_processor = VaeImageProcessor(resample="bicubic", reducing_gap=1, **kwargs)
 
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
