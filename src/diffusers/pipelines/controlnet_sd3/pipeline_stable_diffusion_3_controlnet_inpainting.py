@@ -227,6 +227,8 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         feature_extractor: Optional[SiglipImageProcessor] = None,
     ):
         super().__init__()
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = SD3MultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,
@@ -1119,9 +1121,26 @@ class StableDiffusion3ControlNetInpaintingPipeline(
             width = latent_width * self.vae_scale_factor
 
         elif isinstance(self.controlnet, SD3MultiControlNetModel):
-            raise NotImplementedError("MultiControlNetModel is not supported for SD3ControlNetInpaintingPipeline.")
+            control_images = []
+
+            for control_image_ in control_image:
+                control_image_ = self.prepare_image_with_mask(
+                    image=control_image,
+                    mask=control_mask,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=dtype,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    guess_mode=False,
+                )
+                control_images.append(control_image_)
+
+            control_image = control_images
         else:
-            assert False
+            assert ValueError("Controlnet not found. Please check the controlnet model.")
 
         if controlnet_pooled_projections is None:
             controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
