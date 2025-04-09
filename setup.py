@@ -142,6 +142,7 @@ _deps = [
     "urllib3<=2.0.0",
     "black",
     "phonemizer",
+    "opencv-python",
 ]
 
 # this is a lookup table with items like:

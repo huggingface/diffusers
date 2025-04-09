@@ -49,4 +49,5 @@ deps = {
     "urllib3": "urllib3<=2.0.0",
     "black": "black",
     "phonemizer": "phonemizer",
+    "cv2": "opencv-python",
 }
