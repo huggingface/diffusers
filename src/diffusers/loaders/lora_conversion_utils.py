@@ -1611,6 +1611,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
 
 
 def _convert_musubi_wan_lora_to_diffusers(state_dict):
+    # https://github.com/kohya-ss/musubi-tuner
     converted_state_dict = {}
     original_state_dict = {k[len("lora_unet_") :]: v for k, v in state_dict.items()}
 
