@@ -220,9 +220,9 @@ def unet_model_from_original_config(original_config):
 
     block_out_channels = original_config["channels"]
 
-    assert (
-        len(set(original_config["depths"])) == 1
-    ), "UNet2DConditionModel currently do not support blocks with different number of layers"
+    assert len(set(original_config["depths"])) == 1, (
+        "UNet2DConditionModel currently do not support blocks with different number of layers"
+    )
     layers_per_block = original_config["depths"][0]
 
     class_labels_dim = original_config["mapping_cond_dim"]

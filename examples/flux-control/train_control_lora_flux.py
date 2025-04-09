@@ -91,9 +91,9 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
             torch_dtype=weight_dtype,
         )
         pipeline.load_lora_weights(args.output_dir)
-        assert (
-            pipeline.transformer.config.in_channels == initial_channels * 2
-        ), f"{pipeline.transformer.config.in_channels=}"
+        assert pipeline.transformer.config.in_channels == initial_channels * 2, (
+            f"{pipeline.transformer.config.in_channels=}"
+        )
 
     pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
