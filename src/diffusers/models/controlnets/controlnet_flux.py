@@ -340,8 +340,9 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    #joint_attention_kwargs=joint_attention_kwargs,
+                    joint_attention_kwargs=joint_attention_kwargs,
                 )
+            
             block_samples = block_samples + (hidden_states,)
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
@@ -357,12 +358,37 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
 
             else:
-                hidden_states = block(
-                    hidden_states=hidden_states,
-                    temb=temb,
-                    image_rotary_emb=image_rotary_emb,
-                    #joint_attention_kwargs=joint_attention_kwargs,
-                )
+                if 'is_qv' in joint_attention_kwargs:
+                    if ('is_multiprod' in joint_attention_kwargs) or ('fix_bg' in joint_attention_kwargs):
+                        hidden_states = block(
+                            hidden_states=hidden_states,
+                            temb=temb,
+                            image_rotary_emb=image_rotary_emb,
+                            joint_attention_kwargs=joint_attention_kwargs,
+                        )
+                    else:
+                        hidden_states = block(
+                            hidden_states=hidden_states,
+                            temb=temb,
+                            image_rotary_emb=image_rotary_emb,
+                            #joint_attention_kwargs=joint_attention_kwargs,
+                        )
+                else:
+                    if 'is_multiprod' in joint_attention_kwargs:
+                        hidden_states = block(
+                            hidden_states=hidden_states,
+                            temb=temb,
+                            image_rotary_emb=image_rotary_emb,
+                            joint_attention_kwargs=joint_attention_kwargs,
+                        )
+                    else:
+                        hidden_states = block(
+                            hidden_states=hidden_states,
+                            temb=temb,
+                            image_rotary_emb=image_rotary_emb,
+                            #joint_attention_kwargs=joint_attention_kwargs,
+                        )
+
             single_block_samples = single_block_samples + (hidden_states[:, encoder_hidden_states.shape[1] :],)
 
         # controlnet block
