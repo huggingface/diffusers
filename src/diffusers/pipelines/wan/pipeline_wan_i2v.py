@@ -19,8 +19,7 @@ import ftfy
 import PIL
 import regex as re
 import torch
-from transformers import (AutoTokenizer, CLIPImageProcessor, CLIPVisionModel,
-                          UMT5EncoderModel)
+from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -32,6 +31,7 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import WanPipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -334,7 +334,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 "Provide either `image` or `prompt_embeds`. Cannot leave both `image` and `image_embeds` undefined."
             )
         if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
-            raise ValueError("`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is" f" {type(image)}")
+            raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 

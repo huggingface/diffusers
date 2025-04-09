@@ -35,8 +35,7 @@ import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import (DistributedDataParallelKwargs,
-                              ProjectConfiguration, set_seed)
+from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from huggingface_hub.utils import insecure_hashlib
 from packaging import version
@@ -52,23 +51,30 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import (AutoencoderKL, DDPMScheduler,
-                       DPMSolverMultistepScheduler, EDMEulerScheduler,
-                       EulerDiscreteScheduler, StableDiffusionXLPipeline,
-                       UNet2DConditionModel)
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DPMSolverMultistepScheduler,
+    EDMEulerScheduler,
+    EulerDiscreteScheduler,
+    StableDiffusionXLPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import (_set_state_dict_into_text_encoder,
-                                      cast_training_params, compute_snr)
-from diffusers.utils import (check_min_version, convert_all_state_dict_to_peft,
-                             convert_state_dict_to_diffusers,
-                             convert_state_dict_to_kohya,
-                             convert_unet_state_dict_to_peft,
-                             is_wandb_available)
-from diffusers.utils.hub_utils import (load_or_create_model_card,
-                                       populate_model_card)
+from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
+from diffusers.utils import (
+    check_min_version,
+    convert_all_state_dict_to_peft,
+    convert_state_dict_to_diffusers,
+    convert_state_dict_to_kohya,
+    convert_unet_state_dict_to_peft,
+    is_wandb_available,
+)
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
+
 
 if is_wandb_available():
     import wandb

@@ -2639,12 +2639,12 @@ class FasterCacheTesterMixin:
         output = run_forward(pipe).flatten()
         image_slice_faster_cache_disabled = np.concatenate((output[:8], output[-8:]))
 
-        assert np.allclose(
-            original_image_slice, image_slice_faster_cache_enabled, atol=expected_atol
-        ), "FasterCache outputs should not differ much in specified timestep range."
-        assert np.allclose(
-            original_image_slice, image_slice_faster_cache_disabled, atol=1e-4
-        ), "Outputs from normal inference and after disabling cache should not differ."
+        assert np.allclose(original_image_slice, image_slice_faster_cache_enabled, atol=expected_atol), (
+            "FasterCache outputs should not differ much in specified timestep range."
+        )
+        assert np.allclose(original_image_slice, image_slice_faster_cache_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
 
     def test_faster_cache_state(self):
         from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
