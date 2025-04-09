@@ -15,7 +15,6 @@
 import html
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import ftfy
 import PIL
 import regex as re
 import torch
@@ -26,7 +25,7 @@ from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -41,6 +40,9 @@ else:
     XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+if is_ftfy_available():
+    import ftfy
 
 EXAMPLE_DOC_STRING = """
     Examples:
