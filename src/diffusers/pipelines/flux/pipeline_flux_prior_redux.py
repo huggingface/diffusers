@@ -606,10 +606,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         # scale & concatenate image and text embeddings
         if is_qv:
-            num_of_prod_imgs = int(image_embeds_prods.shape[1]/729)
-            if len(prompt_embeds_list) != num_of_prod_imgs:
+            if len(prompt_embeds_list) != len(image_embeds_prods):
                 raise ValueError(
-                    f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {num_of_prod_imgs}"
+                    f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
                 )
             
             prompt_embeds = image_embeds_bg
