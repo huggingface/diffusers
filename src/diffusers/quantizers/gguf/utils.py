@@ -400,6 +400,8 @@ class GGUFParameter(torch.nn.Parameter):
         data = data if data is not None else torch.empty(0)
         self = torch.Tensor._make_subclass(cls, data, requires_grad)
         self.quant_type = quant_type
+        block_size, type_size = GGML_QUANT_SIZES[quant_type]
+        self.quant_shape = _quant_shape_from_byte_shape(self.shape, type_size, block_size)
 
         return self
 
