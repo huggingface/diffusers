@@ -400,7 +400,7 @@ class PeftLoraLoaderMixinTests:
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
                 lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
                 self.pipeline_class.save_lora_weights(
@@ -608,7 +608,7 @@ class PeftLoraLoaderMixinTests:
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 modules_to_save = self._get_modules_to_save(pipe)
                 lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
 
@@ -720,7 +720,7 @@ class PeftLoraLoaderMixinTests:
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 pipe.save_pretrained(tmpdirname)
 
                 pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
@@ -778,7 +778,7 @@ class PeftLoraLoaderMixinTests:
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
                 lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
                 self.pipeline_class.save_lora_weights(
@@ -1838,7 +1838,7 @@ class PeftLoraLoaderMixinTests:
         denoiser.add_adapter(denoiser_lora_config)
         self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
             lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
             self.pipeline_class.save_lora_weights(
@@ -1875,7 +1875,7 @@ class PeftLoraLoaderMixinTests:
         denoiser.add_adapter(denoiser_lora_config)
         self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
             lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
             self.pipeline_class.save_lora_weights(
@@ -2047,7 +2047,7 @@ class PeftLoraLoaderMixinTests:
                 "Lora + scale should match the output of `set_adapters()`.",
             )
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
                 lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
                 self.pipeline_class.save_lora_weights(
@@ -2310,7 +2310,7 @@ class PeftLoraLoaderMixinTests:
         pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         # 2. Test forward with load_lora_weights
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
             lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
             self.pipeline_class.save_lora_weights(

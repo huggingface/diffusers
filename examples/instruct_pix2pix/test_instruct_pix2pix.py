@@ -32,7 +32,7 @@ logger.addHandler(stream_handler)
 
 class InstructPix2Pix(ExamplesTestsAccelerate):
     def test_instruct_pix2pix_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/instruct_pix2pix/train_instruct_pix2pix.py
                 --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
@@ -55,7 +55,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
             )
 
     def test_instruct_pix2pix_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/instruct_pix2pix/train_instruct_pix2pix.py
                 --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe

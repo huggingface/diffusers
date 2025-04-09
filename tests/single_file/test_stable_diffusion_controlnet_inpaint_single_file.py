@@ -105,7 +105,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
         pipe = self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None, controlnet=controlnet)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
@@ -136,7 +136,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
             safety_checker=None,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
@@ -173,7 +173,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
             safety_checker=None,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)

@@ -143,7 +143,7 @@ class QuantoBaseTesterMixin:
         with torch.no_grad():
             model_output = model(**inputs)
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.save_pretrained(tmp_dir)
             saved_model = self.model_cls.from_pretrained(
                 tmp_dir,

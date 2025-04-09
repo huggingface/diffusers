@@ -118,7 +118,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
             sample = self.dummy_sample
             residual = 0.1 * sample
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 

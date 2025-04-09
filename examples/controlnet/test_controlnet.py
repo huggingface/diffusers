@@ -32,7 +32,7 @@ logger.addHandler(stream_handler)
 
 class ControlNet(ExamplesTestsAccelerate):
     def test_controlnet_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
@@ -55,7 +55,7 @@ class ControlNet(ExamplesTestsAccelerate):
             )
 
     def test_controlnet_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
@@ -98,7 +98,7 @@ class ControlNet(ExamplesTestsAccelerate):
 
 class ControlNetSDXL(ExamplesTestsAccelerate):
     def test_controlnet_sdxl(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet_sdxl.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-xl-pipe
@@ -119,7 +119,7 @@ class ControlNetSDXL(ExamplesTestsAccelerate):
 
 class ControlNetSD3(ExamplesTestsAccelerate):
     def test_controlnet_sd3(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet_sd3.py
             --pretrained_model_name_or_path=DavyMorgan/tiny-sd3-pipe
@@ -140,7 +140,7 @@ class ControlNetSD3(ExamplesTestsAccelerate):
 
 class ControlNetSD35(ExamplesTestsAccelerate):
     def test_controlnet_sd3(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet_sd3.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-sd35-pipe
@@ -161,7 +161,7 @@ class ControlNetSD35(ExamplesTestsAccelerate):
 
 class ControlNetflux(ExamplesTestsAccelerate):
     def test_controlnet_flux(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet_flux.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-flux-pipe

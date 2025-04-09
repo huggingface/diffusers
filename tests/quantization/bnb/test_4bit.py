@@ -347,7 +347,7 @@ class BnB4BitBasicTests(Base4bitTests):
         r"""
         Test if loading with an incorrect state dict raises an error.
         """
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             nf4_config = BitsAndBytesConfig(load_in_4bit=True)
             model_4bit = SD3Transformer2DModel.from_pretrained(
                 self.model_name, subfolder="transformer", quantization_config=nf4_config, device_map=torch_device
@@ -778,7 +778,7 @@ class BaseBnb4BitSerializationTests(Base4bitTests):
             device_map=torch_device,
         )
         self.assertTrue("_pre_quantization_dtype" in model_0.config)
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model_0.save_pretrained(tmpdirname, safe_serialization=safe_serialization)
 
             config = SD3Transformer2DModel.load_config(tmpdirname)

@@ -152,7 +152,7 @@ class ConfigTester(unittest.TestCase):
         assert config["d"] == "for diffusion"
         assert config["e"] == [1, 3]
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             obj.save_config(tmpdirname)
             new_obj = SampleObject.from_config(SampleObject.load_config(tmpdirname))
             new_config = new_obj.config
@@ -276,7 +276,7 @@ class ConfigTester(unittest.TestCase):
         # make sure that default config has all keys in `_use_default_values`
         assert set(config_dict.keys()) == set(config.config._use_default_values)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             config.save_config(tmpdirname)
 
             # now loading it with SampleObject2 should put f into `_use_default_values`

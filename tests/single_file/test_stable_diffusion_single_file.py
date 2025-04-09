@@ -64,7 +64,7 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
         super().test_single_file_format_inference_is_same_as_pretrained(expected_max_diff=1e-3)
 
     def test_single_file_legacy_scheduler_loading(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)

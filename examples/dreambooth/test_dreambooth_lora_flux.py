@@ -40,7 +40,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
     transformer_layer_type = "single_transformer_blocks.0.attn.to_k"
 
     def test_dreambooth_lora_flux(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
@@ -72,7 +72,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
             self.assertTrue(starts_with_transformer)
 
     def test_dreambooth_lora_text_encoder_flux(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
@@ -105,7 +105,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
             self.assertTrue(starts_with_expected_prefix)
 
     def test_dreambooth_lora_latent_caching(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
@@ -138,7 +138,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
             self.assertTrue(starts_with_transformer)
 
     def test_dreambooth_lora_layers(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
@@ -175,7 +175,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
             self.assertTrue(starts_with_transformer)
 
     def test_dreambooth_lora_flux_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}
@@ -198,7 +198,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
             )
 
     def test_dreambooth_lora_flux_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}

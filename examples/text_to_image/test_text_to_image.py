@@ -36,7 +36,7 @@ logger.addHandler(stream_handler)
 
 class TextToImage(ExamplesTestsAccelerate):
     def test_text_to_image(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/text_to_image/train_text_to_image.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
@@ -63,7 +63,7 @@ class TextToImage(ExamplesTestsAccelerate):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
         prompt = "a prompt"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2
             # Should create checkpoints at steps 2, 4
@@ -145,7 +145,7 @@ class TextToImage(ExamplesTestsAccelerate):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
         prompt = "a prompt"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2
             # Should create checkpoints at steps 2, 4
@@ -229,7 +229,7 @@ class TextToImage(ExamplesTestsAccelerate):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
         prompt = "a prompt"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # Run training script with checkpointing
             # max_train_steps == 6, checkpointing_steps == 2, checkpoints_total_limit == 2
             # Should create checkpoints at steps 2, 4, 6
@@ -268,7 +268,7 @@ class TextToImage(ExamplesTestsAccelerate):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
         prompt = "a prompt"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2
             # Should create checkpoints at steps 2, 4
@@ -341,7 +341,7 @@ class TextToImage(ExamplesTestsAccelerate):
 
 class TextToImageSDXL(ExamplesTestsAccelerate):
     def test_text_to_image_sdxl(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/text_to_image/train_text_to_image_sdxl.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe

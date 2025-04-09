@@ -320,7 +320,7 @@ class SdeDragPipeline(DiffusionPipeline):
             lr_scheduler.step()
             optimizer.zero_grad()
 
-        with tempfile.TemporaryDirectory() as save_lora_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as save_lora_dir:
             StableDiffusionLoraLoaderMixin.save_lora_weights(
                 save_directory=save_lora_dir,
                 unet_lora_layers=unet_lora_layers,

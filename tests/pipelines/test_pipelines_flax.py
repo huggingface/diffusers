@@ -35,7 +35,7 @@ if is_flax_available():
 @require_flax
 class DownloadTests(unittest.TestCase):
     def test_download_only_pytorch(self):
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             # pipeline has Flax weights
             _ = FlaxDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname

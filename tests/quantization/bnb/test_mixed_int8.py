@@ -718,7 +718,7 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         Test whether it is possible to serialize a model in 8-bit. Uses most typical params as default.
         """
         self.assertTrue("_pre_quantization_dtype" in self.model_0.config)
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             self.model_0.save_pretrained(tmpdirname)
 
             config = SD3Transformer2DModel.load_config(tmpdirname)
@@ -749,7 +749,7 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         self.assertTrue(torch.equal(out_0, out_1))
 
     def test_serialization_sharded(self):
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             self.model_0.save_pretrained(tmpdirname, max_shard_size="200MB")
 
             config = SD3Transformer2DModel.load_config(tmpdirname)

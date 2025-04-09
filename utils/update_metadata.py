@@ -91,7 +91,7 @@ def update_metadata(commit_sha: str):
     with open(hub_pipeline_tags_json) as f:
         hub_pipeline_tags_json = f.read()
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
         pipelines_dataset.to_json(os.path.join(tmp_dir, PIPELINE_TAG_JSON))
 
         with open(os.path.join(tmp_dir, PIPELINE_TAG_JSON)) as f:

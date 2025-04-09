@@ -120,7 +120,7 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             torch_dtype=torch.float16,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
@@ -152,7 +152,7 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             torch_dtype=torch.float16,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
@@ -190,7 +190,7 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
             torch_dtype=torch.float16,
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
             local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)

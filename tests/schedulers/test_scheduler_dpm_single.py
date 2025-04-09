@@ -51,7 +51,7 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
             # copy over dummy past residuals
             scheduler.model_outputs = dummy_past_residuals[: scheduler.config.solver_order]
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
@@ -85,7 +85,7 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
             # copy over dummy past residuals (must be after setting timesteps)
             scheduler.model_outputs = dummy_past_residuals[: scheduler.config.solver_order]
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals

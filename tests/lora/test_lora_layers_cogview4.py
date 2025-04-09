@@ -128,7 +128,7 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 pipe.save_pretrained(tmpdirname)
 
                 pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)

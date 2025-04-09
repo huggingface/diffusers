@@ -44,7 +44,7 @@ def _load_tokenizer_from_dduf(
     files. There is an extra cost of extracting the files, but of limited impact as the tokenizer files are usually
     small-ish.
     """
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
         for entry_name, entry in dduf_entries.items():
             if entry_name.startswith(name + "/"):
                 tmp_entry_path = os.path.join(tmp_dir, *entry_name.split("/"))
@@ -91,7 +91,7 @@ def _load_transformers_model_from_dduf(
             "You can install it with: `pip install --upgrade transformers`"
         )
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
         from transformers import AutoConfig, GenerationConfig
 
         tmp_config_file = os.path.join(tmp_dir, "config.json")

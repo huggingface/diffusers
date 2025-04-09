@@ -82,7 +82,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
@@ -111,7 +111,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
@@ -139,7 +139,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
@@ -394,7 +394,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
@@ -422,7 +422,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
@@ -451,7 +451,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
@@ -658,7 +658,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
             # copy over dummy past residuals
             state = state.replace(ets=dummy_past_residuals[:])
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
                 new_state = new_scheduler.set_timesteps(new_state, num_inference_steps, shape=sample.shape)
@@ -746,7 +746,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
             # copy over dummy past residuals (must be after setting timesteps)
             scheduler.ets = dummy_past_residuals[:]
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals

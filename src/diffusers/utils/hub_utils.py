@@ -542,7 +542,7 @@ class PushToHubMixin:
         if "Scheduler" not in self.__class__.__name__:
             save_kwargs.update({"variant": variant})
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             self.save_pretrained(tmpdir, **save_kwargs)
 
             # Update model card if needed:

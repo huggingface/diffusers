@@ -29,7 +29,7 @@ class UtilityMethodDeprecationTests(unittest.TestCase):
         assert "Using the `_fetch_state_dict()` method from" in warning_message
 
     def test_best_guess_weight_name_cls_method_raises_warning(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             state_dict = torch.nn.Linear(3, 3).state_dict()
             torch.save(state_dict, os.path.join(tmpdir, "pytorch_lora_weights.bin"))
 

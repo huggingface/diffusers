@@ -866,7 +866,7 @@ class StableDiffusionXLPipelineFastTests(
         sd_pipe = StableDiffusionXLPipeline(**components).to(torch_device)
         pipes.append(sd_pipe)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd_pipe.save_pretrained(tmpdirname)
             sd_pipe = StableDiffusionXLPipeline.from_pretrained(tmpdirname).to(torch_device)
         pipes.append(sd_pipe)

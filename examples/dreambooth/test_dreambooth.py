@@ -35,7 +35,7 @@ logger.addHandler(stream_handler)
 
 class DreamBooth(ExamplesTestsAccelerate):
     def test_dreambooth(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/dreambooth/train_dreambooth.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
@@ -58,7 +58,7 @@ class DreamBooth(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_dreambooth_if(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/dreambooth/train_dreambooth.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-if-pipe
@@ -87,7 +87,7 @@ class DreamBooth(ExamplesTestsAccelerate):
         instance_prompt = "photo"
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2
             # Should create checkpoints at steps 2, 4
@@ -163,7 +163,7 @@ class DreamBooth(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))
 
     def test_dreambooth_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/dreambooth/train_dreambooth.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
@@ -186,7 +186,7 @@ class DreamBooth(ExamplesTestsAccelerate):
             )
 
     def test_dreambooth_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
             examples/dreambooth/train_dreambooth.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe

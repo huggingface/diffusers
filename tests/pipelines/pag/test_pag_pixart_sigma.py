@@ -200,7 +200,7 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         logger.setLevel(diffusers.logging.INFO)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:

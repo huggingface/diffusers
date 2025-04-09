@@ -62,7 +62,7 @@ class EMAModelTests(unittest.TestCase):
     def test_from_pretrained(self):
         # Save the model parameters to a temporary directory
         unet, ema_unet = self.get_models()
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             ema_unet.save_pretrained(tmpdir)
 
             # Load the EMA model from the saved directory
@@ -167,7 +167,7 @@ class EMAModelTests(unittest.TestCase):
         unet, ema_unet = self.get_models()
         noisy_latents, timesteps, encoder_hidden_states = self.get_dummy_inputs()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             ema_unet.save_pretrained(tmpdir)
             loaded_unet = UNet2DConditionModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel)
             loaded_unet = loaded_unet.to(unet.device)
@@ -217,7 +217,7 @@ class EMAModelTestsForeach(unittest.TestCase):
     def test_from_pretrained(self):
         # Save the model parameters to a temporary directory
         unet, ema_unet = self.get_models()
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             ema_unet.save_pretrained(tmpdir)
 
             # Load the EMA model from the saved directory
@@ -322,7 +322,7 @@ class EMAModelTestsForeach(unittest.TestCase):
         unet, ema_unet = self.get_models()
         noisy_latents, timesteps, encoder_hidden_states = self.get_dummy_inputs()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             ema_unet.save_pretrained(tmpdir)
             loaded_unet = UNet2DConditionModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel)
             loaded_unet = loaded_unet.to(unet.device)

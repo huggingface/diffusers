@@ -112,7 +112,7 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
         model.to(torch_device)
         model = torch.compile(model)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_pretrained(tmpdirname, safe_serialization=False)
             new_model = model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
@@ -230,7 +230,7 @@ class ModelUtilsTest(unittest.TestCase):
 
         with self.assertWarns(FutureWarning) as warning:
             if use_local:
-                with tempfile.TemporaryDirectory() as tmpdirname:
+                with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                     tmpdirname = snapshot_download(repo_id=repo_id)
                     _ = load_model(tmpdirname)
             else:
@@ -288,7 +288,7 @@ class ModelUtilsTest(unittest.TestCase):
     def test_one_request_upon_cached(self):
         use_safetensors = False
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with requests_mock.mock(real_http=True) as m:
                 UNet2DConditionModel.from_pretrained(
                     "hf-internal-testing/tiny-stable-diffusion-torch",
@@ -317,7 +317,9 @@ class ModelUtilsTest(unittest.TestCase):
             ), "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
 
     def test_weight_overwrite(self):
-        with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname, self.assertRaises(
+            ValueError
+        ) as error_context:
             UNet2DConditionModel.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch",
                 subfolder="unet",
@@ -328,7 +330,7 @@ class ModelUtilsTest(unittest.TestCase):
         # make sure that error message states what keys are missing
         assert "Cannot load" in str(error_context.exception)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model = UNet2DConditionModel.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch",
                 subfolder="unet",
@@ -448,7 +450,7 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_pretrained(tmpdirname, safe_serialization=False)
             new_model = self.model_class.from_pretrained(tmpdirname)
             if hasattr(new_model, "set_default_attn_processor"):
@@ -685,7 +687,7 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_pretrained(tmpdirname, variant="fp16", safe_serialization=False)
             new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
             if hasattr(new_model, "set_default_attn_processor"):
@@ -740,7 +742,7 @@ class ModelTesterMixin:
         for dtype in [torch.float32, torch.float16, torch.bfloat16]:
             if torch_device == "mps" and dtype == torch.bfloat16:
                 continue
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 model.to(dtype)
                 model.save_pretrained(tmpdirname, safe_serialization=False)
                 new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=True, torch_dtype=dtype)
@@ -817,7 +819,7 @@ class ModelTesterMixin:
 
         # test if the model can be loaded from the config
         # and has all the expected shape
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_pretrained(tmpdirname, safe_serialization=False)
             new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
@@ -1088,7 +1090,7 @@ class ModelTesterMixin:
 
         self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora, atol=1e-4, rtol=1e-4))
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             model.save_lora_adapter(tmpdir)
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
 
@@ -1135,7 +1137,7 @@ class ModelTesterMixin:
         model.add_adapter(denoiser_lora_config)
         self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             wrong_name = "foo"
             with self.assertRaises(ValueError) as err_context:
                 model.save_lora_adapter(tmpdir, adapter_name=wrong_name)
@@ -1157,7 +1159,7 @@ class ModelTesterMixin:
         model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
             for max_size in max_gpu_sizes:
@@ -1189,7 +1191,7 @@ class ModelTesterMixin:
         # Force disk offload by setting very small CPU memory
         max_memory = {0: max_size, "cpu": int(0.1 * max_size)}
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
             with self.assertRaises(ValueError):
                 # This errors out because it's missing an offload folder
@@ -1218,7 +1220,7 @@ class ModelTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
             max_size = int(self.model_split_percents[0] * model_size)
@@ -1248,7 +1250,7 @@ class ModelTesterMixin:
         model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
             for max_size in max_gpu_sizes:
@@ -1276,7 +1278,7 @@ class ModelTesterMixin:
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
 
@@ -1309,7 +1311,7 @@ class ModelTesterMixin:
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
         variant = "fp16"
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             # It doesn't matter if the actual model is in fp16 or not. Just adding the variant and
             # testing if loading works with the variant when the checkpoint is sharded should be
             # enough.
@@ -1348,7 +1350,7 @@ class ModelTesterMixin:
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
 
@@ -1378,7 +1380,7 @@ class ModelTesterMixin:
             model_size = compute_module_persistent_sizes(model)[""]
             max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
             variant = "fp16"
-            with tempfile.TemporaryDirectory() as tmp_dir:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
                 model.cpu().save_pretrained(
                     tmp_dir, variant=variant, max_shard_size=f"{max_shard_size}KB", safe_serialization=use_safe
                 )
@@ -1605,7 +1607,7 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.repo_id)
 
         # Push to hub via save_pretrained
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.save_pretrained(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
 
         new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}")
@@ -1636,7 +1638,7 @@ class ModelPushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.org_repo_id)
 
         # Push to hub via save_pretrained
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             model.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=self.org_repo_id)
 
         new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id)
@@ -1780,7 +1782,7 @@ class TestLoraHotSwappingForModel(unittest.TestCase):
         assert not (output0_before == 0).all()
         assert not (output1_before == 0).all()
 
-        with tempfile.TemporaryDirectory() as tmp_dirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dirname:
             # save the adapter checkpoints
             unet.save_lora_adapter(os.path.join(tmp_dirname, "0"), safe_serialization=True, adapter_name="adapter0")
             unet.save_lora_adapter(os.path.join(tmp_dirname, "1"), safe_serialization=True, adapter_name="adapter1")

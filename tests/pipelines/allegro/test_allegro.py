@@ -320,7 +320,7 @@ class AllegroPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTes
 
         pipeline_out = pipe(**inputs)[0].cpu()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
             pipe.save_pretrained(tmpdir, safe_serialization=True)
             export_folder_as_dduf(dduf_filename, folder_path=tmpdir)

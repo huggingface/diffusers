@@ -203,7 +203,7 @@ class IFPipelineTesterMixin:
 
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)
@@ -257,7 +257,7 @@ class IFPipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)

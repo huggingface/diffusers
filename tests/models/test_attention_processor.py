@@ -114,7 +114,7 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             # save the converted model
             pipe.save_pretrained(tmpdir)
 

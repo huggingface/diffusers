@@ -366,7 +366,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert image is not None
 
         # check that there's no error when saving a pipeline with one of the models being None
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe = OnnxStableDiffusionPipeline.from_pretrained(tmpdirname)
 

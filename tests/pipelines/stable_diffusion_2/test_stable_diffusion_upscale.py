@@ -358,7 +358,7 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(device)
         pipes.append(sd_pipe)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             sd_pipe.save_pretrained(tmpdirname)
             sd_pipe = StableDiffusionUpscalePipeline.from_pretrained(tmpdirname).to(device)
         pipes.append(sd_pipe)

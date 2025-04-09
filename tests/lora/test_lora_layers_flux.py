@@ -130,7 +130,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
             self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
 
@@ -186,7 +186,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "LoRA should lead to different results.",
         )
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
             self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
 
@@ -235,7 +235,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "LoRA should lead to different results.",
         )
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
             self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
 

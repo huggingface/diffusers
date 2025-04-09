@@ -32,7 +32,7 @@ logger.addHandler(stream_handler)
 
 class Unconditional(ExamplesTestsAccelerate):
     def test_train_unconditional(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             test_args = f"""
                 examples/unconditional_image_generation/train_unconditional.py
                 --dataset_name hf-internal-testing/dummy_image_class_data
@@ -53,7 +53,7 @@ class Unconditional(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
     def test_unconditional_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             initial_run_args = f"""
                 examples/unconditional_image_generation/train_unconditional.py
                 --dataset_name hf-internal-testing/dummy_image_class_data
@@ -80,7 +80,7 @@ class Unconditional(ExamplesTestsAccelerate):
             )
 
     def test_unconditional_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             initial_run_args = f"""
                 examples/unconditional_image_generation/train_unconditional.py
                 --dataset_name hf-internal-testing/dummy_image_class_data

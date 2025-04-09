@@ -748,7 +748,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             sample = model(**inputs_dict).sample
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")))
             torch.manual_seed(0)
@@ -1098,7 +1098,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             lora_sample_1 = model(**inputs_dict).sample
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             model.save_attn_procs(tmpdirname)
             model.unload_lora()
 
@@ -1132,7 +1132,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             with self.assertWarns(FutureWarning) as warning:
                 model.save_attn_procs(tmpdirname)
 

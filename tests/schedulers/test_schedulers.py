@@ -106,7 +106,7 @@ class SchedulerBaseTests(unittest.TestCase):
         setattr(diffusers, "SchedulerObject", SchedulerObject)
         logger = logging.get_logger("diffusers.configuration_utils")
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             obj.save_config(tmpdirname)
             with CaptureLogger(logger) as cap_logger_1:
                 config = SchedulerObject2.load_config(tmpdirname)
@@ -152,7 +152,7 @@ class SchedulerBaseTests(unittest.TestCase):
         setattr(diffusers, "SchedulerObject2", SchedulerObject2)
         logger = logging.get_logger("diffusers.configuration_utils")
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             obj.save_config(tmpdirname)
 
             # now save a config parameter that is expected by another class, but not origin class
@@ -191,7 +191,7 @@ class SchedulerBaseTests(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
         logger.setLevel(diffusers.logging.INFO)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             obj.save_config(tmpdirname)
 
             with CaptureLogger(logger) as cap_logger_1:
@@ -398,7 +398,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 sample = self.dummy_sample
                 residual = 0.1 * sample
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
@@ -451,7 +451,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 sample = self.dummy_sample
                 residual = 0.1 * sample
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
@@ -497,7 +497,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 sample = self.dummy_sample
                 residual = 0.1 * sample
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
@@ -547,7 +547,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             scheduler = scheduler_class(**scheduler_config)
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_pretrained(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
@@ -756,7 +756,7 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config, trained_betas=np.array([0.1, 0.3]))
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
                 scheduler.save_pretrained(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
@@ -830,7 +830,7 @@ class SchedulerPushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.repo_id)
 
         # Push to hub via save_config
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             scheduler.save_config(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
 
         scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/{self.repo_id}")
@@ -857,7 +857,7 @@ class SchedulerPushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.org_repo_id)
 
         # Push to hub via save_config
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             scheduler.save_config(tmp_dir, repo_id=self.org_repo_id, push_to_hub=True, token=TOKEN)
 
         scheduler_loaded = DDIMScheduler.from_pretrained(self.org_repo_id)
