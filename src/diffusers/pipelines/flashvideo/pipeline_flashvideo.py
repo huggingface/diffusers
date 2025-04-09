@@ -22,7 +22,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import CogVideoXLoraLoaderMixin
-from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
+from ...models import AutoencoderKLCogVideoX, FlashVideoTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
@@ -164,8 +164,8 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         tokenizer (`T5Tokenizer`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        transformer ([`CogVideoXTransformer3DModel`]):
-            A text conditioned `CogVideoXTransformer3DModel` to denoise the encoded video latents.
+        transformer ([`FlashVideoTransformer3DModel`]):
+            A text conditioned `FlashVideoTransformer3DModel` to denoise the encoded video latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
@@ -184,7 +184,7 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         tokenizer: T5Tokenizer,
         text_encoder: T5EncoderModel,
         vae: AutoencoderKLCogVideoX,
-        transformer: CogVideoXTransformer3DModel,
+        transformer: FlashVideoTransformer3DModel,
         scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
     ):
         super().__init__()
@@ -358,6 +358,56 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         frames = self.vae.decode(latents).sample
         return frames
 
+    def latent_degradation(
+        self,
+        latents: torch.Tensor,
+        noise_timestep: int = 675,
+        shift_scale: Union[float, Tuple[float, float]] = 1.0,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+    ) -> torch.Tensor:
+        """
+        Implements the latent degradation for the Stage 2 FlashVideo model described in Section 3.3 of the paper,
+        where standard Gaussian noise is blended with the original latents at a noise level corresponding to
+        noise_timestep. The authors find that applying latent degradation improves the generation of details in the
+        final enhanced video. (Note that this is specific to FlashVideo and not used in CogVideoX models.)
+
+        Args:
+            latents (`torch.FloatTensor`):
+                Latent video tensor from the 3D VAE of shape (batch_size, latent_frames, latent_channels,
+                latent_height, latent_width).
+            noise_timestep (`int`, defaults to `675`):
+                A timestep on the scheduler's timestep schedule. We will add random noise corresponding to the noise
+                level of this timestep to the latents.
+            shift_scale (`float` or `Tuple[float, float]`, *optional*, defaults to `1.0`):
+                Specifies shift and scale values to modify the alphas_cumprod noise level for degradation. The default
+                value of `1.0` corresponds to using the (square root of the) alphas_cumprod without modification.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+        """
+        if not hasattr(self.scheduler, "alphas_cumprod"):
+            logger.warning(
+                f"Currently latent degradation is only supported for schedulers which have an `alphas_cumprod`"
+                f" attribute. Since the current scheduler {self.scheduler.__class__} does not use `alphas_cumprod`,"
+                f"the latents will be returned unchanged."
+            )
+            return latents
+
+        if not isinstance(shift_scale, tuple):
+            # Assume value is the shift value and set the scale value as 1 - shift
+            shift_scale = (shift_scale, 1.0 - shift_scale)
+
+        # The official FlashVideo code uses a DDPM-style alpha/beta noise schedule; the noise weight for latent
+        # degradation is defined to be the square root of the alphas_cumprod associated with noise timestep, possibly
+        # modified by shift/scale factors.
+        alpha_cumprod_t = self.scheduler.alphas_cumprod[noise_timestep]
+        noise_alpha = (alpha_cumprod_t / (shift_scale[0] + shift_scale[1] * alpha_cumprod_t))**0.5
+        noise_beta = (1.0 - noise_alpha**2) ** 0.5
+
+        noise = randn_tensor(latents.shape, generator=generator, device=latents.device, dtype=latents.dtype)
+        deg_latents = noise_alpha * latents + noise_beta * noise
+        return deg_latents
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -516,6 +566,8 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         num_frames: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
+        noise_timestep: Optional[int] = 675,
+        noise_shift_scale: Union[float, Tuple[float, float]] = 1.0,
         guidance_scale: float = 6,
         use_dynamic_cfg: bool = False,
         num_videos_per_prompt: int = 1,
@@ -560,6 +612,14 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
+            noise_timestep (`int`, *optional*, defaults to `675`)
+                The timestep corresponding to the noise level used for latent degradation. This controls how much
+                degradation is applied to the latents before the denoising loop (with higher values meaning more
+                degradation); the FlashVideo authors recommend a value in the range of 650-750. If `None`, latent
+                degradation will not be applied (for example, in the Stage 1 model).
+            noise_shift_scale (`float` or `Tuple[float, float]`, *optional*, defaults to 1.0):
+                Shift and scale values to modify the noise level for latent degradation. The default value of `1.0`
+                corresponds to using the default noise level of noise_timestep according to the pipeline's scheduler.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -693,6 +753,13 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             latents,
         )
 
+        # If noise_timestep is supplied, apply latent degradation. This is used in FlashVideo Stage 2 (but not Stage
+        # 1) models.
+        if noise_timestep is not None:
+            latents = self.latent_degradation(
+                latents, noise_timestep=noise_timestep, shift_scale=noise_shift_scale, generator=generator
+            )
+
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
@@ -704,6 +771,16 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         )
 
         # 8. Denoising loop
+
+        # For efficiency purposes, since the time size and noise timestep stay the same throughout the denoising loop,
+        # prepare them ahead of time here (if using)
+        time_size_tensor = None
+        noise_timesteps = None
+        if self.transformer.config.use_time_size_embedding:
+            time_size_tensor = torch.full((batch_size * num_videos_per_prompt,), latent_frames, device=latents.device)
+        if self.transformer.config.use_noise_timestep_embedding:
+            noise_timesteps = torch.full((batch_size * num_videos_per_prompt,), noise_timestep, device=latents.device)
+
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -725,6 +802,8 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
+                    noise_timestep=noise_timesteps,
+                    time_size_tensor=time_size_tensor,
                     image_rotary_emb=image_rotary_emb,
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
