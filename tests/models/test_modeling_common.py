@@ -45,6 +45,7 @@ from diffusers.models.attention_processor import (
     AttnProcessorNPU,
     XFormersAttnProcessor,
 )
+from diffusers.models.auto_model import AutoModel
 from diffusers.training_utils import EMAModel
 from diffusers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -298,9 +299,9 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             download_requests = [r.method for r in m.request_history]
-            assert (
-                download_requests.count("HEAD") == 3
-            ), "3 HEAD requests one for config, one for model, and one for shard index file."
+            assert download_requests.count("HEAD") == 3, (
+                "3 HEAD requests one for config, one for model, and one for shard index file."
+            )
             assert download_requests.count("GET") == 2, "2 GET requests one for config, one for model"
 
             with requests_mock.mock(real_http=True) as m:
@@ -312,9 +313,9 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             cache_requests = [r.method for r in m.request_history]
-            assert (
-                "HEAD" == cache_requests[0] and len(cache_requests) == 2
-            ), "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
+            assert "HEAD" == cache_requests[0] and len(cache_requests) == 2, (
+                "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
+            )
 
     def test_weight_overwrite(self):
         with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
@@ -1576,6 +1577,49 @@ class ModelTesterMixin:
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading3, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5))
+
+    def test_auto_model(self, expected_max_diff=5e-5):
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
+
+        model = model.eval()
+        model = model.to(torch_device)
+
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            model.save_pretrained(tmpdirname, safe_serialization=False)
+
+            auto_model = AutoModel.from_pretrained(tmpdirname)
+            if hasattr(auto_model, "set_default_attn_processor"):
+                auto_model.set_default_attn_processor()
+
+        auto_model = auto_model.eval()
+        auto_model = auto_model.to(torch_device)
+
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_original = model(**self.inputs_dict(0))
+                output_auto = auto_model(**self.inputs_dict(0))
+            else:
+                output_original = model(**inputs_dict)
+                output_auto = auto_model(**inputs_dict)
+
+            if isinstance(output_original, dict):
+                output_original = output_original.to_tuple()[0]
+            if isinstance(output_auto, dict):
+                output_auto = output_auto.to_tuple()[0]
+
+        max_diff = (output_original - output_auto).abs().max().item()
+        self.assertLessEqual(
+            max_diff,
+            expected_max_diff,
+            f"AutoModel forward pass diff: {max_diff} exceeds threshold {expected_max_diff}",
+        )
 
 
 @is_staging_test

@@ -763,9 +763,9 @@ def main(args):
         # Parse instance and class inputs, and double check that lengths match
         instance_data_dir = args.instance_data_dir.split(",")
         instance_prompt = args.instance_prompt.split(",")
-        assert all(
-            x == len(instance_data_dir) for x in [len(instance_data_dir), len(instance_prompt)]
-        ), "Instance data dir and prompt inputs are not of the same length."
+        assert all(x == len(instance_data_dir) for x in [len(instance_data_dir), len(instance_prompt)]), (
+            "Instance data dir and prompt inputs are not of the same length."
+        )
 
         if args.with_prior_preservation:
             class_data_dir = args.class_data_dir.split(",")
@@ -788,9 +788,9 @@ def main(args):
                     negative_validation_prompts.append(None)
             args.validation_negative_prompt = negative_validation_prompts
 
-            assert num_of_validation_prompts == len(
-                negative_validation_prompts
-            ), "The length of negative prompts for validation is greater than the number of validation prompts."
+            assert num_of_validation_prompts == len(negative_validation_prompts), (
+                "The length of negative prompts for validation is greater than the number of validation prompts."
+            )
             args.validation_inference_steps = [args.validation_inference_steps] * num_of_validation_prompts
             args.validation_guidance_scale = [args.validation_guidance_scale] * num_of_validation_prompts
 
