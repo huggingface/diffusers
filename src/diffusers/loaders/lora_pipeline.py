@@ -42,6 +42,7 @@ from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
+    _convert_musubi_wan_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
     _convert_non_diffusers_lumina2_lora_to_diffusers,
     _convert_non_diffusers_wan_lora_to_diffusers,
@@ -4799,6 +4800,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         )
         if any(k.startswith("diffusion_model.") for k in state_dict):
             state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
+        elif any(k.startswith("lora_unet_") for k in state_dict):
+            state_dict = _convert_musubi_wan_lora_to_diffusers(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
