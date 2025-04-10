@@ -2,7 +2,6 @@ import inspect
 import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import einops
 import torch
 from transformers import (
     CLIPTextModelWithProjection,
@@ -679,9 +678,9 @@ class HiDreamImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                         dtype=latent_model_input.dtype,
                         device=latent_model_input.device,
                     )
-                    latent_model_input = einops.rearrange(
-                        latent_model_input, "B C (H p1) (W p2) -> B C (H W) (p1 p2)", p1=patch_size, p2=patch_size
-                    )
+                    latent_model_input = latent_model_input.reshape(B, C, pH, patch_size, pW, patch_size)
+                    latent_model_input = latent_model_input.permute(0, 1, 2, 4, 3, 5)
+                    latent_model_input = latent_model_input.reshape(B, C, pH * pW, patch_size * patch_size)
                     out[:, :, 0 : pH * pW] = latent_model_input
                     latent_model_input = out
 
