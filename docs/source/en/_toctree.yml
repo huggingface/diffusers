@@ -268,18 +268,18 @@
     - sections:
       - local: api/models/controlnet
         title: ControlNetModel
+      - local: api/models/controlnet_union
+        title: ControlNetUnionModel
       - local: api/models/controlnet_flux
         title: FluxControlNetModel
       - local: api/models/controlnet_hunyuandit
         title: HunyuanDiT2DControlNetModel
+      - local: api/models/controlnet_sana
+        title: SanaControlNetModel
       - local: api/models/controlnet_sd3
         title: SD3ControlNetModel
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
-      - local: api/models/controlnet_union
-        title: ControlNetUnionModel
-      - local: api/models/controlnet_sana
-        title: SanaControlNetModel
       title: ControlNets
     - sections:
       - local: api/models/allegro_transformer3d
