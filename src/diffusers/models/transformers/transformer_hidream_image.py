@@ -849,8 +849,11 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             img_ids = torch.zeros(pH, pW, 3, device=hidden_states.device)
             img_ids[..., 1] = img_ids[..., 1] + torch.arange(pH, device=hidden_states.device)[:, None]
             img_ids[..., 2] = img_ids[..., 2] + torch.arange(pW, device=hidden_states.device)[None, :]
-            # repeat(img_ids, "h w c -> b (h w) c", b=batch_size)
-            img_ids = img_ids.reshape(img_ids.shape[0], img_ids.shape[1] * img_ids.shape[2]).unsqueeze(0)
+            img_ids = (
+                img_ids.reshape(img_ids.shape[0] * img_ids.shape[1], img_ids.shape[2])
+                .unsqueeze(0)
+                .repeat(batch_size, 1, 1)
+            )
         hidden_states = self.x_embedder(hidden_states)
 
         T5_encoder_hidden_states = encoder_hidden_states[0]
