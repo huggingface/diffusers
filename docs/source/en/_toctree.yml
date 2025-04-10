@@ -175,7 +175,7 @@
     title: gguf
   - local: quantization/torchao
     title: torchao
-  - local: quantization/quanto 
+  - local: quantization/quanto
     title: quanto
   title: Quantization Methods
 - sections:
@@ -448,10 +448,10 @@
       title: Flux
     - local: api/pipelines/control_flux_inpaint
       title: FluxControlInpaint
-    - local: api/pipelines/hunyuandit
-      title: Hunyuan-DiT
     - local: api/pipelines/hidream
       title: HiDream-I1
+    - local: api/pipelines/hunyuandit
+      title: Hunyuan-DiT
     - local: api/pipelines/hunyuan_video
       title: HunyuanVideo
     - local: api/pipelines/i2vgenxl
