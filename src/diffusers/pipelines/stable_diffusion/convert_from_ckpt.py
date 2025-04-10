@@ -350,8 +350,14 @@ def create_vae_diffusers_config(original_config, image_size: int):
     _ = original_config["model"]["params"]["first_stage_config"]["params"]["embed_dim"]
 
     block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
-    down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
-    up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
+    down_block_types = [
+        "DownEncoderBlock2D" if image_size // 2**i not in vae_params["attn_resolutions"] else "AttnDownEncoderBlock2D"
+        for i, _ in enumerate(block_out_channels)
+    ]
+    up_block_types = [
+        "UpDecoderBlock2D" if image_size // 2**i not in vae_params["attn_resolutions"] else "AttnUpDecoderBlock2D"
+        for i, _ in enumerate(block_out_channels)
+    ][::-1]
 
     config = {
         "sample_size": image_size,
