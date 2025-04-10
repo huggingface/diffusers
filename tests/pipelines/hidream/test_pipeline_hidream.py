@@ -17,9 +17,21 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, T5EncoderModel, AutoTokenizer, LlamaForCausalLM, PreTrainedTokenizerFast
+from transformers import (
+    AutoTokenizer,
+    CLIPTextConfig,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    LlamaForCausalLM,
+    T5EncoderModel,
+)
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, HiDreamImageTransformer2DModel, HiDreamImagePipeline
+from diffusers import (
+    AutoencoderKL,
+    FlowMatchEulerDiscreteScheduler,
+    HiDreamImagePipeline,
+    HiDreamImageTransformer2DModel,
+)
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
 )
@@ -89,7 +101,7 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         text_encoder_4 = LlamaForCausalLM.from_pretrained("hf-internal-testing/tiny-random-LlamaForCausalLM")
-        text_encoder_4.generation_config.pad_token_id=1
+        text_encoder_4.generation_config.pad_token_id = 1
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_3 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -140,7 +152,7 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertEqual(image.shape, (1, 128, 128, 3))
         expected_slice = np.array(
-            [0.6253079 , 0.6115351, 0.5223988, 0.5683453, 0.44545278, 0.53524655, 0.3968956, 0.5558849, 0.5917772]
+            [0.6253079, 0.6115351, 0.5223988, 0.5683453, 0.44545278, 0.53524655, 0.3968956, 0.5558849, 0.5917772]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3, f"Got {image_slice.flatten()=}")
