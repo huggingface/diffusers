@@ -1766,8 +1766,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_adapters(["adapter-1"])
             outputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
-            # pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
+            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
             assert pipe.num_fused_loras == 1
 
             # Fusing should still keep the LoRA layers so outpout should remain the same
