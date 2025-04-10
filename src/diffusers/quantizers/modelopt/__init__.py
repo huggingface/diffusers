@@ -1,1 +1,1 @@
-from .modelopt_quantizer import ModelOptQuantizer
+from .modelopt_quantizer import NVIDIAModelOptQuantizer

@@ -21,11 +21,11 @@ from typing import Dict, Optional, Union
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
-from .modelopt import ModelOptQuantizer
+from .modelopt import NVIDIAModelOptQuantizer
 from .quantization_config import (
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
-    ModelOptConfig,
+    NVIDIAModelOptConfig,
     QuantizationConfigMixin,
     QuantizationMethod,
     QuantoConfig,
@@ -41,7 +41,7 @@ AUTO_QUANTIZER_MAPPING = {
     "gguf": GGUFQuantizer,
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
-    "modelopt": ModelOptQuantizer,
+    "modelopt": NVIDIAModelOptQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -50,7 +50,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "gguf": GGUFQuantizationConfig,
     "quanto": QuantoConfig,
     "torchao": TorchAoConfig,
-    "modelopt": ModelOptConfig,
+    "modelopt": NVIDIAModelOptConfig,
 }
 
 

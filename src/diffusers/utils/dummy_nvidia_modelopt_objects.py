@@ -2,7 +2,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class ModelOptConfig(metaclass=DummyObject):
+class NVIDIAModelOptConfig(metaclass=DummyObject):
     _backends = ["nvidia_modelopt"]
 
     def __init__(self, *args, **kwargs):

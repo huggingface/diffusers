@@ -25,7 +25,7 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)
 
 
-class ModelOptQuantizer(DiffusersQuantizer):
+class NVIDIAModelOptQuantizer(DiffusersQuantizer):
     r"""
     Diffusers Quantizer for TensorRT Model Optimizer
     """

@@ -726,7 +726,7 @@ class QuantoConfig(QuantizationConfigMixin):
 
 
 @dataclass
-class ModelOptConfig(QuantizationConfigMixin):
+class NVIDIAModelOptConfig(QuantizationConfigMixin):
     """This is a config class to use nvidia modelopt for quantization.
 
     Args:

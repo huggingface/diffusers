@@ -118,7 +118,7 @@ except OptionalDependencyNotAvailable:
         name for name in dir(dummy_nvidia_modelopt_objects) if not name.startswith("_")
     ]
 else:
-    _import_structure["quantizers.quantization_config"].append("ModelOptConfig")
+    _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
 
 try:
     if not is_onnx_available():
@@ -712,7 +712,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_nvidia_modelopt_objects import *
     else:
-        from .quantizers.quantization_config import ModelOptConfig
+        from .quantizers.quantization_config import NVIDIAModelOptConfig
 
     try:
         if not is_onnx_available():
