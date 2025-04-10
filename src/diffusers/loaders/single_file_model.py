@@ -21,8 +21,8 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from typing_extensions import Self
 
-from ..quantizers import DiffusersAutoQuantizer
 from .. import __version__
+from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,

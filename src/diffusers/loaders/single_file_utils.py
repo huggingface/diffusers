@@ -405,11 +405,11 @@ def load_single_file_checkpoint(
     local_files_only=None,
     revision=None,
     disable_mmap=False,
-    user_agent=None
+    user_agent=None,
 ):
     if user_agent is None:
         user_agent = {"file_type": "single_file", "framework": "pytorch"}
-    
+
     if os.path.isfile(pretrained_model_link_or_path):
         pretrained_model_link_or_path = pretrained_model_link_or_path
 
