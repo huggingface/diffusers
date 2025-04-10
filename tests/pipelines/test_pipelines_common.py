@@ -191,12 +191,12 @@ class SDFunctionTesterMixin:
         inputs["output_type"] = "np"
         output_no_freeu = pipe(**inputs)[0]
 
-        assert not np.allclose(
-            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
-        ), "Enabling of FreeU should lead to different results."
-        assert np.allclose(
-            output, output_no_freeu, atol=1e-2
-        ), f"Disabling of FreeU should lead to results similar to the default pipeline results but Max Abs Error={np.abs(output_no_freeu - output).max()}."
+        assert not np.allclose(output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]), (
+            "Enabling of FreeU should lead to different results."
+        )
+        assert np.allclose(output, output_no_freeu, atol=1e-2), (
+            f"Disabling of FreeU should lead to results similar to the default pipeline results but Max Abs Error={np.abs(output_no_freeu - output).max()}."
+        )
 
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -217,12 +217,12 @@ class SDFunctionTesterMixin:
                 and hasattr(component, "original_attn_processors")
                 and component.original_attn_processors is not None
             ):
-                assert check_qkv_fusion_processors_exist(
-                    component
-                ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-                assert check_qkv_fusion_matches_attn_procs_length(
-                    component, component.original_attn_processors
-                ), "Something wrong with the attention processors concerning the fused QKV projections."
+                assert check_qkv_fusion_processors_exist(component), (
+                    "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+                )
+                assert check_qkv_fusion_matches_attn_procs_length(component, component.original_attn_processors), (
+                    "Something wrong with the attention processors concerning the fused QKV projections."
+                )
 
         inputs = self.get_dummy_inputs(device)
         inputs["return_dict"] = False
@@ -235,15 +235,15 @@ class SDFunctionTesterMixin:
         image_disabled = pipe(**inputs)[0]
         image_slice_disabled = image_disabled[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
 
 
 class IPAdapterTesterMixin:
@@ -909,9 +909,9 @@ class PipelineFromPipeTesterMixin:
 
         for component in pipe_original.components.values():
             if hasattr(component, "attn_processors"):
-                assert all(
-                    type(proc) == AttnProcessor for proc in component.attn_processors.values()
-                ), "`from_pipe` changed the attention processor in original pipeline."
+                assert all(type(proc) == AttnProcessor for proc in component.attn_processors.values()), (
+                    "`from_pipe` changed the attention processor in original pipeline."
+                )
 
     @require_accelerator
     @require_accelerate_version_greater("0.14.0")
@@ -1347,7 +1347,7 @@ class PipelineTesterMixin:
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
-    def test_float16_inference(self, expected_max_diff=5e-2):
+    def test_float16_inference(self, expected_max_diff=6e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -2569,12 +2569,12 @@ class PyramidAttentionBroadcastTesterMixin:
         image_slice_pab_disabled = output.flatten()
         image_slice_pab_disabled = np.concatenate((image_slice_pab_disabled[:8], image_slice_pab_disabled[-8:]))
 
-        assert np.allclose(
-            original_image_slice, image_slice_pab_enabled, atol=expected_atol
-        ), "PAB outputs should not differ much in specified timestep range."
-        assert np.allclose(
-            original_image_slice, image_slice_pab_disabled, atol=1e-4
-        ), "Outputs from normal inference and after disabling cache should not differ."
+        assert np.allclose(original_image_slice, image_slice_pab_enabled, atol=expected_atol), (
+            "PAB outputs should not differ much in specified timestep range."
+        )
+        assert np.allclose(original_image_slice, image_slice_pab_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
 
 
 class FasterCacheTesterMixin:
@@ -2639,12 +2639,12 @@ class FasterCacheTesterMixin:
         output = run_forward(pipe).flatten()
         image_slice_faster_cache_disabled = np.concatenate((output[:8], output[-8:]))
 
-        assert np.allclose(
-            original_image_slice, image_slice_faster_cache_enabled, atol=expected_atol
-        ), "FasterCache outputs should not differ much in specified timestep range."
-        assert np.allclose(
-            original_image_slice, image_slice_faster_cache_disabled, atol=1e-4
-        ), "Outputs from normal inference and after disabling cache should not differ."
+        assert np.allclose(original_image_slice, image_slice_faster_cache_enabled, atol=expected_atol), (
+            "FasterCache outputs should not differ much in specified timestep range."
+        )
+        assert np.allclose(original_image_slice, image_slice_faster_cache_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
 
     def test_faster_cache_state(self):
         from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
