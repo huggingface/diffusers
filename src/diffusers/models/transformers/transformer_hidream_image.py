@@ -5,7 +5,6 @@ import einops
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import repeat
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
@@ -13,17 +12,155 @@ from ...models.modeling_outputs import Transformer2DModelOutput
 from ...models.modeling_utils import ModelMixin
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import Attention, HiDreamImageFeedForwardSwiGLU
+from ..attention import Attention
 from ..embeddings import (
-    HiDreamImageEmbedND,
-    HiDreamImageOutEmbed,
-    HiDreamImagePatchEmbed,
-    HiDreamImagePooledEmbed,
-    HiDreamImageTimestepEmbed,
+    TimestepEmbedding,
+    Timesteps,
 )
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class HiDreamImageFeedForwardSwiGLU(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        hidden_dim: int,
+        multiple_of: int = 256,
+        ffn_dim_multiplier: Optional[float] = None,
+    ):
+        super().__init__()
+        hidden_dim = int(2 * hidden_dim / 3)
+        # custom dim factor multiplier
+        if ffn_dim_multiplier is not None:
+            hidden_dim = int(ffn_dim_multiplier * hidden_dim)
+        hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
+
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
+        self.w3 = nn.Linear(dim, hidden_dim, bias=False)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        return self.w2(torch.nn.functional.silu(self.w1(x)) * self.w3(x))
+
+
+class HiDreamImagePooledEmbed(nn.Module):
+    def __init__(self, text_emb_dim, hidden_size):
+        super().__init__()
+        self.pooled_embedder = TimestepEmbedding(in_channels=text_emb_dim, time_embed_dim=hidden_size)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.normal_(m.weight, std=0.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, pooled_embed):
+        return self.pooled_embedder(pooled_embed)
+
+
+class HiDreamImageTimestepEmbed(nn.Module):
+    def __init__(self, hidden_size, frequency_embedding_size=256):
+        super().__init__()
+        self.time_proj = Timesteps(num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.normal_(m.weight, std=0.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, timesteps, wdtype):
+        t_emb = self.time_proj(timesteps).to(dtype=wdtype)
+        t_emb = self.timestep_embedder(t_emb)
+        return t_emb
+
+
+class HiDreamImageOutEmbed(nn.Module):
+    def __init__(self, hidden_size, patch_size, out_channels):
+        super().__init__()
+        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
+        self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True))
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.zeros_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x, adaln_input):
+        shift, scale = self.adaLN_modulation(adaln_input).chunk(2, dim=1)
+        x = self.norm_final(x) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+        x = self.linear(x)
+        return x
+
+
+class HiDreamImagePatchEmbed(nn.Module):
+    def __init__(
+        self,
+        patch_size=2,
+        in_channels=4,
+        out_channels=1024,
+    ):
+        super().__init__()
+        self.patch_size = patch_size
+        self.out_channels = out_channels
+        self.proj = nn.Linear(in_channels * patch_size * patch_size, out_channels, bias=True)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, latent):
+        latent = self.proj(latent)
+        return latent
+
+
+def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
+    assert dim % 2 == 0, "The dimension must be even."
+
+    scale = torch.arange(0, dim, 2, dtype=torch.float64, device=pos.device) / dim
+    omega = 1.0 / (theta**scale)
+
+    batch_size, seq_length = pos.shape
+    out = torch.einsum("...n,d->...nd", pos, omega)
+    cos_out = torch.cos(out)
+    sin_out = torch.sin(out)
+
+    stacked_out = torch.stack([cos_out, -sin_out, sin_out, cos_out], dim=-1)
+    out = stacked_out.view(batch_size, -1, dim // 2, 2, 2)
+    return out.float()
+
+
+class HiDreamImageEmbedND(nn.Module):
+    def __init__(self, theta: int, axes_dim: List[int]):
+        super().__init__()
+        self.theta = theta
+        self.axes_dim = axes_dim
+
+    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+        n_axes = ids.shape[-1]
+        emb = torch.cat(
+            [rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(n_axes)],
+            dim=-3,
+        )
+        return emb.unsqueeze(2)
 
 
 def apply_rope(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -706,7 +843,8 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             img_ids = torch.zeros(pH, pW, 3, device=hidden_states.device)
             img_ids[..., 1] = img_ids[..., 1] + torch.arange(pH, device=hidden_states.device)[:, None]
             img_ids[..., 2] = img_ids[..., 2] + torch.arange(pW, device=hidden_states.device)[None, :]
-            img_ids = repeat(img_ids, "h w c -> b (h w) c", b=batch_size)
+            # repeat(img_ids, "h w c -> b (h w) c", b=batch_size)
+            img_ids = img_ids.reshape(img_ids.shape[0], img_ids.shape[1] * img_ids.shape[2]).unsqueeze(0)
         hidden_states = self.x_embedder(hidden_states)
 
         T5_encoder_hidden_states = encoder_hidden_states[0]
