@@ -666,21 +666,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
-                if latent_model_input.shape[-2] != latent_model_input.shape[-1]:
-                    B, C, H, W = latent_model_input.shape
-                    patch_size = self.transformer.config.patch_size
-                    pH, pW = H // patch_size, W // patch_size
-                    out = torch.zeros(
-                        (B, C, self.transformer.max_seq, patch_size * patch_size),
-                        dtype=latent_model_input.dtype,
-                        device=latent_model_input.device,
-                    )
-                    latent_model_input = latent_model_input.reshape(B, C, pH, patch_size, pW, patch_size)
-                    latent_model_input = latent_model_input.permute(0, 1, 2, 4, 3, 5)
-                    latent_model_input = latent_model_input.reshape(B, C, pH * pW, patch_size * patch_size)
-                    out[:, :, 0 : pH * pW] = latent_model_input
-                    latent_model_input = out
-
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timesteps=timestep,

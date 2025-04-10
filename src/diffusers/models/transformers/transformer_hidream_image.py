@@ -795,6 +795,21 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         batch_size = hidden_states.shape[0]
         hidden_states_type = hidden_states.dtype
 
+        if hidden_states.shape[-2] != hidden_states.shape[-1]:
+            B, C, H, W = hidden_states.shape
+            patch_size = self.config.patch_size
+            pH, pW = H // patch_size, W // patch_size
+            out = torch.zeros(
+                (B, C, self.max_seq, patch_size * patch_size),
+                dtype=hidden_states.dtype,
+                device=hidden_states.device,
+            )
+            hidden_states = hidden_states.reshape(B, C, pH, patch_size, pW, patch_size)
+            hidden_states = hidden_states.permute(0, 1, 2, 4, 3, 5)
+            hidden_states = hidden_states.reshape(B, C, pH * pW, patch_size * patch_size)
+            out[:, :, 0 : pH * pW] = hidden_states
+            hidden_states = out
+
         # 0. time
         timesteps = self.expand_timesteps(timesteps, batch_size, hidden_states.device)
         timesteps = self.t_embedder(timesteps, hidden_states_type)
