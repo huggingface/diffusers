@@ -22,7 +22,6 @@ from itertools import product
 import numpy as np
 import pytest
 import torch
-from parameterized import parameterized
 
 from diffusers import (
     AutoencoderKL,
@@ -1804,61 +1803,60 @@ class PeftLoraLoaderMixinTests:
                 "Fused lora should not change the output",
             )
 
-    @parameterized.expand([1.0, 0.8])
-    def test_lora_scale_kwargs_match_fusion(
-        self, lora_scale, expected_atol: float = 1e-3, expected_rtol: float = 1e-3
-    ):
+    def test_lora_scale_kwargs_match_fusion(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
 
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        for lora_scale in [1.0, 0.8]:
+            for scheduler_cls in self.scheduler_classes:
+                components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+                pipe = self.pipeline_class(**components)
+                pipe = pipe.to(torch_device)
+                pipe.set_progress_bar_config(disable=None)
+                _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
+                output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                self.assertTrue(output_no_lora.shape == self.output_shape)
 
-            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-                )
-
-            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
-            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
-
-            if self.has_two_text_encoders or self.has_three_text_encoders:
-                lora_loadable_components = self.pipeline_class._lora_loadable_modules
-                if "text_encoder_2" in lora_loadable_components:
-                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                    pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
                     self.assertTrue(
-                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                        check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                     )
 
-            pipe.set_adapters(["adapter-1"])
-            attention_kwargs = {attention_kwargs_name: {"scale": lora_scale}}
-            outputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+                denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+                denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+                self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
-            pipe.fuse_lora(
-                components=self.pipeline_class._lora_loadable_modules,
-                adapter_names=["adapter-1"],
-                lora_scale=lora_scale,
-            )
-            assert pipe.num_fused_loras == 1
+                if self.has_two_text_encoders or self.has_three_text_encoders:
+                    lora_loadable_components = self.pipeline_class._lora_loadable_modules
+                    if "text_encoder_2" in lora_loadable_components:
+                        pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                        self.assertTrue(
+                            check_if_lora_correctly_set(pipe.text_encoder_2),
+                            "Lora not correctly set in text encoder 2",
+                        )
 
-            outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
+                pipe.set_adapters(["adapter-1"])
+                attention_kwargs = {attention_kwargs_name: {"scale": lora_scale}}
+                outputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
 
-            self.assertTrue(
-                np.allclose(outputs_lora_1, outputs_lora_1_fused, atol=expected_atol, rtol=expected_rtol),
-                "Fused lora should not change the output",
-            )
-            self.assertFalse(
-                np.allclose(output_no_lora, outputs_lora_1, atol=expected_atol, rtol=expected_rtol),
-                "LoRA should change the output",
-            )
+                pipe.fuse_lora(
+                    components=self.pipeline_class._lora_loadable_modules,
+                    adapter_names=["adapter-1"],
+                    lora_scale=lora_scale,
+                )
+                assert pipe.num_fused_loras == 1
+
+                outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+                self.assertTrue(
+                    np.allclose(outputs_lora_1, outputs_lora_1_fused, atol=expected_atol, rtol=expected_rtol),
+                    "Fused lora should not change the output",
+                )
+                self.assertFalse(
+                    np.allclose(output_no_lora, outputs_lora_1, atol=expected_atol, rtol=expected_rtol),
+                    "LoRA should change the output",
+                )
 
     @require_peft_version_greater(peft_version="0.9.0")
     def test_simple_inference_with_dora(self):
