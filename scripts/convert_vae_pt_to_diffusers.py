@@ -53,7 +53,12 @@ def custom_convert_ldm_vae_checkpoint(checkpoint, config):
     }
 
     for i in range(num_down_blocks):
-        resnets = [key for key in down_blocks[i] if f"down.{i}" in key and f"down.{i}.downsample" not in key]
+        resnets = [
+            key
+            for key in down_blocks[i]
+            if f"down.{i}" in key and f"down.{i}.downsample" not in key and "attn" not in key
+        ]
+        attentions = [key for key in down_blocks[i] if f"down.{i}.attn" in key]
 
         if f"encoder.down.{i}.downsample.conv.weight" in vae_state_dict:
             new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.weight"] = vae_state_dict.pop(
@@ -65,6 +70,10 @@ def custom_convert_ldm_vae_checkpoint(checkpoint, config):
 
         paths = renew_vae_resnet_paths(resnets)
         meta_path = {"old": f"down.{i}.block", "new": f"down_blocks.{i}.resnets"}
+        assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
+
+        paths = renew_vae_attention_paths(attentions)
+        meta_path = {"old": f"down.{i}.attn", "new": f"down_blocks.{i}.attentions"}
         assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
 
     mid_resnets = [key for key in vae_state_dict if "encoder.mid.block" in key]
@@ -85,8 +94,11 @@ def custom_convert_ldm_vae_checkpoint(checkpoint, config):
     for i in range(num_up_blocks):
         block_id = num_up_blocks - 1 - i
         resnets = [
-            key for key in up_blocks[block_id] if f"up.{block_id}" in key and f"up.{block_id}.upsample" not in key
+            key
+            for key in up_blocks[block_id]
+            if f"up.{block_id}" in key and f"up.{block_id}.upsample" not in key and "attn" not in key
         ]
+        attentions = [key for key in up_blocks[block_id] if f"up.{block_id}.attn" in key]
 
         if f"decoder.up.{block_id}.upsample.conv.weight" in vae_state_dict:
             new_checkpoint[f"decoder.up_blocks.{i}.upsamplers.0.conv.weight"] = vae_state_dict[
@@ -98,6 +110,10 @@ def custom_convert_ldm_vae_checkpoint(checkpoint, config):
 
         paths = renew_vae_resnet_paths(resnets)
         meta_path = {"old": f"up.{block_id}.block", "new": f"up_blocks.{i}.resnets"}
+        assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
+
+        paths = renew_vae_attention_paths(attentions)
+        meta_path = {"old": f"up.{block_id}.attn", "new": f"up_blocks.{i}.attentions"}
         assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
 
     mid_resnets = [key for key in vae_state_dict if "decoder.mid.block" in key]
