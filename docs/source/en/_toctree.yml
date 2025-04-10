@@ -300,6 +300,8 @@
         title: EasyAnimateTransformer3DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
+      - local: api/models/hidream_image_transformer
+        title: HiDreamImageTransformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
       - local: api/models/hunyuan_video_transformer_3d
@@ -448,6 +450,8 @@
       title: FluxControlInpaint
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
+    - local: api/pipelines/hidream
+      title: HiDream-I1
     - local: api/pipelines/hunyuan_video
       title: HunyuanVideo
     - local: api/pipelines/i2vgenxl
