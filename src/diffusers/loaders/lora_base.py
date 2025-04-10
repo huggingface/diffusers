@@ -659,6 +659,7 @@ class LoraBaseMixin:
         if len(components) == 0:
             raise ValueError("`components` cannot be an empty list.")
 
+        merged_adapters = set()
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
@@ -669,8 +670,9 @@ class LoraBaseMixin:
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
                             module.unmerge()
+                            merged_adapters.update(set(module.merged_adapters))
 
-        self.num_fused_loras = 0
+        self.num_fused_loras = len(merged_adapters)
 
     def set_adapters(
         self,
