@@ -85,7 +85,6 @@ def save_model_card(
     images=None,
     base_model: str = None,
     instance_prompt=None,
-    system_prompt=None,
     validation_prompt=None,
     repo_folder=None,
 ):
@@ -112,8 +111,6 @@ The weights were trained using [DreamBooth](https://dreambooth.github.io/) with 
 ## Trigger words
 
 You should use `{instance_prompt}` to trigger the image generation.
-
-The following `system_prompt` was also used used during training (ignore if `None`): {system_prompt}.
 
 ## Download model
 
@@ -324,12 +321,7 @@ def parse_args(input_args=None):
         default=256,
         help="Maximum sequence length to use with with the Gemma2 model",
     )
-    parser.add_argument(
-        "--system_prompt",
-        type=str,
-        default=None,
-        help="System prompt to use during inference to give the Gemma2 model certain characteristics.",
-    )
+
     parser.add_argument(
         "--validation_prompt",
         type=str,
@@ -382,7 +374,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="lumina2-dreambooth-lora",
+        default="hidream-dreambooth-lora",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -1755,7 +1747,7 @@ def main(args):
                     variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
-                pipeline_args = {"prompt": args.validation_prompt, "system_prompt": args.system_prompt}
+                pipeline_args = {"prompt": args.validation_prompt}
                 images = log_validation(
                     pipeline=pipeline,
                     args=args,
@@ -1799,7 +1791,7 @@ def main(args):
         if (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt):
             prompt_to_use = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
             args.num_validation_images = args.num_validation_images if args.num_validation_images else 1
-            pipeline_args = {"prompt": prompt_to_use, "system_prompt": args.system_prompt}
+            pipeline_args = {"prompt": prompt_to_use, "num_images_per_prompt": args.num_validation_images}
             images = log_validation(
                 pipeline=pipeline,
                 args=args,
@@ -1816,7 +1808,6 @@ def main(args):
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 instance_prompt=args.instance_prompt,
-                system_prompt=args.system_prompt,
                 validation_prompt=validation_prpmpt,
                 repo_folder=args.output_dir,
             )
