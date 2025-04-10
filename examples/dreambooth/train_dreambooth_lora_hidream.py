@@ -1028,11 +1028,6 @@ def encode_prompt(
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
 
-    if hasattr(text_encoders[0], "module"):
-        dtype = text_encoders[0].module.dtype
-    else:
-        dtype = text_encoders[0].dtype
-
     pooled_prompt_embeds_1 = _encode_prompt_with_clip(
         text_encoder=text_encoders[0],
         tokenizer=tokenizers[0],
@@ -1179,11 +1174,41 @@ def main(args):
                 exist_ok=True,
             ).repo_id
 
-    # Load the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
+    # Load the tokenizers
+    tokenizer_one = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         revision=args.revision,
+    )
+    tokenizer_two = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_2",
+        revision=args.revision,
+    )
+    tokenizer_three = T5TokenizerFast.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_3",
+        revision=args.revision,
+    )
+
+    tokenizer_four = PreTrainedTokenizerFast.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_4",
+        revision=args.revision,
+    )
+
+    # import correct text encoder classes
+    text_encoder_cls_one = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision
+    )
+    text_encoder_cls_two = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_2"
+    )
+    text_encoder_cls_three = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_3"
+    )
+    text_encoder_cls_four = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_4"
     )
 
     # Load scheduler and models
@@ -1191,9 +1216,8 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    text_encoder = Gemma2Model.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
-    )
+    text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three, text_encoder_cls_four)
+
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
@@ -1207,7 +1231,10 @@ def main(args):
     # We only train the additional adapter LoRA layers
     transformer.requires_grad_(False)
     vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
+    text_encoder_one.requires_grad_(False)
+    text_encoder_two.requires_grad_(False)
+    text_encoder_three.requires_grad_(False)
+    text_encoder_four.requires_grad_(False)
 
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -1226,17 +1253,10 @@ def main(args):
     # keep VAE in FP32 to ensure numerical stability.
     vae.to(dtype=torch.float32)
     transformer.to(accelerator.device, dtype=weight_dtype)
-    # because Gemma2 is particularly suited for bfloat16.
-    text_encoder.to(dtype=torch.bfloat16)
-
-    # Initialize a text encoding pipeline and keep it to CPU for now.
-    text_encoding_pipeline = HiDreamImagePipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=None,
-        transformer=None,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-    )
+    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_three.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_four.to(accelerator.device, dtype=weight_dtype)
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
@@ -1417,36 +1437,34 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
-    def compute_text_embeddings(prompt, text_encoding_pipeline):
-        text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
+    tokenizers = [tokenizer_one, tokenizer_two, tokenizer_three, tokenizer_four]
+    text_encoders = [text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four]
+    def compute_text_embeddings(prompt, text_encoders, tokenizers):
         with torch.no_grad():
-            prompt_embeds, prompt_attention_mask, _, _ = text_encoding_pipeline.encode_prompt(
-                prompt,
-                max_sequence_length=args.max_sequence_length,
-                system_prompt=args.system_prompt,
+            prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                text_encoders, tokenizers, prompt, args.max_sequence_length
             )
-        if args.offload:
-            text_encoding_pipeline = text_encoding_pipeline.to("cpu")
-        prompt_embeds = prompt_embeds.to(transformer.dtype)
-        return prompt_embeds, prompt_attention_mask
+            prompt_embeds = prompt_embeds.to(accelerator.device)
+            pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
+        return prompt_embeds, pooled_prompt_embeds
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
-        instance_prompt_hidden_states, instance_prompt_attention_mask = compute_text_embeddings(
-            args.instance_prompt, text_encoding_pipeline
+        instance_prompt_hidden_states, instance_pooled_prompt_embeds, = compute_text_embeddings(
+            args.instance_prompt, text_encoders, tokenizers
         )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        class_prompt_hidden_states, class_prompt_attention_mask = compute_text_embeddings(
-            args.class_prompt, text_encoding_pipeline
+        class_prompt_hidden_states, class_pooled_prompt_embeds, = compute_text_embeddings(
+            args.class_prompt, text_encoders, tokenizers
         )
 
     # Clear the memory here
     if not train_dataset.custom_instance_prompts:
-        del text_encoder, tokenizer
+        del text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four, tokenizer_one, tokenizer_two,tokenizer_three, tokenizer_four
         free_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
@@ -1454,10 +1472,10 @@ def main(args):
     # have to pass them to the dataloader.
     if not train_dataset.custom_instance_prompts:
         prompt_embeds = instance_prompt_hidden_states
-        prompt_attention_mask = instance_prompt_attention_mask
+        pooled_prompt_embeds = instance_pooled_prompt_embeds
         if args.with_prior_preservation:
             prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
-            prompt_attention_mask = torch.cat([prompt_attention_mask, class_prompt_attention_mask], dim=0)
+            pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, class_pooled_prompt_embeds], dim=0)
 
     vae_config_scaling_factor = vae.config.scaling_factor
     vae_config_shift_factor = vae.config.shift_factor
@@ -1506,7 +1524,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = "dreambooth-lumina2-lora"
+        tracker_name = "dreambooth-hidream-lora"
         accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
@@ -1580,7 +1598,7 @@ def main(args):
             with accelerator.accumulate(models_to_accumulate):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-                    prompt_embeds, prompt_attention_mask = compute_text_embeddings(prompts, text_encoding_pipeline)
+                    prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(prompts, text_encoders, tokenizers)
 
                 # Convert images to latent space
                 if args.cache_latents:
@@ -1593,6 +1611,24 @@ def main(args):
                         vae = vae.to("cpu")
                 model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
+
+                if model_input.shape[-2] != model_input.shape[-1]:
+                    B, C, H, W = model_input.shape
+                    pH, pW = H // transformer.config.patch_size, W // transformer.config.patch_size
+
+                    img_sizes = torch.tensor([pH, pW], dtype=torch.int64).reshape(-1)
+                    img_ids = torch.zeros(pH, pW, 3)
+                    img_ids[..., 1] = img_ids[..., 1] + torch.arange(pH)[:, None]
+                    img_ids[..., 2] = img_ids[..., 2] + torch.arange(pW)[None, :]
+                    img_ids = img_ids.reshape(pH * pW, -1)
+                    img_ids_pad = torch.zeros(self.transformer.max_seq, 3)
+                    img_ids_pad[: pH * pW, :] = img_ids
+
+                    img_sizes = img_sizes.unsqueeze(0).to(model_input.device)
+                    img_ids = img_ids_pad.unsqueeze(0).to(model_input.device)
+
+                else:
+                    img_sizes = img_ids = None
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
@@ -1612,22 +1648,21 @@ def main(args):
 
                 # Add noise according to flow matching.
                 # zt = (1 - texp) * x + texp * z1
-                # Lumina2 reverses the lerp i.e., sigma of 1.0 should mean `model_input`
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
-                noisy_model_input = (1.0 - sigmas) * noise + sigmas * model_input
+                noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Predict the noise residual
-                # scale the timesteps (reversal not needed as we used a reverse lerp above already)
-                timesteps = timesteps / noise_scheduler.config.num_train_timesteps
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
                     encoder_hidden_states=prompt_embeds.repeat(len(prompts), 1, 1)
                     if not train_dataset.custom_instance_prompts
                     else prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask.repeat(len(prompts), 1)
+                    pooled_embeds=pooled_prompt_embeds.repeat(len(prompts), 1)
                     if not train_dataset.custom_instance_prompts
-                    else prompt_attention_mask,
+                    else pooled_prompt_embeds,
                     timestep=timesteps,
+                    img_sizes=img_sizes,
+                    img_ids=img_ids,
                     return_dict=False,
                 )[0]
 
