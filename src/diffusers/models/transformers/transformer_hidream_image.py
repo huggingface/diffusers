@@ -39,13 +39,6 @@ class HiDreamImageFeedForwardSwiGLU(nn.Module):
         self.w1 = nn.Linear(dim, hidden_dim, bias=False)
         self.w2 = nn.Linear(hidden_dim, dim, bias=False)
         self.w3 = nn.Linear(dim, hidden_dim, bias=False)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         return self.w2(torch.nn.functional.silu(self.w1(x)) * self.w3(x))
@@ -55,13 +48,6 @@ class HiDreamImagePooledEmbed(nn.Module):
     def __init__(self, text_emb_dim, hidden_size):
         super().__init__()
         self.pooled_embedder = TimestepEmbedding(in_channels=text_emb_dim, time_embed_dim=hidden_size)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.normal_(m.weight, std=0.02)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
 
     def forward(self, pooled_embed):
         return self.pooled_embedder(pooled_embed)
@@ -72,13 +58,6 @@ class HiDreamImageTimestepEmbed(nn.Module):
         super().__init__()
         self.time_proj = Timesteps(num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.normal_(m.weight, std=0.02)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
 
     def forward(self, timesteps, wdtype):
         t_emb = self.time_proj(timesteps).to(dtype=wdtype)
@@ -92,13 +71,6 @@ class HiDreamImageOutEmbed(nn.Module):
         self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True))
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.zeros_(m.weight)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
 
     def forward(self, x, adaln_input):
         shift, scale = self.adaLN_modulation(adaln_input).chunk(2, dim=1)
@@ -118,13 +90,6 @@ class HiDreamImagePatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.out_channels = out_channels
         self.proj = nn.Linear(in_channels * patch_size * patch_size, out_channels, bias=True)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
 
     def forward(self, latent):
         latent = self.proj(latent)
@@ -215,13 +180,6 @@ class HiDreamAttention(Attention):
             self.k_rms_norm_t = nn.RMSNorm(self.inner_dim, eps)
 
         self.set_processor(processor)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
 
     def forward(
         self,
