@@ -13,7 +13,6 @@ from transformers import (
 )
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import FromSingleFileMixin
 from ...models import AutoencoderKL, HiDreamImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
@@ -109,11 +108,8 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class HiDreamImagePipeline(DiffusionPipeline, FromSingleFileMixin):
-    model_cpu_offload_seq = (
-        "text_encoder->text_encoder_2->text_encoder_3->text_encoder_4->image_encoder->transformer->vae"
-    )
-    _optional_components = ["image_encoder", "feature_extractor"]
+class HiDreamImagePipeline(DiffusionPipeline):
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->text_encoder_4->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
