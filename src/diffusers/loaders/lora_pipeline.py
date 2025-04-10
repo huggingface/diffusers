@@ -94,6 +94,11 @@ def _maybe_dequantize_weight_for_expanded_lora(model, module):
         weight_on_cpu = True
 
     if is_bnb_4bit_quantized:
+        if module.weight.quant_state.dtype != model.dtype:
+            raise ValueError(
+                f"Model is in {model.dtype} dtype while the current module weight will be dequantized to {module.weight.quant_state.dtype} dtype. "
+                f"Please pass {module.weight.quant_state.dtype} as `torch_dtype` in `from_pretrained()`."
+            )
         module_weight = dequantize_bnb_weight(
             module.weight.cuda() if weight_on_cpu else module.weight,
             state=module.weight.quant_state,
