@@ -607,7 +607,10 @@ class LoraBaseMixin:
                         model, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
                     )
 
-        self.num_fused_loras += 1
+        if adapter_names is None:
+            self.num_fused_loras += 1
+        elif isinstance(adapter_names, list):
+            self.num_fused_loras += len(adapter_names)
 
     def unfuse_lora(self, components: List[str] = [], **kwargs):
         r"""
@@ -663,7 +666,7 @@ class LoraBaseMixin:
                         if isinstance(module, BaseTunerLayer):
                             module.unmerge()
 
-        self.num_fused_loras -= 1
+        self.num_fused_loras = 0
 
     def set_adapters(
         self,

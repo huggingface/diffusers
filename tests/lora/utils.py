@@ -1001,9 +1001,11 @@ class PeftLoraLoaderMixinTests:
                     )
 
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
+            assert pipe.num_fused_loras == 1
             output_fused_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
+            assert pipe.num_fused_loras == 0
             output_unfused_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             # unloading should remove the LoRA layers
@@ -1740,26 +1742,21 @@ class PeftLoraLoaderMixinTests:
                 self.assertTrue(
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
+                pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
 
             denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
             denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-
-            # Attach a second adapter
-            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
-
-            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
-
             self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 lora_loadable_components = self.pipeline_class._lora_loadable_modules
                 if "text_encoder_2" in lora_loadable_components:
                     pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
                     self.assertTrue(
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
+                    pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
 
             # set them to multi-adapter inference mode
             pipe.set_adapters(["adapter-1", "adapter-2"])
@@ -1769,6 +1766,7 @@ class PeftLoraLoaderMixinTests:
             outputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
+            assert pipe.num_fused_loras == 1
 
             # Fusing should still keep the LoRA layers so outpout should remain the same
             outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -1779,9 +1777,24 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
+            assert pipe.num_fused_loras == 0
+
+            # unloading should remove the LoRA layers
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers")
+
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Unfuse should still keep LoRA layers")
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Unfuse should still keep LoRA layers"
+                    )
+
             pipe.fuse_lora(
                 components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-2", "adapter-1"]
             )
+            assert pipe.num_fused_loras == 2
 
             # Fusing should still keep the LoRA layers
             output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
