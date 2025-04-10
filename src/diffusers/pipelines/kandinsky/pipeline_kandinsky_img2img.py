@@ -133,10 +133,13 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
-        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
+        self.movq_scale_factor = (
+            2 ** (len(self.movq.config.block_out_channels) - 1) if getattr(self, "movq", None) else 8
+        )
+        movq_latent_channels = self.movq.config.latent_channels if getattr(self, "movq", None) else 4
         self.image_processor = VaeImageProcessor(
             vae_scale_factor=self.movq_scale_factor,
-            vae_latent_channels=self.movq.config.latent_channels,
+            vae_latent_channels=movq_latent_channels,
             resample="bicubic",
             reducing_gap=1,
         )

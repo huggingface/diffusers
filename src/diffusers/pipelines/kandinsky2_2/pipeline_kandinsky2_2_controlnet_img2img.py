@@ -135,11 +135,14 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
-        kwargs = {}
-        if self.movq:
-            kwargs["vae_scale_factor"] = 2 ** (len(self.movq.config.block_out_channels) - 1)
-            kwargs["vae_latent_channels"] = self.movq.config.latent_channels
-        self.image_processor = VaeImageProcessor(resample="bicubic", reducing_gap=1, **kwargs)
+        movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1) if getattr(self, "movq", None) else 8
+        movq_latent_channels = self.movq.config.latent_channels if getattr(self, "movq", None) else 4
+        self.image_processor = VaeImageProcessor(
+            vae_scale_factor=movq_scale_factor,
+            vae_latent_channels=movq_latent_channels,
+            resample="bicubic",
+            reducing_gap=1,
+        )
 
     # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_img2img.KandinskyImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
