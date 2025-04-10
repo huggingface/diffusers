@@ -91,7 +91,7 @@ feature_extractor = SiglipImageProcessor.from_pretrained(
 image_encoder = SiglipVisionModel.from_pretrained(
     image_encoder_id,
     torch_dtype=torch.float16
-).to( "cuda")
+).to("cuda")
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
@@ -100,7 +100,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     image_encoder=image_encoder,
 ).to("cuda")
 
-pipe.load_ip_adapter(ip_adapter_id)
+pipe.load_ip_adapter(ip_adapter_id, weight_name="ip-adapter.bin")
 pipe.set_ip_adapter_scale(0.6)
 
 ref_img = Image.open("image.jpg").convert('RGB')
