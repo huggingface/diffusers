@@ -148,7 +148,8 @@ class HiDreamImagePipeline(DiffusionPipeline):
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.default_sample_size = 128
-        self.tokenizer_4.pad_token = self.tokenizer_4.eos_token
+        if getattr(self, "tokenizer_4", None) is not None:
+            self.tokenizer_4.pad_token = self.tokenizer_4.eos_token
 
     def _get_t5_prompt_embeds(
         self,
@@ -314,7 +315,7 @@ class HiDreamImagePipeline(DiffusionPipeline):
         if prompt is not None:
             batch_size = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            batch_size = prompt_embeds[0].shape[0] if isinstance(prompt_embeds, list) else prompt_embeds.shape[0]
 
         prompt_embeds, pooled_prompt_embeds = self._encode_prompt(
             prompt=prompt,
@@ -502,8 +503,8 @@ class HiDreamImagePipeline(DiffusionPipeline):
         return self._guidance_scale > 1
 
     @property
-    def joint_attention_kwargs(self):
-        return self._joint_attention_kwargs
+    def attention_kwargs(self):
+        return self._attention_kwargs
 
     @property
     def num_timesteps(self):
@@ -538,7 +539,7 @@ class HiDreamImagePipeline(DiffusionPipeline):
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 128,
@@ -553,7 +554,7 @@ class HiDreamImagePipeline(DiffusionPipeline):
         width, height = int(width * scale // division * division), int(height * scale // division * division)
 
         self._guidance_scale = guidance_scale
-        self._joint_attention_kwargs = joint_attention_kwargs
+        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -561,14 +562,14 @@ class HiDreamImagePipeline(DiffusionPipeline):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
+        elif prompt_embeds is not None:
+            batch_size = prompt_embeds[0].shape[0] if isinstance(prompt_embeds, list) else prompt_embeds.shape[0]
         else:
-            batch_size = prompt_embeds.shape[0]
+            batch_size = 1
 
         device = self._execution_device
 
-        lora_scale = (
-            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
-        )
+        lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
         (
             prompt_embeds,
             negative_prompt_embeds,
