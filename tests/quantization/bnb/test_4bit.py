@@ -21,8 +21,15 @@ import numpy as np
 import pytest
 import safetensors.torch
 from huggingface_hub import hf_hub_download
+from PIL import Image
 
-from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
+from diffusers import (
+    BitsAndBytesConfig,
+    DiffusionPipeline,
+    FluxControlPipeline,
+    FluxTransformer2DModel,
+    SD3Transformer2DModel,
+)
 from diffusers.utils import is_accelerate_version, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -62,6 +69,8 @@ if is_torch_available():
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
+
+    from diffusers.quantizers.bitsandbytes.utils import replace_with_bnb_linear
 
 
 @require_bitsandbytes_version_greater("0.43.2")
@@ -363,6 +372,18 @@ class BnB4BitBasicTests(Base4bitTests):
                 _ = SD3Transformer2DModel.from_pretrained(tmpdirname)
 
             assert key_to_target in str(err_context.exception)
+
+    def test_bnb_4bit_logs_warning_for_no_quantization(self):
+        model_with_no_linear = torch.nn.Sequential(torch.nn.Conv2d(4, 4, 3), torch.nn.ReLU())
+        quantization_config = BitsAndBytesConfig(load_in_4bit=True)
+        logger = logging.get_logger("diffusers.quantizers.bitsandbytes.utils")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            _ = replace_with_bnb_linear(model_with_no_linear, quantization_config=quantization_config)
+        assert (
+            "You are loading your model in 8bit or 4bit but no linear modules were found in your model."
+            in cap_logger.out
+        )
 
 
 class BnB4BitTrainingTests(Base4bitTests):
@@ -694,6 +715,42 @@ class SlowBnb4BitFluxTests(Base4bitTests):
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3)
+
+
+@require_transformers_version_greater("4.44.0")
+@require_peft_backend
+class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
+    def setUp(self) -> None:
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        self.pipeline_4bit = FluxControlPipeline.from_pretrained("eramth/flux-4bit", torch_dtype=torch.float16)
+        self.pipeline_4bit.enable_model_cpu_offload()
+
+    def tearDown(self):
+        del self.pipeline_4bit
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_lora_loading(self):
+        self.pipeline_4bit.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
+
+        output = self.pipeline_4bit(
+            prompt=self.prompt,
+            control_image=Image.new(mode="RGB", size=(256, 256)),
+            height=256,
+            width=256,
+            max_sequence_length=64,
+            output_type="np",
+            num_inference_steps=8,
+            generator=torch.Generator().manual_seed(42),
+        ).images
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.1636, 0.1675, 0.1982, 0.1743, 0.1809, 0.1936, 0.1743, 0.2095, 0.2139])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3, msg=f"{out_slice=} != {expected_slice=}")
 
 
 @slow
