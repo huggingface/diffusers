@@ -10,6 +10,7 @@ from ..utils import (
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
+    is_opencv_available,
     is_sentencepiece_available,
     is_torch_available,
     is_torch_npu_available,
@@ -416,6 +417,18 @@ else:
     ]
 
 try:
+    if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils import (
+        dummy_torch_and_transformers_and_opencv_objects,
+    )
+
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_opencv_objects))
+else:
+    _import_structure["consisid"] = ["ConsisIDPipeline"]
+
+try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -513,7 +526,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .cogview3 import CogView3PlusPipeline
         from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
-        from .consisid import ConsisIDPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
@@ -762,6 +774,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 KolorsImg2ImgPipeline,
                 KolorsPipeline,
             )
+
+        try:
+            if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
+                raise OptionalDependencyNotAvailable()
+        except OptionalDependencyNotAvailable:
+            from ..utils.dummy_torch_and_transformers_and_opencv_objects import *
+        else:
+            from .consisid import ConsisIDPipeline
 
         try:
             if not is_flax_available():
