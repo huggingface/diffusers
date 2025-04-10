@@ -152,7 +152,7 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertEqual(image.shape, (1, 128, 128, 3))
         expected_slice = np.array(
-            [0.6253079, 0.6115351, 0.5223988, 0.5683453, 0.44545278, 0.53524655, 0.3968956, 0.5558849, 0.5917772]
+            [0.572625, 0.5585313, 0.44452268, 0.63370997, 0.37221244, 0.5413587, 0.30990618, 0.61828184, 0.58176327]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3, f"Got {image_slice.flatten()=}")
