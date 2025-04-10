@@ -34,8 +34,9 @@ from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# Copied from diffusers.models.transformers.cogvideox_transformer_3d.CogVideoXBlock with CogVideoX->FlashVideo
 @maybe_allow_in_graph
-class CogVideoXBlock(nn.Module):
+class FlashVideoBlock(nn.Module):
     r"""
     Transformer block used in [CogVideoX](https://github.com/THUDM/CogVideo) model.
 
@@ -329,7 +330,7 @@ class FlashVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Ca
         # 3. Define spatio-temporal transformers blocks
         self.transformer_blocks = nn.ModuleList(
             [
-                CogVideoXBlock(
+                FlashVideoBlock(
                     dim=inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
