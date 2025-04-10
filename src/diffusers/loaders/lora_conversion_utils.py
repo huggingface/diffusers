@@ -1616,6 +1616,7 @@ def _convert_musubi_wan_lora_to_diffusers(state_dict):
     original_state_dict = {k[len("lora_unet_") :]: v for k, v in state_dict.items()}
 
     num_blocks = len({k.split("blocks_")[1].split("_")[0] for k in original_state_dict})
+    is_i2v_lora = any("k_img" in k for k in original_state_dict) and any("v_img" in k for k in original_state_dict)
 
     def get_alpha_scales(down_weight, key):
         rank = down_weight.shape[0]
@@ -1644,6 +1645,14 @@ def _convert_musubi_wan_lora_to_diffusers(state_dict):
             scale_down, scale_up = get_alpha_scales(down_weight, f"blocks_{i}_cross_attn_{o}")
             converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = down_weight * scale_down
             converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = up_weight * scale_up
+
+        if is_i2v_lora:
+            for o, c in zip(["k_img", "v_img"], ["add_k_proj", "add_v_proj"]):
+                down_weight = original_state_dict.pop(f"blocks_{i}_cross_attn_{o}.lora_down.weight")
+                up_weight = original_state_dict.pop(f"blocks_{i}_cross_attn_{o}.lora_up.weight")
+                scale_down, scale_up = get_alpha_scales(down_weight, f"blocks_{i}_cross_attn_{o}")
+                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_A.weight"] = down_weight * scale_down
+                converted_state_dict[f"blocks.{i}.attn2.{c}.lora_B.weight"] = up_weight * scale_up
 
         # FFN
         for o, c in zip(["ffn_0", "ffn_2"], ["net.0.proj", "net.2"]):
