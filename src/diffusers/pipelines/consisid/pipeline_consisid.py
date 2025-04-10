@@ -16,7 +16,6 @@ import inspect
 import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import cv2
 import numpy as np
 import PIL
 import torch
@@ -29,10 +28,14 @@ from ...models import AutoencoderKLCogVideoX, ConsisIDTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDPMScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_opencv_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from .pipeline_output import ConsisIDPipelineOutput
+
+
+if is_opencv_available():
+    import cv2
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
