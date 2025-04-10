@@ -616,25 +616,20 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
+            pipe, _ = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config=None)
+
+            state_dict = {}
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                pipe.text_encoder.add_adapter(text_lora_config)
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-                )
-            # Gather the state dict for the PEFT model, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
-            # supports missing layers (PR#8324).
-            state_dict = {
-                f"text_encoder.{module_name}": param
-                for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
-                if "text_model.encoder.layers.4" not in module_name
-            }
+                # Gather the state dict for the PEFT model, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
+                # supports missing layers (PR#8324).
+                state_dict = {
+                    f"text_encoder.{module_name}": param
+                    for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
+                    if "text_model.encoder.layers.4" not in module_name
+                }
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                    pipe.text_encoder_2.add_adapter(text_lora_config)
-                    self.assertTrue(
-                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                    )
                     state_dict.update(
                         {
                             f"text_encoder_2.{module_name}": param
