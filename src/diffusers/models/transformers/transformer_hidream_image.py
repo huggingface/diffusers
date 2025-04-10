@@ -892,26 +892,14 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             cur_encoder_hidden_states = torch.cat(
                 [initial_encoder_hidden_states, cur_llama31_encoder_hidden_states], dim=1
             )
-            if self.training and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states, initial_encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states, initial_encoder_hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     image_tokens_masks,
                     cur_encoder_hidden_states,
                     adaln_input,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
             else:
                 hidden_states, initial_encoder_hidden_states = block(
@@ -938,26 +926,14 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for bid, block in enumerate(self.single_stream_blocks):
             cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id]
             hidden_states = torch.cat([hidden_states, cur_llama31_encoder_hidden_states], dim=1)
-            if self.training and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     image_tokens_masks,
                     None,
                     adaln_input,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
             else:
                 hidden_states = block(
