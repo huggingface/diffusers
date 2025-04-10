@@ -546,6 +546,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         num_blocks_per_group: Optional[int] = None,
         non_blocking: bool = False,
         use_stream: bool = False,
+        record_stream: bool = False,
         low_cpu_mem_usage=False,
     ) -> None:
         r"""
@@ -594,6 +595,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             num_blocks_per_group,
             non_blocking,
             use_stream,
+            record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
