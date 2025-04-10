@@ -465,7 +465,7 @@ class LoraBaseMixin:
     """Utility class for handling LoRAs."""
 
     _lora_loadable_modules = []
-    num_fused_loras = 0
+    _merged_adapters = set()
 
     def load_lora_weights(self, **kwargs):
         raise NotImplementedError("`load_lora_weights()` is not implemented.")
@@ -592,7 +592,6 @@ class LoraBaseMixin:
         if len(components) == 0:
             raise ValueError("`components` cannot be an empty list.")
 
-        merged_adapters = set()
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
@@ -604,7 +603,7 @@ class LoraBaseMixin:
                     model.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
-                            merged_adapters.update(set(module.merged_adapters))
+                            self._merged_adapters.update(set(module.merged_adapters))
                 # handle transformers models.
                 if issubclass(model.__class__, PreTrainedModel):
                     fuse_text_encoder_lora(
@@ -612,9 +611,7 @@ class LoraBaseMixin:
                     )
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
-                            merged_adapters.update(set(module.merged_adapters))
-
-        self.num_fused_loras += len(merged_adapters)
+                            self._merged_adapters.update(set(module.merged_adapters))
 
     def unfuse_lora(self, components: List[str] = [], **kwargs):
         r"""
@@ -659,7 +656,6 @@ class LoraBaseMixin:
         if len(components) == 0:
             raise ValueError("`components` cannot be an empty list.")
 
-        merged_adapters = set()
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
@@ -670,9 +666,11 @@ class LoraBaseMixin:
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
                             module.unmerge()
-                            merged_adapters.update(set(module.merged_adapters))
+                            self._merged_adapters.update(set(module.merged_adapters))
 
-        self.num_fused_loras = len(merged_adapters)
+    @property
+    def num_fused_loras(self):
+        return len(self._merged_adapters)
 
     def set_adapters(
         self,
