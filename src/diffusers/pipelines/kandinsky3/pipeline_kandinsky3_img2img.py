@@ -620,11 +620,16 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
                     xm.mark_step()
 
             # post-processing
+            if output_type not in ["pt", "np", "pil", "latent"]:
+                raise ValueError(
+                    f"Only the output types `pt`, `pil`, `np` and `latent` are supported not output_type={output_type}"
+                )
+
             if not output_type == "latent":
                 image = self.movq.decode(latents, force_not_quantize=True)["sample"]
+                image = self.image_processor.postprocess(image, output_type)
             else:
                 image = latents
-            image = self.image_processor.postprocess(image, output_type)
 
             self.maybe_free_model_hooks()
 
