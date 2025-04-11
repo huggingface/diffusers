@@ -652,12 +652,6 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.caption_projection = nn.ModuleList(caption_projection)
         self.max_seq = max_resolution[0] * max_resolution[1] // (patch_size * patch_size)
 
-        self.gradient_checkpointing = False
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def expand_timesteps(self, timesteps, batch_size, device):
         if not torch.is_tensor(timesteps):
             is_mps = device.type == "mps"
