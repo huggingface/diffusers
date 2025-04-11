@@ -159,3 +159,12 @@ def get_torch_cuda_device_capability():
         return float(compute_capability)
     else:
         return None
+
+
+def get_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+        return "xpu"
+    else:
+        return "cpu"
