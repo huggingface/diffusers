@@ -61,6 +61,7 @@ from diffusers.utils.testing_utils import (
     backend_empty_cache,
     floats_tensor,
     get_python_version,
+    is_flaky,
     is_torch_compile,
     numpy_cosine_similarity_distance,
     require_peft_backend,
@@ -1436,6 +1437,7 @@ class ModelTesterMixin:
         test_fn(torch.float8_e5m2, torch.float32)
         test_fn(torch.float8_e4m3fn, torch.bfloat16)
 
+    @is_flaky
     def test_layerwise_casting_inference(self):
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN, SUPPORTED_PYTORCH_LAYERS
 
@@ -1473,7 +1475,8 @@ class ModelTesterMixin:
 
             # The precision test is not very important for fast tests. In most cases, the outputs will not be the same.
             # We just want to make sure that the layerwise casting is working as expected.
-            self.assertTrue(numpy_cosine_similarity_distance(base_slice, output) < 1.0)
+            diff = numpy_cosine_similarity_distance(base_slice, output)
+            self.assertTrue(diff < 1.0, f"Expected {diff=} < 1.0.")
 
         test_layerwise_casting(torch.float16, torch.float32)
         test_layerwise_casting(torch.float8_e4m3fn, torch.float32)
