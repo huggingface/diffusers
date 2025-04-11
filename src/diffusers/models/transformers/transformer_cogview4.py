@@ -460,3 +460,84 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
+
+
+### ===== Custom attention processors for guidance methods ===== ###
+
+
+class CogView4PAGAttnProcessor:
+    """
+    Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
+    query and key vectors, but does not include spatial normalization.
+    """
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("CogView4AttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        skip_context_attention: bool = False,
+    ) -> torch.Tensor:
+        batch_size, text_seq_length, embed_dim = encoder_hidden_states.shape
+        batch_size, image_seq_length, embed_dim = hidden_states.shape
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
+        # 1. QKV projections
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+        # 2. QK normalization
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # 3. Rotational positional embeddings applied to latent stream
+        if image_rotary_emb is not None:
+            from ..embeddings import apply_rotary_emb
+
+            query[:, :, text_seq_length:, :] = apply_rotary_emb(
+                query[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
+            )
+            key[:, :, text_seq_length:, :] = apply_rotary_emb(
+                key[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
+            )
+
+        # 4. Attention
+        if skip_context_attention:
+            hidden_states = value
+        else:
+            # PAG uses a custom attention mask for perturbed attention path:
+            # - Create attention mask with `float("-inf")` for image tokens and `0.0` for text tokens
+            # - Set diagonal to `0.0` for attention between image tokens
+            seq_length = text_seq_length + image_seq_length
+            perturbed_attention_mask = hidden_states.new_full((seq_length, seq_length), float("-inf"))
+            perturbed_attention_mask[:text_seq_length, :text_seq_length] = 0.0
+            perturbed_attention_mask.fill_diagonal_(0.0)
+            perturbed_attention_mask = perturbed_attention_mask.unsqueeze(0).unsqueeze(0)
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=perturbed_attention_mask, dropout_p=0.0, is_causal=False
+            )
+
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
+
+        # 5. Output projection
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        encoder_hidden_states, hidden_states = hidden_states.split(
+            [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
+        )
+        return hidden_states, encoder_hidden_states
