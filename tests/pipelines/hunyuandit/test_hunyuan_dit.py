@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import tempfile
 import unittest
 
 import numpy as np
@@ -23,6 +22,7 @@ from transformers import AutoTokenizer, BertModel, T5EncoderModel
 
 from diffusers import AutoencoderKL, DDPMScheduler, HunyuanDiT2DModel, HunyuanDiTPipeline
 from diffusers.utils.testing_utils import (
+    TemporaryDirectory,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
@@ -262,7 +262,7 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         output = pipe(**inputs)[0]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             pipe_loaded.to(torch_device)
