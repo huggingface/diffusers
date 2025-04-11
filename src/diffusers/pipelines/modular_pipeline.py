@@ -144,7 +144,7 @@ class ComponentSpec:
     name: str
     type_hint: Type
     description: Optional[str] = None
-    default: Any = None # you can create a default component if it is a stateless class like scheduler, guider or image processor
+    obj: Any = None # you can create a default component if it is a stateless class like scheduler, guider or image processor
     default_class_name: Union[str, List[str], Tuple[str, str]] = None  # Either "class_name" or ["module", "class_name"]
     default_repo: Optional[Union[str, List[str]]] = None # either "repo" or ["repo", "subfolder"]
 
@@ -185,6 +185,16 @@ def format_inputs_short(inputs):
         
     Returns:
         str: Formatted string of input parameters
+    
+    Example:
+        >>> inputs = [
+        ...     InputParam(name="prompt", required=True),
+        ...     InputParam(name="image", required=True),
+        ...     InputParam(name="guidance_scale", required=False, default=7.5),
+        ...     InputParam(name="num_inference_steps", required=False, default=50)
+        ... ]
+        >>> format_inputs_short(inputs)
+        'prompt, image, guidance_scale=7.5, num_inference_steps=50'
     """
     required_inputs = [param for param in inputs if param.required]
     optional_inputs = [param for param in inputs if not param.required]
@@ -367,13 +377,13 @@ class PipelineBlock:
         raise NotImplementedError("description method must be implemented in subclasses")
 
     @property
-    def components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> List[ComponentSpec]:
         return []
     
     @property
-    def configs(self) -> List[ConfigSpec]:
+    def expected_configs(self) -> List[ConfigSpec]:
         return []
-    
+
     
     # YiYi TODO: can we combine inputs and intermediates_inputs? the difference is inputs are immutable
     @property
