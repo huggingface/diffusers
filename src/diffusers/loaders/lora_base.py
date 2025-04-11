@@ -465,7 +465,6 @@ class LoraBaseMixin:
     """Utility class for handling LoRAs."""
 
     _lora_loadable_modules = []
-    _merged_adapters = set()
 
     def load_lora_weights(self, **kwargs):
         raise NotImplementedError("`load_lora_weights()` is not implemented.")
@@ -504,6 +503,12 @@ class LoraBaseMixin:
         deprecation_message = f"Using the `_best_guess_weight_name()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _best_guess_weight_name`."
         deprecate("_best_guess_weight_name", "0.35.0", deprecation_message)
         return _best_guess_weight_name(*args, **kwargs)
+
+    @property
+    def _merged_adapters(self):
+        if "_merged_adapters" not in self.__dict__:
+            self.__dict__["_merged_adapters"] = set()
+        return self.__dict__["_merged_adapters"]
 
     def unload_lora_weights(self):
         """
