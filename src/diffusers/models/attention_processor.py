@@ -2509,7 +2509,6 @@ class FluxAttnProcessor2_0:
 
             # prod related attention mask
             for index in range(len(prod_masks)):
-                print(f'mask data type={type(prod_masks[index])}')
                 attention_mask[index*prod_embeds_dim:(index+1)*prod_embeds_dim, index*prod_embeds_dim:(index+1)*prod_embeds_dim] = 1
                 mask_downsample_t2i = IPAdapterMaskProcessor.downsample(
                     prod_masks[index],
