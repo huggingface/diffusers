@@ -287,11 +287,43 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         prompt_attention_mask = text_inputs.attention_mask.to(device=device)
 
         image_embeds = self.image_processor(image, return_tensors="pt").pixel_values.to(device)
+
         _, _, image_height, image_width = image_embeds.shape
         patch_size = self.text_encoder.config.vision_config.patch_size
         num_image_tokens = (image_height // patch_size) * (image_width // patch_size)
         if self.text_encoder.config.vision_config.vision_feature_select_strategy == "default":
             num_image_tokens -= 1
+
+        image_token_index = self.text_encoder.config.image_token_index
+        pad_token_id = self.text_encoder.config.pad_token_id
+        batch_indices, non_image_indices = torch.where(text_input_ids != image_token_index)
+
+        special_image_token_mask = text_input_ids == image_token_index
+        num_special_image_tokens = torch.sum(special_image_token_mask, dim=-1)
+
+        max_expanded_length = max_sequence_length + (
+            num_special_image_tokens.max() * (prompt_template["image_emb_len"] - 1)
+        )
+        new_token_positions = (
+            torch.cumsum((special_image_token_mask * (prompt_template["image_emb_len"] - 1) + 1), -1) - 1
+        )
+        nb_image_pad = max_expanded_length - 1 - new_token_positions[:, -1]
+        if left_padding:
+            new_token_positions += nb_image_pad[:, None]
+
+        text_to_overwrite = new_token_positions[batch_indices, non_image_indices]
+
+        expanded_input_ids = torch.full(
+            (batch_size, max_expanded_length), pad_token_id, dtype=text_input_ids.dtype, device=device
+        )
+        expanded_attention_mask = torch.ones(
+            (batch_size, max_expanded_length), dtype=prompt_attention_mask.dtype, device=device
+        )
+
+        expanded_input_ids[batch_indices, text_to_overwrite] = text_input_ids[batch_indices, non_image_indices]
+        expanded_inputs_ids[batch_indices, prompt_template["image_emb_start"] : prompt_template["image_emb_end"]] = (
+            image_token_index
+        )
 
         inputs = self.llava_processor(
             text=prompt,
