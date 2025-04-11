@@ -710,6 +710,8 @@ class StableDiffusionXLImg2ImgPipeline(
 
         batch_size = batch_size * num_images_per_prompt
 
+        vae_original_dtype = self.vae.dtype
+
         if image.shape[1] == 4:
             init_latents = image
 
@@ -742,7 +744,7 @@ class StableDiffusionXLImg2ImgPipeline(
                 init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
             if self.vae.config.force_upcast:
-                self.vae.to(dtype)
+                self.vae.to(vae_original_dtype)
 
             init_latents = init_latents.to(dtype)
             if latents_mean is not None and latents_std is not None:
@@ -1459,10 +1461,13 @@ class StableDiffusionXLImg2ImgPipeline(
             if needs_upcasting:
                 self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-            elif latents.dtype != self.vae.dtype:
+
+            if latents.dtype != self.vae.dtype:
                 if torch.backends.mps.is_available():
                     # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                     self.vae = self.vae.to(latents.dtype)
+                else:
+                    latents = latents.to(self.vae.dtype)
 
             # unscale/denormalize the latents
             # denormalize with the mean and std if available and not None
