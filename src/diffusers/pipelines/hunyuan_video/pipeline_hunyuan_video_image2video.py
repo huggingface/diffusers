@@ -24,7 +24,6 @@ from transformers import (
     CLIPTokenizer,
     LlamaTokenizerFast,
     LlavaForConditionalGeneration,
-    LlavaProcessor,
 )
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -276,13 +275,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
-        self.llava_processor = LlavaProcessor(
-            self.image_processor,
-            self.tokenizer,
-            patch_size=self.text_encoder.config.vision_config.patch_size,
-            vision_feature_select_strategy=self.text_encoder.config.vision_feature_select_strategy,
-            num_additional_image_tokens=1,
-        )
 
     def _get_llama_prompt_embeds(
         self,
