@@ -51,7 +51,7 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     FluxTransformer2DModel,
 )
-from diffusers.models.controlnet_flux import FluxControlNetModel
+from diffusers.models.controlnets.controlnet_flux import FluxControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
 from diffusers.training_utils import compute_density_for_timestep_sampling, free_memory

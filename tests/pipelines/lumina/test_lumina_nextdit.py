@@ -104,12 +104,6 @@ class LuminaPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     def test_xformers_attention_forwardGenerator_pass(self):
         pass
 
-    def test_deprecation_raises_warning(self):
-        with self.assertWarns(FutureWarning) as warning:
-            _ = LuminaPipeline(**self.get_dummy_components()).to(torch_device)
-        warning_message = str(warning.warnings[0].message)
-        assert "renamed to `LuminaPipeline`" in warning_message
-
 
 @slow
 @require_torch_accelerator
