@@ -49,6 +49,7 @@ if is_torch_available():
         "HunyuanDiT2DControlNetModel",
         "HunyuanDiT2DMultiControlNetModel",
     ]
+    _import_structure["controlnets.controlnet_sana"] = ["SanaControlNetModel"]
     _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
     _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
     _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
@@ -134,6 +135,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DMultiControlNetModel,
             MultiControlNetModel,
             MultiControlNetUnionModel,
+            SanaControlNetModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SparseControlNetModel,
