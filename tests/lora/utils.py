@@ -877,15 +877,11 @@ class PeftLoraLoaderMixinTests:
             pipe, denoiser = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
 
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
-            self.assertTrue(
-                pipe.num_fused_loras == 1, pipe.num_fused_loras, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
-            )
+            self.assertTrue(pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
             output_fused_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
-            self.assertTrue(
-                pipe.num_fused_loras == 0, pipe.num_fused_loras, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
-            )
+            self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
             output_unfused_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             # unloading should remove the LoRA layers
