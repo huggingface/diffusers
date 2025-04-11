@@ -672,7 +672,7 @@ class LoraBaseMixin:
                         if isinstance(module, BaseTunerLayer):
                             for adapter in set(module.merged_adapters):
                                 if adapter and adapter in self._merged_adapters:
-                                    self._merged_adapters.remove(adapter)
+                                    self._merged_adapters = self._merged_adapters - {adapter}
                             module.unmerge()
 
     @property
