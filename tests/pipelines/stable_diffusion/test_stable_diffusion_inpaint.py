@@ -37,6 +37,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    Expectations,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -866,7 +867,37 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.1343, 0.1406, 0.1440, 0.1504, 0.1729, 0.0989, 0.1807, 0.2822, 0.1179])
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.2063,
+                        0.1731,
+                        0.1553,
+                        0.1741,
+                        0.1772,
+                        0.1077,
+                        0.2109,
+                        0.2407,
+                        0.1243,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.1343,
+                        0.1406,
+                        0.1440,
+                        0.1504,
+                        0.1729,
+                        0.0989,
+                        0.1807,
+                        0.2822,
+                        0.1179,
+                    ]
+                ),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
         assert np.abs(expected_slice - image_slice).max() < 5e-2
 
