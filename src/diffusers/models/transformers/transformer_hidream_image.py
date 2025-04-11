@@ -183,16 +183,16 @@ class HiDreamAttention(Attention):
 
     def forward(
         self,
-        norm_image_tokens: torch.FloatTensor,
-        image_tokens_masks: torch.FloatTensor = None,
-        norm_text_tokens: torch.FloatTensor = None,
+        norm_hidden_states: torch.FloatTensor,
+        hidden_states_masks: torch.FloatTensor = None,
+        norm_encoder_hidden_states: torch.FloatTensor = None,
         image_rotary_emb: torch.FloatTensor = None,
     ) -> torch.Tensor:
         return self.processor(
             self,
-            image_tokens=norm_image_tokens,
-            image_tokens_masks=image_tokens_masks,
-            text_tokens=norm_text_tokens,
+            hidden_states=norm_hidden_states,
+            hidden_states_masks=hidden_states_masks,
+            encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
         )
 
@@ -203,19 +203,19 @@ class HiDreamAttnProcessor:
     def __call__(
         self,
         attn: HiDreamAttention,
-        image_tokens: torch.FloatTensor,
-        image_tokens_masks: Optional[torch.FloatTensor] = None,
-        text_tokens: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.FloatTensor,
+        hidden_states_masks: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
         image_rotary_emb: torch.FloatTensor = None,
         *args,
         **kwargs,
     ) -> torch.FloatTensor:
-        dtype = image_tokens.dtype
-        batch_size = image_tokens.shape[0]
+        dtype = hidden_states.dtype
+        batch_size = hidden_states.shape[0]
 
-        query_i = attn.q_rms_norm(attn.to_q(image_tokens)).to(dtype=dtype)
-        key_i = attn.k_rms_norm(attn.to_k(image_tokens)).to(dtype=dtype)
-        value_i = attn.to_v(image_tokens)
+        query_i = attn.q_rms_norm(attn.to_q(hidden_states)).to(dtype=dtype)
+        key_i = attn.k_rms_norm(attn.to_k(hidden_states)).to(dtype=dtype)
+        value_i = attn.to_v(hidden_states)
 
         inner_dim = key_i.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -223,13 +223,13 @@ class HiDreamAttnProcessor:
         query_i = query_i.view(batch_size, -1, attn.heads, head_dim)
         key_i = key_i.view(batch_size, -1, attn.heads, head_dim)
         value_i = value_i.view(batch_size, -1, attn.heads, head_dim)
-        if image_tokens_masks is not None:
-            key_i = key_i * image_tokens_masks.view(batch_size, -1, 1, 1)
+        if hidden_states_masks is not None:
+            key_i = key_i * hidden_states_masks.view(batch_size, -1, 1, 1)
 
         if not attn.single:
-            query_t = attn.q_rms_norm_t(attn.to_q_t(text_tokens)).to(dtype=dtype)
-            key_t = attn.k_rms_norm_t(attn.to_k_t(text_tokens)).to(dtype=dtype)
-            value_t = attn.to_v_t(text_tokens)
+            query_t = attn.q_rms_norm_t(attn.to_q_t(encoder_hidden_states)).to(dtype=dtype)
+            key_t = attn.k_rms_norm_t(attn.to_k_t(encoder_hidden_states)).to(dtype=dtype)
+            value_t = attn.to_v_t(encoder_hidden_states)
 
             query_t = query_t.view(batch_size, -1, attn.heads, head_dim)
             key_t = key_t.view(batch_size, -1, attn.heads, head_dim)
@@ -454,33 +454,33 @@ class HiDreamImageSingleTransformerBlock(nn.Module):
 
     def forward(
         self,
-        image_tokens: torch.FloatTensor,
-        image_tokens_masks: Optional[torch.FloatTensor] = None,
-        text_tokens: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.FloatTensor,
+        hidden_states_masks: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
         adaln_input: Optional[torch.FloatTensor] = None,
         image_rotary_emb: torch.FloatTensor = None,
     ) -> torch.FloatTensor:
-        wtype = image_tokens.dtype
+        wtype = hidden_states.dtype
         shift_msa_i, scale_msa_i, gate_msa_i, shift_mlp_i, scale_mlp_i, gate_mlp_i = self.adaLN_modulation(
             adaln_input
         )[:, None].chunk(6, dim=-1)
 
         # 1. MM-Attention
-        norm_image_tokens = self.norm1_i(image_tokens).to(dtype=wtype)
-        norm_image_tokens = norm_image_tokens * (1 + scale_msa_i) + shift_msa_i
+        norm_hidden_states = self.norm1_i(hidden_states).to(dtype=wtype)
+        norm_hidden_states = norm_hidden_states * (1 + scale_msa_i) + shift_msa_i
         attn_output_i = self.attn1(
-            norm_image_tokens,
-            image_tokens_masks,
+            norm_hidden_states,
+            hidden_states_masks,
             image_rotary_emb=image_rotary_emb,
         )
-        image_tokens = gate_msa_i * attn_output_i + image_tokens
+        hidden_states = gate_msa_i * attn_output_i + hidden_states
 
         # 2. Feed-forward
-        norm_image_tokens = self.norm3_i(image_tokens).to(dtype=wtype)
-        norm_image_tokens = norm_image_tokens * (1 + scale_mlp_i) + shift_mlp_i
-        ff_output_i = gate_mlp_i * self.ff_i(norm_image_tokens.to(dtype=wtype))
-        image_tokens = ff_output_i + image_tokens
-        return image_tokens
+        norm_hidden_states = self.norm3_i(hidden_states).to(dtype=wtype)
+        norm_hidden_states = norm_hidden_states * (1 + scale_mlp_i) + shift_mlp_i
+        ff_output_i = gate_mlp_i * self.ff_i(norm_hidden_states.to(dtype=wtype))
+        hidden_states = ff_output_i + hidden_states
+        return hidden_states
 
 
 @maybe_allow_in_graph
@@ -526,13 +526,13 @@ class HiDreamImageTransformerBlock(nn.Module):
 
     def forward(
         self,
-        image_tokens: torch.FloatTensor,
-        image_tokens_masks: Optional[torch.FloatTensor] = None,
-        text_tokens: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.FloatTensor,
+        hidden_states_masks: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
         adaln_input: Optional[torch.FloatTensor] = None,
         image_rotary_emb: torch.FloatTensor = None,
     ) -> torch.FloatTensor:
-        wtype = image_tokens.dtype
+        wtype = hidden_states.dtype
         (
             shift_msa_i,
             scale_msa_i,
@@ -549,74 +549,37 @@ class HiDreamImageTransformerBlock(nn.Module):
         ) = self.adaLN_modulation(adaln_input)[:, None].chunk(12, dim=-1)
 
         # 1. MM-Attention
-        norm_image_tokens = self.norm1_i(image_tokens).to(dtype=wtype)
-        norm_image_tokens = norm_image_tokens * (1 + scale_msa_i) + shift_msa_i
-        norm_text_tokens = self.norm1_t(text_tokens).to(dtype=wtype)
-        norm_text_tokens = norm_text_tokens * (1 + scale_msa_t) + shift_msa_t
+        norm_hidden_states = self.norm1_i(hidden_states).to(dtype=wtype)
+        norm_hidden_states = norm_hidden_states * (1 + scale_msa_i) + shift_msa_i
+        norm_encoder_hidden_states = self.norm1_t(encoder_hidden_states).to(dtype=wtype)
+        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + scale_msa_t) + shift_msa_t
 
         attn_output_i, attn_output_t = self.attn1(
-            norm_image_tokens,
-            image_tokens_masks,
-            norm_text_tokens,
+            norm_hidden_states,
+            hidden_states_masks,
+            norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
         )
 
-        image_tokens = gate_msa_i * attn_output_i + image_tokens
-        text_tokens = gate_msa_t * attn_output_t + text_tokens
+        hidden_states = gate_msa_i * attn_output_i + hidden_states
+        encoder_hidden_states = gate_msa_t * attn_output_t + encoder_hidden_states
 
         # 2. Feed-forward
-        norm_image_tokens = self.norm3_i(image_tokens).to(dtype=wtype)
-        norm_image_tokens = norm_image_tokens * (1 + scale_mlp_i) + shift_mlp_i
-        norm_text_tokens = self.norm3_t(text_tokens).to(dtype=wtype)
-        norm_text_tokens = norm_text_tokens * (1 + scale_mlp_t) + shift_mlp_t
+        norm_hidden_states = self.norm3_i(hidden_states).to(dtype=wtype)
+        norm_hidden_states = norm_hidden_states * (1 + scale_mlp_i) + shift_mlp_i
+        norm_encoder_hidden_states = self.norm3_t(encoder_hidden_states).to(dtype=wtype)
+        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + scale_mlp_t) + shift_mlp_t
 
-        ff_output_i = gate_mlp_i * self.ff_i(norm_image_tokens)
-        ff_output_t = gate_mlp_t * self.ff_t(norm_text_tokens)
-        image_tokens = ff_output_i + image_tokens
-        text_tokens = ff_output_t + text_tokens
-        return image_tokens, text_tokens
-
-
-@maybe_allow_in_graph
-class HiDreamImageBlock(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        num_attention_heads: int,
-        attention_head_dim: int,
-        num_routed_experts: int = 4,
-        num_activated_experts: int = 2,
-        block_type: BlockType = BlockType.TransformerBlock,
-    ):
-        super().__init__()
-        block_classes = {
-            BlockType.TransformerBlock: HiDreamImageTransformerBlock,
-            BlockType.SingleTransformerBlock: HiDreamImageSingleTransformerBlock,
-        }
-        self.block = block_classes[block_type](
-            dim, num_attention_heads, attention_head_dim, num_routed_experts, num_activated_experts
-        )
-
-    def forward(
-        self,
-        image_tokens: torch.FloatTensor,
-        image_tokens_masks: Optional[torch.FloatTensor] = None,
-        text_tokens: Optional[torch.FloatTensor] = None,
-        adaln_input: torch.FloatTensor = None,
-        image_rotary_emb: torch.FloatTensor = None,
-    ) -> torch.FloatTensor:
-        return self.block(
-            image_tokens,
-            image_tokens_masks,
-            text_tokens,
-            adaln_input,
-            image_rotary_emb,
-        )
+        ff_output_i = gate_mlp_i * self.ff_i(norm_hidden_states)
+        ff_output_t = gate_mlp_t * self.ff_t(norm_encoder_hidden_states)
+        hidden_states = ff_output_i + hidden_states
+        encoder_hidden_states = ff_output_t + encoder_hidden_states
+        return hidden_states, encoder_hidden_states
 
 
 class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["HiDreamImageBlock"]
+    _no_split_modules = ["HiDreamImageTransformerBlock", "HiDreamImageSingleTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -652,29 +615,27 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         self.double_stream_blocks = nn.ModuleList(
             [
-                HiDreamImageBlock(
+                HiDreamImageTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
                     num_routed_experts=num_routed_experts,
                     num_activated_experts=num_activated_experts,
-                    block_type=BlockType.TransformerBlock,
                 )
-                for i in range(self.config.num_layers)
+                for _ in range(self.config.num_layers)
             ]
         )
 
         self.single_stream_blocks = nn.ModuleList(
             [
-                HiDreamImageBlock(
+                HiDreamImageSingleTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
                     num_routed_experts=num_routed_experts,
                     num_activated_experts=num_activated_experts,
-                    block_type=BlockType.SingleTransformerBlock,
                 )
-                for i in range(self.config.num_single_layers)
+                for _ in range(self.config.num_single_layers)
             ]
         )
 
@@ -816,8 +777,8 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         p_embedder = self.p_embedder(pooled_embeds)
         adaln_input = timesteps + p_embedder
 
-        hidden_states, image_tokens_masks, img_sizes = self.patchify(hidden_states, self.max_seq, img_sizes)
-        if image_tokens_masks is None:
+        hidden_states, hidden_states_masks, img_sizes = self.patchify(hidden_states, self.max_seq, img_sizes)
+        if hidden_states_masks is None:
             pH, pW = img_sizes[0]
             img_ids = torch.zeros(pH, pW, 3, device=hidden_states.device)
             img_ids[..., 1] = img_ids[..., 1] + torch.arange(pH, device=hidden_states.device)[:, None]
@@ -869,16 +830,16 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 hidden_states, initial_encoder_hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
-                    image_tokens_masks,
+                    hidden_states_masks,
                     cur_encoder_hidden_states,
                     adaln_input,
                     image_rotary_emb,
                 )
             else:
                 hidden_states, initial_encoder_hidden_states = block(
-                    image_tokens=hidden_states,
-                    image_tokens_masks=image_tokens_masks,
-                    text_tokens=cur_encoder_hidden_states,
+                    hidden_states=hidden_states,
+                    hidden_states_masks=hidden_states_masks,
+                    encoder_hidden_states=cur_encoder_hidden_states,
                     adaln_input=adaln_input,
                     image_rotary_emb=image_rotary_emb,
                 )
@@ -888,13 +849,13 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         image_tokens_seq_len = hidden_states.shape[1]
         hidden_states = torch.cat([hidden_states, initial_encoder_hidden_states], dim=1)
         hidden_states_seq_len = hidden_states.shape[1]
-        if image_tokens_masks is not None:
+        if hidden_states_masks is not None:
             encoder_attention_mask_ones = torch.ones(
                 (batch_size, initial_encoder_hidden_states.shape[1] + cur_llama31_encoder_hidden_states.shape[1]),
-                device=image_tokens_masks.device,
-                dtype=image_tokens_masks.dtype,
+                device=hidden_states_masks.device,
+                dtype=hidden_states_masks.dtype,
             )
-            image_tokens_masks = torch.cat([image_tokens_masks, encoder_attention_mask_ones], dim=1)
+            hidden_states_masks = torch.cat([hidden_states_masks, encoder_attention_mask_ones], dim=1)
 
         for bid, block in enumerate(self.single_stream_blocks):
             cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id]
@@ -903,16 +864,16 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
-                    image_tokens_masks,
+                    hidden_states_masks,
                     None,
                     adaln_input,
                     image_rotary_emb,
                 )
             else:
                 hidden_states = block(
-                    image_tokens=hidden_states,
-                    image_tokens_masks=image_tokens_masks,
-                    text_tokens=None,
+                    hidden_states=hidden_states,
+                    hidden_states_masks=hidden_states_masks,
+                    encoder_hidden_states=None,
                     adaln_input=adaln_input,
                     image_rotary_emb=image_rotary_emb,
                 )
@@ -922,13 +883,13 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         hidden_states = hidden_states[:, :image_tokens_seq_len, ...]
         output = self.final_layer(hidden_states, adaln_input)
         output = self.unpatchify(output, img_sizes, self.training)
-        if image_tokens_masks is not None:
-            image_tokens_masks = image_tokens_masks[:, :image_tokens_seq_len]
+        if hidden_states_masks is not None:
+            hidden_states_masks = hidden_states_masks[:, :image_tokens_seq_len]
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            return (output, image_tokens_masks)
-        return Transformer2DModelOutput(sample=output, mask=image_tokens_masks)
+            return (output, hidden_states_masks)
+        return Transformer2DModelOutput(sample=output, mask=hidden_states_masks)
