@@ -287,6 +287,12 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         prompt_attention_mask = text_inputs.attention_mask.to(device=device)
 
         image_embeds = self.image_processor(image, return_tensors="pt").pixel_values.to(device)
+        _, _, image_height, image_width = image_embeds.shape
+        patch_size = self.text_encoder.config.vision_config.patch_size
+        num_image_tokens = (image_height // patch_size) * (image_width // patch_size)
+        if self.text_encoder.config.vision_config.vision_feature_select_strategy == "default":
+            num_image_tokens -= 1
+
         inputs = self.llava_processor(
             text=prompt,
             images=image,
