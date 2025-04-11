@@ -14,11 +14,10 @@
 
 from typing import Callable, List, Optional, Union
 
-import numpy as np
 import PIL.Image
 import torch
-from PIL import Image
 
+from ...image_processor import VaeImageProcessor
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
@@ -105,27 +104,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.downscale_height_and_width
-def downscale_height_and_width(height, width, scale_factor=8):
-    new_height = height // scale_factor**2
-    if height % scale_factor**2 != 0:
-        new_height += 1
-    new_width = width // scale_factor**2
-    if width % scale_factor**2 != 0:
-        new_width += 1
-    return new_height * scale_factor, new_width * scale_factor
-
-
-# Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_img2img.prepare_image
-def prepare_image(pil_image, w=512, h=512):
-    pil_image = pil_image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
-    arr = np.array(pil_image.convert("RGB"))
-    arr = arr.astype(np.float32) / 127.5 - 1
-    arr = np.transpose(arr, [2, 0, 1])
-    image = torch.from_numpy(arr).unsqueeze(0)
-    return image
-
-
 class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
     """
     Pipeline for image-to-image generation using Kandinsky
@@ -157,7 +135,14 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
             scheduler=scheduler,
             movq=movq,
         )
-        self.movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1)
+        movq_scale_factor = 2 ** (len(self.movq.config.block_out_channels) - 1) if getattr(self, "movq", None) else 8
+        movq_latent_channels = self.movq.config.latent_channels if getattr(self, "movq", None) else 4
+        self.image_processor = VaeImageProcessor(
+            vae_scale_factor=movq_scale_factor,
+            vae_latent_channels=movq_latent_channels,
+            resample="bicubic",
+            reducing_gap=1,
+        )
 
     # Copied from diffusers.pipelines.kandinsky.pipeline_kandinsky_img2img.KandinskyImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
@@ -316,7 +301,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 f"Input is in incorrect format: {[type(i) for i in image]}. Currently, we only support  PIL image and pytorch tensor"
             )
 
-        image = torch.cat([prepare_image(i, width, height) for i in image], dim=0)
+        image = torch.cat([self.image_processor.preprocess(i, width, height) for i in image], dim=0)
         image = image.to(dtype=image_embeds.dtype, device=device)
 
         latents = self.movq.encode(image)["latents"]
@@ -324,7 +309,6 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-        height, width = downscale_height_and_width(height, width, self.movq_scale_factor)
         latents = self.prepare_latents(
             latents, latent_timestep, batch_size, num_images_per_prompt, image_embeds.dtype, device, generator
         )
@@ -379,13 +363,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
 
-        if output_type in ["np", "pil"]:
-            image = image * 0.5 + 0.5
-            image = image.clamp(0, 1)
-            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        image = self.image_processor.postprocess(image, output_type)
 
         if not return_dict:
             return (image,)
