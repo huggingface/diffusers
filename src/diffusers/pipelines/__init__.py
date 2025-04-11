@@ -182,6 +182,7 @@ else:
             "StableDiffusionPAGImg2ImgPipeline",
             "StableDiffusionPAGInpaintPipeline",
             "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionControlNetPAGImg2ImgPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGImg2ImgPipeline",
