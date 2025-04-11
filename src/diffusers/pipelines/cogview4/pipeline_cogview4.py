@@ -608,7 +608,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         transformer_dtype = self.transformer.dtype
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+        with self.progress_bar(total=num_inference_steps) as progress_bar, self.transformer._cache_context() as cc:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
@@ -619,6 +619,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
 
+                cc.mark_state("cond")
                 noise_pred_cond = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
@@ -632,6 +633,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
+                    cc.mark_state("uncond")
                     noise_pred_uncond = self.transformer(
                         hidden_states=latent_model_input,
                         encoder_hidden_states=negative_prompt_embeds,
