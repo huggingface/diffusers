@@ -13,6 +13,14 @@ specific language governing permissions and limitations under the License. -->
 
 A Transformer model for image-like data from [HiDream-I1](https://huggingface.co/HiDream-ai).
 
+The model can be loaded with the following code snippet.
+
+```python
+from diffusers import HiDreamImageTransformer2DModel
+
+transformer = HiDreamImageTransformer2DModel.from_pretrained("HiDream-ai/HiDream-I1-Full", subfolder="transformer", torch_dtype=torch.bfloat16)
+```
+
 ## HiDreamImageTransformer2DModel
 
 [[autodoc]] HiDreamImageTransformer2DModel

@@ -22,6 +22,16 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
+## Available models
+
+The following models are available for the [`HiDreamImagePipeline`](text-to-image) pipeline:
+
+| Model name | Description |
+|:---|:---|
+| [`HiDream-ai/HiDream-I1-Full`](https://huggingface.co/HiDream-ai/HiDream-I1-Full) | - |
+| [`HiDream-ai/HiDream-I1-Dev`](https://huggingface.co/HiDream-ai/HiDream-I1-Dev) | - |
+| [`HiDream-ai/HiDream-I1-Fast`](https://huggingface.co/HiDream-ai/HiDream-I1-Fast) | - |
+
 ## HiDreamImagePipeline
 
 [[autodoc]] HiDreamImagePipeline
