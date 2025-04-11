@@ -33,10 +33,22 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
     # 1. get all state_dict_keys
     all_keys = list(state_dict.keys())
     sgm_patterns = ["input_blocks", "middle_block", "output_blocks"]
+    not_sgm_patterns = ["down_blocks", "mid_block", "up_blocks"]
+
+    # Purge out unnecessary blocks.
+    for block in not_sgm_patterns:
+        for k in all_keys:
+            if block in k:
+                state_dict.pop(k)
+
+    revised_all_keys = []
+    for key in all_keys:
+        if not any(pattern in key for pattern in not_sgm_patterns):
+            revised_all_keys.append(key)
 
     # 2. check if needs remapping, if not return original dict
     is_in_sgm_format = False
-    for key in all_keys:
+    for key in revised_all_keys:
         if any(p in key for p in sgm_patterns):
             is_in_sgm_format = True
             break
@@ -51,7 +63,7 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
     # Retrieves # of down, mid and up blocks
     input_block_ids, middle_block_ids, output_block_ids = set(), set(), set()
 
-    for layer in all_keys:
+    for layer in revised_all_keys:
         if "text" in layer:
             new_state_dict[layer] = state_dict.pop(layer)
         else:
@@ -126,7 +138,7 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
             )
             new_state_dict[new_key] = state_dict.pop(key)
 
-    if len(state_dict) > 0:
+    if state_dict:
         raise ValueError("At this point all state dict entries have to be converted.")
 
     return new_state_dict
