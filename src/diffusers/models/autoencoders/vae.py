@@ -255,7 +255,7 @@ class Decoder(nn.Module):
                 num_layers=self.layers_per_block + 1,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
-                prev_output_channel=None,
+                prev_output_channel=prev_output_channel,
                 add_upsample=not is_final_block,
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
