@@ -1,5 +1,4 @@
-import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -12,10 +11,7 @@ from ...models.modeling_utils import ModelMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention
-from ..embeddings import (
-    TimestepEmbedding,
-    Timesteps,
-)
+from ..embeddings import TimestepEmbedding, Timesteps
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -40,7 +36,7 @@ class HiDreamImageFeedForwardSwiGLU(nn.Module):
         self.w2 = nn.Linear(hidden_dim, dim, bias=False)
         self.w3 = nn.Linear(dim, hidden_dim, bias=False)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.w2(torch.nn.functional.silu(self.w1(x)) * self.w3(x))
 
 
@@ -49,7 +45,7 @@ class HiDreamImagePooledEmbed(nn.Module):
         super().__init__()
         self.pooled_embedder = TimestepEmbedding(in_channels=text_emb_dim, time_embed_dim=hidden_size)
 
-    def forward(self, pooled_embed):
+    def forward(self, pooled_embed: torch.Tensor) -> torch.Tensor:
         return self.pooled_embedder(pooled_embed)
 
 
@@ -59,7 +55,7 @@ class HiDreamImageTimestepEmbed(nn.Module):
         self.time_proj = Timesteps(num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
 
-    def forward(self, timesteps, wdtype):
+    def forward(self, timesteps: torch.Tensor, wdtype: Optional[torch.dtype] = None):
         t_emb = self.time_proj(timesteps).to(dtype=wdtype)
         t_emb = self.timestep_embedder(t_emb)
         return t_emb
@@ -72,11 +68,11 @@ class HiDreamImageOutEmbed(nn.Module):
         self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True))
 
-    def forward(self, x, adaln_input):
-        shift, scale = self.adaLN_modulation(adaln_input).chunk(2, dim=1)
-        x = self.norm_final(x) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-        x = self.linear(x)
-        return x
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
+        shift, scale = self.adaLN_modulation(temb).chunk(2, dim=1)
+        hidden_states = self.norm_final(hidden_states) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+        hidden_states = self.linear(hidden_states)
+        return hidden_states
 
 
 class HiDreamImagePatchEmbed(nn.Module):
@@ -183,10 +179,10 @@ class HiDreamAttention(Attention):
 
     def forward(
         self,
-        norm_hidden_states: torch.FloatTensor,
-        hidden_states_masks: torch.FloatTensor = None,
-        norm_encoder_hidden_states: torch.FloatTensor = None,
-        image_rotary_emb: torch.FloatTensor = None,
+        norm_hidden_states: torch.Tensor,
+        hidden_states_masks: torch.Tensor = None,
+        norm_encoder_hidden_states: torch.Tensor = None,
+        image_rotary_emb: torch.Tensor = None,
     ) -> torch.Tensor:
         return self.processor(
             self,
@@ -203,13 +199,13 @@ class HiDreamAttnProcessor:
     def __call__(
         self,
         attn: HiDreamAttention,
-        hidden_states: torch.FloatTensor,
-        hidden_states_masks: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: torch.FloatTensor = None,
+        hidden_states: torch.Tensor,
+        hidden_states_masks: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        image_rotary_emb: torch.Tensor = None,
         *args,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         dtype = hidden_states.dtype
         batch_size = hidden_states.shape[0]
 
@@ -286,13 +282,7 @@ class MoEGate(nn.Module):
         # topk selection algorithm
         self.norm_topk_prob = False
         self.gating_dim = embed_dim
-        self.weight = nn.Parameter(torch.empty((self.n_routed_experts, self.gating_dim)))
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        import torch.nn.init as init
-
-        init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        self.weight = nn.Parameter(torch.randn(self.n_routed_experts, self.gating_dim) / embed_dim**0.5)
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
@@ -409,11 +399,6 @@ class TextProjection(nn.Module):
         return hidden_states
 
 
-class BlockType:
-    TransformerBlock = 1
-    SingleTransformerBlock = 2
-
-
 @maybe_allow_in_graph
 class HiDreamImageSingleTransformerBlock(nn.Module):
     def __init__(
@@ -427,8 +412,6 @@ class HiDreamImageSingleTransformerBlock(nn.Module):
         super().__init__()
         self.num_attention_heads = num_attention_heads
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(dim, 6 * dim, bias=True))
-        nn.init.zeros_(self.adaLN_modulation[1].weight)
-        nn.init.zeros_(self.adaLN_modulation[1].bias)
 
         # 1. Attention
         self.norm1_i = nn.LayerNorm(dim, eps=1e-06, elementwise_affine=False)
@@ -454,16 +437,16 @@ class HiDreamImageSingleTransformerBlock(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        hidden_states_masks: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        adaln_input: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: torch.FloatTensor = None,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        hidden_states_masks: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        image_rotary_emb: torch.Tensor = None,
+    ) -> torch.Tensor:
         wtype = hidden_states.dtype
-        shift_msa_i, scale_msa_i, gate_msa_i, shift_mlp_i, scale_mlp_i, gate_mlp_i = self.adaLN_modulation(
-            adaln_input
-        )[:, None].chunk(6, dim=-1)
+        shift_msa_i, scale_msa_i, gate_msa_i, shift_mlp_i, scale_mlp_i, gate_mlp_i = self.adaLN_modulation(temb)[
+            :, None
+        ].chunk(6, dim=-1)
 
         # 1. MM-Attention
         norm_hidden_states = self.norm1_i(hidden_states).to(dtype=wtype)
@@ -496,8 +479,6 @@ class HiDreamImageTransformerBlock(nn.Module):
         super().__init__()
         self.num_attention_heads = num_attention_heads
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(dim, 12 * dim, bias=True))
-        nn.init.zeros_(self.adaLN_modulation[1].weight)
-        nn.init.zeros_(self.adaLN_modulation[1].bias)
 
         # 1. Attention
         self.norm1_i = nn.LayerNorm(dim, eps=1e-06, elementwise_affine=False)
@@ -526,12 +507,12 @@ class HiDreamImageTransformerBlock(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        hidden_states_masks: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        adaln_input: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: torch.FloatTensor = None,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        hidden_states_masks: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        image_rotary_emb: torch.Tensor = None,
+    ) -> torch.Tensor:
         wtype = hidden_states.dtype
         (
             shift_msa_i,
@@ -546,7 +527,7 @@ class HiDreamImageTransformerBlock(nn.Module):
             shift_mlp_t,
             scale_mlp_t,
             gate_mlp_t,
-        ) = self.adaLN_modulation(adaln_input)[:, None].chunk(12, dim=-1)
+        ) = self.adaLN_modulation(temb)[:, None].chunk(12, dim=-1)
 
         # 1. MM-Attention
         norm_hidden_states = self.norm1_i(hidden_states).to(dtype=wtype)
@@ -575,6 +556,28 @@ class HiDreamImageTransformerBlock(nn.Module):
         hidden_states = ff_output_i + hidden_states
         encoder_hidden_states = ff_output_t + encoder_hidden_states
         return hidden_states, encoder_hidden_states
+
+
+class HiDreamBlock(nn.Module):
+    def __init__(self, block: Union[HiDreamImageTransformerBlock, HiDreamImageSingleTransformerBlock]):
+        super().__init__()
+        self.block = block
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        hidden_states_masks: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        image_rotary_emb: torch.Tensor = None,
+    ) -> torch.Tensor:
+        return self.block(
+            hidden_states=hidden_states,
+            hidden_states_masks=hidden_states_masks,
+            encoder_hidden_states=encoder_hidden_states,
+            temb=temb,
+            image_rotary_emb=image_rotary_emb,
+        )
 
 
 class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -615,12 +618,14 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         self.double_stream_blocks = nn.ModuleList(
             [
-                HiDreamImageTransformerBlock(
-                    dim=self.inner_dim,
-                    num_attention_heads=self.config.num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
-                    num_routed_experts=num_routed_experts,
-                    num_activated_experts=num_activated_experts,
+                HiDreamBlock(
+                    HiDreamImageTransformerBlock(
+                        dim=self.inner_dim,
+                        num_attention_heads=self.config.num_attention_heads,
+                        attention_head_dim=self.config.attention_head_dim,
+                        num_routed_experts=num_routed_experts,
+                        num_activated_experts=num_activated_experts,
+                    )
                 )
                 for _ in range(self.config.num_layers)
             ]
@@ -628,12 +633,14 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         self.single_stream_blocks = nn.ModuleList(
             [
-                HiDreamImageSingleTransformerBlock(
-                    dim=self.inner_dim,
-                    num_attention_heads=self.config.num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
-                    num_routed_experts=num_routed_experts,
-                    num_activated_experts=num_activated_experts,
+                HiDreamBlock(
+                    HiDreamImageSingleTransformerBlock(
+                        dim=self.inner_dim,
+                        num_attention_heads=self.config.num_attention_heads,
+                        attention_head_dim=self.config.attention_head_dim,
+                        num_routed_experts=num_routed_experts,
+                        num_activated_experts=num_activated_experts,
+                    )
                 )
                 for _ in range(self.config.num_single_layers)
             ]
@@ -769,7 +776,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         timesteps = self.expand_timesteps(timesteps, batch_size, hidden_states.device)
         timesteps = self.t_embedder(timesteps, hidden_states_type)
         p_embedder = self.p_embedder(pooled_embeds)
-        adaln_input = timesteps + p_embedder
+        temb = timesteps + p_embedder
 
         hidden_states, hidden_states_masks, img_sizes = self.patchify(hidden_states, self.max_seq, img_sizes)
         if hidden_states_masks is None:
@@ -826,7 +833,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     hidden_states,
                     hidden_states_masks,
                     cur_encoder_hidden_states,
-                    adaln_input,
+                    temb,
                     image_rotary_emb,
                 )
             else:
@@ -834,7 +841,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     hidden_states=hidden_states,
                     hidden_states_masks=hidden_states_masks,
                     encoder_hidden_states=cur_encoder_hidden_states,
-                    adaln_input=adaln_input,
+                    temb=temb,
                     image_rotary_emb=image_rotary_emb,
                 )
             initial_encoder_hidden_states = initial_encoder_hidden_states[:, :initial_encoder_hidden_states_seq_len]
@@ -860,7 +867,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     hidden_states,
                     hidden_states_masks,
                     None,
-                    adaln_input,
+                    temb,
                     image_rotary_emb,
                 )
             else:
@@ -868,14 +875,14 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     hidden_states=hidden_states,
                     hidden_states_masks=hidden_states_masks,
                     encoder_hidden_states=None,
-                    adaln_input=adaln_input,
+                    temb=temb,
                     image_rotary_emb=image_rotary_emb,
                 )
             hidden_states = hidden_states[:, :hidden_states_seq_len]
             block_id += 1
 
         hidden_states = hidden_states[:, :image_tokens_seq_len, ...]
-        output = self.final_layer(hidden_states, adaln_input)
+        output = self.final_layer(hidden_states, temb)
         output = self.unpatchify(output, img_sizes, self.training)
         if hidden_states_masks is not None:
             hidden_states_masks = hidden_states_masks[:, :image_tokens_seq_len]

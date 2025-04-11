@@ -14,13 +14,10 @@ from transformers import (
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, HiDreamImageTransformer2DModel
-from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-)
+from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HiDreamImagePipelineOutput
 
 
@@ -31,7 +28,53 @@ if is_torch_xla_available():
 else:
     XLA_AVAILABLE = False
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from transformers import PreTrainedTokenizerFast, LlamaForCausalLM
+        >>> from diffusers import UniPCMultistepScheduler, HiDreamImagePipeline, HiDreamImageTransformer2DModel
+
+        >>> scheduler = UniPCMultistepScheduler(
+        ...     flow_shift=3.0, prediction_type="flow_prediction", use_flow_sigmas=True
+        ... )
+
+        >>> tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        >>> text_encoder_4 = LlamaForCausalLM.from_pretrained(
+        ...     "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     output_hidden_states=True,
+        ...     output_attentions=True,
+        ...     torch_dtype=torch.bfloat16,
+        ... )
+
+        >>> transformer = HiDreamImageTransformer2DModel.from_pretrained(
+        ...     "HiDream-ai/HiDream-I1-Full", subfolder="transformer", torch_dtype=torch.bfloat16
+        ... )
+
+        >>> pipe = HiDreamImagePipeline.from_pretrained(
+        ...     "HiDream-ai/HiDream-I1-Full",
+        ...     scheduler=scheduler,
+        ...     tokenizer_4=tokenizer_4,
+        ...     text_encoder_4=text_encoder_4,
+        ...     transformer=transformer,
+        ...     torch_dtype=torch.bfloat16,
+        ... )
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> image = pipe(
+        ...     'A cat holding a sign that says "Hi-Dreams.ai".',
+        ...     height=1024,
+        ...     width=1024,
+        ...     guidance_scale=5.0,
+        ...     num_inference_steps=50,
+        ...     generator=torch.Generator("cuda").manual_seed(0),
+        ... ).images[0]
+        >>> image.save("output.png")
+        ```
+"""
 
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
@@ -154,7 +197,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
-        num_images_per_prompt: int = 1,
         max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -163,7 +205,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
         dtype = dtype or self.text_encoder_3.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
 
         text_inputs = self.tokenizer_3(
             prompt,
@@ -188,11 +229,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
 
         prompt_embeds = self.text_encoder_3(text_input_ids.to(device), attention_mask=attention_mask.to(device))[0]
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        _, seq_len, _ = prompt_embeds.shape
-
-        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         return prompt_embeds
 
     def _get_clip_prompt_embeds(
@@ -200,7 +236,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
         tokenizer,
         text_encoder,
         prompt: Union[str, List[str]],
-        num_images_per_prompt: int = 1,
         max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -209,7 +244,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
         dtype = dtype or text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
 
         text_inputs = tokenizer(
             prompt,
@@ -232,17 +266,11 @@ class HiDreamImagePipeline(DiffusionPipeline):
         # Use pooled output of CLIPTextModel
         prompt_embeds = prompt_embeds[0]
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, -1)
-
         return prompt_embeds
 
     def _get_llama3_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
-        num_images_per_prompt: int = 1,
         max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -251,7 +279,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
         dtype = dtype or self.text_encoder_4.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
 
         text_inputs = self.tokenizer_4(
             prompt,
@@ -283,11 +310,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
 
         prompt_embeds = outputs.hidden_states[1:]
         prompt_embeds = torch.stack(prompt_embeds, dim=0)
-        _, _, seq_len, dim = prompt_embeds.shape
-
-        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, 1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(-1, batch_size * num_images_per_prompt, seq_len, dim)
         return prompt_embeds
 
     def encode_prompt(
@@ -388,53 +410,44 @@ class HiDreamImagePipeline(DiffusionPipeline):
         max_sequence_length: int = 128,
     ):
         device = device or self._execution_device
+        if prompt is not None:
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds[0].shape[0] if isinstance(prompt_embeds, list) else prompt_embeds.shape[0]
 
-        if prompt_embeds is None:
+        if pooled_prompt_embeds is None:
             prompt_2 = prompt_2 or prompt
             prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
 
+            pooled_prompt_embeds_1 = self._get_clip_prompt_embeds(
+                self.tokenizer, self.text_encoder, prompt, max_sequence_length, device, dtype
+            )
+            pooled_prompt_embeds_2 = self._get_clip_prompt_embeds(
+                self.tokenizer_2, self.text_encoder_2, prompt_2, max_sequence_length, device, dtype
+            )
+            pooled_prompt_embeds = torch.cat([pooled_prompt_embeds_1, pooled_prompt_embeds_2], dim=-1)
+
+            pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt)
+            pooled_prompt_embeds = pooled_prompt_embeds.view(batch_size * num_images_per_prompt, -1)
+
+        if prompt_embeds is None:
             prompt_3 = prompt_3 or prompt
             prompt_3 = [prompt_3] if isinstance(prompt_3, str) else prompt_3
 
             prompt_4 = prompt_4 or prompt
             prompt_4 = [prompt_4] if isinstance(prompt_4, str) else prompt_4
 
-            pooled_prompt_embeds_1 = self._get_clip_prompt_embeds(
-                self.tokenizer,
-                self.text_encoder,
-                prompt=prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
-            )
+            t5_prompt_embeds = self._get_t5_prompt_embeds(prompt_3, max_sequence_length, device, dtype)
+            llama3_prompt_embeds = self._get_llama3_prompt_embeds(prompt_4, max_sequence_length, device, dtype)
 
-            pooled_prompt_embeds_2 = self._get_clip_prompt_embeds(
-                self.tokenizer_2,
-                self.text_encoder_2,
-                prompt=prompt_2,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
-            )
+            _, seq_len, _ = t5_prompt_embeds.shape
+            t5_prompt_embeds = t5_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            t5_prompt_embeds = t5_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            pooled_prompt_embeds = torch.cat([pooled_prompt_embeds_1, pooled_prompt_embeds_2], dim=-1)
+            _, _, seq_len, dim = llama3_prompt_embeds.shape
+            llama3_prompt_embeds = llama3_prompt_embeds.repeat(1, 1, num_images_per_prompt, 1)
+            llama3_prompt_embeds = llama3_prompt_embeds.view(-1, batch_size * num_images_per_prompt, seq_len, dim)
 
-            t5_prompt_embeds = self._get_t5_prompt_embeds(
-                prompt=prompt_3,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
-            )
-            llama3_prompt_embeds = self._get_llama3_prompt_embeds(
-                prompt=prompt_4,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
-            )
             prompt_embeds = [t5_prompt_embeds, llama3_prompt_embeds]
 
         return prompt_embeds, pooled_prompt_embeds
