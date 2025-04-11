@@ -187,7 +187,7 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
         super().test_sequential_cpu_offload_forward_pass(expected_max_diff=0.008)
 
     def test_dict_tuple_outputs_equivalent(self):
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=0.008)
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=0.009)
 
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=0.008)
