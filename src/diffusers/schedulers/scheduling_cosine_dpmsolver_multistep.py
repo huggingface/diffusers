@@ -144,7 +144,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_inputs
     def precondition_inputs(self, sample, sigma):
-        c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        c_in = self._get_conditioning_c_in(sigma)
         scaled_sample = sample * c_in
         return scaled_sample
 
@@ -567,6 +567,11 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         noisy_samples = original_samples + noise * sigma
         return noisy_samples
+
+    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._get_conditioning_c_in
+    def _get_conditioning_c_in(self, sigma):
+        c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        return c_in
 
     def __len__(self):
         return self.config.num_train_timesteps
