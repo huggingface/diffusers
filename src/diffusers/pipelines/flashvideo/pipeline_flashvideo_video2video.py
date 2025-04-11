@@ -18,6 +18,7 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+from PIL import Image
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -147,7 +148,21 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+class FlashVideoVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using FlashVideo, which itself is based on CogVideoX.
 
@@ -326,25 +341,58 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         return prompt_embeds, negative_prompt_embeds
 
     def prepare_latents(
-        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+        self,
+        video: Optional[torch.Tensor] = None,
+        batch_size: int = 1,
+        num_channels_latents: int = 16,
+        height: int = 1080,  # Should be the target height in pixels
+        width: int = 1920,  # Should be the target width in pixels
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        timestep: Optional[torch.Tensor] = None,
+        interpolation_mode: str = "bilinear",
+        sample_mode: str = "sample",
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
+        
+        num_frames = (video.size(2) - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.size(1)
 
+        # NOTE: the shape here corresponds to the latent shape of the target size, which is in general different from
+        # the latent shape of the input `video`.
         shape = (
             batch_size,
-            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
+            num_frames,
             num_channels_latents,
             height // self.vae_scale_factor_spatial,
             width // self.vae_scale_factor_spatial,
         )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            # First upscale the conditioning video to the desired shape.
+            upscaled_video = self.upscale_latents(latents, height, width, interpolation_mode)
+
+            # Now encode the upscaled video using the 3D VAE encoder.
+            latents = self.encode_latents(upscaled_video, batch_size, generator, sample_mode)
+
+            # If timestep is not supplied, latent degradation for FlashVideo Stage 2 will be disabled. However, the
+            # authors found that latent degradation is important for the final video quality, so it is recommended to
+            # supply a timestep.
+            if timestep is not None:
+                latent_noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                # NOTE: the original implementation allows the noise to be modified using shift/scale factors. This is
+                # currently not implemented, and the original code defaults to using shift/scale values that would
+                # keep the original noise level from the scheduler.
+                latents = self.scheduler.add_noise(latents, latent_noise, timestep)
         else:
+            # NOTE: in line with similar pipelines like CogVideoXVideoToVideoPipeline, supplied latents are expected
+            # to be directly usable at the start of the denoising loop. In particular, the latents must have the
+            # correct shape and already be noised (assuming latent degradation is used.)
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
@@ -357,6 +405,43 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         frames = self.vae.decode(latents).sample
         return frames
+
+    def encode_latents(
+        self,
+        video: torch.Tensor,
+        batch_size: int = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        sample_mode: str = "sample",
+    ):
+        if isinstance(generator, list):
+            latents = [
+                retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator[i], sample_mode) for i in range(batch_size)
+            ]
+        else:
+            latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator, sample_mode) for vid in video]
+        latents = torch.cat(latents, dim=0).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
+        latents = latents * self.vae_scaling_factor_image
+        return latents
+
+    def upscale_latents(
+        self,
+        latents: torch.Tensor,
+        target_height: int = 1080,
+        target_width: int = 1920,
+        interpolation_mode: str = "bilinear",
+    ):
+        """
+        Upscales the low-resolution video from Stage 1 for to the target height/width use in Stage 2 high-resolution
+        video enhancement.
+        """
+        upscaled_latents = torch.nn.functional.interpolate(
+            latents,
+            size=(target_height, target_width),
+            mode=interpolation_mode,
+            align_corners=False,
+            antialias=True,
+        )
+        return upscaled_latents
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -376,16 +461,17 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.latte.pipeline_latte.LattePipeline.check_inputs
     def check_inputs(
         self,
+        video,
         prompt,
+        negative_prompt,
         height,
         width,
-        negative_prompt,
+        latents,
+        prompt_embeds,
+        negative_prompt_embeds,
         callback_on_step_end_tensor_inputs,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -427,6 +513,11 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if video is None and latents is None:
+            raise ValueError(
+                "At least one of `video` and `latents` must be supplied, but neither is available."
+            )
 
     def fuse_qkv_projections(self) -> None:
         r"""Enables fused QKV projections."""
@@ -509,6 +600,7 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        video: List[Image.Image] = None,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
@@ -516,6 +608,7 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         num_frames: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
+        noise_timestep: Optional[int] = 675,
         guidance_scale: float = 6,
         use_dynamic_cfg: bool = False,
         num_videos_per_prompt: int = 1,
@@ -537,6 +630,9 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         Function invoked when calling the pipeline for generation.
 
         Args:
+            video (`List[PIL.Image.Image]`, *optional*):
+                The input video to condition the generation on. Must be a list of images/frames of the video. If not
+                supplied, `latents` must be supplied instead.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -560,6 +656,16 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
+            noise_timestep (`int`, *optional*, defaults to `675`)
+                The timestep corresponding to the noise level used for latent degradation. This controls how much
+                degradation is applied to the latents before the denoising loop (with higher values meaning more
+                degradation); the FlashVideo authors recommend a value in the range of 650-750. If `None`, latent
+                degradation will not be applied (for example, in the Stage 1 model). Note that we could express this
+                as a strength value (e.g. 0.675) like in []`CogVideoXVideoToVideoPipeline`], but unlike pipelines which
+                have a strength argument we always use the full timestep schedule for denoising.
+            noise_shift_scale (`float` or `Tuple[float, float]`, *optional*, defaults to 1.0):
+                Shift and scale values to modify the noise level for latent degradation. The default value of `1.0`
+                corresponds to using the default noise level of noise_timestep according to the pipeline's scheduler.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -624,13 +730,15 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
+            video,
             prompt,
+            negative_prompt,
             height,
             width,
-            negative_prompt,
-            callback_on_step_end_tensor_inputs,
+            latents,
             prompt_embeds,
             negative_prompt_embeds,
+            callback_on_step_end_tensor_inputs,
         )
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
@@ -665,6 +773,16 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+        
+        # Also prepare inputs for other embeddings (time size, noise timestep) used by FlashVideo Stage 2 here.
+        # For efficiency purposes, since the time size and noise timestep stay the same throughout the denoising loop,
+        # prepare them ahead of time here (if using). These are used only in Stage 2 models.
+        time_size_tensor = None
+        noise_timesteps = None
+        if self.transformer.config.use_time_size_embedding:
+            time_size_tensor = torch.full((batch_size * num_videos_per_prompt,), latent_frames, device=latents.device)
+        if self.transformer.config.use_noise_timestep_embedding:
+            noise_timesteps = torch.full((batch_size * num_videos_per_prompt,), noise_timestep, device=latents.device)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -680,17 +798,22 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             additional_frames = patch_size_t - latent_frames % patch_size_t
             num_frames += additional_frames * self.vae_scale_factor_temporal
 
+        if latents is None:
+            video = self.video_processor.preprocess_video(video, height=height, width=width)
+            video = video.to(device=device, dtype=prompt_embeds.dtype)
+
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
-            batch_size * num_videos_per_prompt,
-            latent_channels,
-            num_frames,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
+            video=video,
+            batch_size=batch_size * num_videos_per_prompt,
+            num_channels_latents=latent_channels,
+            height=height,
+            width=width,
+            dtype=prompt_embeds.dtype,
+            device=device,
+            generator=generator,
+            latents=latents,
+            timestep=noise_timesteps,
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -725,6 +848,8 @@ class FlashVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
+                    noise_timestep=noise_timesteps,
+                    time_size_tensor=time_size_tensor,
                     image_rotary_emb=image_rotary_emb,
                     attention_kwargs=attention_kwargs,
                     return_dict=False,

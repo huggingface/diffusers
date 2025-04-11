@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_flashvideo"] = ["FlashVideoPipeline"]
+    _import_structure["pipeline_flashvideo_video2video"] = ["FlashVideoVideoToVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_flashvideo import FlashVideoPipeline
+        from .pipeline_flashvideo_video2video import FlashVideoVideoToVideoPipeline
 
 else:
     import sys

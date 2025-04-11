@@ -221,7 +221,7 @@ else:
         "EasyAnimateInpaintPipeline",
         "EasyAnimateControlPipeline",
     ]
-    _import_structure["flashvideo"] = ["FlashVideoPipeline"]
+    _import_structure["flashvideo"] = ["FlashVideoPipeline", "FlashVideoVideoToVideoPipeline"]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["hunyuan_video"] = ["HunyuanVideoPipeline", "HunyuanSkyreelsImageToVideoPipeline"]
     _import_structure["kandinsky"] = [
@@ -557,7 +557,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
         )
-        from .flashvideo import FlashVideoPipeline
+        from .flashvideo import FlashVideoPipeline, FlashVideoVideoToVideoPipeline
         from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
