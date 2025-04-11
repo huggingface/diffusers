@@ -665,12 +665,18 @@ class LoraBaseMixin:
                 if issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
+                            for adapter in set(module.merged_adapters):
+                                if adapter and adapter in self._merged_adapters:
+                                    self._merged_adapters.remove(adapter)
                             module.unmerge()
-                            self._merged_adapters.update(set(module.merged_adapters))
 
     @property
     def num_fused_loras(self):
         return len(self._merged_adapters)
+
+    @property
+    def fused_loras(self):
+        return self._merged_adapters
 
     def set_adapters(
         self,

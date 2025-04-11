@@ -877,11 +877,11 @@ class PeftLoraLoaderMixinTests:
             pipe, denoiser = self.check_if_adapters_added_correctly(pipe, text_lora_config, denoiser_lora_config)
 
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
-            assert pipe.num_fused_loras == 1
+            assert pipe.num_fused_loras == 1, pipe.num_fused_loras
             output_fused_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
-            assert pipe.num_fused_loras == 0
+            assert pipe.num_fused_loras == 0, pipe.num_fused_loras
             output_unfused_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             # unloading should remove the LoRA layers
@@ -1623,7 +1623,7 @@ class PeftLoraLoaderMixinTests:
             outputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-1"])
-            assert pipe.num_fused_loras == 1
+            self.assertTrue(pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
 
             # Fusing should still keep the LoRA layers so outpout should remain the same
             outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -1634,9 +1634,8 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
-            assert pipe.num_fused_loras == 0
+            self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
 
-            # unloading should remove the LoRA layers
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers")
 
@@ -1651,7 +1650,7 @@ class PeftLoraLoaderMixinTests:
             pipe.fuse_lora(
                 components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-2", "adapter-1"]
             )
-            assert pipe.num_fused_loras == 2
+            self.assertTrue(pipe.num_fused_loras == 2, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
 
             # Fusing should still keep the LoRA layers
             output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -1659,6 +1658,8 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(output_all_lora_fused, outputs_all_lora, atol=expected_atol, rtol=expected_rtol),
                 "Fused lora should not change the output",
             )
+            pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
+            self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
 
     def test_lora_scale_kwargs_match_fusion(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
@@ -1702,7 +1703,7 @@ class PeftLoraLoaderMixinTests:
                     adapter_names=["adapter-1"],
                     lora_scale=lora_scale,
                 )
-                assert pipe.num_fused_loras == 1
+                assert pipe.num_fused_loras == 1, pipe.num_fused_loras
 
                 outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
