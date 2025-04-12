@@ -467,6 +467,100 @@ class HiDreamImagePipeline(DiffusionPipeline):
         """
         self.vae.disable_tiling()
 
+    def check_inputs(
+        self,
+        prompt,
+        prompt_2,
+        prompt_3,
+        prompt_4,
+        negative_prompt=None,
+        negative_prompt_2=None,
+        negative_prompt_3=None,
+        negative_prompt_4=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        pooled_prompt_embeds=None,
+        negative_pooled_prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
+    ):
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt_2 is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt_2`: {prompt_2} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt_3 is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt_3`: {prompt_3} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt_4 is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt_4`: {prompt_4} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
+            raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
+        elif prompt_3 is not None and (not isinstance(prompt_3, str) and not isinstance(prompt_3, list)):
+            raise ValueError(f"`prompt_3` has to be of type `str` or `list` but is {type(prompt_3)}")
+        elif prompt_4 is not None and (not isinstance(prompt_4, str) and not isinstance(prompt_4, list)):
+            raise ValueError(f"`prompt_4` has to be of type `str` or `list` but is {type(prompt_4)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+        elif negative_prompt_2 is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt_2`: {negative_prompt_2} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+        elif negative_prompt_3 is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt_3`: {negative_prompt_3} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+        elif negative_prompt_4 is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt_4`: {negative_prompt_4} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+
+        if prompt_embeds is not None and pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
+            )
+        if negative_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
+            )
+
     def prepare_latents(
         self,
         batch_size,
@@ -552,6 +646,23 @@ class HiDreamImagePipeline(DiffusionPipeline):
         scale = math.sqrt(scale)
         width, height = int(width * scale // division * division), int(height * scale // division * division)
 
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(
+            prompt,
+            prompt_2,
+            prompt_3,
+            prompt_4,
+            negative_prompt=negative_prompt,
+            negative_prompt_2=negative_prompt_2,
+            negative_prompt_3=negative_prompt_3,
+            negative_prompt_4=negative_prompt_4,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
+
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._interrupt = False
@@ -568,6 +679,7 @@ class HiDreamImagePipeline(DiffusionPipeline):
 
         device = self._execution_device
 
+        # 3. Encode prompt
         lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
         (
             prompt_embeds,
