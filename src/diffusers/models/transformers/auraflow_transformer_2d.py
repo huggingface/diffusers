@@ -74,15 +74,23 @@ class AuraFlowPatchEmbed(nn.Module):
         # PE will be viewed as 2d-grid, and H/p x W/p of the PE will be selected
         # because original input are in flattened format, we have to flatten this 2d grid as well.
         h_p, w_p = h // self.patch_size, w // self.patch_size
-        original_pe_indexes = torch.arange(self.pos_embed.shape[1])
         h_max, w_max = int(self.pos_embed_max_size**0.5), int(self.pos_embed_max_size**0.5)
-        original_pe_indexes = original_pe_indexes.view(h_max, w_max)
+
+        # Calculate the top-left corner indices for the centered patch grid
         starth = h_max // 2 - h_p // 2
-        startw = w_max // 2 - w_p // 2        
-        narrowed = torch.narrow(original_pe_indexes, 0, starth, h_p)
-        narrowed = torch.narrow(narrowed, 1, startw, w_p)
-        
-        return narrowed.flatten()
+        startw = w_max // 2 - w_p // 2
+
+        # Generate the row and column indices for the desired patch grid
+        rows = torch.arange(starth, starth + h_p, device=self.pos_embed.device)
+        cols = torch.arange(startw, startw + w_p, device=self.pos_embed.device)
+
+        # Create a 2D grid of indices
+        row_indices, col_indices = torch.meshgrid(rows, cols, indexing="ij")
+
+        # Convert the 2D grid indices to flattened 1D indices
+        selected_indices = (row_indices * w_max + col_indices).flatten()
+
+        return selected_indices
 
     def forward(self, latent):
         batch_size, num_channels, height, width = latent.size()
