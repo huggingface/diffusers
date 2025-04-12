@@ -170,7 +170,7 @@ class InputParam:
 @dataclass 
 class OutputParam:
     name: str
-    type_hint: Any
+    type_hint: Any = None
     description: str = ""
 
     def __repr__(self):
@@ -440,63 +440,31 @@ class PipelineBlock:
             desc.extend(f"      {line}" for line in desc_lines[1:])
         desc = '\n'.join(desc) + '\n'
 
-        # Components section
+        # Components section - focus only on expected components
         expected_components = getattr(self, "expected_components", [])
-        expected_component_names = {comp.name for comp in expected_components} if expected_components else set()
-        loaded_components = set(self.components.keys())
-        all_components = sorted(expected_component_names | loaded_components)
+        expected_components_str_list = []
 
-        main_components = []
-        auxiliary_components = []
-        for k in all_components:
-            # Get component spec if available
-            component_spec = next((comp for comp in expected_components if comp.name == k), None)
+        for component_spec in expected_components:
+            component_str = f"    - {component_spec.name} ({component_spec.type_hint})"
             
-            if k in loaded_components:
-                component_type = type(self.components[k]).__name__
-                component_str = f"    - {k}={component_type}"
-                
-                # Add expected type info if available
-                if component_spec and component_spec.class_name:
-                    expected_type = component_spec.class_name
-                    if isinstance(expected_type, (list, tuple)):
-                        expected_type = expected_type[1]  # Get class name from [module, class_name]
-                    if expected_type != component_type:
-                        component_str += f" (expected: {expected_type})"
-            else:
-                # Component not loaded but expected
-                if component_spec:
-                    expected_type = component_spec.class_name
-                    if isinstance(expected_type, (list, tuple)):
-                        expected_type = expected_type[1]  # Get class name from [module, class_name]
-                    component_str = f"    - {k} (expected: {expected_type})"
-                    
-                    # Add repo info if available
-                    if component_spec.default_repo:
-                        repo_info = component_spec.default_repo
-                        if component_spec.subfolder:
-                            repo_info += f", subfolder={component_spec.subfolder}"
-                        component_str += f" [{repo_info}]"
+            # Add repo info if available
+            if component_spec.default_repo:
+                if isinstance(component_spec.default_repo, list) and len(component_spec.default_repo) == 2:
+                    repo_info = component_spec.default_repo[0]
+                    subfolder = component_spec.default_repo[1]
+                    if subfolder:
+                        repo_info += f", subfolder={subfolder}"
                 else:
-                    component_str = f"    - {k}"
+                    repo_info = component_spec.default_repo
+                component_str += f" [{repo_info}]"
             
-            if k in getattr(self, "auxiliary_components", []):
-                auxiliary_components.append(component_str)
-            else:
-                main_components.append(component_str)
+            expected_components_str_list.append(component_str)
 
-        components = "Components:\n" + "\n".join(main_components)
-        if auxiliary_components:
-            components += "\n  Auxiliaries:\n" + "\n".join(auxiliary_components)
+        components = "Components:\n" + "\n".join(expected_components_str_list)
 
-        # Configs section
-        expected_configs = set(getattr(self, "expected_configs", []))
-        loaded_configs = set(self.configs.keys())
-        all_configs = sorted(expected_configs | loaded_configs)
-        configs = "Configs:\n" + "\n".join(
-            f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" 
-            for k in all_configs
-        )
+        # Configs section - focus only on expected configs
+        expected_configs = getattr(self, "expected_configs", [])
+        configs = "Configs:\n" + "\n".join(f"    - {k}" for k in sorted(expected_configs))
 
         # Inputs section
         inputs_str = format_inputs_short(self.inputs)
@@ -672,35 +640,6 @@ class AutoPipelineBlocks:
                     expected_configs.append(config)
         return expected_configs
 
-    # YiYi TODO: address the case where multiple blocks have the same component/auxiliary/config; give out warning etc
-    @property
-    def components(self):
-        # Combine components from all blocks
-        components = {}
-        for block_name, block in self.blocks.items():
-            for key, value in block.components.items():
-                # Only update if:
-                # 1. Key doesn't exist yet in components, OR
-                # 2. New value is not None
-                if key not in components or value is not None:
-                    components[key] = value
-        return components
-
-    @property
-    def auxiliaries(self):
-        # Combine auxiliaries from all blocks
-        auxiliaries = {}
-        for block_name, block in self.blocks.items():
-            auxiliaries.update(block.auxiliaries)
-        return auxiliaries
-
-    @property
-    def configs(self):
-        # Combine configs from all blocks
-        configs = {}
-        for block_name, block in self.blocks.items():
-            configs.update(block.configs)
-        return configs
 
     @property
     def required_inputs(self) -> List[str]:
@@ -855,62 +794,34 @@ class AutoPipelineBlocks:
             desc.extend(f"      {line}" for line in desc_lines[1:])
         desc = '\n'.join(desc) + '\n'
 
-        # Components section
+        # Components section - focus only on expected components
         expected_components = getattr(self, "expected_components", [])
-        expected_component_names = {comp.name for comp in expected_components} if expected_components else set()
-        loaded_components = set(self.components.keys())
-        all_components = sorted(expected_component_names | loaded_components)
-
-        # Auxiliaries section
-        auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
-            f"    - {k}={type(v).__name__}" for k, v in self.auxiliaries.items()
-        )
-        main_components = []
-        for k in all_components:
-            # Get component spec if available
-            component_spec = next((comp for comp in expected_components if comp.name == k), None)
+        expected_components_str_list = []
+        
+        for component_spec in expected_components:
             
-            if k in loaded_components:
-                component_type = type(self.components[k]).__name__
-                component_str = f"    - {k}={component_type}"
-                
-                # Add expected type info if available
-                if component_spec and component_spec.class_name:
-                    expected_type = component_spec.class_name
-                    if isinstance(expected_type, (list, tuple)):
-                        expected_type = expected_type[1]  # Get class name from [module, class_name]
-                    if expected_type != component_type:
-                        component_str += f" (expected: {expected_type})"
-            else:
-                # Component not loaded but expected
-                if component_spec:
-                    expected_type = component_spec.class_name
-                    if isinstance(expected_type, (list, tuple)):
-                        expected_type = expected_type[1]  # Get class name from [module, class_name]
-                    component_str = f"    - {k} (expected: {expected_type})"
-                    
-                    # Add repo info if available
-                    if component_spec.default_repo:
-                        repo_info = component_spec.default_repo
-                        if component_spec.subfolder:
-                            repo_info += f", subfolder={component_spec.subfolder}"
-                        component_str += f" [{repo_info}]"
+            component_str = f"    - {component_spec.name} ({component_spec.type_hint.__name__})"
+            
+            # Add repo info if available
+            if component_spec.default_repo:
+                if isinstance(component_spec.default_repo, list) and len(component_spec.default_repo) == 2:
+                    repo_info = component_spec.default_repo[0]
+                    subfolder = component_spec.default_repo[1]
+                    if subfolder:
+                        repo_info += f", subfolder={subfolder}"
                 else:
-                    component_str = f"    - {k}"
+                    repo_info = component_spec.default_repo
+                component_str += f" [{repo_info}]"
             
+            expected_components_str_list.append(component_str)
 
-            main_components.append(component_str)
+        components_str = "  Components:\n" + "\n".join(expected_components_str_list)
 
-        components = "Components:\n" + "\n".join(main_components)
+        # Configs section - focus only on expected configs
+        expected_configs = getattr(self, "expected_configs", [])
+        configs_str = "  Configs:\n" + "\n".join(f"    - {config.name}" for config in sorted(expected_configs, key=lambda x: x.name))
 
-        # Configs section
-        expected_configs = set(getattr(self, "expected_configs", []))
-        loaded_configs = set(self.configs.keys())
-        all_configs = sorted(expected_configs | loaded_configs)
-        configs_str = "  Configs:\n" + "\n".join(
-            f"    - {k}={v}" if k in loaded_configs else f"    - {k}" for k, v in self.configs.items()
-        )
-
+        # Blocks section
         blocks_str = "  Blocks:\n"
         for i, (name, block) in enumerate(self.blocks.items()):
             # Get trigger input for this block
@@ -955,6 +866,7 @@ class AutoPipelineBlocks:
                 blocks_str += f"{indented_intermediates}\n"
             blocks_str += "\n"
 
+        # Inputs and outputs section
         inputs_str = format_inputs_short(self.inputs)
         inputs_str = "  Inputs:\n    " + inputs_str
         outputs = [out.name for out in self.outputs]
@@ -970,7 +882,6 @@ class AutoPipelineBlocks:
             f"{header}\n"
             f"{desc}"
             f"{components_str}\n"
-            f"{auxiliaries_str}\n"
             f"{configs_str}\n"
             f"{blocks_str}\n"
             f"{inputs_str}\n"
@@ -1037,35 +948,6 @@ class SequentialPipelineBlocks:
             blocks[block_name] = block_cls()
         self.blocks = blocks
 
-    # YiYi TODO: address the case where multiple blocks have the same component/auxiliary/config; give out warning etc
-    @property
-    def components(self):
-        # Combine components from all blocks
-        components = {}
-        for block_name, block in self.blocks.items():
-            for key, value in block.components.items():
-                # Only update if:
-                # 1. Key doesn't exist yet in components, OR
-                # 2. New value is not None
-                if key not in components or value is not None:
-                    components[key] = value
-        return components
-
-    @property
-    def auxiliaries(self):
-        # Combine auxiliaries from all blocks
-        auxiliaries = {}
-        for block_name, block in self.blocks.items():
-            auxiliaries.update(block.auxiliaries)
-        return auxiliaries
-
-    @property
-    def configs(self):
-        # Combine configs from all blocks
-        configs = {}
-        for block_name, block in self.blocks.items():
-            configs.update(block.configs)
-        return configs
 
     @property
     def required_inputs(self) -> List[str]:
@@ -1284,63 +1166,34 @@ class SequentialPipelineBlocks:
             desc.extend(f"      {line}" for line in desc_lines[1:])
         desc = '\n'.join(desc) + '\n'
 
-        # Components section
+        # Components section - focus only on expected components
         expected_components = getattr(self, "expected_components", [])
-        expected_component_names = {comp.name for comp in expected_components} if expected_components else set()
-        loaded_components = set(self.components.keys())
-        all_components = sorted(expected_component_names | loaded_components)
-
-        # Auxiliaries section
-        auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
-            f"    - {k}={type(v).__name__}" for k, v in self.auxiliaries.items()
-        )
-
-        main_components = []
-        for k in all_components:
-            # Get component spec if available
-            component_spec = next((comp for comp in expected_components if comp.name == k), None)
+        expected_components_str_list = []
+        
+        for component_spec in expected_components:
             
-            if k in loaded_components:
-                component_type = type(self.components[k]).__name__
-                component_str = f"    - {k}={component_type}"
-                
-                # Add expected type info if available
-                if component_spec and component_spec.class_name:
-                    expected_type = component_spec.class_name
-                    if isinstance(expected_type, (list, tuple)):
-                        expected_type = expected_type[1]  # Get class name from [module, class_name]
-                    if expected_type != component_type:
-                        component_str += f" (expected: {expected_type})"
-            else:
-                # Component not loaded but expected
-                if component_spec:
-                    expected_type = component_spec.class_name
-                    if isinstance(expected_type, (list, tuple)):
-                        expected_type = expected_type[1]  # Get class name from [module, class_name]
-                    component_str = f"    - {k} (expected: {expected_type})"
-                    
-                    # Add repo info if available
-                    if component_spec.default_repo:
-                        repo_info = component_spec.default_repo
-                        if component_spec.subfolder:
-                            repo_info += f", subfolder={component_spec.subfolder}"
-                        component_str += f" [{repo_info}]"
+            component_str = f"    - {component_spec.name} ({component_spec.type_hint.__name__})"
+            
+            # Add repo info if available
+            if component_spec.default_repo:
+                if isinstance(component_spec.default_repo, list) and len(component_spec.default_repo) == 2:
+                    repo_info = component_spec.default_repo[0]
+                    subfolder = component_spec.default_repo[1]
+                    if subfolder:
+                        repo_info += f", subfolder={subfolder}"
                 else:
-                    component_str = f"    - {k}"
+                    repo_info = component_spec.default_repo
+                component_str += f" [{repo_info}]"
             
+            expected_components_str_list.append(component_str)
 
-            main_components.append(component_str)
+        components_str = "  Components:\n" + "\n".join(expected_components_str_list)
 
-        components = "Components:\n" + "\n".join(main_components)
+        # Configs section - focus only on expected configs
+        expected_configs = getattr(self, "expected_configs", [])
+        configs_str = "  Configs:\n" + "\n".join(f"    - {config.name}" for config in sorted(expected_configs, key=lambda x: x.name))
 
-        # Configs section
-        expected_configs = set(getattr(self, "expected_configs", []))
-        loaded_configs = set(self.configs.keys())
-        all_configs = sorted(expected_configs | loaded_configs)
-        configs_str = "  Configs:\n" + "\n".join(
-            f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" for k in all_configs
-        )
-
+        # Blocks section
         blocks_str = "  Blocks:\n"
         for i, (name, block) in enumerate(self.blocks.items()):
             # Get trigger input for this block
@@ -1385,6 +1238,7 @@ class SequentialPipelineBlocks:
                 blocks_str += f"{indented_intermediates}\n"
             blocks_str += "\n"
 
+        # Inputs and outputs section
         inputs_str = format_inputs_short(self.inputs)
         inputs_str = "  Inputs:\n    " + inputs_str
         outputs = [out.name for out in self.outputs]
@@ -1400,13 +1254,13 @@ class SequentialPipelineBlocks:
             f"{header}\n"
             f"{desc}"
             f"{components_str}\n"
-            f"{auxiliaries_str}\n"
             f"{configs_str}\n"
             f"{blocks_str}\n"
             f"{inputs_str}\n"
             f"{intermediates_str}\n"
             f")"
         )
+
 
     @property
     def doc(self):
@@ -1424,16 +1278,17 @@ class ModularPipeline(ConfigMixin):
     def __init__(self, block):
         self.pipeline_block = block
 
-        # add default components from pipeline_block (e.g. guider)
-        for key, value in block.components.items():
-            setattr(self, key, value)
+        for component_spec in self.expected_components:
+            if component_spec.obj is not None:
+                setattr(self, component_spec.name, component_spec.obj)
+            else:
+                setattr(self, component_spec.name, None)
+        
+        default_configs = {}
+        for config_spec in self.expected_configs:
+            default_configs[config_spec.name] = config_spec.default
+        self.register_to_config(**default_configs)
 
-        # add default configs from pipeline_block (e.g. force_zeros_for_empty_prompt)
-        self.register_to_config(**block.configs)
-
-        # add default auxiliaries from pipeline_block (e.g. image_processor)
-        for key, value in block.auxiliaries.items():
-            setattr(self, key, value)
 
     @classmethod
     def from_block(cls, block):
@@ -1508,9 +1363,9 @@ class ModularPipeline(ConfigMixin):
     @property
     def components(self):
         components = {}
-        for name in self.expected_components:
-            if hasattr(self, name):
-                components[name] = getattr(self, name)
+        for component_spec in self.expected_components:
+            if hasattr(self, component_spec.name):
+                components[component_spec.name] = getattr(self, component_spec.name)
         return components
 
     # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.progress_bar
@@ -1596,32 +1451,32 @@ class ModularPipeline(ConfigMixin):
             kwargs (dict): Keyword arguments to update the states.
         """
 
-        for component_name in self.expected_components:
-            if component_name in kwargs:
-                if hasattr(self, component_name) and getattr(self, component_name) is not None:
-                    current_component = getattr(self, component_name)
-                    new_component = kwargs[component_name]
+        for component in self.expected_components:
+            if component.name in kwargs:
+                if hasattr(self, component.name) and getattr(self, component.name) is not None:
+                    current_component = getattr(self, component.name)
+                    new_component = kwargs[component.name]
 
                     if not isinstance(new_component, current_component.__class__):
                         logger.info(
-                            f"Overwriting existing component '{component_name}' "
+                            f"Overwriting existing component '{component.name}' "
                             f"(type: {current_component.__class__.__name__}) "
                             f"with type: {new_component.__class__.__name__})"
                         )
                     elif isinstance(current_component, torch.nn.Module):
                         if id(current_component) != id(new_component):
                             logger.info(
-                                f"Overwriting existing component '{component_name}' "
+                                f"Overwriting existing component '{component.name}' "
                                 f"(type: {type(current_component).__name__}) "
                                 f"with new value (type: {type(new_component).__name__})"
                             )
 
-                setattr(self, component_name, kwargs.pop(component_name))
+                setattr(self, component.name, kwargs.pop(component.name))
 
         configs_to_add = {}
-        for config_name in self.expected_configs:
-            if config_name in kwargs:
-                configs_to_add[config_name] = kwargs.pop(config_name)
+        for config in self.expected_configs:
+            if config.name in kwargs:
+                configs_to_add[config.name] = kwargs.pop(config.name)
         self.register_to_config(**configs_to_add)
 
     @property
@@ -1631,64 +1486,64 @@ class ModularPipeline(ConfigMixin):
             params[input_param.name] = input_param.default
         return params
 
-    def __repr__(self):
-        output = "ModularPipeline:\n"
-        output += "==============================\n\n"
+    # def __repr__(self):
+    #     output = "ModularPipeline:\n"
+    #     output += "==============================\n\n"
 
-        block = self.pipeline_block
+    #     block = self.pipeline_block
         
-        # List the pipeline block structure first
-        output += "Pipeline Block:\n"
-        output += "--------------\n"
-        if hasattr(block, "blocks"):
-            output += f"{block.__class__.__name__}\n"
-            base_class = block.__class__.__bases__[0].__name__
-            output += f" (Class: {base_class})\n" if base_class != "object" else "\n"
-            for sub_block_name, sub_block in block.blocks.items():
-                if hasattr(block, "block_trigger_inputs"):
-                    trigger_input = block.block_to_trigger_map[sub_block_name]
-                    trigger_info = f" [trigger: {trigger_input}]" if trigger_input is not None else " [default]"
-                    output += f"  • {sub_block_name} ({sub_block.__class__.__name__}){trigger_info}\n"
-                else:
-                    output += f"  • {sub_block_name} ({sub_block.__class__.__name__})\n"
-        else:
-            output += f"{block.__class__.__name__}\n"
-        output += "\n"
+    #     # List the pipeline block structure first
+    #     output += "Pipeline Block:\n"
+    #     output += "--------------\n"
+    #     if hasattr(block, "blocks"):
+    #         output += f"{block.__class__.__name__}\n"
+    #         base_class = block.__class__.__bases__[0].__name__
+    #         output += f" (Class: {base_class})\n" if base_class != "object" else "\n"
+    #         for sub_block_name, sub_block in block.blocks.items():
+    #             if hasattr(block, "block_trigger_inputs"):
+    #                 trigger_input = block.block_to_trigger_map[sub_block_name]
+    #                 trigger_info = f" [trigger: {trigger_input}]" if trigger_input is not None else " [default]"
+    #                 output += f"  • {sub_block_name} ({sub_block.__class__.__name__}){trigger_info}\n"
+    #             else:
+    #                 output += f"  • {sub_block_name} ({sub_block.__class__.__name__})\n"
+    #     else:
+    #         output += f"{block.__class__.__name__}\n"
+    #     output += "\n"
 
-        # List the components registered in the pipeline
-        output += "Registered Components:\n"
-        output += "----------------------\n"
-        for name, component in self.components.items():
-            output += f"{name}: {type(component).__name__}"
-            if hasattr(component, "dtype") and hasattr(component, "device"):
-                output += f" (dtype={component.dtype}, device={component.device})"
-            output += "\n"
-        output += "\n"
+    #     # List the components registered in the pipeline
+    #     output += "Registered Components:\n"
+    #     output += "----------------------\n"
+    #     for name, component in self.components.items():
+    #         output += f"{name}: {type(component).__name__}"
+    #         if hasattr(component, "dtype") and hasattr(component, "device"):
+    #             output += f" (dtype={component.dtype}, device={component.device})"
+    #         output += "\n"
+    #     output += "\n"
 
-        # List the configs registered in the pipeline
-        output += "Registered Configs:\n"
-        output += "------------------\n"
-        for name, config in self.config.items():
-            output += f"{name}: {config!r}\n"
-        output += "\n"
+    #     # List the configs registered in the pipeline
+    #     output += "Registered Configs:\n"
+    #     output += "------------------\n"
+    #     for name, config in self.config.items():
+    #         output += f"{name}: {config!r}\n"
+    #     output += "\n"
 
-        # Add auto blocks section
-        if hasattr(block, "trigger_inputs") and block.trigger_inputs:
-            output += "------------------\n"
-            output += "This pipeline contains blocks that are selected at runtime based on inputs.\n\n"
-            output += f"Trigger Inputs: {block.trigger_inputs}\n"
-            # Get first trigger input as example
-            example_input = next(t for t in block.trigger_inputs if t is not None)
-            output += f"  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('{example_input}')`).\n"
-            output += "Check `.doc` of returned object for more information.\n\n"
+    #     # Add auto blocks section
+    #     if hasattr(block, "trigger_inputs") and block.trigger_inputs:
+    #         output += "------------------\n"
+    #         output += "This pipeline contains blocks that are selected at runtime based on inputs.\n\n"
+    #         output += f"Trigger Inputs: {block.trigger_inputs}\n"
+    #         # Get first trigger input as example
+    #         example_input = next(t for t in block.trigger_inputs if t is not None)
+    #         output += f"  Use `get_execution_blocks()` with input names to see selected blocks (e.g. `get_execution_blocks('{example_input}')`).\n"
+    #         output += "Check `.doc` of returned object for more information.\n\n"
 
-        # List the call parameters
-        full_doc = self.pipeline_block.doc
-        if "------------------------" in full_doc:
-            full_doc = full_doc.split("------------------------")[0].rstrip()
-        output += full_doc
+    #     # List the call parameters
+    #     full_doc = self.pipeline_block.doc
+    #     if "------------------------" in full_doc:
+    #         full_doc = full_doc.split("------------------------")[0].rstrip()
+    #     output += full_doc
 
-        return output
+    #     return output
 
     # YiYi TODO: try to unify the to method with the one in DiffusionPipeline
     # Modified from diffusers.pipelines.pipeline_utils.DiffusionPipeline.to

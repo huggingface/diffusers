@@ -346,7 +346,6 @@ class ComponentsManager:
                     results.update(result)
                 else:
                     results[name] = result
-            logger.info(f"Getting multiple components: {list(results.keys())}")
             return results
         
         else:
