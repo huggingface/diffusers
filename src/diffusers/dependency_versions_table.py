@@ -29,7 +29,7 @@ deps = {
     "pytest-timeout": "pytest-timeout",
     "pytest-xdist": "pytest-xdist",
     "python": "python>=3.8.0",
-    "ruff": "ruff==0.1.5",
+    "ruff": "ruff==0.9.10",
     "safetensors": "safetensors>=0.3.1",
     "sentencepiece": "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython": "GitPython<3.1.19",
@@ -49,4 +49,5 @@ deps = {
     "urllib3": "urllib3<=2.0.0",
     "black": "black",
     "phonemizer": "phonemizer",
+    "opencv-python": "opencv-python",
 }

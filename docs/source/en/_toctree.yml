@@ -175,7 +175,7 @@
     title: gguf
   - local: quantization/torchao
     title: torchao
-  - local: quantization/quanto 
+  - local: quantization/quanto
     title: quanto
   title: Quantization Methods
 - sections:
@@ -265,6 +265,8 @@
     sections:
     - local: api/models/overview
       title: Overview
+    - local: api/models/auto_model
+      title: AutoModel
     - sections:
       - local: api/models/controlnet
         title: ControlNetModel
@@ -298,6 +300,8 @@
         title: EasyAnimateTransformer3DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
+      - local: api/models/hidream_image_transformer
+        title: HiDreamImageTransformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
       - local: api/models/hunyuan_video_transformer_3d
@@ -444,6 +448,8 @@
       title: Flux
     - local: api/pipelines/control_flux_inpaint
       title: FluxControlInpaint
+    - local: api/pipelines/hidream
+      title: HiDream-I1
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
     - local: api/pipelines/hunyuan_video
