@@ -396,12 +396,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
-        s_churn: float = 0.0,
-        s_tmin: float = 0.0,
-        s_tmax: float = float("inf"),
-        s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
-        per_token_timesteps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[FlowMatchLCMSchedulerOutput, Tuple]:
         """
@@ -415,15 +410,8 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
-            s_churn (`float`):
-            s_tmin  (`float`):
-            s_tmax  (`float`):
-            s_noise (`float`, defaults to 1.0):
-                Scaling factor for noise added to the sample.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
-            per_token_timesteps (`torch.Tensor`, *optional*):
-                The timesteps for each token in the sample.
             return_dict (`bool`):
                 Whether or not to return a [`~schedulers.scheduling_flow_match_lcm.FlowMatchLCMSchedulerOutput`] or
                 tuple.
@@ -475,9 +463,8 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
         # upon completion increase step index by one
         self._step_index += 1
-        if per_token_timesteps is None:
-            # Cast sample back to model compatible dtype
-            prev_sample = prev_sample.to(model_output.dtype)
+        # Cast sample back to model compatible dtype
+        prev_sample = prev_sample.to(model_output.dtype)
 
         if not return_dict:
             return (prev_sample,)
