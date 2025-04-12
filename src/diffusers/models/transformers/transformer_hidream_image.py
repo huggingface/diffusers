@@ -653,7 +653,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             caption_projection.append(TextProjection(in_features=caption_channel, hidden_size=self.inner_dim))
         self.caption_projection = nn.ModuleList(caption_projection)
         self.max_seq = max_resolution[0] * max_resolution[1] // (patch_size * patch_size)
-        
+
         self.gradient_checkpointing = False
 
     def unpatchify(self, x: torch.Tensor, img_sizes: List[Tuple[int, int]], is_training: bool) -> List[torch.Tensor]:
