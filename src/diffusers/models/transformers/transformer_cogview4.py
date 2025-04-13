@@ -126,7 +126,7 @@ class CogView4AttnProcessor:
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[Dict[str, torch.Tensor]] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -150,8 +150,8 @@ class CogView4AttnProcessor:
                     Mask for latent tokens where 0 indicates pad token and 1 indicates non-pad token.
                     If None, full attention is used for all latent tokens.
                     Note: the shape of latent_embedding_attn_mask is (batch_size, num_latent_tokens).
-            image_rotary_emb (`torch.Tensor`, *optional*):
-                The rotary embedding for the image/latent part of the input.
+            image_rotary_emb (`torch.Tensor` or `list[torch.Tensor]`, *optional*):
+                The rotary embedding for the image part of the input.
 
         Returns:
             `Tuple[torch.Tensor, torch.Tensor]`: The processed hidden states for both image and text streams.
@@ -225,6 +225,7 @@ class CogView4AttnProcessor:
                 assert torch.sum(mixed_seq_length) == mixed_hidden_states_unpad.shape[0]
 
                 mixed_hidden_states_packed = torch.split(mixed_hidden_states_unpad, mixed_seq_length_packed)
+
                 mixed_hidden_states_packed_padded = torch.nn.utils.rnn.pad_sequence(
                     mixed_hidden_states_packed,
                     batch_first=True,
@@ -232,14 +233,12 @@ class CogView4AttnProcessor:
                     padding_side="right",
                 )
 
-                mixed_attention_mask_packed = [
-                    torch.zeros(mixed_seq_length_packed[i], dtype=dtype, device=device)
-                    for i in range(packing_batch_size)
-                ]
-                mixed_attention_mask_packed_padded = torch.nn.utils.rnn.pad_sequence(
-                    mixed_attention_mask_packed, batch_first=True, padding_value=0, padding_side="right"
+                l = mixed_hidden_states_packed_padded.shape[1]
+                attention_mask_matrix = torch.zeros(
+                    (packing_batch_size, l, l),
+                    dtype=dtype,
+                    device=device,
                 )
-                attention_mask_matrix = mixed_attention_mask_packed_padded.unsqueeze(2) @ mixed_attention_mask_packed_padded.unsqueeze(1)
                 for idx, mask in enumerate(attention_mask_matrix):
                     seq_lengths = mixed_seq_length[batch_flag == idx]
                     offset = 0
@@ -285,7 +284,9 @@ class CogView4AttnProcessor:
             else:
                 assert query.shape[0] == packing_batch_size
                 assert key.shape[0] == packing_batch_size
+                assert len(image_rotary_emb) == batch_size
 
+                rope_idx = 0
                 for idx in range(packing_batch_size):
                     offset = 0
                     text_seq_length_bi = text_seq_length[batch_flag == idx]
@@ -293,24 +294,26 @@ class CogView4AttnProcessor:
 
                     for tlen, llen in zip(text_seq_length_bi, latent_seq_length_bi):
                         mlen = tlen + llen
-                        image_rotary_emb_slice = (image_rotary_emb[0][:llen], image_rotary_emb[1][:llen])
                         query[idx, :, offset + tlen : offset + mlen, :] = apply_rotary_emb(
                             query[idx, :, offset + tlen : offset + mlen, :],
-                            image_rotary_emb_slice,
+                            image_rotary_emb[rope_idx],
                             use_real_unbind_dim=-2,
                         )
                         key[idx, :, offset + tlen : offset + mlen, :] = apply_rotary_emb(
                             key[idx, :, offset + tlen : offset + mlen, :],
-                            image_rotary_emb_slice,
+                            image_rotary_emb[rope_idx],
                             use_real_unbind_dim=-2,
                         )
                         offset += mlen
+                        rope_idx += 1
 
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
+
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
+
 
         # 5. Output projection
         hidden_states = attn.to_out[0](hidden_states)
@@ -564,6 +567,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
         **kwargs,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         if attention_kwargs is not None:
@@ -584,7 +588,10 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         batch_size, num_channels, height, width = hidden_states.shape
 
         # 1. RoPE
-        image_rotary_emb = self.rope(hidden_states)
+        if image_rotary_emb is None:
+            image_rotary_emb = self.rope(hidden_states)
+        else:
+            image_rotary_emb = image_rotary_emb
 
         # 2. Patch & Timestep embeddings
         p = self.config.patch_size
