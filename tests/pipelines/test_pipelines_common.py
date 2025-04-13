@@ -2289,7 +2289,6 @@ class PipelineTesterMixin:
             self.skipTest("No dummy components defined.")
 
         pipe = self.pipeline_class(**components)
-
         specified_key = next(iter(components.keys()))
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:

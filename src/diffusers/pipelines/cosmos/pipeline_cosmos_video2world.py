@@ -187,7 +187,6 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-    _optional_components = ["safety_checker"]
 
     def __init__(
         self,
@@ -196,19 +195,12 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         transformer: CosmosTransformer3DModel,
         vae: AutoencoderKLCosmos,
         scheduler: EDMEulerScheduler,
-        safety_checker: CosmosSafetyChecker = None,
-        requires_safety_checker: bool = True,
+        safety_checker: CosmosSafetyChecker,
     ):
         super().__init__()
 
-        if requires_safety_checker and safety_checker is None:
-            safety_checker = CosmosSafetyChecker()
         if safety_checker is None:
-            logger.warning(
-                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. This "
-                f"is in violation of the [NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
-                f"Please ensure that you are compliant with the license agreement."
-            )
+            safety_checker = CosmosSafetyChecker()
 
         self.register_modules(
             vae=vae,
@@ -218,7 +210,6 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
             scheduler=scheduler,
             safety_checker=safety_checker,
         )
-        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
         self.vae_scale_factor_temporal = (
             self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 8
@@ -590,6 +581,13 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
+
+        if self.safety_checker is None:
+            raise ValueError(
+                f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
+                "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
+                f"Please ensure that you are compliant with the license agreement."
+            )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs

@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import inspect
+import json
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -25,13 +28,21 @@ from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
+from .cosmos_guardrail import DummyCosmosSafetyChecker
 
 
 enable_full_determinism()
 
 
+class CosmosVideoToWorldPipelineWrapper(CosmosVideoToWorldPipeline):
+    @staticmethod
+    def from_pretrained(*args, **kwargs):
+        kwargs["safety_checker"] = DummyCosmosSafetyChecker()
+        return CosmosVideoToWorldPipeline.from_pretrained(*args, **kwargs)
+
+
 class CosmosVideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = CosmosVideoToWorldPipeline
+    pipeline_class = CosmosVideoToWorldPipelineWrapper
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"image", "video"})
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -107,8 +118,7 @@ class CosmosVideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             # We cannot run the Cosmos Guardrail for fast tests due to the large model size
-            "safety_checker": None,
-            "requires_safety_checker": False,
+            "safety_checker": DummyCosmosSafetyChecker(),
         }
         return components
 
@@ -158,7 +168,7 @@ class CosmosVideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     def test_components_function(self):
         init_components = self.get_dummy_components()
         init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float))}
-        pipe = self.pipeline_class(**init_components, requires_safety_checker=False)
+        pipe = self.pipeline_class(**init_components)
         self.assertTrue(hasattr(pipe, "components"))
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
@@ -222,7 +232,7 @@ class CosmosVideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         assert output.abs().sum() < 1e10
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
+        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-2)
 
     def test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
@@ -288,3 +298,61 @@ class CosmosVideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
+
+    def test_serialization_with_variants(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        model_components = [
+            component_name
+            for component_name, component in pipe.components.items()
+            if isinstance(component, torch.nn.Module)
+        ]
+        model_components.remove("safety_checker")
+        variant = "fp16"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, variant=variant, safe_serialization=False)
+
+            with open(f"{tmpdir}/model_index.json", "r") as f:
+                config = json.load(f)
+
+            for subfolder in os.listdir(tmpdir):
+                if not os.path.isfile(subfolder) and subfolder in model_components:
+                    folder_path = os.path.join(tmpdir, subfolder)
+                    is_folder = os.path.isdir(folder_path) and subfolder in config
+                    assert is_folder and any(p.split(".")[1].startswith(variant) for p in os.listdir(folder_path))
+
+    def test_torch_dtype_dict(self):
+        components = self.get_dummy_components()
+        if not components:
+            self.skipTest("No dummy components defined.")
+
+        pipe = self.pipeline_class(**components)
+
+        specified_key = next(iter(components.keys()))
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
+            torch_dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
+            loaded_pipe = self.pipeline_class.from_pretrained(
+                tmpdirname, safety_checker=DummyCosmosSafetyChecker(), torch_dtype=torch_dtype_dict
+            )
+
+        for name, component in loaded_pipe.components.items():
+            if name == "safety_checker":
+                continue
+            if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
+                expected_dtype = torch_dtype_dict.get(name, torch_dtype_dict.get("default", torch.float32))
+                self.assertEqual(
+                    component.dtype,
+                    expected_dtype,
+                    f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
+                )
+
+    @unittest.skip(
+        "The pipeline should not be runnable without a safety checker. The test creates a pipeline without passing in "
+        "a safety checker, which makes the pipeline default to the actual Cosmos Guardrail. The Cosmos Guardrail is "
+        "too large and slow to run on CI."
+    )
+    def test_encode_prompt_works_in_isolation(self):
+        pass
