@@ -943,7 +943,7 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                     latent_model_input.to(dtype=transformer_dtype),
                     encoder_hidden_states=prompt_embeds.to(dtype=transformer_dtype),
                     encoder_attention_mask=prompt_attention_mask,
-                    timestep=timestep.to(dtype=transformer_dtype),
+                    timestep=timestep,
                     return_dict=False,
                     attention_kwargs=self.attention_kwargs,
                 )[0]

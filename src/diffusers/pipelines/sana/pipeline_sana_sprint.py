@@ -827,7 +827,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                     encoder_hidden_states=prompt_embeds.to(dtype=transformer_dtype),
                     encoder_attention_mask=prompt_attention_mask,
                     guidance=guidance,
-                    timestep=scm_timestep.to(dtype=transformer_dtype),
+                    timestep=scm_timestep,
                     return_dict=False,
                     attention_kwargs=self.attention_kwargs,
                 )[0]
