@@ -22,6 +22,7 @@ if is_torch_available():
     from .transformer_cosmos import CosmosTransformer3DModel
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .transformer_flux import FluxTransformer2DModel
+    from .transformer_hidream_image import HiDreamImageTransformer2DModel
     from .transformer_hunyuan_video import HunyuanVideoTransformer3DModel
     from .transformer_ltx import LTXVideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
