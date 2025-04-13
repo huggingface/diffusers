@@ -731,7 +731,8 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self,
         hidden_states: torch.Tensor,
         timesteps: torch.LongTensor = None,
-        encoder_hidden_states: torch.Tensor = None,
+        t5_encoder_hidden_states: torch.Tensor = None,
+        llama3_encoder_hidden_states: torch.Tensor = None,
         pooled_embeds: torch.Tensor = None,
         img_sizes: Optional[List[Tuple[int, int]]] = None,
         img_ids: Optional[torch.Tensor] = None,
@@ -791,9 +792,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             )
         hidden_states = self.x_embedder(hidden_states)
 
-        T5_encoder_hidden_states = encoder_hidden_states[0]
-        encoder_hidden_states = encoder_hidden_states[-1]
-        encoder_hidden_states = [encoder_hidden_states[k] for k in self.llama_layers]
+        encoder_hidden_states = [llama3_encoder_hidden_states[k] for k in self.llama_layers]
 
         if self.caption_projection is not None:
             new_encoder_hidden_states = []
@@ -802,9 +801,9 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 enc_hidden_state = enc_hidden_state.view(batch_size, -1, hidden_states.shape[-1])
                 new_encoder_hidden_states.append(enc_hidden_state)
             encoder_hidden_states = new_encoder_hidden_states
-            T5_encoder_hidden_states = self.caption_projection[-1](T5_encoder_hidden_states)
-            T5_encoder_hidden_states = T5_encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
-            encoder_hidden_states.append(T5_encoder_hidden_states)
+            t5_encoder_hidden_states = self.caption_projection[-1](t5_encoder_hidden_states)
+            t5_encoder_hidden_states = t5_encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
+            encoder_hidden_states.append(t5_encoder_hidden_states)
 
         txt_ids = torch.zeros(
             batch_size,
