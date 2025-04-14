@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from transformers import PreTrainedTokenizerFast, LlamaForCausalLM
-        >>> from diffusers import UniPCMultistepScheduler, HiDreamImagePipeline, HiDreamImageTransformer2DModel
+        >>> from diffusers import UniPCMultistepScheduler, HiDreamImagePipeline
 
         >>> scheduler = UniPCMultistepScheduler(
         ...     flow_shift=3.0, prediction_type="flow_prediction", use_flow_sigmas=True
@@ -51,16 +51,11 @@ EXAMPLE_DOC_STRING = """
         ...     torch_dtype=torch.bfloat16,
         ... )
 
-        >>> transformer = HiDreamImageTransformer2DModel.from_pretrained(
-        ...     "HiDream-ai/HiDream-I1-Full", subfolder="transformer", torch_dtype=torch.bfloat16
-        ... )
-
         >>> pipe = HiDreamImagePipeline.from_pretrained(
         ...     "HiDream-ai/HiDream-I1-Full",
         ...     scheduler=scheduler,
         ...     tokenizer_4=tokenizer_4,
         ...     text_encoder_4=text_encoder_4,
-        ...     transformer=transformer,
         ...     torch_dtype=torch.bfloat16,
         ... )
         >>> pipe.enable_model_cpu_offload()
