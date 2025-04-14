@@ -380,6 +380,7 @@ class StableDiffusionPipeline(
                 adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
             else:
                 scale_lora_layers(self.text_encoder, lora_scale)
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
