@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2025 VisualCloze team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +13,16 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 
 import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
+from PIL import Image
+from einops import rearrange
 
 from ...image_processor import VaeImageProcessor
+from .processor_visualcloze import VisualClozeProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
@@ -34,7 +37,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import FluxPipelineOutput
+from ..flux.pipeline_output import FluxPipelineOutput
 
 
 if is_torch_xla_available():
@@ -51,27 +54,40 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import FluxFillPipeline
+        >>> from diffusers import VisualClozePipeline
         >>> from diffusers.utils import load_image
 
-        >>> image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup.png")
-        >>> mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup_mask.png")
+        >>> image = [
+        >>>     # in-context examples
+        >>>     [
+        >>>         load_image('https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/5bf755ed9dbb9b3e223e7ba35232b06e/5bf755ed9dbb9b3e223e7ba35232b06e_depth-anything-v2_Large.jpg'),
+        >>>         load_image('https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/5bf755ed9dbb9b3e223e7ba35232b06e/5bf755ed9dbb9b3e223e7ba35232b06e.jpg'),
+        >>>     ],
+        >>>     # query with the target image
+        >>>     [
+        >>>         load_image('https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/2b74476568f7562a6aa832d423132ed3/2b74476568f7562a6aa832d423132ed3_depth-anything-v2_Large.jpg'),
+        >>>         None,
+        >>>     ],
+        >>> ]
+        >>> task_prompt = "Each row outlines a logical process, starting from [IMAGE1] gray-based depth map with detailed object contours, to achieve [IMAGE2] an image with flawless clarity."
+        >>> content_prompt = "Group photo of five young adults enjoying a rooftop gathering at dusk. The group is positioned in the center, with three women and two men smiling and embracing. The woman on the far left wears a floral top and holds a drink, looking slightly to the right. Next to her, a woman in a denim jacket stands close to a woman in a white blouse, both smiling directly at the camera. The fourth woman, in an orange top, stands close to the man on the far right, who wears a red shirt and blue blazer, smiling broadly. The background features a cityscape with a tall building and string lights hanging overhead, creating a warm, festive atmosphere. Soft natural lighting, warm color palette, shallow depth of field, intimate and joyful mood, slightly blurred background, urban rooftop setting, evening ambiance."
 
-        >>> pipe = FluxFillPipeline.from_pretrained("black-forest-labs/FLUX.1-Fill-dev", torch_dtype=torch.bfloat16)
+        >>> pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()  # save some VRAM by offloading the model to CPU
 
         >>> image = pipe(
-        ...     prompt="a white paper cup",
+        ...     task_prompt=task_prompt,
+        ...     content_prompt=content_prompt,
         ...     image=image,
-        ...     mask_image=mask,
-        ...     height=1632,
-        ...     width=1232,
+        ...     upampling_height=1024,
+        ...     upampling_width=1024,
+        ...     upsampling_strength=0.4,
         ...     guidance_scale=30,
-        ...     num_inference_steps=50,
+        ...     num_inference_steps=30,
         ...     max_sequence_length=512,
         ...     generator=torch.Generator("cpu").manual_seed(0),
-        ... ).images[0]
-        >>> image.save("flux_fill.png")
+        ... ).images[0][0]
+        >>> image.save("visualcloze.png")
         ```
 """
 
@@ -164,16 +180,16 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class FluxFillPipeline(
+class VisualClozePipeline(
     DiffusionPipeline,
     FluxLoraLoaderMixin,
     FromSingleFileMixin,
     TextualInversionLoaderMixin,
 ):
     r"""
-    The Flux Fill pipeline for image inpainting/outpainting.
-
-    Reference: https://blackforestlabs.ai/flux-1-tools/
+    The VisualCloze pipeline for image generation with visual context.
+    Reference: https://github.com/lzyhha/VisualCloze/tree/main
+    This pipeline is designed to generate images based on visual in-context examples. 
 
     Args:
         transformer ([`FluxTransformer2DModel`]):
@@ -194,6 +210,8 @@ class FluxFillPipeline(
         tokenizer_2 (`T5TokenizerFast`):
             Second Tokenizer of class
             [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
+        resolution (`int`, *optional*, defaults to 384):
+            The resolution of each image when concatenating images from the query and in-context examples.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
@@ -209,6 +227,7 @@ class FluxFillPipeline(
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
         transformer: FluxTransformer2DModel,
+        resolution: int = 384,
     ):
         super().__init__()
 
@@ -221,6 +240,7 @@ class FluxFillPipeline(
             transformer=transformer,
             scheduler=scheduler,
         )
+        self.resolution = resolution
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
@@ -228,13 +248,7 @@ class FluxFillPipeline(
         self.image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor * 2, vae_latent_channels=self.latent_channels
         )
-        self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor * 2,
-            vae_latent_channels=self.latent_channels,
-            do_normalize=False,
-            do_binarize=True,
-            do_convert_grayscale=True,
-        )
+        self.visualcloze_processor = VisualClozeProcessor(resolution=resolution)
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
@@ -335,91 +349,12 @@ class FluxFillPipeline(
 
         return prompt_embeds
 
-    def prepare_mask_latents(
-        self,
-        mask,
-        masked_image,
-        batch_size,
-        num_channels_latents,
-        num_images_per_prompt,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-    ):
-        # 1. calculate the height and width of the latents
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (self.vae_scale_factor * 2))
-        width = 2 * (int(width) // (self.vae_scale_factor * 2))
-
-        # 2. encode the masked image
-        if masked_image.shape[1] == num_channels_latents:
-            masked_image_latents = masked_image
-        else:
-            masked_image_latents = retrieve_latents(self.vae.encode(masked_image), generator=generator)
-
-        masked_image_latents = (masked_image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-        masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
-
-        # 3. duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        batch_size = batch_size * num_images_per_prompt
-        if mask.shape[0] < batch_size:
-            if not batch_size % mask.shape[0] == 0:
-                raise ValueError(
-                    "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
-                    f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
-                    " of masks that you pass is divisible by the total requested batch size."
-                )
-            mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
-        if masked_image_latents.shape[0] < batch_size:
-            if not batch_size % masked_image_latents.shape[0] == 0:
-                raise ValueError(
-                    "The passed images and the required batch size don't match. Images are supposed to be duplicated"
-                    f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
-                    " Make sure the number of images that you pass is divisible by the total requested batch size."
-                )
-            masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
-
-        # 4. pack the masked_image_latents
-        # batch_size, num_channels_latents, height, width -> batch_size, height//2 * width//2 , num_channels_latents*4
-        masked_image_latents = self._pack_latents(
-            masked_image_latents,
-            batch_size,
-            num_channels_latents,
-            height,
-            width,
-        )
-
-        # 5.resize mask to latents shape we we concatenate the mask to the latents
-        mask = mask[:, 0, :, :]  # batch_size, 8 * height, 8 * width (mask has not been 8x compressed)
-        mask = mask.view(
-            batch_size, height, self.vae_scale_factor, width, self.vae_scale_factor
-        )  # batch_size, height, 8, width, 8
-        mask = mask.permute(0, 2, 4, 1, 3)  # batch_size, 8, 8, height, width
-        mask = mask.reshape(
-            batch_size, self.vae_scale_factor * self.vae_scale_factor, height, width
-        )  # batch_size, 8*8, height, width
-
-        # 6. pack the mask:
-        # batch_size, 64, height, width -> batch_size, height//2 * width//2 , 64*2*2
-        mask = self._pack_latents(
-            mask,
-            batch_size,
-            self.vae_scale_factor * self.vae_scale_factor,
-            height,
-            width,
-        )
-        mask = mask.to(device=device, dtype=dtype)
-
-        return mask, masked_image_latents
-
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        prompt_2: Union[str, List[str]],
+        layout_prompt: Union[str, List[str]],
+        task_prompt: Union[str, List[str]],
+        content_prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -430,11 +365,12 @@ class FluxFillPipeline(
         r"""
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
-                prompt to be encoded
-            prompt_2 (`str` or `List[str]`, *optional*):
-                The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
-                used in all text-encoders
+            layout_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to define the number of in-context examples and the number of images involved in the task.
+            task_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to define the task intention.
+            content_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to define the content or caption of the target image to be generated.
             device: (`torch.device`):
                 torch device
             num_images_per_prompt (`int`):
@@ -461,24 +397,29 @@ class FluxFillPipeline(
             if self.text_encoder_2 is not None and USE_PEFT_BACKEND:
                 scale_lora_layers(self.text_encoder_2, lora_scale)
 
-        prompt = [prompt] if isinstance(prompt, str) else prompt
+        if isinstance(layout_prompt, str):
+            layout_prompt = [layout_prompt]
+            task_prompt = [task_prompt]
+            content_prompt = [content_prompt]
+        
+        def _preprocess(prompt, content=False):
+            if prompt is not None:
+                return f"The last image of the last row depicts: {prompt}" if content else prompt
+            else:
+                return ""
 
-        if prompt_embeds is None:
-            prompt_2 = prompt_2 or prompt
-            prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
-
-            # We only use the pooled prompt output from the CLIPTextModel
-            pooled_prompt_embeds = self._get_clip_prompt_embeds(
-                prompt=prompt,
-                device=device,
-                num_images_per_prompt=num_images_per_prompt,
-            )
-            prompt_embeds = self._get_t5_prompt_embeds(
-                prompt=prompt_2,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-            )
+        prompt = [f"{_preprocess(layout_prompt[i])} {_preprocess(task_prompt[i])} {_preprocess(content_prompt[i], content=True)}".strip() for i in range(len(layout_prompt))]
+        pooled_prompt_embeds = self._get_clip_prompt_embeds(
+            prompt=prompt,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+        )
+        prompt_embeds = self._get_t5_prompt_embeds(
+            prompt=prompt,
+            num_images_per_prompt=num_images_per_prompt,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
 
         if self.text_encoder is not None:
             if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
@@ -524,25 +465,27 @@ class FluxFillPipeline(
 
     def check_inputs(
         self,
-        prompt,
-        prompt_2,
-        strength,
-        height,
-        width,
+        image, 
+        task_prompt,
+        content_prompt,
+        upsampling_height,
+        upsampling_width,
+        strength, 
         prompt_embeds=None,
         pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
-        image=None,
-        mask_image=None,
-        masked_image_latents=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
+        if upsampling_height is not None and upsampling_height % (self.vae_scale_factor * 2) != 0 :
             logger.warning(
-                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
+                f"`upsampling_height`has to be divisible by {self.vae_scale_factor * 2} but are {upsampling_height}. Dimensions will be resized accordingly"
+            )
+        if upsampling_width is not None and upsampling_width % (self.vae_scale_factor * 2) != 0:
+            logger.warning(
+                f"`upsampling_width` have to be divisible by {self.vae_scale_factor * 2} but are {upsampling_width}. Dimensions will be resized accordingly"
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
@@ -552,55 +495,88 @@ class FluxFillPipeline(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
-        if prompt is not None and prompt_embeds is not None:
+        # Validate prompt inputs
+        if (task_prompt is not None or content_prompt is not None) and prompt_embeds is not None:
             raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
+                "Cannot provide both text `task_prompt` + `content_prompt` and `prompt_embeds`. "
             )
-        elif prompt_2 is not None and prompt_embeds is not None:
+        
+        if task_prompt is None and content_prompt is None and prompt_embeds is None:
             raise ValueError(
-                f"Cannot forward both `prompt_2`: {prompt_2} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
+                "Must provide either `task_prompt` + `content_prompt` or pre-computed `prompt_embeds`. "
             )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
-            raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
 
+        # Validate prompt types and consistency
+        if task_prompt is None:
+            raise ValueError("`task_prompt` is missing.")
+            
+        if task_prompt is not None and not isinstance(task_prompt, (str, list)):
+            raise ValueError(f"`task_prompt` must be str or list, got {type(task_prompt)}")
+            
+        if content_prompt is not None and not isinstance(content_prompt, (str, list)):
+            raise ValueError(f"`content_prompt` must be str or list, got {type(content_prompt)}")
+            
+        if isinstance(task_prompt, list) or isinstance(content_prompt, list):
+            if not isinstance(task_prompt, list) or not isinstance(content_prompt, list):
+                raise ValueError(
+                    f"`task_prompt` and `content_prompt` must both be lists, or both be of type str or None, "
+                    f"got {type(task_prompt)} and {type(content_prompt)}"
+                )
+            if len(content_prompt) != len(task_prompt):
+                raise ValueError(
+                    "`task_prompt` and `content_prompt` must have the same length whe they are lists."
+                )
+            
+            for sample in image:
+                if not isinstance(sample, list) or not isinstance(sample[0], list):
+                    raise ValueError(
+                        "Each sample in the batch must have a 2D list of images."
+                    )
+                if len(set([len(row) for row in sample])) != 1:
+                    raise ValueError(
+                        "Each in-context example and query should contain the same number of images."
+                    )
+                if not any([img is None for img in sample[-1]]):
+                    raise ValueError(
+                        "There are no targets in the query, which should be represented as None."
+                    )
+                for row in sample[:-1]:
+                    if any(img is None for img in row):
+                        raise ValueError(
+                            "Images are missing in in-context examples."
+                        )
+
+        # Validate embeddings
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
             )
 
+        # Validate sequence length
         if max_sequence_length is not None and max_sequence_length > 512:
-            raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
-
-        if image is not None and masked_image_latents is not None:
-            raise ValueError(
-                "Please provide either  `image` or `masked_image_latents`, `masked_image_latents` should not be passed."
-            )
-
-        if image is not None and mask_image is None:
-            raise ValueError("Please provide `mask_image` when passing `image`.")
+            raise ValueError(f"max_sequence_length cannot exceed 512, got {max_sequence_length}")
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
-        latent_image_ids = torch.zeros(height, width, 3)
-        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
-        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
-
-        latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
-
-        latent_image_ids = latent_image_ids.reshape(
-            latent_image_id_height * latent_image_id_width, latent_image_id_channels
-        )
-
-        return latent_image_ids.to(device=device, dtype=dtype)
+    def _prepare_latent_image_ids(image, vae_scale_factor, device, dtype):
+        
+        latent_image_ids = []
+        
+        for idx, img in enumerate(image, start=1):
+            img = img.squeeze(0)
+            channels, height, width = img.shape
+            
+            num_patches_h = height // vae_scale_factor // 2
+            num_patches_w = width // vae_scale_factor // 2
+            
+            patch_ids = torch.zeros(num_patches_h, num_patches_w, 3, device=device, dtype=dtype)            
+            patch_ids[..., 0] = idx
+            patch_ids[..., 1] = torch.arange(num_patches_h, device=device, dtype=dtype)[:, None]
+            patch_ids[..., 2] = torch.arange(num_patches_w, device=device, dtype=dtype)[None, :]
+            
+            patch_ids = patch_ids.reshape(-1, 3)
+            latent_image_ids.append(patch_ids)
+        
+        return torch.cat(latent_image_ids, dim=0)
 
     @staticmethod
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
@@ -613,7 +589,7 @@ class FluxFillPipeline(
 
     @staticmethod
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
-    def _unpack_latents(latents, height, width, vae_scale_factor):
+    def _unpack_latents_upsampling(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
         # VAE applies 8x compression on images but we must also account for packing which requires
@@ -627,6 +603,30 @@ class FluxFillPipeline(
         latents = latents.reshape(batch_size, channels // (2 * 2), height, width)
 
         return latents
+
+    @staticmethod
+    def _unpack_latents(latents, sizes, vae_scale_factor):
+        batch_size, num_patches, channels = latents.shape
+        
+        start = 0
+        unpacked_latents = []
+        for i in range(len(sizes)):
+            cur_size = sizes[i]
+            height = cur_size[0][0] // vae_scale_factor
+            width = sum([size[1] for size in cur_size]) // vae_scale_factor
+            
+            end = start + (height * width) // 4
+            
+            cur_latents = latents[:, start:end]
+            cur_latents = cur_latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
+            cur_latents = cur_latents.permute(0, 3, 1, 4, 2, 5)
+            cur_latents = cur_latents.reshape(batch_size, channels // (2 * 2), height, width)
+            
+            unpacked_latents.append(cur_latents)
+            
+            start = end
+
+        return unpacked_latents
 
     def enable_vae_slicing(self):
         r"""
@@ -656,20 +656,18 @@ class FluxFillPipeline(
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-
-    # Copied from diffusers.pipelines.flux.pipeline_flux_img2img.FluxImg2ImgPipeline.prepare_latents
+      
     def prepare_latents(
         self,
-        image,
-        timestep,
+        input_image,
+        input_mask, 
+        timestep, 
         batch_size,
-        num_channels_latents,
-        height,
-        width,
         dtype,
         device,
-        generator,
-        latents=None,
+        generator, 
+        vae_scale_factor, 
+        upsampling = False
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -677,36 +675,86 @@ class FluxFillPipeline(
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (self.vae_scale_factor * 2))
-        width = 2 * (int(width) // (self.vae_scale_factor * 2))
-        shape = (batch_size, num_channels_latents, height, width)
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
+        def _prepare_single_batch(image, mask, gen):
+            """Helper function to prepare latents for a single batch."""
+            with torch.autocast("cuda", dtype):
+                # Concatenate images and masks along width dimension
+                image = [torch.cat(img, dim=2).to(device, non_blocking=True) for img in image]
+                mask = [torch.cat(m, dim=3).to(device, non_blocking=True) for m in mask]
 
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype), latent_image_ids
+                # Generate latent image IDs
+                latent_image_ids = self._prepare_latent_image_ids(image, vae_scale_factor, device, dtype)
+                
+                # Encode images to latent space
+                with torch.no_grad():
+                    if not upsampling:
+                        # For initial encoding, use actual images
+                        image_latent = [self._encode_vae_image(img[None], gen) for img in image]
+                        masked_image_latent = image_latent
+                    else:
+                        # For post-upsampling, use zero images for masked latents
+                        image_latent = [self._encode_vae_image(img[None], gen) for img in image]
+                        masked_image_latent = [self._encode_vae_image(img[None] * 0, gen) for img in image]
+                    
+                    # Rearrange latents and masks for patch processing
+                    image_latent = [rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for img in image_latent]
+                    masked_image_latent = [rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for img in masked_image_latent]
 
-        image = image.to(device=device, dtype=dtype)
-        if image.shape[1] != self.latent_channels:
-            image_latents = self._encode_vae_image(image=image, generator=generator)
-        else:
-            image_latents = image
-        if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            additional_image_per_prompt = batch_size // image_latents.shape[0]
-            image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
+                    # Rearrange masks for patch processing
+                    mask = [rearrange(m, "b c (h ph) (w pw) -> b (c ph pw) h w", ph=vae_scale_factor, pw=vae_scale_factor) for m in mask]
+                    mask = [rearrange(m, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for m in mask]
+                
+                # Concatenate along batch dimension
+                image_latent = torch.cat(image_latent, dim=1)
+                masked_image_latent = torch.cat(masked_image_latent, dim=1)
+                mask = torch.cat(mask, dim=1)                
+
+                return image_latent, masked_image_latent, mask, latent_image_ids
+
+        # Process each batch
+        masked_image_latents = []
+        image_latents = []
+        masks = []
+        latent_image_ids = []
+
+        for i in range(len(input_image)):
+            _image_latent, _masked_image_latent, _mask, _latent_image_ids = _prepare_single_batch(
+                input_image[i], 
+                input_mask[i], 
+                generator if isinstance(generator, torch.Generator) else generator[i]
             )
-        else:
-            image_latents = torch.cat([image_latents], dim=0)
+            masked_image_latents.append(_masked_image_latent)
+            image_latents.append(_image_latent)
+            masks.append(_mask)
+            latent_image_ids.append(_latent_image_ids)
+        
+        # Concatenate all batches
+        masked_image_latents = torch.cat(masked_image_latents, dim=0)
+        image_latents = torch.cat(image_latents, dim=0)
+        masks = torch.cat(masks, dim=0)
 
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self.scheduler.scale_noise(image_latents, timestep, noise)
-        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
-        return latents, latent_image_ids
+        # Handle batch size expansion
+        if batch_size > masked_image_latents.shape[0]:
+            if batch_size % masked_image_latents.shape[0] == 0:
+                # Expand batches by repeating
+                additional_image_per_prompt = batch_size // masked_image_latents.shape[0]
+                masked_image_latents = torch.cat([masked_image_latents] * additional_image_per_prompt, dim=0)
+                image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
+                masks = torch.cat([masks] * additional_image_per_prompt, dim=0)
+            else:
+                raise ValueError(
+                    f"Cannot expand batch size from {masked_image_latents.shape[0]} to {batch_size}. "
+                    "Batch sizes must be multiples of each other."
+                )
+        
+        # Add noise to latents
+        noises = randn_tensor(image_latents.shape, generator=generator, device=device, dtype=dtype)
+        latents = self.scheduler.scale_noise(image_latents, timestep, noises).to(dtype=dtype)
+        
+        # Combine masked latents with masks
+        masked_image_latents = torch.cat((masked_image_latents, masks), dim=-1).to(dtype=dtype)
+
+        return latents, masked_image_latents, latent_image_ids[0]
 
     @property
     def guidance_scale(self):
@@ -728,14 +776,11 @@ class FluxFillPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        prompt_2: Optional[Union[str, List[str]]] = None,
+        task_prompt: Union[str, List[str]] = None,
+        content_prompt: Union[str, List[str]] = None,
         image: Optional[torch.FloatTensor] = None,
-        mask_image: Optional[torch.FloatTensor] = None,
-        masked_image_latents: Optional[torch.FloatTensor] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        strength: float = 1.0,
+        upsampling_height: Optional[int] = None,
+        upsampling_width: Optional[int] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 30.0,
@@ -750,42 +795,29 @@ class FluxFillPipeline(
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        upsampling_strength: float = 1.0,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        Function invoked when calling the VisualCloze pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
-            prompt_2 (`str` or `List[str]`, *optional*):
-                The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
-                will be used instead
+            task_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to define the task intention.
+            content_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to define the content or caption of the target image to be generated.
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`.
-            mask_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
-                are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
-                single channel (luminance) before use. If it's a numpy array or pytorch tensor, it should contain one
-                color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`, `(B,
-                H, W)`, `(1, H, W)`, `(H, W)`. And for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W,
-                1)`, or `(H, W)`.
-            mask_image_latent (`torch.Tensor`, `List[torch.Tensor]`):
-                `Tensor` representing an image batch to mask `image` generated by VAE. If not provided, the mask
-                latents tensor will ge generated by `mask_image`.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. This is set to 1024 by default for the best results.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            strength (`float`, *optional*, defaults to 1.0):
-                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
-                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
-                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
-                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
-                essentially ignores `image`.
+            upsampling_height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The height in pixels of the generated image (i.e., output image) after upsampling via SDEdit. 
+                By default, the image is upsampled by a factor of three, and the base resolution is determined by the resolution parameter of the pipeline. 
+                When only one of `upsampling_height` or `upsampling_width` is specified, the other will be automatically set based on the aspect ratio.
+            upsampling_width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The width in pixels of the generated image (i.e., output image) after upsampling via SDEdit. 
+                By default, the image is upsampled by a factor of three, and the base resolution is determined by the resolution parameter of the pipeline. 
+                When only one of `upsampling_height` or `upsampling_width` is specified, the other will be automatically set based on the aspect ratio.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -833,6 +865,12 @@ class FluxFillPipeline(
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
+            upsampling_strength (`float`, *optional*, defaults to 1.0):
+                Indicates extent to transform the reference `image` when upsampling the results. Must be between 0 and 1. 
+                The generated image is used as a starting point and more noise is added the higher the `upsampling_strength`. 
+                The number of denoising steps depends on the amount of noise initially added. When `upsampling_strength` is 1, 
+                added noise is maximum and the denoising process runs for the full number of iterations specified in `num_inference_steps`. 
+                A value of 0 skips the upsampling step and output the results at the resolution of `self.resolution`.
 
         Examples:
 
@@ -842,53 +880,177 @@ class FluxFillPipeline(
             images.
         """
 
-        height = height or self.default_sample_size * self.vae_scale_factor
-        width = width or self.default_sample_size * self.vae_scale_factor
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt,
-            prompt_2,
-            strength,
-            height,
-            width,
+            image, 
+            task_prompt,
+            content_prompt,
+            upsampling_height,
+            upsampling_width,
+            upsampling_strength, 
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
-            image=image,
-            mask_image=mask_image,
-            masked_image_latents=masked_image_latents,
         )
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
 
-        init_image = self.image_processor.preprocess(image, height=height, width=width)
-        init_image = init_image.to(dtype=torch.float32)
-
-        # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
+        processor_output = self.visualcloze_processor(task_prompt, content_prompt, image, vae_scale_factor=self.vae_scale_factor)
+        
+        # Define call parameters
+        if processor_output['task_prompt'] is not None and isinstance(processor_output['task_prompt'], str):
             batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+        elif processor_output['task_prompt'] is not None and isinstance(processor_output['task_prompt'], list):
+            batch_size = len(processor_output['task_prompt'])
         else:
-            batch_size = prompt_embeds.shape[0]
+            raise NotImplementedError("task_prompt must be a string or a list of strings")
+        
+        cloze_latents = self.denoise(
+            processor_output, 
+            batch_size=batch_size, 
+            num_inference_steps=num_inference_steps,
+            sigmas=sigmas, 
+            guidance_scale=guidance_scale, 
+            num_images_per_prompt=num_images_per_prompt, 
+            generator=generator, 
+            latents=latents, 
+            prompt_embeds=prompt_embeds, 
+            pooled_prompt_embeds=pooled_prompt_embeds, 
+            callback_on_step_end=callback_on_step_end, 
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs, 
+            max_sequence_length=max_sequence_length, 
+            strength=1
+        )
+        
+        # Crop the target image
+        images = []
+        for b in range(len(cloze_latents)):
+            cur_image_size = processor_output['image_size'][b % batch_size]
+            cur_target_position = processor_output['target_position'][b % batch_size]
+            cur_latent = self._unpack_latents(cloze_latents[b].unsqueeze(0), cur_image_size, self.vae_scale_factor)[-1]
+            cur_latent = (cur_latent / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+            cur_image = self.vae.decode(cur_latent, return_dict=False)[0]
+            cur_image = self.image_processor.postprocess(cur_image)[0]
+            
+            start = 0
+            cropped = []
+            for i, size in enumerate(cur_image_size[-1]):
+                if cur_target_position[i]:
+                    cropped.append(
+                        cur_image.crop((start, 0, start + size[1], size[0])))
+                start += size[1]
+            images.append(cropped)
+
+        # Upsampling the generated images
+        n_target_per_sample = []
+        upsampling_image = []
+        upsampling_task_prompt = []
+        upsampling_content_prompt = []
+        upsampling_generator = generator if isinstance(generator, (torch.Generator,)) else []
+        for i in range(len(images)):
+            n_target_per_sample.append(len(images[i]))
+            for image in images[i]:
+                upsampling_image.append([[image]])
+                upsampling_task_prompt.append(None)
+                upsampling_content_prompt.append(processor_output['content_prompt'][i % batch_size])
+                if not isinstance(generator, (torch.Generator,)):
+                    upsampling_generator.append(generator[i % num_images_per_prompt])
+
+        base_width, base_height = upsampling_image[0][0][0].size
+        if upsampling_height is None and upsampling_width is None:
+            upsampling_height = int(base_height * 3 / self.vae_scale_factor) * self.vae_scale_factor
+            upsampling_width = int(base_width * 3 / self.vae_scale_factor) * self.vae_scale_factor
+        elif upsampling_height is None:
+            upsampling_height = base_height * (upsampling_width / base_width)
+            upsampling_height = int(upsampling_height / self.vae_scale_factor) * self.vae_scale_factor
+        elif upsampling_width is None:
+            upsampling_width = base_width * (upsampling_height / base_height)
+            upsampling_width = int(upsampling_width / self.vae_scale_factor) * self.vae_scale_factor
+        
+        divisible = 2 * self.vae_scale_factor
+        upsampling_height = int(upsampling_height // divisible) * divisible
+        upsampling_width = int(upsampling_width // divisible) * divisible
+
+        processor_output = self.visualcloze_processor(
+            upsampling_task_prompt, 
+            upsampling_content_prompt, 
+            upsampling_image, 
+            upsampling=True, 
+            height=upsampling_height, 
+            width=upsampling_width, 
+            vae_scale_factor=self.vae_scale_factor, 
+        )
+
+        upsampling_latents = self.denoise(
+            processor_output, 
+            batch_size=len(upsampling_image), 
+            num_inference_steps=num_inference_steps,
+            sigmas=sigmas, 
+            guidance_scale=guidance_scale, 
+            num_images_per_prompt=1, 
+            generator=generator, 
+            latents=latents, 
+            callback_on_step_end=callback_on_step_end, 
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs, 
+            max_sequence_length=max_sequence_length, 
+            strength=upsampling_strength, 
+            upsampling=True
+        )
+
+        if output_type == "latent":
+            image = upsampling_latents
+        else:
+            latents = self._unpack_latents_upsampling(upsampling_latents, upsampling_height, upsampling_width, self.vae_scale_factor)
+            latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+            image = self.vae.decode(latents, return_dict=False)[0]
+            image = self.image_processor.postprocess(image, output_type=output_type)
+        
+        output = []
+        start = 0
+        for n in n_target_per_sample:
+            output.append(image[start: start + n])
+            start += n
+
+        # Offload all models
+        self.maybe_free_model_hooks()
+
+        if not return_dict:
+            return (output,)
+
+        return FluxPipelineOutput(images=output)
+
+    def denoise(
+        self, 
+        processor_output: dict = None, 
+        batch_size: int = None, 
+        num_inference_steps: int = 50,
+        sigmas: Optional[List[float]] = None,
+        guidance_scale: float = 30.0,
+        num_images_per_prompt: Optional[int] = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 512,
+        strength: float = 1.0,
+        upsampling: bool = False
+    ):
 
         device = self._execution_device
 
-        # 3. Prepare prompt embeddings
+        # 1. Prepare prompt embeddings
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        (
-            prompt_embeds,
-            pooled_prompt_embeds,
-            text_ids,
-        ) = self.encode_prompt(
-            prompt=prompt,
-            prompt_2=prompt_2,
+        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(
+            layout_prompt=processor_output['layout_prompt'],
+            task_prompt=processor_output['task_prompt'],
+            content_prompt=processor_output['content_prompt'],
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             device=device,
@@ -897,9 +1059,15 @@ class FluxFillPipeline(
             lora_scale=lora_scale,
         )
 
-        # 4. Prepare timesteps
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
+        # 2. Prepare timesteps
+        # Calculate sequence length and shift factor
+        image_seq_len = sum(
+            (size[0] // self.vae_scale_factor // 2) * (size[1] // self.vae_scale_factor // 2)
+            for sample in processor_output['image_size'][0]
+            for size in sample
+        )
+        
+        # Calculate noise schedule parameters
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.get("base_image_seq_len", 256),
@@ -907,6 +1075,9 @@ class FluxFillPipeline(
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
+        
+        # Get timesteps
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
@@ -921,66 +1092,41 @@ class FluxFillPipeline(
                 f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
                 f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
             )
-        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        # 5. Prepare latent variables
-        num_channels_latents = self.vae.config.latent_channels
-        latents, latent_image_ids = self.prepare_latents(
-            init_image,
-            latent_timestep,
+        # 3. Prepare latent variables
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        latents, masked_image_latents, latent_image_ids = self.prepare_latents(
+            processor_output['init_image'], 
+            processor_output['mask'], 
+            latent_timestep, 
             batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
             prompt_embeds.dtype,
             device,
             generator,
-            latents,
+            vae_scale_factor=self.vae_scale_factor, 
+            upsampling=upsampling
         )
-
-        # 6. Prepare mask and masked image latents
-        if masked_image_latents is not None:
-            masked_image_latents = masked_image_latents.to(latents.device)
-        else:
-            mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
-
-            masked_image = init_image * (1 - mask_image)
-            masked_image = masked_image.to(device=device, dtype=prompt_embeds.dtype)
-
-            height, width = init_image.shape[-2:]
-            mask, masked_image_latents = self.prepare_mask_latents(
-                mask_image,
-                masked_image,
-                batch_size,
-                num_channels_latents,
-                num_images_per_prompt,
-                height,
-                width,
-                prompt_embeds.dtype,
-                device,
-                generator,
-            )
-            masked_image_latents = torch.cat((masked_image_latents, mask), dim=-1)
-
+            
+        # Calculate warmup steps
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # handle guidance
+        # Prepare guidance
         if self.transformer.config.guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
             guidance = guidance.expand(latents.shape[0])
         else:
             guidance = None
-
-        # 7. Denoising loop
+        
+        # 4. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                # Broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-
+                
                 noise_pred = self.transformer(
                     hidden_states=torch.cat((latents, masked_image_latents), dim=2),
                     timestep=timestep / 1000,
@@ -988,18 +1134,18 @@ class FluxFillPipeline(
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
-                    img_ids=latent_image_ids,
+                    img_ids=latent_image_ids, 
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
 
-                # compute the previous noisy sample x_t -> x_t-1
+                # Compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
-                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        # Some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
 
                 if callback_on_step_end is not None:
@@ -1011,28 +1157,13 @@ class FluxFillPipeline(
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
 
-                # call the callback, if provided
+                # Call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
+                # XLA optimization
                 if XLA_AVAILABLE:
                     xm.mark_step()
+        
+        return latents
 
-        # 8. Post-process the image
-        if output_type == "latent":
-            # TODO
-            image = latents
-
-        else:
-            latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
-            latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
-            image = self.vae.decode(latents, return_dict=False)[0]
-            image = self.image_processor.postprocess(image, output_type=output_type)
-
-        # Offload all models
-        self.maybe_free_model_hooks()
-
-        if not return_dict:
-            return (image,)
-
-        return FluxPipelineOutput(images=image)
