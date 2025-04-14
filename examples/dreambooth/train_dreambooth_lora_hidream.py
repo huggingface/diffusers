@@ -1454,7 +1454,11 @@ def main(args):
 
     # Clear the memory here
     if not train_dataset.custom_instance_prompts:
-        del text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four, tokenizer_one, tokenizer_two,tokenizer_three, tokenizer_four
+        # delete tokenizers and text encoders except for llama (tokenizer & te four)
+        # as it's needed for inference with pipeline
+        del text_encoder_one, text_encoder_two, text_encoder_three, tokenizer_one, tokenizer_two,tokenizer_three
+        if not args.validation_prompt:
+            del tokenizer_four, text_encoder_four
         free_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
@@ -1739,8 +1743,8 @@ def main(args):
                 # create pipeline
                 pipeline = HiDreamImagePipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    # tokenizer_4=tokenizer_4,
-                    # text_encoder_4=text_encoder_4,
+                    tokenizer_4=tokenizer_four,
+                    text_encoder_4=text_encoder_four,
                     transformer=accelerator.unwrap_model(transformer),
                     revision=args.revision,
                     variant=args.variant,
