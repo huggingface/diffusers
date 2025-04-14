@@ -58,14 +58,15 @@ class BaseMarkedState(BaseState):
         self._mark_name = None
 
     def __getattribute__(self, name):
-        if name in (
+        direct_attrs = (
             "get_current_state",
             "mark_state",
             "reset",
             "_init_args",
             "_init_kwargs",
             "_mark_name",
-            "_state_cache",
+            "_state_cache",)
+        if name in direct_attrs or _is_dunder_method(name):
         ) or _is_dunder_method(name):
             return object.__getattribute__(self, name)
         else:
