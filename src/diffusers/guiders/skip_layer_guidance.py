@@ -26,20 +26,26 @@ class SkipLayerGuidance(BaseGuidance):
     """
     Skip Layer Guidance (SLG): https://github.com/Stability-AI/sd3.5 Spatio-Temporal Guidance (STG):
     https://huggingface.co/papers/2411.18664
+    
     SLG was introduced by StabilityAI for improving structure and anotomy coherence in generated images. It works by
     skipping the forward pass of specified transformer blocks during the denoising process on an additional conditional
     batch of data, apart from the conditional and unconditional batches already used in CFG
     ([~guiders.classifier_free_guidance.ClassifierFreeGuidance]), and then scaling and shifting the CFG predictions
     based on the difference between conditional without skipping and conditional with skipping predictions.
+    
     The intution behind SLG can be thought of as moving the CFG predicted distribution estimates further away from
     worse versions of the conditional distribution estimates (because skipping layers is equivalent to using a worse
     version of the model for the conditional prediction).
+    
     STG is an improvement and follow-up work combining ideas from SLG, PAG and similar techniques for improving
     generation quality in video diffusion models.
+    
     Additional reading:
     - [Guiding a Diffusion Model with a Bad Version of Itself](https://huggingface.co/papers/2406.02507)
+    
     The values for `skip_layer_guidance_scale`, `skip_layer_guidance_start`, and `skip_layer_guidance_stop` are
     defaulted to the recommendations by StabilityAI for Stable Diffusion 3.5 Medium.
+    
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text

@@ -134,6 +134,7 @@ else:
         [
             "AdaptiveProjectedGuidance",
             "ClassifierFreeGuidance",
+            "ClassifierFreeZeroStarGuidance",
             "SkipLayerGuidance",
         ]
     )
@@ -724,6 +725,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .guiders import (
             AdaptiveProjectedGuidance,
             ClassifierFreeGuidance,
+            ClassifierFreeZeroStarGuidance,
             SkipLayerGuidance,
         )
         from .hooks import (
