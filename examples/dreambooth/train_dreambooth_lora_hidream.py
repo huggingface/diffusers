@@ -1216,7 +1216,7 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    transformer = Lumina2Transformer2DModel.from_pretrained(
+    transformer = HiDreamImageTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     )
 
