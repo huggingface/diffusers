@@ -907,8 +907,8 @@ def _encode_prompt_with_llama(
     else:
         dtype = text_encoder.dtype
 
-    prompt_embeds = outputs.hidden_states[1:].to(dtype=dtype, device=device)
-    prompt_embeds = torch.stack(prompt_embeds, dim=0)
+    prompt_embeds = outputs.hidden_states[1:]
+    prompt_embeds = torch.stack(prompt_embeds, dim=0).to(dtype=dtype, device=device)
     _, _, seq_len, dim = prompt_embeds.shape
 
     # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
@@ -1060,6 +1060,8 @@ def encode_prompt(
         attention_mask=attention_mask_list[1] if attention_mask_list else None,
     )
 
+    print("t5_prompt_embeds",t5_prompt_embeds.shape)
+    print("llama3_prompt_embeds",llama3_prompt_embeds.shape)
     prompt_embeds = [t5_prompt_embeds, llama3_prompt_embeds]
 
     return prompt_embeds, pooled_prompt_embeds
@@ -1431,7 +1433,8 @@ def main(args):
             prompt_embeds, pooled_prompt_embeds = encode_prompt(
                 text_encoders, tokenizers, prompt, args.max_sequence_length
             )
-            prompt_embeds = prompt_embeds.to(accelerator.device)
+            prompt_embeds[0] = prompt_embeds[0].to(accelerator.device)
+            prompt_embeds[1] = prompt_embeds[1].to(accelerator.device)
             pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
         return prompt_embeds, pooled_prompt_embeds
 
@@ -1587,7 +1590,8 @@ def main(args):
                 if train_dataset.custom_instance_prompts:
                     prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(prompts, text_encoders, tokenizers)
                 else:
-                    prompt_embeds = prompt_embeds.repeat(len(prompts), 1, 1)
+                    prompt_embeds[0] = prompt_embeds[0].repeat(len(prompts), 1, 1)
+                    prompt_embeds[1] = prompt_embeds[1].repeat(1, len(prompts), 1, 1)
                     pooled_prompt_embeds = pooled_prompt_embeds.repeat(len(prompts), 1)
                 # Convert images to latent space
                 if args.cache_latents:
