@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -26,6 +26,7 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention
+from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -113,20 +114,19 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         self.patch_size_t = patch_size_t
         self.theta = theta
 
-    def forward(
+    def _prepare_video_coords(
         self,
-        hidden_states: torch.Tensor,
+        batch_size: int,
         num_frames: int,
         height: int,
         width: int,
-        rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size = hidden_states.size(0)
-
+        rope_interpolation_scale: Tuple[torch.Tensor, float, float],
+        device: torch.device,
+    ) -> torch.Tensor:
         # Always compute rope in fp32
-        grid_h = torch.arange(height, dtype=torch.float32, device=hidden_states.device)
-        grid_w = torch.arange(width, dtype=torch.float32, device=hidden_states.device)
-        grid_f = torch.arange(num_frames, dtype=torch.float32, device=hidden_states.device)
+        grid_h = torch.arange(height, dtype=torch.float32, device=device)
+        grid_w = torch.arange(width, dtype=torch.float32, device=device)
+        grid_f = torch.arange(num_frames, dtype=torch.float32, device=device)
         grid = torch.meshgrid(grid_f, grid_h, grid_w, indexing="ij")
         grid = torch.stack(grid, dim=0)
         grid = grid.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
@@ -137,6 +137,38 @@ class LTXVideoRotaryPosEmbed(nn.Module):
             grid[:, 2:3] = grid[:, 2:3] * rope_interpolation_scale[2] * self.patch_size / self.base_width
 
         grid = grid.flatten(2, 4).transpose(1, 2)
+
+        return grid
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        num_frames: Optional[int] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None,
+        video_coords: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size = hidden_states.size(0)
+
+        if video_coords is None:
+            grid = self._prepare_video_coords(
+                batch_size,
+                num_frames,
+                height,
+                width,
+                rope_interpolation_scale=rope_interpolation_scale,
+                device=hidden_states.device,
+            )
+        else:
+            grid = torch.stack(
+                [
+                    video_coords[:, 0] / self.base_num_frames,
+                    video_coords[:, 1] / self.base_height,
+                    video_coords[:, 2] / self.base_width,
+                ],
+                dim=-1,
+            )
 
         start = 1.0
         end = self.theta
@@ -267,7 +299,7 @@ class LTXVideoTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
+class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin, CacheMixin):
     r"""
     A Transformer model for video-like data used in [LTX](https://huggingface.co/Lightricks/LTX-Video).
 
@@ -367,10 +399,11 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        num_frames: int,
-        height: int,
-        width: int,
-        rope_interpolation_scale: Optional[Tuple[float, float, float]] = None,
+        num_frames: Optional[int] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        rope_interpolation_scale: Optional[Union[Tuple[float, float, float], torch.Tensor]] = None,
+        video_coords: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
@@ -389,7 +422,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        image_rotary_emb = self.rope(hidden_states, num_frames, height, width, rope_interpolation_scale)
+        image_rotary_emb = self.rope(hidden_states, num_frames, height, width, rope_interpolation_scale, video_coords)
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
