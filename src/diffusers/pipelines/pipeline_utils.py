@@ -65,7 +65,7 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
-from ..utils.torch_utils import is_compiled_module, get_device
+from ..utils.torch_utils import get_device, is_compiled_module
 
 
 if is_torch_npu_available():
@@ -1087,9 +1087,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the accelerator when its `forward`
-        method is called, and the model remains in accelerator until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the accelerator when its
+        `forward` method is called, and the model remains in accelerator until the next model runs. Memory savings are
+        lower than with `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution
+        of the `unet`.
 
         Arguments:
             gpu_id (`int`, *optional*):
@@ -1205,8 +1206,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         r"""
         Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
         dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
-        and then moved to `torch.device('meta')` and loaded to accelerator only when their specific submodule has its `forward`
-        method called. Offloading happens on a submodule basis. Memory savings are higher than with
+        and then moved to `torch.device('meta')` and loaded to accelerator only when their specific submodule has its
+        `forward` method called. Offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
 
         Arguments:
