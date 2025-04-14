@@ -860,6 +860,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EulerDiscreteScheduler,
             FlowMatchEulerDiscreteScheduler,
             FlowMatchHeunDiscreteScheduler,
+            FlowMatchLCMScheduler,
             HeunDiscreteScheduler,
             IPNDMScheduler,
             KarrasVeScheduler,
