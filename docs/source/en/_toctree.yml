@@ -270,16 +270,18 @@
     - sections:
       - local: api/models/controlnet
         title: ControlNetModel
+      - local: api/models/controlnet_union
+        title: ControlNetUnionModel
       - local: api/models/controlnet_flux
         title: FluxControlNetModel
       - local: api/models/controlnet_hunyuandit
         title: HunyuanDiT2DControlNetModel
+      - local: api/models/controlnet_sana
+        title: SanaControlNetModel
       - local: api/models/controlnet_sd3
         title: SD3ControlNetModel
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
-      - local: api/models/controlnet_union
-        title: ControlNetUnionModel
       title: ControlNets
     - sections:
       - local: api/models/allegro_transformer3d
@@ -424,6 +426,8 @@
       title: ControlNet with Stable Diffusion 3
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
+    - local: api/pipelines/controlnet_sana
+      title: ControlNet-Sana
     - local: api/pipelines/controlnetxs
       title: ControlNet-XS
     - local: api/pipelines/controlnetxs_sdxl

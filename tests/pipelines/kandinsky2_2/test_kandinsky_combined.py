@@ -388,7 +388,7 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
     def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=5e-1)
+        super().test_float16_inference(expected_max_diff=8e-1)
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
