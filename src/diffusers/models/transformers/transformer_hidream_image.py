@@ -8,7 +8,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...models.modeling_outputs import Transformer2DModelOutput
 from ...models.modeling_utils import ModelMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention
 from ..embeddings import TimestepEmbedding, Timesteps
@@ -731,14 +731,22 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self,
         hidden_states: torch.Tensor,
         timesteps: torch.LongTensor = None,
-        t5_encoder_hidden_states: torch.Tensor = None,
-        llama3_encoder_hidden_states: torch.Tensor = None,
+        encoder_hidden_states_t5: torch.Tensor = None,
+        encoder_hidden_states_llama3: torch.Tensor = None,
         pooled_embeds: torch.Tensor = None,
         img_sizes: Optional[List[Tuple[int, int]]] = None,
         img_ids: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
+        **kwargs,
     ):
+        encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
+        if encoder_hidden_states is not None:
+            deprecation_message = "The `encoder_hidden_states` argument is deprecated. Please use `encoder_hidden_states_t5` and `encoder_hidden_states_llama3` instead."
+            deprecate("encoder_hidden_states", "0.34.0", deprecation_message)
+            encoder_hidden_states_t5 = encoder_hidden_states[0]
+            encoder_hidden_states_llama3 = encoder_hidden_states[1]
+
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -792,7 +800,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             )
         hidden_states = self.x_embedder(hidden_states)
 
-        encoder_hidden_states = [llama3_encoder_hidden_states[k] for k in self.llama_layers]
+        encoder_hidden_states = [encoder_hidden_states_llama3[k] for k in self.llama_layers]
 
         if self.caption_projection is not None:
             new_encoder_hidden_states = []
@@ -801,9 +809,9 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 enc_hidden_state = enc_hidden_state.view(batch_size, -1, hidden_states.shape[-1])
                 new_encoder_hidden_states.append(enc_hidden_state)
             encoder_hidden_states = new_encoder_hidden_states
-            t5_encoder_hidden_states = self.caption_projection[-1](t5_encoder_hidden_states)
-            t5_encoder_hidden_states = t5_encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
-            encoder_hidden_states.append(t5_encoder_hidden_states)
+            encoder_hidden_states_t5 = self.caption_projection[-1](encoder_hidden_states_t5)
+            encoder_hidden_states_t5 = encoder_hidden_states_t5.view(batch_size, -1, hidden_states.shape[-1])
+            encoder_hidden_states.append(encoder_hidden_states_t5)
 
         txt_ids = torch.zeros(
             batch_size,

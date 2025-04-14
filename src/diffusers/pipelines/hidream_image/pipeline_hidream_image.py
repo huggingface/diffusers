@@ -15,7 +15,7 @@ from transformers import (
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, HiDreamImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
-from ...utils import is_torch_xla_available, logging
+from ...utils import deprecate, is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HiDreamImagePipelineOutput
@@ -153,7 +153,7 @@ def retrieve_timesteps(
 
 class HiDreamImagePipeline(DiffusionPipeline):
     model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->text_encoder_4->transformer->vae"
-    _callback_tensor_inputs = ["latents", "t5_prompt_embeds", "llama3_prompt_embeds", "pooled_prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds_t5", "prompt_embeds_llama3", "pooled_prompt_embeds"]
 
     def __init__(
         self,
@@ -326,10 +326,10 @@ class HiDreamImagePipeline(DiffusionPipeline):
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         negative_prompt_3: Optional[Union[str, List[str]]] = None,
         negative_prompt_4: Optional[Union[str, List[str]]] = None,
-        t5_prompt_embeds: Optional[List[torch.FloatTensor]] = None,
-        llama3_prompt_embeds: Optional[List[torch.FloatTensor]] = None,
-        negative_t5_prompt_embeds: Optional[List[torch.FloatTensor]] = None,
-        negative_llama3_prompt_embeds: Optional[List[torch.FloatTensor]] = None,
+        prompt_embeds_t5: Optional[List[torch.FloatTensor]] = None,
+        prompt_embeds_llama3: Optional[List[torch.FloatTensor]] = None,
+        negative_prompt_embeds_t5: Optional[List[torch.FloatTensor]] = None,
+        negative_prompt_embeds_llama3: Optional[List[torch.FloatTensor]] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 128,
@@ -398,79 +398,79 @@ class HiDreamImagePipeline(DiffusionPipeline):
                 [negative_pooled_prompt_embeds_1, negative_pooled_prompt_embeds_2], dim=-1
             )
 
-        if t5_prompt_embeds is None:
+        if prompt_embeds_t5 is None:
             prompt_3 = prompt_3 or prompt
             prompt_3 = [prompt_3] if isinstance(prompt_3, str) else prompt_3
 
             if len(prompt_3) > 1 and len(prompt_3) != batch_size:
                 raise ValueError(f"prompt_3 must be of length 1 or {batch_size}")
 
-            t5_prompt_embeds = self._get_t5_prompt_embeds(prompt_3, max_sequence_length, device, dtype)
+            prompt_embeds_t5 = self._get_t5_prompt_embeds(prompt_3, max_sequence_length, device, dtype)
 
-            if t5_prompt_embeds.shape[0] == 1 and batch_size > 1:
-                t5_prompt_embeds = t5_prompt_embeds.repeat(batch_size, 1, 1)
+            if prompt_embeds_t5.shape[0] == 1 and batch_size > 1:
+                prompt_embeds_t5 = prompt_embeds_t5.repeat(batch_size, 1, 1)
 
-        if do_classifier_free_guidance and negative_t5_prompt_embeds is None:
+        if do_classifier_free_guidance and negative_prompt_embeds_t5 is None:
             negative_prompt_3 = negative_prompt_3 or ""
             negative_prompt_3 = [negative_prompt_3] if isinstance(negative_prompt_3, str) else negative_prompt_3
 
             if len(negative_prompt_3) > 1 and len(negative_prompt_3) != batch_size:
                 raise ValueError(f"negative_prompt_3 must be of length 1 or {batch_size}")
 
-            negative_t5_prompt_embeds = self._get_t5_prompt_embeds(
+            negative_prompt_embeds_t5 = self._get_t5_prompt_embeds(
                 negative_prompt_3, max_sequence_length, device, dtype
             )
 
-            if negative_t5_prompt_embeds.shape[0] == 1 and batch_size > 1:
-                negative_t5_prompt_embeds = negative_t5_prompt_embeds.repeat(batch_size, 1, 1)
+            if negative_prompt_embeds_t5.shape[0] == 1 and batch_size > 1:
+                negative_prompt_embeds_t5 = negative_prompt_embeds_t5.repeat(batch_size, 1, 1)
 
-        if llama3_prompt_embeds is None:
+        if prompt_embeds_llama3 is None:
             prompt_4 = prompt_4 or prompt
             prompt_4 = [prompt_4] if isinstance(prompt_4, str) else prompt_4
 
             if len(prompt_4) > 1 and len(prompt_4) != batch_size:
                 raise ValueError(f"prompt_4 must be of length 1 or {batch_size}")
 
-            llama3_prompt_embeds = self._get_llama3_prompt_embeds(prompt_4, max_sequence_length, device, dtype)
+            prompt_embeds_llama3 = self._get_llama3_prompt_embeds(prompt_4, max_sequence_length, device, dtype)
 
-            if llama3_prompt_embeds.shape[0] == 1 and batch_size > 1:
-                llama3_prompt_embeds = llama3_prompt_embeds.repeat(1, batch_size, 1, 1)
+            if prompt_embeds_llama3.shape[0] == 1 and batch_size > 1:
+                prompt_embeds_llama3 = prompt_embeds_llama3.repeat(1, batch_size, 1, 1)
 
-        if do_classifier_free_guidance and negative_llama3_prompt_embeds is None:
+        if do_classifier_free_guidance and negative_prompt_embeds_llama3 is None:
             negative_prompt_4 = negative_prompt_4 or ""
             negative_prompt_4 = [negative_prompt_4] if isinstance(negative_prompt_4, str) else negative_prompt_4
 
             if len(negative_prompt_4) > 1 and len(negative_prompt_4) != batch_size:
                 raise ValueError(f"negative_prompt_4 must be of length 1 or {batch_size}")
 
-            negative_llama3_prompt_embeds = self._get_llama3_prompt_embeds(
+            negative_prompt_embeds_llama3 = self._get_llama3_prompt_embeds(
                 negative_prompt_4, max_sequence_length, device, dtype
             )
 
-            if negative_llama3_prompt_embeds.shape[0] == 1 and batch_size > 1:
-                negative_llama3_prompt_embeds = negative_llama3_prompt_embeds.repeat(1, batch_size, 1, 1)
+            if negative_prompt_embeds_llama3.shape[0] == 1 and batch_size > 1:
+                negative_prompt_embeds_llama3 = negative_prompt_embeds_llama3.repeat(1, batch_size, 1, 1)
 
         # duplicate pooled_prompt_embeds for each generation per prompt
         pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt)
         pooled_prompt_embeds = pooled_prompt_embeds.view(batch_size * num_images_per_prompt, -1)
 
         # duplicate t5_prompt_embeds for batch_size and num_images_per_prompt
-        bs_embed, seq_len, _ = t5_prompt_embeds.shape
+        bs_embed, seq_len, _ = prompt_embeds_t5.shape
         if bs_embed == 1 and batch_size > 1:
-            t5_prompt_embeds = t5_prompt_embeds.repeat(batch_size, 1, 1)
+            prompt_embeds_t5 = prompt_embeds_t5.repeat(batch_size, 1, 1)
         elif bs_embed > 1 and bs_embed != batch_size:
-            raise ValueError(f"cannot duplicate t5_prompt_embeds of batch size {bs_embed}")
-        t5_prompt_embeds = t5_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        t5_prompt_embeds = t5_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            raise ValueError(f"cannot duplicate prompt_embeds_t5 of batch size {bs_embed}")
+        prompt_embeds_t5 = prompt_embeds_t5.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds_t5 = prompt_embeds_t5.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         # duplicate llama3_prompt_embeds for batch_size and num_images_per_prompt
-        _, bs_embed, seq_len, dim = llama3_prompt_embeds.shape
+        _, bs_embed, seq_len, dim = prompt_embeds_llama3.shape
         if bs_embed == 1 and batch_size > 1:
-            llama3_prompt_embeds = llama3_prompt_embeds.repeat(1, batch_size, 1, 1)
+            prompt_embeds_llama3 = prompt_embeds_llama3.repeat(1, batch_size, 1, 1)
         elif bs_embed > 1 and bs_embed != batch_size:
-            raise ValueError(f"cannot duplicate llama3_prompt_embeds of batch size {bs_embed}")
-        llama3_prompt_embeds = llama3_prompt_embeds.repeat(1, 1, num_images_per_prompt, 1)
-        llama3_prompt_embeds = llama3_prompt_embeds.view(-1, batch_size * num_images_per_prompt, seq_len, dim)
+            raise ValueError(f"cannot duplicate prompt_embeds_llama3 of batch size {bs_embed}")
+        prompt_embeds_llama3 = prompt_embeds_llama3.repeat(1, 1, num_images_per_prompt, 1)
+        prompt_embeds_llama3 = prompt_embeds_llama3.view(-1, batch_size * num_images_per_prompt, seq_len, dim)
 
         if do_classifier_free_guidance:
             # duplicate negative_pooled_prompt_embeds for batch_size and num_images_per_prompt
@@ -483,30 +483,30 @@ class HiDreamImagePipeline(DiffusionPipeline):
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.view(batch_size * num_images_per_prompt, -1)
 
             # duplicate negative_t5_prompt_embeds for batch_size and num_images_per_prompt
-            bs_embed, seq_len, _ = negative_t5_prompt_embeds.shape
+            bs_embed, seq_len, _ = negative_prompt_embeds_t5.shape
             if bs_embed == 1 and batch_size > 1:
-                negative_t5_prompt_embeds = negative_t5_prompt_embeds.repeat(batch_size, 1, 1)
+                negative_prompt_embeds_t5 = negative_prompt_embeds_t5.repeat(batch_size, 1, 1)
             elif bs_embed > 1 and bs_embed != batch_size:
-                raise ValueError(f"cannot duplicate negative_t5_prompt_embeds of batch size {bs_embed}")
-            negative_t5_prompt_embeds = negative_t5_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_t5_prompt_embeds = negative_t5_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+                raise ValueError(f"cannot duplicate negative_prompt_embeds_t5 of batch size {bs_embed}")
+            negative_prompt_embeds_t5 = negative_prompt_embeds_t5.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds_t5 = negative_prompt_embeds_t5.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            # duplicate negative_llama3_prompt_embeds for batch_size and num_images_per_prompt
-            _, bs_embed, seq_len, dim = negative_llama3_prompt_embeds.shape
+            # duplicate negative_prompt_embeds_llama3 for batch_size and num_images_per_prompt
+            _, bs_embed, seq_len, dim = negative_prompt_embeds_llama3.shape
             if bs_embed == 1 and batch_size > 1:
-                negative_llama3_prompt_embeds = negative_llama3_prompt_embeds.repeat(1, batch_size, 1, 1)
+                negative_prompt_embeds_llama3 = negative_prompt_embeds_llama3.repeat(1, batch_size, 1, 1)
             elif bs_embed > 1 and bs_embed != batch_size:
-                raise ValueError(f"cannot duplicate negative_llama3_prompt_embeds of batch size {bs_embed}")
-            negative_llama3_prompt_embeds = negative_llama3_prompt_embeds.repeat(1, 1, num_images_per_prompt, 1)
-            negative_llama3_prompt_embeds = negative_llama3_prompt_embeds.view(
+                raise ValueError(f"cannot duplicate negative_prompt_embeds_llama3 of batch size {bs_embed}")
+            negative_prompt_embeds_llama3 = negative_prompt_embeds_llama3.repeat(1, 1, num_images_per_prompt, 1)
+            negative_prompt_embeds_llama3 = negative_prompt_embeds_llama3.view(
                 -1, batch_size * num_images_per_prompt, seq_len, dim
             )
 
         return (
-            t5_prompt_embeds,
-            llama3_prompt_embeds,
-            negative_t5_prompt_embeds,
-            negative_llama3_prompt_embeds,
+            prompt_embeds_t5,
+            prompt_embeds_llama3,
+            negative_prompt_embeds_t5,
+            negative_prompt_embeds_llama3,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
         )
@@ -550,10 +550,10 @@ class HiDreamImagePipeline(DiffusionPipeline):
         negative_prompt_2=None,
         negative_prompt_3=None,
         negative_prompt_4=None,
-        t5_prompt_embeds=None,
-        llama3_prompt_embeds=None,
-        negative_t5_prompt_embeds=None,
-        negative_llama3_prompt_embeds=None,
+        prompt_embeds_t5=None,
+        prompt_embeds_llama3=None,
+        negative_prompt_embeds_t5=None,
+        negative_prompt_embeds_llama3=None,
         pooled_prompt_embeds=None,
         negative_pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
@@ -575,27 +575,27 @@ class HiDreamImagePipeline(DiffusionPipeline):
                 f"Cannot forward both `prompt_2`: {prompt_2} and `pooled_prompt_embeds`: {pooled_prompt_embeds}. Please make sure to"
                 " only forward one of the two."
             )
-        elif prompt_3 is not None and t5_prompt_embeds is not None:
+        elif prompt_3 is not None and prompt_embeds_t5 is not None:
             raise ValueError(
-                f"Cannot forward both `prompt_3`: {prompt_3} and `t5_prompt_embeds`: {t5_prompt_embeds}. Please make sure to"
+                f"Cannot forward both `prompt_3`: {prompt_3} and `prompt_embeds_t5`: {prompt_embeds_t5}. Please make sure to"
                 " only forward one of the two."
             )
-        elif prompt_4 is not None and llama3_prompt_embeds is not None:
+        elif prompt_4 is not None and prompt_embeds_llama3 is not None:
             raise ValueError(
-                f"Cannot forward both `prompt_4`: {prompt_4} and `llama3_prompt_embeds`: {llama3_prompt_embeds}. Please make sure to"
+                f"Cannot forward both `prompt_4`: {prompt_4} and `prompt_embeds_llama3`: {prompt_embeds_llama3}. Please make sure to"
                 " only forward one of the two."
             )
         elif prompt is None and pooled_prompt_embeds is None:
             raise ValueError(
                 "Provide either `prompt` or `pooled_prompt_embeds`. Cannot leave both `prompt` and `pooled_prompt_embeds` undefined."
             )
-        elif prompt is None and t5_prompt_embeds is None:
+        elif prompt is None and prompt_embeds_t5 is None:
             raise ValueError(
-                "Provide either `prompt` or `t5_prompt_embeds`. Cannot leave both `prompt` and `t5_prompt_embeds` undefined."
+                "Provide either `prompt` or `prompt_embeds_t5`. Cannot leave both `prompt` and `prompt_embeds_t5` undefined."
             )
-        elif prompt is None and llama3_prompt_embeds is None:
+        elif prompt is None and prompt_embeds_llama3 is None:
             raise ValueError(
-                "Provide either `prompt` or `llama3_prompt_embeds`. Cannot leave both `prompt` and `llama3_prompt_embeds` undefined."
+                "Provide either `prompt` or `prompt_embeds_llama3`. Cannot leave both `prompt` and `prompt_embeds_llama3` undefined."
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
@@ -616,15 +616,15 @@ class HiDreamImagePipeline(DiffusionPipeline):
                 f"Cannot forward both `negative_prompt_2`: {negative_prompt_2} and `negative_pooled_prompt_embeds`:"
                 f" {negative_pooled_prompt_embeds}. Please make sure to only forward one of the two."
             )
-        elif negative_prompt_3 is not None and negative_t5_prompt_embeds is not None:
+        elif negative_prompt_3 is not None and negative_prompt_embeds_t5 is not None:
             raise ValueError(
-                f"Cannot forward both `negative_prompt_3`: {negative_prompt_3} and `negative_t5_prompt_embeds`:"
-                f" {negative_t5_prompt_embeds}. Please make sure to only forward one of the two."
+                f"Cannot forward both `negative_prompt_3`: {negative_prompt_3} and `negative_prompt_embeds_t5`:"
+                f" {negative_prompt_embeds_t5}. Please make sure to only forward one of the two."
             )
-        elif negative_prompt_4 is not None and negative_llama3_prompt_embeds is not None:
+        elif negative_prompt_4 is not None and negative_prompt_embeds_llama3 is not None:
             raise ValueError(
-                f"Cannot forward both `negative_prompt_4`: {negative_prompt_4} and `negative_llama3_prompt_embeds`:"
-                f" {negative_llama3_prompt_embeds}. Please make sure to only forward one of the two."
+                f"Cannot forward both `negative_prompt_4`: {negative_prompt_4} and `negative_prompt_embeds_llama3`:"
+                f" {negative_prompt_embeds_llama3}. Please make sure to only forward one of the two."
             )
 
         if pooled_prompt_embeds is not None and negative_pooled_prompt_embeds is not None:
@@ -634,19 +634,19 @@ class HiDreamImagePipeline(DiffusionPipeline):
                     f" got: `pooled_prompt_embeds` {pooled_prompt_embeds.shape} != `negative_pooled_prompt_embeds`"
                     f" {negative_pooled_prompt_embeds.shape}."
                 )
-        if t5_prompt_embeds is not None and negative_t5_prompt_embeds is not None:
-            if t5_prompt_embeds.shape != negative_t5_prompt_embeds.shape:
+        if prompt_embeds_t5 is not None and negative_prompt_embeds_t5 is not None:
+            if prompt_embeds_t5.shape != negative_prompt_embeds_t5.shape:
                 raise ValueError(
-                    "`t5_prompt_embeds` and `negative_t5_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `t5_prompt_embeds` {t5_prompt_embeds.shape} != `negative_t5_prompt_embeds`"
-                    f" {negative_t5_prompt_embeds.shape}."
+                    "`prompt_embeds_t5` and `negative_prompt_embeds_t5` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds_t5` {prompt_embeds_t5.shape} != `negative_prompt_embeds_t5`"
+                    f" {negative_prompt_embeds_t5.shape}."
                 )
-        if llama3_prompt_embeds is not None and negative_llama3_prompt_embeds is not None:
-            if llama3_prompt_embeds.shape != negative_llama3_prompt_embeds.shape:
+        if prompt_embeds_llama3 is not None and negative_prompt_embeds_llama3 is not None:
+            if prompt_embeds_llama3.shape != negative_prompt_embeds_llama3.shape:
                 raise ValueError(
-                    "`llama3_prompt_embeds` and `negative_llama3_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `llama3_prompt_embeds` {llama3_prompt_embeds.shape} != `negative_llama3_prompt_embeds`"
-                    f" {negative_llama3_prompt_embeds.shape}."
+                    "`prompt_embeds_llama3` and `negative_prompt_embeds_llama3` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds_llama3` {prompt_embeds_llama3.shape} != `negative_prompt_embeds_llama3`"
+                    f" {negative_prompt_embeds_llama3.shape}."
                 )
 
     def prepare_latents(
@@ -714,10 +714,10 @@ class HiDreamImagePipeline(DiffusionPipeline):
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        t5_prompt_embeds: Optional[torch.FloatTensor] = None,
-        llama3_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_t5_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_llama3_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds_t5: Optional[torch.FloatTensor] = None,
+        prompt_embeds_llama3: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds_t5: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds_llama3: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -726,7 +726,23 @@ class HiDreamImagePipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 128,
+        **kwargs,
     ):
+        prompt_embeds = kwargs.get("prompt_embeds", None)
+        negative_prompt_embeds = kwargs.get("negative_prompt_embeds", None)
+
+        if prompt_embeds is not None:
+            deprecation_message = "The `prompt_embeds` argument is deprecated. Please use `prompt_embeds_t5` and `prompt_embeds_llama3` instead."
+            deprecate("prompt_embeds", "0.34.0", deprecation_message)
+            prompt_embeds_t5 = prompt_embeds[0]
+            prompt_embeds_llama3 = prompt_embeds[1]
+
+        if negative_prompt_embeds is not None:
+            deprecation_message = "The `negative_prompt_embeds` argument is deprecated. Please use `negative_prompt_embeds_t5` and `negative_prompt_embeds_llama3` instead."
+            deprecate("negative_prompt_embeds", "0.34.0", deprecation_message)
+            negative_prompt_embeds_t5 = negative_prompt_embeds[0]
+            negative_prompt_embeds_llama3 = negative_prompt_embeds[1]
+
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
@@ -746,10 +762,10 @@ class HiDreamImagePipeline(DiffusionPipeline):
             negative_prompt_2=negative_prompt_2,
             negative_prompt_3=negative_prompt_3,
             negative_prompt_4=negative_prompt_4,
-            t5_prompt_embeds=t5_prompt_embeds,
-            llama3_prompt_embeds=llama3_prompt_embeds,
-            negative_t5_prompt_embeds=negative_t5_prompt_embeds,
-            negative_llama3_prompt_embeds=negative_llama3_prompt_embeds,
+            prompt_embeds_t5=prompt_embeds_t5,
+            prompt_embeds_llama3=prompt_embeds_llama3,
+            negative_prompt_embeds_t5=negative_prompt_embeds_t5,
+            negative_prompt_embeds_llama3=negative_prompt_embeds_llama3,
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -772,10 +788,10 @@ class HiDreamImagePipeline(DiffusionPipeline):
         # 3. Encode prompt
         lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
         (
-            t5_prompt_embeds,
-            llama3_prompt_embeds,
-            negative_t5_prompt_embeds,
-            negative_llama3_prompt_embeds,
+            prompt_embeds_t5,
+            prompt_embeds_llama3,
+            negative_prompt_embeds_t5,
+            negative_prompt_embeds_llama3,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
         ) = self.encode_prompt(
@@ -788,10 +804,10 @@ class HiDreamImagePipeline(DiffusionPipeline):
             negative_prompt_3=negative_prompt_3,
             negative_prompt_4=negative_prompt_4,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
-            t5_prompt_embeds=t5_prompt_embeds,
-            llama3_prompt_embeds=llama3_prompt_embeds,
-            negative_t5_prompt_embeds=negative_t5_prompt_embeds,
-            negative_llama3_prompt_embeds=negative_llama3_prompt_embeds,
+            prompt_embeds_t5=prompt_embeds_t5,
+            prompt_embeds_llama3=prompt_embeds_llama3,
+            negative_prompt_embeds_t5=negative_prompt_embeds_t5,
+            negative_prompt_embeds_llama3=negative_prompt_embeds_llama3,
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             device=device,
@@ -801,8 +817,8 @@ class HiDreamImagePipeline(DiffusionPipeline):
         )
 
         if self.do_classifier_free_guidance:
-            t5_prompt_embeds = torch.cat([negative_t5_prompt_embeds, t5_prompt_embeds], dim=0)
-            llama3_prompt_embeds = torch.cat([negative_llama3_prompt_embeds, llama3_prompt_embeds], dim=1)
+            prompt_embeds_t5 = torch.cat([negative_prompt_embeds_t5, prompt_embeds_t5], dim=0)
+            prompt_embeds_llama3 = torch.cat([negative_prompt_embeds_llama3, prompt_embeds_llama3], dim=1)
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 4. Prepare latent variables
@@ -869,8 +885,8 @@ class HiDreamImagePipeline(DiffusionPipeline):
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timesteps=timestep,
-                    t5_encoder_hidden_states=t5_prompt_embeds,
-                    llama3_encoder_hidden_states=llama3_prompt_embeds,
+                    encoder_hidden_states_t5=prompt_embeds_t5,
+                    encoder_hidden_states_llama3=prompt_embeds_llama3,
                     pooled_embeds=pooled_prompt_embeds,
                     img_sizes=img_sizes,
                     img_ids=img_ids,
@@ -899,8 +915,8 @@ class HiDreamImagePipeline(DiffusionPipeline):
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
-                    t5_prompt_embeds = callback_outputs.pop("t5_prompt_embeds", t5_prompt_embeds)
-                    llama3_prompt_embeds = callback_outputs.pop("llama3_prompt_embeds", llama3_prompt_embeds)
+                    prompt_embeds_t5 = callback_outputs.pop("prompt_embeds_t5", prompt_embeds_t5)
+                    prompt_embeds_llama3 = callback_outputs.pop("prompt_embeds_llama3", prompt_embeds_llama3)
                     pooled_prompt_embeds = callback_outputs.pop("pooled_prompt_embeds", pooled_prompt_embeds)
 
                 # call the callback, if provided
