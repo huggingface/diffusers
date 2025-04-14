@@ -39,6 +39,7 @@ class BaseGuidance:
         self._timestep: torch.LongTensor = None
         self._preds: Dict[str, torch.Tensor] = {}
         self._num_outputs_prepared: int = 0
+        self._enabled = True
 
         if not (0.0 <= start < 1.0):
             raise ValueError(
@@ -54,6 +55,12 @@ class BaseGuidance:
                 "`_input_predictions` must be a list of required prediction names for the guidance technique."
             )
 
+    def force_disable(self):
+        self._enabled = False
+    
+    def force_enable(self):
+        self._enabled = True
+    
     def set_state(self, step: int, num_inference_steps: int, timestep: torch.LongTensor) -> None:
         self._step = step
         self._num_inference_steps = num_inference_steps
@@ -62,10 +69,10 @@ class BaseGuidance:
         self._num_outputs_prepared = 0
 
     def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
-        raise NotImplementedError("GuidanceMixin::prepare_inputs must be implemented in subclasses.")
+        raise NotImplementedError("BaseGuidance::prepare_inputs must be implemented in subclasses.")
 
     def prepare_outputs(self, denoiser: torch.nn.Module, pred: torch.Tensor) -> None:
-        raise NotImplementedError("GuidanceMixin::prepare_outputs must be implemented in subclasses.")
+        raise NotImplementedError("BaseGuidance::prepare_outputs must be implemented in subclasses.")
 
     def __call__(self, **kwargs) -> Any:
         if len(kwargs) != self.num_conditions:
@@ -75,11 +82,19 @@ class BaseGuidance:
         return self.forward(**kwargs)
 
     def forward(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("GuidanceMixin::forward must be implemented in subclasses.")
+        raise NotImplementedError("BaseGuidance::forward must be implemented in subclasses.")
 
     @property
+    def is_conditional(self) -> bool:
+        raise NotImplementedError("BaseGuidance::is_conditional must be implemented in subclasses.")
+    
+    @property
+    def is_unconditional(self) -> bool:
+        return not self.is_conditional
+    
+    @property
     def num_conditions(self) -> int:
-        raise NotImplementedError("GuidanceMixin::num_conditions must be implemented in subclasses.")
+        raise NotImplementedError("BaseGuidance::num_conditions must be implemented in subclasses.")
 
     @property
     def outputs(self) -> Dict[str, torch.Tensor]:
@@ -114,7 +129,7 @@ def _default_prepare_inputs(denoiser: torch.nn.Module, num_conditions: int, *arg
     """
     Prepares the inputs for the denoiser by ensuring that the conditional and unconditional inputs are correctly
     prepared based on required number of conditions. This function is used in the `prepare_inputs` method of the
-    `GuidanceMixin` class.
+    `BaseGuidance` class.
 
     Either tensors or tuples/lists of tensors can be provided. If a tuple/list is provided, it should contain two elements:
     - The first element is the conditional input.

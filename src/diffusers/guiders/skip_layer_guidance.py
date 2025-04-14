@@ -189,6 +189,10 @@ class SkipLayerGuidance(BaseGuidance):
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
         return pred
+    
+    @property
+    def is_conditional(self) -> bool:
+        return self._num_outputs_prepared == 0 or self._num_outputs_prepared == 2
 
     @property
     def num_conditions(self) -> int:
@@ -200,6 +204,8 @@ class SkipLayerGuidance(BaseGuidance):
         return num_conditions
 
     def _is_cfg_enabled(self) -> bool:
+        if not self._enabled:
+            return False
         skip_start_step = int(self._start * self._num_inference_steps)
         skip_stop_step = int(self._stop * self._num_inference_steps)
         is_within_range = skip_start_step <= self._step < skip_stop_step
@@ -211,6 +217,8 @@ class SkipLayerGuidance(BaseGuidance):
         return is_within_range and not is_close
 
     def _is_slg_enabled(self) -> bool:
+        if not self._enabled:
+            return False
         skip_start_step = int(self._start * self._num_inference_steps)
         skip_stop_step = int(self._stop * self._num_inference_steps)
         is_within_range = skip_start_step < self._step < skip_stop_step

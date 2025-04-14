@@ -93,6 +93,10 @@ class ClassifierFreeGuidance(BaseGuidance):
         return pred
 
     @property
+    def is_conditional(self) -> bool:
+        return self._num_outputs_prepared == 0
+
+    @property
     def num_conditions(self) -> int:
         num_conditions = 1
         if self._is_cfg_enabled():
@@ -100,6 +104,8 @@ class ClassifierFreeGuidance(BaseGuidance):
         return num_conditions
 
     def _is_cfg_enabled(self) -> bool:
+        if not self._enabled:
+            return False
         skip_start_step = int(self._start * self._num_inference_steps)
         skip_stop_step = int(self._stop * self._num_inference_steps)
         is_within_range = skip_start_step <= self._step < skip_stop_step
