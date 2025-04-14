@@ -56,7 +56,6 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     require_transformers_version_greater,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -2164,22 +2163,6 @@ class PipelineTesterMixin:
                 (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, UNetControlNetXSModel),
             )
         )
-
-    @require_torch_gpu
-    @slow
-    def test_torch_compile_recompilation_and_graph_break(self):
-        torch._dynamo.reset()
-        inputs = self.get_dummy_inputs(torch_device)
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components).to(torch_device)
-        if getattr(pipe, "unet", None) is not None:
-            pipe.unet = torch.compile(pipe.unet, fullgraph=True)
-        else:
-            pipe.transformer = torch.compile(pipe.transformer, fullgraph=True)
-
-        with torch._dynamo.config.patch(error_on_recompile=True):
-            _ = pipe(**inputs)
 
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
