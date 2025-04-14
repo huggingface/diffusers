@@ -752,20 +752,6 @@ class SlowBnb4BitFluxControlWithLoraTests(Base4bitTests):
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3, msg=f"{out_slice=} != {expected_slice=}")
 
-    def test_loading_lora_with_incorrect_dtype_raises_error(self):
-        self.tearDown()
-        model_dtype = torch.bfloat16
-        #  https://huggingface.co/eramth/flux-4bit/blob/main/transformer/config.json#L23
-        actual_dtype = torch.float16
-        self.pipeline_4bit = FluxControlPipeline.from_pretrained("eramth/flux-4bit", torch_dtype=torch.bfloat16)
-        self.pipeline_4bit.enable_model_cpu_offload()
-        with self.assertRaises(ValueError) as err_context:
-            self.pipeline_4bit.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
-        assert (
-            f"Model is in {model_dtype} dtype while the current module weight will be dequantized to {actual_dtype} dtype."
-            in str(err_context.exception)
-        )
-
 
 @slow
 class BaseBnb4BitSerializationTests(Base4bitTests):

@@ -95,11 +95,6 @@ def _maybe_dequantize_weight_for_expanded_lora(model, module):
         weight_on_cpu = True
 
     if is_bnb_4bit_quantized:
-        if module.weight.quant_state.dtype != model.dtype:
-            raise ValueError(
-                f"Model is in {model.dtype} dtype while the current module weight will be dequantized to {module.weight.quant_state.dtype} dtype. "
-                f"Please pass {module.weight.quant_state.dtype} as `torch_dtype` in `from_pretrained()`."
-            )
         module_weight = dequantize_bnb_weight(
             module.weight.cuda() if weight_on_cpu else module.weight,
             state=module.weight.quant_state,
@@ -2372,14 +2367,14 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     # TODO: consider if this layer needs to be a quantized layer as well if `is_quantized` is True.
                     with torch.device("meta"):
                         expanded_module = torch.nn.Linear(
-                            in_features, out_features, bias=bias, dtype=module_weight.dtype
+                            in_features, out_features, bias=bias, dtype=transformer.dtype
                         )
                     # Only weights are expanded and biases are not. This is because only the input dimensions
                     # are changed while the output dimensions remain the same. The shape of the weight tensor
                     # is (out_features, in_features), while the shape of bias tensor is (out_features,), which
                     # explains the reason why only weights are expanded.
                     new_weight = torch.zeros_like(
-                        expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
+                        expanded_module.weight.data, device=module_weight.device, dtype=transformer.dtype
                     )
                     slices = tuple(slice(0, dim) for dim in module_weight_shape)
                     new_weight[slices] = module_weight
