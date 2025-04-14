@@ -1591,7 +1591,9 @@ def main(args):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(prompts, text_encoders, tokenizers)
-
+                else:
+                    prompt_embeds = prompt_embeds.repeat(len(prompts), 1, 1)
+                    pooled_prompt_embeds = pooled_prompt_embeds.repeat(len(prompts), 1)
                 # Convert images to latent space
                 if args.cache_latents:
                     model_input = latents_cache[step].sample()
@@ -1646,12 +1648,8 @@ def main(args):
                 # Predict the noise residual
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
-                    encoder_hidden_states=prompt_embeds.repeat(len(prompts), 1, 1)
-                    if not train_dataset.custom_instance_prompts
-                    else prompt_embeds,
-                    pooled_embeds=pooled_prompt_embeds.repeat(len(prompts), 1)
-                    if not train_dataset.custom_instance_prompts
-                    else pooled_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
+                    pooled_embeds=pooled_prompt_embeds,
                     timestep=timesteps,
                     img_sizes=img_sizes,
                     img_ids=img_ids,
