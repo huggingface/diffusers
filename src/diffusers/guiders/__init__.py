@@ -23,4 +23,4 @@ if is_torch_available():
     from .classifier_free_zero_star_guidance import ClassifierFreeZeroStarGuidance
     from .skip_layer_guidance import SkipLayerGuidance
 
-    GuiderType = Union[ClassifierFreeGuidance, SkipLayerGuidance]
+    GuiderType = Union[AdaptiveProjectedGuidance, ClassifierFreeGuidance, ClassifierFreeZeroStarGuidance, SkipLayerGuidance]
