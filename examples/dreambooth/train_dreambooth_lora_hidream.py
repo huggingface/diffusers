@@ -991,7 +991,7 @@ def _encode_prompt_with_clip(
         if text_input_ids is None:
             raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
 
-    prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+    prompt_embeds = text_encoder(text_input_ids.to(device))
 
     if hasattr(text_encoder, "module"):
         dtype = text_encoder.module.dtype
@@ -1216,7 +1216,7 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    transformer = Lumina2Transformer2DModel.from_pretrained(
+    transformer = HiDreamImageTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     )
 
