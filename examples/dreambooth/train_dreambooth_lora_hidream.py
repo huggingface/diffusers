@@ -42,7 +42,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
-from transformers import CLIPTokenizer, PretrainedConfig, T5TokenizerFast, PreTrainedTokenizerFast
+from transformers import CLIPTokenizer, PretrainedConfig, T5TokenizerFast, PreTrainedTokenizerFast, LlamaForCausalLM
 
 import diffusers
 from diffusers import (
@@ -146,7 +146,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
     model_card = populate_model_card(model_card, tags=tags)
     model_card.save(os.path.join(repo_folder, "README.md"))
 
-def load_text_encoders(class_one, class_two, class_three, class_four):
+def load_text_encoders(class_one, class_two, class_three):
     text_encoder_one = class_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
@@ -156,9 +156,11 @@ def load_text_encoders(class_one, class_two, class_three, class_four):
     text_encoder_three = class_three.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_3", revision=args.revision, variant=args.variant
     )
-    text_encoder_four = class_four.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_4", revision=args.revision, variant=args.variant
-    )
+    text_encoder_four = LlamaForCausalLM.from_pretrained(
+       "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        output_hidden_states=True,
+        output_attentions=True,
+        torch_dtype=torch.bfloat16,)
     return text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four
 
 def log_validation(
@@ -211,18 +213,14 @@ def import_model_class_from_model_name_or_path(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
     )
     model_class = text_encoder_config.architectures[0]
-    if model_class == "CLIPTextModelWithProjection":
-        from transformers import CLIPTextModel
+    if model_class == "CLIPTextModelWithProjection" or model_class == "CLIPTextModel":
+        from transformers import CLIPTextModelWithProjection
 
-        return CLIPTextModel
+        return CLIPTextModelWithProjection
     elif model_class == "T5EncoderModel":
         from transformers import T5EncoderModel
 
         return T5EncoderModel
-    elif model_class == "LlamaForCausalLM":
-        from transformers import LlamaForCausalLM
-
-        return LlamaForCausalLM
     else:
         raise ValueError(f"{model_class} is not supported.")
 
@@ -1184,8 +1182,7 @@ def main(args):
     )
 
     tokenizer_four = PreTrainedTokenizerFast.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer_4",
+        "meta-llama/Meta-Llama-3.1-8B-Instruct",
         revision=args.revision,
     )
 
@@ -1199,16 +1196,13 @@ def main(args):
     text_encoder_cls_three = import_model_class_from_model_name_or_path(
         args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_3"
     )
-    text_encoder_cls_four = import_model_class_from_model_name_or_path(
-        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_4"
-    )
 
     # Load scheduler and models
     noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three, text_encoder_cls_four)
+    text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three)
 
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -1740,6 +1734,8 @@ def main(args):
                 # create pipeline
                 pipeline = HiDreamImagePipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
+                    # tokenizer_4=tokenizer_4,
+                    # text_encoder_4=text_encoder_4,
                     transformer=accelerator.unwrap_model(transformer),
                     revision=args.revision,
                     variant=args.variant,
@@ -1777,6 +1773,8 @@ def main(args):
         # Load previous pipeline
         pipeline = HiDreamImagePipeline.from_pretrained(
             args.pretrained_model_name_or_path,
+            # tokenizer_4=tokenizer_4,
+            # text_encoder_4=text_encoder_4,
             revision=args.revision,
             variant=args.variant,
             torch_dtype=weight_dtype,
