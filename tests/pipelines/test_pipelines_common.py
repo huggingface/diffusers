@@ -1112,6 +1112,7 @@ class PipelineTesterMixin:
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
+        torch._dynamo.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -2167,6 +2168,7 @@ class PipelineTesterMixin:
     @require_torch_gpu
     @slow
     def test_torch_compile_recompilation_and_graph_break(self):
+        torch._dynamo.reset()
         inputs = self.get_dummy_inputs(torch_device)
         components = self.get_dummy_components()
 
