@@ -3041,13 +3041,6 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         else:
             pipeline.guider.force_enable()
 
-        # (3) Prepare conditional inputs for controlnet using the guider
-        # data.controlnet_prompt_embeds = pipeline.controlnet_guider.prepare_input(data.prompt_embeds)
-        # data.controlnet_added_cond_kwargs = {
-        #     "text_embeds": pipeline.controlnet_guider.prepare_input(data.pooled_prompt_embeds),
-        #     "time_ids": pipeline.controlnet_guider.prepare_input(data.add_time_ids),
-        # }
-
         data.control_type = data.control_type.reshape(1, -1).to(data.device, dtype=data.prompt_embeds.dtype)
         repeat_by = data.batch_size * data.num_images_per_prompt // data.control_type.shape[0]
         data.control_type = data.control_type.repeat_interleave(repeat_by, dim=0)
