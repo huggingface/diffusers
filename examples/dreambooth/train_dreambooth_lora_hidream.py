@@ -991,7 +991,7 @@ def _encode_prompt_with_clip(
         if text_input_ids is None:
             raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
 
-    prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+    prompt_embeds = text_encoder(text_input_ids.to(device))
 
     if hasattr(text_encoder, "module"):
         dtype = text_encoder.module.dtype
