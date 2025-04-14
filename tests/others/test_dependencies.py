@@ -37,6 +37,8 @@ class DependencyTester(unittest.TestCase):
                         backend = "k-diffusion"
                     elif backend == "invisible_watermark":
                         backend = "invisible-watermark"
+                    elif backend == "opencv":
+                        backend = "opencv-python"
                     assert backend in deps, f"{backend} is not in the deps table!"
 
     def test_pipeline_imports(self):
