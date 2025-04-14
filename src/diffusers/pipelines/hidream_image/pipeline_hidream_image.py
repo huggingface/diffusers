@@ -13,6 +13,7 @@ from transformers import (
 )
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import HiDreamImageLoraLoaderMixin
 from ...models import AutoencoderKL, HiDreamImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ...utils import is_torch_xla_available, logging
@@ -151,7 +152,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class HiDreamImagePipeline(DiffusionPipeline):
+class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->text_encoder_4->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
