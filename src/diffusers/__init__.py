@@ -132,6 +132,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["guiders"].extend(
         [
+            "AdaptiveProjectedGuidance",
             "ClassifierFreeGuidance",
             "SkipLayerGuidance",
         ]
@@ -721,6 +722,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
         from .guiders import (
+            AdaptiveProjectedGuidance,
             ClassifierFreeGuidance,
             SkipLayerGuidance,
         )

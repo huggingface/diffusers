@@ -18,6 +18,7 @@ from ..utils import is_torch_available
 
 
 if is_torch_available():
+    from .adaptive_projected_guidance import AdaptiveProjectedGuidance
     from .classifier_free_guidance import ClassifierFreeGuidance
     from .skip_layer_guidance import SkipLayerGuidance
 

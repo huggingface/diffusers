@@ -206,21 +206,31 @@ class SkipLayerGuidance(BaseGuidance):
     def _is_cfg_enabled(self) -> bool:
         if not self._enabled:
             return False
-        skip_start_step = int(self._start * self._num_inference_steps)
-        skip_stop_step = int(self._stop * self._num_inference_steps)
-        is_within_range = skip_start_step <= self._step < skip_stop_step
+        
+        is_within_range = True
+        if self._num_inference_steps is not None:
+            skip_start_step = int(self._start * self._num_inference_steps)
+            skip_stop_step = int(self._stop * self._num_inference_steps)
+            is_within_range = skip_start_step <= self._step < skip_stop_step
+        
         is_close = False
         if self.use_original_formulation:
             is_close = math.isclose(self.guidance_scale, 0.0)
         else:
             is_close = math.isclose(self.guidance_scale, 1.0)
+        
         return is_within_range and not is_close
 
     def _is_slg_enabled(self) -> bool:
         if not self._enabled:
             return False
-        skip_start_step = int(self._start * self._num_inference_steps)
-        skip_stop_step = int(self._stop * self._num_inference_steps)
-        is_within_range = skip_start_step < self._step < skip_stop_step
+        
+        is_within_range = True
+        if self._num_inference_steps is not None:
+            skip_start_step = int(self._start * self._num_inference_steps)
+            skip_stop_step = int(self._stop * self._num_inference_steps)
+            is_within_range = skip_start_step < self._step < skip_stop_step
+        
         is_zero = math.isclose(self.skip_layer_guidance_scale, 0.0)
+        
         return is_within_range and not is_zero
