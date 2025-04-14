@@ -19,7 +19,6 @@ import PIL
 import torch
 from collections import OrderedDict
 
-from ...guider import CFGGuider
 from ...image_processor import VaeImageProcessor, PipelineImageInput
 from ...loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin, ModularIPAdapterMixin
 from ...models import ControlNetModel, ImageProjection, UNet2DConditionModel, AutoencoderKL, ControlNetUnionModel
@@ -58,7 +57,7 @@ from transformers import (
 )
 
 from ...schedulers import KarrasDiffusionSchedulers
-from ...guider import Guiders, CFGGuider
+from ...guiders import GuiderType, ClassifierFreeGuidance
 
 import numpy as np
 
@@ -2068,7 +2067,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("guider", CFGGuider, obj=CFGGuider()),
+            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
             ComponentSpec("scheduler", KarrasDiffusionSchedulers),
             ComponentSpec("unet", UNet2DConditionModel),
         ]
@@ -2082,12 +2081,9 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("guidance_scale", default=5.0),
-            InputParam("guidance_rescale", default=0.0),
             InputParam("cross_attention_kwargs"),
             InputParam("generator"),
             InputParam("eta", default=0.0),
-            InputParam("guider_kwargs"),
             InputParam("num_images_per_prompt", default=1),
         ]
 
@@ -2239,77 +2235,83 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
         data.num_channels_unet = pipeline.unet.config.in_channels
         data.disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
 
-        # adding default guider arguments: do_classifier_free_guidance, guidance_scale, guidance_rescale
-        data.guider_kwargs = data.guider_kwargs or {}
-        data.guider_kwargs = {
-            **data.guider_kwargs,
-            "disable_guidance": data.disable_guidance,
-            "guidance_scale": data.guidance_scale,
-            "guidance_rescale": data.guidance_rescale,
-            "batch_size": data.batch_size * data.num_images_per_prompt,
-        }
-
-        pipeline.guider.set_guider(pipeline, data.guider_kwargs)
-        # Prepare conditional inputs using the guider
-        data.prompt_embeds = pipeline.guider.prepare_input(
-            data.prompt_embeds,
-            data.negative_prompt_embeds,
-        )
-        data.add_time_ids = pipeline.guider.prepare_input(
-            data.add_time_ids,
-            data.negative_add_time_ids,
-        )
-        data.pooled_prompt_embeds = pipeline.guider.prepare_input(
-            data.pooled_prompt_embeds,
-            data.negative_pooled_prompt_embeds,
-        )
-
-        if data.num_channels_unet == 9:
-            data.mask = pipeline.guider.prepare_input(data.mask, data.mask)
-            data.masked_image_latents = pipeline.guider.prepare_input(data.masked_image_latents, data.masked_image_latents)
-
-        data.added_cond_kwargs = {
-            "text_embeds": data.pooled_prompt_embeds,
-            "time_ids": data.add_time_ids,
-        }
-
-        if data.ip_adapter_embeds is not None:
-            data.ip_adapter_embeds = pipeline.guider.prepare_input(data.ip_adapter_embeds, data.negative_ip_adapter_embeds)
-            data.added_cond_kwargs["image_embeds"] = data.ip_adapter_embeds
-
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
         with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
-                # expand the latents if we are doing classifier free guidance
-                data.latent_model_input = pipeline.guider.prepare_input(data.latents, data.latents)
-                data.latent_model_input = pipeline.scheduler.scale_model_input(data.latent_model_input, t)
+                pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
 
-                # inpainting
-                if data.num_channels_unet == 9:
-                    data.latent_model_input = torch.cat([data.latent_model_input, data.mask, data.masked_image_latents], dim=1)
-
-                # predict the noise residual
-                data.noise_pred = pipeline.unet(
-                    data.latent_model_input,
-                    t,
-                    encoder_hidden_states=data.prompt_embeds,
-                    timestep_cond=data.timestep_cond,
-                    cross_attention_kwargs=data.cross_attention_kwargs,
-                    added_cond_kwargs=data.added_cond_kwargs,
-                    return_dict=False,
-                )[0]
-                # perform guidance
-                data.noise_pred = pipeline.guider.apply_guidance(
-                    data.noise_pred,
-                    timestep=t,
-                    latents=data.latents,
+                (
+                    latents,
+                    prompt_embeds,
+                    add_time_ids,
+                    pooled_prompt_embeds,
+                    mask,
+                    masked_image_latents,
+                    ip_adapter_embeds,
+                ) = pipeline.guider.prepare_inputs(
+                    pipeline.unet,
+                    data.latents,
+                    (data.prompt_embeds, data.negative_prompt_embeds),
+                    (data.add_time_ids, data.negative_add_time_ids),
+                    (data.pooled_prompt_embeds, data.negative_pooled_prompt_embeds),
+                    data.mask,
+                    data.masked_image_latents,
+                    (data.ip_adapter_embeds, data.negative_ip_adapter_embeds),
                 )
-                # compute the previous noisy sample x_t -> x_t-1
+
+                for batch_index, (
+                    latents_i,
+                    prompt_embeds_i,
+                    add_time_ids_i,
+                    pooled_prompt_embeds_i,
+                    mask_i,
+                    masked_image_latents_i,
+                    ip_adapter_embeds_i,
+                ) in enumerate(zip(
+                    latents,
+                    prompt_embeds,
+                    add_time_ids,
+                    pooled_prompt_embeds,
+                    mask,
+                    masked_image_latents,
+                    ip_adapter_embeds
+                )):
+                    latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
+                    
+                    # Prepare for inpainting
+                    if data.num_channels_unet == 9:
+                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
+                    
+                    data.added_cond_kwargs = {
+                        "text_embeds": pooled_prompt_embeds_i,
+                        "time_ids": add_time_ids_i,
+                    }
+                    if ip_adapter_embeds_i is not None:
+                        data.added_cond_kwargs["image_embeds"] = ip_adapter_embeds_i
+
+                    # predict the noise residual
+                    data.noise_pred = pipeline.unet(
+                        latents_i,
+                        t,
+                        encoder_hidden_states=prompt_embeds_i,
+                        timestep_cond=data.timestep_cond,
+                        cross_attention_kwargs=data.cross_attention_kwargs,
+                        added_cond_kwargs=data.added_cond_kwargs,
+                        return_dict=False,
+                    )[0]
+                    data.noise_pred = pipeline.guider.prepare_outputs(pipeline.unet, data.noise_pred)
+
+                # Perform guidance
+                outputs = pipeline.guider.outputs
+                data.noise_pred = pipeline.guider(**outputs)
+                
+                # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
                 data.latents = pipeline.scheduler.step(data.noise_pred, t, data.latents, **data.extra_step_kwargs, return_dict=False)[0]
+
                 if data.latents.dtype != data.latents_dtype:
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
@@ -2328,7 +2330,6 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
                 if i == len(data.timesteps) - 1 or ((i + 1) > data.num_warmup_steps and (i + 1) % pipeline.scheduler.order == 0):
                     progress_bar.update()
 
-        pipeline.guider.reset_guider(pipeline)
         self.add_block_state(state, data)
 
         return pipeline, state
@@ -2341,12 +2342,12 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("guider", CFGGuider, obj=CFGGuider()),
+            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
             ComponentSpec("scheduler", KarrasDiffusionSchedulers),
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetModel),
             ComponentSpec("control_image_processor", VaeImageProcessor, obj=VaeImageProcessor(do_convert_rgb=True, do_normalize=False)),
-            ComponentSpec("controlnet_guider", CFGGuider, obj=CFGGuider()),
+            ComponentSpec("controlnet_guider", GuiderType, obj=ClassifierFreeGuidance()),
         ]
 
     @property
@@ -2792,8 +2793,8 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
             ComponentSpec("unet", UNet2DConditionModel),
             ComponentSpec("controlnet", ControlNetUnionModel),
             ComponentSpec("scheduler", KarrasDiffusionSchedulers),
-            ComponentSpec("guider", CFGGuider, obj=CFGGuider()),
-            ComponentSpec("controlnet_guider", CFGGuider, obj=CFGGuider()),
+            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
+            ComponentSpec("controlnet_guider", GuiderType, obj=ClassifierFreeGuidance()),
             ComponentSpec("control_image_processor", VaeImageProcessor, obj=VaeImageProcessor(do_convert_rgb=True, do_normalize=False)),
         ]
 
