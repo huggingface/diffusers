@@ -184,6 +184,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
             ComponentSpec("image_encoder", CLIPVisionModelWithProjection),
             ComponentSpec("feature_extractor", CLIPImageProcessor),
             ComponentSpec("unet", UNet2DConditionModel),
+            ComponentSpec("guider", GuiderType),
         ]
 
     @property
@@ -276,7 +277,7 @@ class StableDiffusionXLIPAdapterStep(PipelineBlock, ModularIPAdapterMixin):
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         data = self.get_block_state(state)
 
-        data.do_classifier_free_guidance = data.guidance_scale > 1.0
+        data.do_classifier_free_guidance = pipeline.guider.num_conditions > 1
         data.device = pipeline._execution_device
 
         data.ip_adapter_embeds = self.prepare_ip_adapter_image_embeds(
@@ -315,7 +316,7 @@ class StableDiffusionXLTextEncoderStep(PipelineBlock):
             ComponentSpec("text_encoder_2", CLIPTextModelWithProjection),
             ComponentSpec("tokenizer", CLIPTokenizer),
             ComponentSpec("tokenizer_2", CLIPTokenizer),
-            ComponentSpec("guider", GuiderType, obj=ClassifierFreeGuidance()),
+            ComponentSpec("guider", GuiderType),
         ]
 
     @property
@@ -3490,6 +3491,11 @@ class StableDiffusionXLAutoPipeline(SequentialPipelineBlocks):
                "- to run the ip_adapter workflow, you need to provide `ip_adapter_image`\n" + \
                "- for text-to-image generation, all you need to provide is `prompt`"
 
+# TODO(yiyi, aryan): We need another step before text encoder to set the `num_inference_steps` attribute for guider so that
+# things like when to do guidance and how many conditions to be prepared can be determined. Currently, this is done by
+# always assuming you want to do guidance in the Guiders. So, negative embeddings are prepared regardless of what the
+# configuration of guider is.
+
 # block mapping 
 TEXT2IMAGE_BLOCKS = OrderedDict([
     ("text_encoder", StableDiffusionXLTextEncoderStep),
@@ -3611,7 +3617,6 @@ SDXL_INPUTS_SCHEMA = {
     "negative_prompt": InputParam("negative_prompt", type_hint=Union[str, List[str]], description="The prompt or prompts not to guide the image generation"),
     "negative_prompt_2": InputParam("negative_prompt_2", type_hint=Union[str, List[str]], description="The negative prompt or prompts for text_encoder_2"),
     "cross_attention_kwargs": InputParam("cross_attention_kwargs", type_hint=Optional[dict], description="Kwargs dictionary passed to the AttentionProcessor"),
-    "guidance_scale": InputParam("guidance_scale", type_hint=float, default=5.0, description="Classifier-Free Diffusion Guidance scale"),
     "clip_skip": InputParam("clip_skip", type_hint=Optional[int], description="Number of layers to skip in CLIP text encoder"),
     "image": InputParam("image", type_hint=PipelineImageInput, required=True, description="The image(s) to modify for img2img or inpainting"),
     "mask_image": InputParam("mask_image", type_hint=PipelineImageInput, required=True, description="Mask image for inpainting, white pixels will be repainted"),
@@ -3636,7 +3641,6 @@ SDXL_INPUTS_SCHEMA = {
     "negative_crops_coords_top_left": InputParam("negative_crops_coords_top_left", type_hint=Tuple[int, int], default=(0, 0), description="Negative conditioning crop coordinates"),
     "aesthetic_score": InputParam("aesthetic_score", type_hint=float, default=6.0, description="Simulates aesthetic score of generated image"),
     "negative_aesthetic_score": InputParam("negative_aesthetic_score", type_hint=float, default=2.0, description="Simulates negative aesthetic score"),
-    "guidance_rescale": InputParam("guidance_rescale", type_hint=float, default=0.0, description="Guidance rescale factor to fix overexposure"),
     "eta": InputParam("eta", type_hint=float, default=0.0, description="Parameter η in the DDIM paper"),
     "guider_kwargs": InputParam("guider_kwargs", type_hint=Optional[Dict[str, Any]], description="Kwargs dictionary passed to the Guider"),
     "output_type": InputParam("output_type", type_hint=str, default="pil", description="Output format (pil/tensor/np.array)"),
