@@ -895,7 +895,7 @@ def _encode_prompt_with_llama(
         if attention_mask is None:
             raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
 
-    outputs = self.text_encoder_4(
+    outputs = text_encoder(
         text_input_ids.to(device),
         attention_mask=attention_mask.to(device),
         output_hidden_states=True,
@@ -1185,6 +1185,7 @@ def main(args):
         "meta-llama/Meta-Llama-3.1-8B-Instruct",
         revision=args.revision,
     )
+    tokenizer_four.pad_token = tokenizer_four.eos_token
 
     # import correct text encoder classes
     text_encoder_cls_one = import_model_class_from_model_name_or_path(
