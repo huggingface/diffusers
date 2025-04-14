@@ -30,7 +30,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..controlnet.multicontrolnet import MultiControlNetModel
 from ..modular_pipeline import (
     AutoPipelineBlocks,
@@ -2545,7 +2545,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         data.height = data.height * pipeline.vae_scale_factor
         data.width = data.width * pipeline.vae_scale_factor
 
-        controlnet = pipeline.controlnet._orig_mod if is_compiled_module(pipeline.controlnet) else pipeline.controlnet
+        controlnet = unwrap_module(pipeline.controlnet)
 
         # (1.1)
         # control_guidance_start/control_guidance_end (align format)
@@ -2973,7 +2973,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         data.height = data.height * pipeline.vae_scale_factor
         data.width = data.width * pipeline.vae_scale_factor
 
-        controlnet = pipeline.controlnet._orig_mod if is_compiled_module(pipeline.controlnet) else pipeline.controlnet
+        controlnet = unwrap_module(pipeline.controlnet)
 
         # (1.1)
         # control guidance
