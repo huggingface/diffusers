@@ -35,20 +35,26 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
     sgm_patterns = ["input_blocks", "middle_block", "output_blocks"]
     not_sgm_patterns = ["down_blocks", "mid_block", "up_blocks"]
 
-    # Purge out unnecessary blocks.
-    for block in not_sgm_patterns:
-        for k in all_keys:
-            if block in k:
-                state_dict.pop(k)
-
-    revised_all_keys = []
+    # check if state_dict contains both patterns
+    contains_sgm_patterns = False
+    contains_not_sgm_patterns = False
     for key in all_keys:
-        if not any(pattern in key for pattern in not_sgm_patterns):
-            revised_all_keys.append(key)
+        if any(p in key for p in sgm_patterns):
+            contains_sgm_patterns = True
+        elif any(p in key for p in not_sgm_patterns):
+            contains_not_sgm_patterns = True
+
+    # if state_dict contains both patterns, remove sgm
+    # we can then return state_dict immediately
+    if contains_sgm_patterns and contains_not_sgm_patterns:
+        for key in all_keys:
+            if any(p in key for p in sgm_patterns):
+                state_dict.pop(key)
+        return state_dict
 
     # 2. check if needs remapping, if not return original dict
     is_in_sgm_format = False
-    for key in revised_all_keys:
+    for key in all_keys:
         if any(p in key for p in sgm_patterns):
             is_in_sgm_format = True
             break
@@ -63,7 +69,7 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
     # Retrieves # of down, mid and up blocks
     input_block_ids, middle_block_ids, output_block_ids = set(), set(), set()
 
-    for layer in revised_all_keys:
+    for layer in all_keys:
         if "text" in layer:
             new_state_dict[layer] = state_dict.pop(layer)
         else:
