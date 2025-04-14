@@ -1649,7 +1649,7 @@ def main(args):
                     hidden_states=noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
                     pooled_embeds=pooled_prompt_embeds,
-                    timestep=timesteps,
+                    timesteps=timesteps,
                     img_sizes=img_sizes,
                     img_ids=img_ids,
                     return_dict=False,
