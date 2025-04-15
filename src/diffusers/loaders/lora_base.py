@@ -244,7 +244,7 @@ def _fetch_state_dict(
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
                 if load_with_metadata:
                     state_dict = _maybe_populate_state_dict_with_metadata(
-                        state_dict, model_file, metadata_key="lora_adapter_config"
+                        state_dict, model_file, metadata_key="lora_adapter_metadata"
                     )
 
             except (IOError, safetensors.SafetensorError) as e:
@@ -915,7 +915,7 @@ class LoraBaseMixin:
                         for key, value in lora_adapter_metadata.items():
                             if isinstance(value, set):
                                 lora_adapter_metadata[key] = list(value)
-                        metadata["lora_adapter_config"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+                        metadata["lora_adapter_metadata"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
 
                     return safetensors.torch.save_file(weights, filename, metadata=metadata)
 

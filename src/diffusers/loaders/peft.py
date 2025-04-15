@@ -500,7 +500,7 @@ class PeftAdapterMixin:
                     for key, value in lora_adapter_metadata.items():
                         if isinstance(value, set):
                             lora_adapter_metadata[key] = list(value)
-                    metadata["lora_adapter_config"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+                    metadata["lora_adapter_metadata"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
 
                 return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
