@@ -266,9 +266,9 @@ class CogView4AttnProcessor:
 
         # 3. QK normalization
         if attn.norm_q is not None:
-            query = attn.norm_q(query)
+            query = attn.norm_q(query).to(dtype=dtype)
         if attn.norm_k is not None:
-            key = attn.norm_k(key)
+            key = attn.norm_k(key).to(dtype=dtype)
 
         # 4. Rotational positional embeddings applied to latent stream
         if image_rotary_emb is not None:
