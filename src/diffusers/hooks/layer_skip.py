@@ -80,17 +80,14 @@ class AttentionProcessorSkipHook(ModelHook):
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         if self.skip_attention_scores:
-            print("Skipping attention scores")
             with AttentionScoreSkipFunctionMode():
                 return self.fn_ref.original_forward(*args, **kwargs)
         else:
-            print("Skipping attention processor output")
             return self.skip_processor_output_fn(module, *args, **kwargs)
 
 
 class FeedForwardSkipHook(ModelHook):
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        print("Skipping feed-forward block")
         output = kwargs.get("hidden_states", None)
         if output is None:
             output = kwargs.get("x", None)
@@ -105,7 +102,6 @@ class TransformerBlockSkipHook(ModelHook):
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        print("Skipping transformer block")
         return self._metadata.skip_block_output_fn(module, *args, **kwargs)
 
 
