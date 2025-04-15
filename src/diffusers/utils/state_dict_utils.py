@@ -16,6 +16,7 @@ State dict utilities: utility methods for converting state dicts easily
 """
 
 import enum
+import json
 
 from .import_utils import is_torch_available
 from .logging import get_logger
@@ -347,3 +348,19 @@ def state_dict_all_zero(state_dict, filter_str=None):
         state_dict = {k: v for k, v in state_dict.items() if any(f in k for f in filter_str)}
 
     return all(torch.all(param == 0).item() for param in state_dict.values())
+
+
+def _maybe_populate_state_dict_with_metadata(state_dict, model_file, metadata_key):
+    import safetensors.torch
+
+    with safetensors.torch.safe_open(model_file, framework="pt", device="cpu") as f:
+        if hasattr(f, "metadata"):
+            metadata = f.metadata()
+            if metadata is not None:
+                metadata_keys = list(metadata.keys())
+                if not (len(metadata_keys) == 1 and metadata_keys[0] == "format"):
+                    peft_metadata = {k: v for k, v in metadata.items() if k != "format"}
+                    state_dict["_metadata"] = json.loads(peft_metadata[metadata_key])
+        else:
+            raise ValueError("Metadata couldn't be parsed from the safetensors file.")
+    return state_dict

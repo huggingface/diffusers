@@ -14,6 +14,7 @@
 
 import copy
 import inspect
+import json
 import os
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -45,6 +46,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from ..utils.state_dict_utils import _maybe_populate_state_dict_with_metadata
 
 
 if is_transformers_available():
@@ -241,11 +243,10 @@ def _fetch_state_dict(
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
                 if load_with_metadata:
-                    with safetensors.torch.safe_open(model_file, framework="pt", device="cpu") as f:
-                        if hasattr(f, "metadata") and f.metadata() is not None:
-                            state_dict["_metadata"] = f.metadata()
-                        else:
-                            raise ValueError("Metadata couldn't be parsed from the safetensors file.")
+                    state_dict = _maybe_populate_state_dict_with_metadata(
+                        state_dict, model_file, metadata_key="lora_adapter_config"
+                    )
+
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:
                     raise e
@@ -907,9 +908,15 @@ class LoraBaseMixin:
             if safe_serialization:
 
                 def save_function(weights, filename):
+                    # We need to be able to serialize the NoneTypes too, otherwise we run into
+                    # 'NoneType' object cannot be converted to 'PyString'
                     metadata = {"format": "pt"}
                     if lora_adapter_metadata is not None:
-                        metadata.update(lora_adapter_metadata)
+                        for key, value in lora_adapter_metadata.items():
+                            if isinstance(value, set):
+                                lora_adapter_metadata[key] = list(value)
+                        metadata["lora_adapter_config"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+
                     return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
             else:

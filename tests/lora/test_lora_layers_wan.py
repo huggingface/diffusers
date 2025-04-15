@@ -16,6 +16,7 @@ import sys
 import tempfile
 import unittest
 
+import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -30,7 +31,7 @@ from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, s
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from utils import PeftLoraLoaderMixinTests, check_if_dicts_are_equal  # noqa: E402
 
 
 @require_peft_backend
@@ -139,13 +140,39 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
-    def test_save_load_with_adapter_metadata(self):
+    def test_adapter_metadata_is_loaded_correctly(self):
         # Will write the test in utils.py eventually.
         scheduler_cls = self.scheduler_classes[0]
         components, _, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
         pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+
+        pipe, _ = self.check_if_adapters_added_correctly(
+            pipe, text_lora_config=None, denoiser_lora_config=denoiser_lora_config
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            metadata = denoiser_lora_config.to_dict()
+            self.pipeline_class.save_lora_weights(
+                save_directory=tmpdir,
+                transformer_lora_adapter_metadata=metadata,
+                **lora_state_dicts,
+            )
+            pipe.unload_lora_weights()
+            state_dict = pipe.lora_state_dict(tmpdir, load_with_metadata=True)
+
+            self.assertTrue("_metadata" in state_dict)
+
+            parsed_metadata = state_dict["_metadata"]
+            parsed_metadata = {k[len("transformer.") :]: v for k, v in parsed_metadata.items()}
+            check_if_dicts_are_equal(parsed_metadata, metadata)
+
+    def test_adapter_metadata_save_load_inference(self):
+        # Will write the test in utils.py eventually.
+        scheduler_cls = self.scheduler_classes[0]
+        components, _, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components).to(torch_device)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -154,13 +181,22 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe, _ = self.check_if_adapters_added_correctly(
             pipe, text_lora_config=None, denoiser_lora_config=denoiser_lora_config
         )
+        output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
+        with tempfile.TemporaryDirectory() as tmpdir:
             modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
             lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            metadata = denoiser_lora_config.to_dict()
             self.pipeline_class.save_lora_weights(
-                save_directory=tmpdirname,
-                safe_serialization=False,
-                lora_adapter_metadata=denoiser_lora_config.to_dict(),
+                save_directory=tmpdir,
+                transformer_lora_adapter_metadata=metadata,
                 **lora_state_dicts,
+            )
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(tmpdir, load_with_metadata=True)
+
+            output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            self.assertTrue(
+                np.allclose(output_lora, output_lora_pretrained, atol=1e-3, rtol=1e-3), "Lora outputs should match."
             )

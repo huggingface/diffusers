@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import json
 import os
 from functools import partial
 from pathlib import Path
@@ -239,7 +240,11 @@ class PeftAdapterMixin:
             raise ValueError("`load_with_metadata` cannot be specified when not using `use_safetensors`.")
 
         if prefix is not None:
+            metadata = state_dict.pop("_metadata", None)
             state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+
+            if metadata is not None:
+                state_dict["_metadata"] = metadata
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
@@ -277,6 +282,7 @@ class PeftAdapterMixin:
                 network_alpha_dict=network_alphas,
                 peft_state_dict=state_dict,
                 load_with_metadata=load_with_metadata,
+                prefix=prefix,
             )
             _maybe_raise_error_for_ambiguity(lora_config_kwargs)
 
@@ -460,10 +466,6 @@ class PeftAdapterMixin:
                 underlying model has multiple adapters loaded.
             upcast_before_saving (`bool`, defaults to `False`):
                 Whether to cast the underlying model to `torch.float32` before serialization.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             weight_name: (`str`, *optional*, defaults to `None`): Name of the file to serialize the state dict with.
@@ -493,9 +495,15 @@ class PeftAdapterMixin:
         if safe_serialization:
 
             def save_function(weights, filename):
+                # We need to be able to serialize the NoneTypes too, otherwise we run into
+                # 'NoneType' object cannot be converted to 'PyString'
                 metadata = {"format": "pt"}
                 if lora_adapter_metadata is not None:
-                    metadata.update(lora_adapter_metadata)
+                    for key, value in lora_adapter_metadata.items():
+                        if isinstance(value, set):
+                            lora_adapter_metadata[key] = list(value)
+                    metadata["lora_adapter_config"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+
                 return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
         else:
