@@ -172,7 +172,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     # autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
     autocast_ctx = nullcontext()
 
@@ -895,7 +895,10 @@ def _encode_prompt_with_t5(
 
     prompt_embeds = text_encoder(text_input_ids.to(device))[0]
 
-    dtype = text_encoder.dtype
+    if hasattr(text_encoder, "module"):
+        dtype = text_encoder.module.dtype
+    else:
+        dtype = text_encoder.dtype
     prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
     _, seq_len, _ = prompt_embeds.shape
@@ -936,9 +939,13 @@ def _encode_prompt_with_clip(
 
     prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=False)
 
+    if hasattr(text_encoder, "module"):
+        dtype = text_encoder.module.dtype
+    else:
+        dtype = text_encoder.dtype
     # Use pooled output of CLIPTextModel
     prompt_embeds = prompt_embeds.pooler_output
-    prompt_embeds = prompt_embeds.to(dtype=text_encoder.dtype, device=device)
+    prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
     # duplicate text embeddings for each generation per prompt, using mps friendly method
     prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -958,7 +965,12 @@ def encode_prompt(
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
-    dtype = text_encoders[0].dtype
+
+    if hasattr(text_encoders[0], "module"):
+        dtype = text_encoders[0].module.dtype
+    else:
+        dtype = text_encoders[0].dtype
+
     device = device if device is not None else text_encoders[1].device
     pooled_prompt_embeds = _encode_prompt_with_clip(
         text_encoder=text_encoders[0],
@@ -1590,7 +1602,7 @@ def main(args):
                 )
 
                 # handle guidance
-                if accelerator.unwrap_model(transformer).config.guidance_embeds:
+                if unwrap_model(transformer).config.guidance_embeds:
                     guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
@@ -1716,9 +1728,9 @@ def main(args):
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
-                    text_encoder=accelerator.unwrap_model(text_encoder_one, keep_fp32_wrapper=False),
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_two, keep_fp32_wrapper=False),
-                    transformer=accelerator.unwrap_model(transformer, keep_fp32_wrapper=False),
+                    text_encoder=unwrap_model(text_encoder_one, keep_fp32_wrapper=False),
+                    text_encoder_2=unwrap_model(text_encoder_two, keep_fp32_wrapper=False),
+                    transformer=unwrap_model(transformer, keep_fp32_wrapper=False),
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,

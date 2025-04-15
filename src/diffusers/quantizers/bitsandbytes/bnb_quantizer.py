@@ -61,7 +61,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
     def validate_environment(self, *args, **kwargs):
-        if not torch.cuda.is_available():
+        if not (torch.cuda.is_available() or torch.xpu.is_available()):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
             raise ImportError(
@@ -135,6 +135,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
+        **kwargs,
     ):
         import bitsandbytes as bnb
 
@@ -237,11 +238,15 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
 
     def update_device_map(self, device_map):
         if device_map is None:
-            device_map = {"": f"cuda:{torch.cuda.current_device()}"}
+            if torch.xpu.is_available():
+                current_device = f"xpu:{torch.xpu.current_device()}"
+            else:
+                current_device = f"cuda:{torch.cuda.current_device()}"
+            device_map = {"": current_device}
             logger.info(
                 "The device_map was not initialized. "
                 "Setting device_map to {"
-                ": f`cuda:{torch.cuda.current_device()}`}. "
+                ": {current_device}}. "
                 "If you want to use the model for inference, please set device_map ='auto' "
             )
         return device_map
@@ -311,7 +316,10 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             logger.info(
                 "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to GPU. After dequantization, will move the model back to CPU again to preserve the previous device."
             )
-            model.to(torch.cuda.current_device())
+            if torch.xpu.is_available():
+                model.to(torch.xpu.current_device())
+            else:
+                model.to(torch.cuda.current_device())
 
         model = dequantize_and_replace(
             model, self.modules_to_not_convert, quantization_config=self.quantization_config
@@ -342,7 +350,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
     def validate_environment(self, *args, **kwargs):
-        if not torch.cuda.is_available():
+        if not (torch.cuda.is_available() or torch.xpu.is_available()):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
             raise ImportError(
@@ -401,11 +409,15 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.update_device_map
     def update_device_map(self, device_map):
         if device_map is None:
-            device_map = {"": f"cuda:{torch.cuda.current_device()}"}
+            if torch.xpu.is_available():
+                current_device = f"xpu:{torch.xpu.current_device()}"
+            else:
+                current_device = f"cuda:{torch.cuda.current_device()}"
+            device_map = {"": current_device}
             logger.info(
                 "The device_map was not initialized. "
                 "Setting device_map to {"
-                ": f`cuda:{torch.cuda.current_device()}`}. "
+                ": {current_device}}. "
                 "If you want to use the model for inference, please set device_map ='auto' "
             )
         return device_map
@@ -445,6 +457,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         target_device: "torch.device",
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
+        **kwargs,
     ):
         import bitsandbytes as bnb
 

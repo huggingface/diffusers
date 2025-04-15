@@ -200,7 +200,8 @@ Special VAE used for training: {vae_path}.
         "diffusers",
         "diffusers-training",
         lora,
-        "template:sd-lora" "stable-diffusion",
+        "template:sd-lora",
+        "stable-diffusion",
         "stable-diffusion-diffusers",
     ]
     model_card = populate_model_card(model_card, tags=tags)
@@ -662,7 +663,7 @@ def parse_args(input_args=None):
         action="store_true",
         default=False,
         help=(
-            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -724,9 +725,9 @@ class TokenEmbeddingsHandler:
         idx = 0
         for tokenizer, text_encoder in zip(self.tokenizers, self.text_encoders):
             assert isinstance(inserting_toks, list), "inserting_toks should be a list of strings."
-            assert all(
-                isinstance(tok, str) for tok in inserting_toks
-            ), "All elements in inserting_toks should be strings."
+            assert all(isinstance(tok, str) for tok in inserting_toks), (
+                "All elements in inserting_toks should be strings."
+            )
 
             self.inserting_toks = inserting_toks
             special_tokens_dict = {"additional_special_tokens": self.inserting_toks}
@@ -746,9 +747,9 @@ class TokenEmbeddingsHandler:
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = (
+                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            )
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)
@@ -1322,7 +1323,7 @@ def main(args):
 
         lora_state_dict, network_alphas = StableDiffusionPipeline.lora_state_dict(input_dir)
 
-        unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
+        unet_state_dict = {f"{k.replace('unet.', '')}": v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
         incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
         if incompatible_keys is not None:
@@ -1883,7 +1884,11 @@ def main(args):
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                generator = (
+                    torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                    if args.seed is not None
+                    else None
+                )
                 pipeline_args = {"prompt": args.validation_prompt}
 
                 if torch.backends.mps.is_available():
@@ -1987,7 +1992,9 @@ def main(args):
                 )
             # run inference
             pipeline = pipeline.to(accelerator.device)
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+            generator = (
+                torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
+            )
             images = [
                 pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                 for _ in range(args.num_validation_images)

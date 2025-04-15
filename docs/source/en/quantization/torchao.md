@@ -26,13 +26,13 @@ The example below only quantizes the weights to int8.
 
 ```python
 import torch
-from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
+from diffusers import FluxPipeline, AutoModel, TorchAoConfig
 
 model_id = "black-forest-labs/FLUX.1-dev"
 dtype = torch.bfloat16
 
 quantization_config = TorchAoConfig("int8wo")
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -99,10 +99,10 @@ To serialize a quantized model in a given dtype, first load the model with the d
 
 ```python
 import torch
-from diffusers import FluxTransformer2DModel, TorchAoConfig
+from diffusers import AutoModel, TorchAoConfig
 
 quantization_config = TorchAoConfig("int8wo")
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -115,9 +115,9 @@ To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] me
 
 ```python
 import torch
-from diffusers import FluxPipeline, FluxTransformer2DModel
+from diffusers import FluxPipeline, AutoModel
 
-transformer = FluxTransformer2DModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
+transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
 pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
@@ -126,15 +126,15 @@ image = pipe(prompt, num_inference_steps=30, guidance_scale=7.0).images[0]
 image.save("output.png")
 ```
 
-Some quantization methods, such as `uint4wo`, cannot be loaded directly and may result in an `UnpicklingError` when trying to load the models, but work as expected when saving them. In order to work around this, one can load the state dict manually into the model. Note, however, that this requires using `weights_only=False` in `torch.load`, so it should be run only if the weights were obtained from a trustable source.
+If you are using `torch<=2.6.0`, some quantization methods, such as `uint4wo`, cannot be loaded directly and may result in an `UnpicklingError` when trying to load the models, but work as expected when saving them. In order to work around this, one can load the state dict manually into the model. Note, however, that this requires using `weights_only=False` in `torch.load`, so it should be run only if the weights were obtained from a trustable source.
 
 ```python
 import torch
 from accelerate import init_empty_weights
-from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
+from diffusers import FluxPipeline, AutoModel, TorchAoConfig
 
 # Serialize the model
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=TorchAoConfig("uint4wo"),
@@ -146,9 +146,12 @@ transformer.save_pretrained("/path/to/flux_uint4wo", safe_serialization=False, m
 # Load the model
 state_dict = torch.load("/path/to/flux_uint4wo/diffusion_pytorch_model.bin", weights_only=False, map_location="cpu")
 with init_empty_weights():
-    transformer = FluxTransformer2DModel.from_config("/path/to/flux_uint4wo/config.json")
+    transformer = AutoModel.from_config("/path/to/flux_uint4wo/config.json")
 transformer.load_state_dict(state_dict, strict=True, assign=True)
 ```
+
+> [!TIP]
+> The [`AutoModel`] API is supported for PyTorch >= 2.6 as shown in the examples below.
 
 ## Resources
 

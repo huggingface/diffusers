@@ -295,8 +295,7 @@ class IPAdapterMixin:
             ):
                 if len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
-                        f"Cannot assign {len(scale_configs)} scale_configs to "
-                        f"{len(attn_processor.scale)} IP-Adapter."
+                        f"Cannot assign {len(scale_configs)} scale_configs to {len(attn_processor.scale)} IP-Adapter."
                     )
                 elif len(scale_configs) == 1:
                     scale_configs = scale_configs * len(attn_processor.scale)
@@ -804,9 +803,7 @@ class SD3IPAdapterMixin:
                     }
 
                     self.register_modules(
-                        feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs).to(
-                            self.device, dtype=self.dtype
-                        ),
+                        feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs),
                         image_encoder=SiglipVisionModel.from_pretrained(
                             image_encoder_subfolder, torch_dtype=self.dtype, **kwargs
                         ).to(self.device),

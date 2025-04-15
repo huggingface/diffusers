@@ -163,6 +163,9 @@ Models are initiated with the [`~ModelMixin.from_pretrained`] method which also 
 >>> model = UNet2DModel.from_pretrained(repo_id, use_safetensors=True)
 ```
 
+> [!TIP]
+> Use the [`AutoModel`] API to automatically select a model class if you're unsure of which one to use.
+
 To access the model parameters, call `model.config`:
 
 ```py

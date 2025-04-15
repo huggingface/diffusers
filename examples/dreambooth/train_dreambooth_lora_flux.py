@@ -177,16 +177,25 @@ def log_validation(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    pipeline = pipeline.to(accelerator.device)
+    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-    # autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
-    autocast_ctx = nullcontext()
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
+    autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
 
-    with autocast_ctx:
-        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+    # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
+    with torch.no_grad():
+        prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+            pipeline_args["prompt"], prompt_2=pipeline_args["prompt"]
+        )
+    images = []
+    for _ in range(args.num_validation_images):
+        with autocast_ctx:
+            image = pipeline(
+                prompt_embeds=prompt_embeds, pooled_prompt_embeds=pooled_prompt_embeds, generator=generator
+            ).images[0]
+            images.append(image)
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
@@ -203,8 +212,7 @@ def log_validation(
             )
 
     del pipeline
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    free_memory()
 
     return images
 
@@ -932,7 +940,10 @@ def _encode_prompt_with_t5(
 
     prompt_embeds = text_encoder(text_input_ids.to(device))[0]
 
-    dtype = text_encoder.dtype
+    if hasattr(text_encoder, "module"):
+        dtype = text_encoder.module.dtype
+    else:
+        dtype = text_encoder.dtype
     prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
     _, seq_len, _ = prompt_embeds.shape
@@ -973,9 +984,13 @@ def _encode_prompt_with_clip(
 
     prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=False)
 
+    if hasattr(text_encoder, "module"):
+        dtype = text_encoder.module.dtype
+    else:
+        dtype = text_encoder.dtype
     # Use pooled output of CLIPTextModel
     prompt_embeds = prompt_embeds.pooler_output
-    prompt_embeds = prompt_embeds.to(dtype=text_encoder.dtype, device=device)
+    prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
     # duplicate text embeddings for each generation per prompt, using mps friendly method
     prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -994,7 +1009,11 @@ def encode_prompt(
     text_input_ids_list=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
-    dtype = text_encoders[0].dtype
+
+    if hasattr(text_encoders[0], "module"):
+        dtype = text_encoders[0].module.dtype
+    else:
+        dtype = text_encoders[0].dtype
 
     pooled_prompt_embeds = _encode_prompt_with_clip(
         text_encoder=text_encoders[0],
@@ -1275,7 +1294,7 @@ def main(args):
         lora_state_dict = FluxPipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
-            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
+            f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
         }
         transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
         incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
@@ -1619,7 +1638,7 @@ def main(args):
         if args.train_text_encoder:
             text_encoder_one.train()
             # set top parameter requires_grad = True for gradient checkpointing works
-            accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
+            unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
 
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]
@@ -1710,7 +1729,7 @@ def main(args):
                 )
 
                 # handle guidance
-                if accelerator.unwrap_model(transformer).config.guidance_embeds:
+                if unwrap_model(transformer).config.guidance_embeds:
                     guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
@@ -1828,9 +1847,9 @@ def main(args):
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
-                    text_encoder=accelerator.unwrap_model(text_encoder_one),
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_two),
-                    transformer=accelerator.unwrap_model(transformer),
+                    text_encoder=unwrap_model(text_encoder_one),
+                    text_encoder_2=unwrap_model(text_encoder_two),
+                    transformer=unwrap_model(transformer),
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,

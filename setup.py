@@ -122,12 +122,16 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "python>=3.8.0",
-    "ruff==0.1.5",
+    "ruff==0.9.10",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
     "scipy",
     "onnx",
+    "optimum_quanto>=0.2.6",
+    "gguf>=0.10.0",
+    "torchao>=0.7.0",
+    "bitsandbytes>=0.43.3",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
@@ -138,6 +142,7 @@ _deps = [
     "urllib3<=2.0.0",
     "black",
     "phonemizer",
+    "opencv-python",
 ]
 
 # this is a lookup table with items like:
@@ -234,6 +239,11 @@ extras["test"] = deps_list(
     "phonemizer",
 )
 extras["torch"] = deps_list("torch", "accelerate")
+
+extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
+extras["gguf"] = deps_list("gguf", "accelerate")
+extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
+extras["torchao"] = deps_list("torchao", "accelerate")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows

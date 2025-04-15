@@ -778,8 +778,9 @@ class Attention(nn.Module, AttentionModuleMixin):
                 self.norm_added_q = RMSNorm(dim_head, eps=eps)
                 self.norm_added_k = RMSNorm(dim_head, eps=eps)
             elif qk_norm == "rms_norm_across_heads":
-                # Wanx applies qk norm across all heads
-                self.norm_added_q = RMSNorm(dim_head * heads, eps=eps)
+                # Wan applies qk norm across all heads
+                # Wan also doesn't apply a q norm
+                self.norm_added_q = None
                 self.norm_added_k = RMSNorm(dim_head * kv_heads, eps=eps)
             else:
                 raise ValueError(
@@ -2352,7 +2353,9 @@ class FluxAttnProcessorSDPA:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -3721,8 +3724,10 @@ class StableAudioAttnProcessorSDPA:
         if kv_heads != attn.heads:
             # if GQA or MQA, repeat the key/value heads to reach the number of query heads.
             heads_per_kv_head = attn.heads // kv_heads
-            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1)
-            value = torch.repeat_interleave(value, heads_per_kv_head, dim=1)
+            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1, output_size=key.shape[1] * heads_per_kv_head)
+            value = torch.repeat_interleave(
+                value, heads_per_kv_head, dim=1, output_size=value.shape[1] * heads_per_kv_head
+            )
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)
@@ -6028,6 +6033,11 @@ class SanaLinearAttnProcessorSDPA:
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
         query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
         key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)

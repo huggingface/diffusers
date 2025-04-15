@@ -414,10 +414,16 @@ jobs:
         config:
           - backend: "bitsandbytes"
             test_location: "bnb"
+            additional_deps: ["peft"]
           - backend: "gguf"
             test_location: "gguf"
+            additional_deps: ["peft"]
           - backend: "torchao"
             test_location: "torchao"
+            additional_deps: []
+          - backend: "optimum_quanto"
+            test_location: "quanto"
+            additional_deps: []
     runs-on:
       group: aws-g6e-xlarge-plus
     container:
@@ -435,6 +441,9 @@ jobs:
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install -U ${{ matrix.config.backend }}
+          if [ "${{ join(matrix.config.additional_deps, ' ') }}" != "" ]; then
+              python -m uv pip install ${{ join(matrix.config.additional_deps, ' ') }}
+          fi
           python -m uv pip install pytest-reportlog
       - name: Environment
         run: |

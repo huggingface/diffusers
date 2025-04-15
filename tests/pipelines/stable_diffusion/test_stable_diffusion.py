@@ -57,7 +57,7 @@ from diffusers.utils.testing_utils import (
     require_accelerate_version_greater,
     require_torch_2,
     require_torch_accelerator,
-    require_torch_multi_gpu,
+    require_torch_multi_accelerator,
     run_test_in_subprocess,
     skip_mps,
     slow,
@@ -293,15 +293,15 @@ class StableDiffusionPipelineFastTests(
         inputs["sigmas"] = sigma_schedule
         output_sigmas = sd_pipe(**inputs).images
 
-        assert (
-            np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3
-        ), "ays timesteps and ays sigmas should have the same outputs"
-        assert (
-            np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3
-        ), "use ays timesteps should have different outputs"
-        assert (
-            np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3
-        ), "use ays sigmas should have different outputs"
+        assert np.abs(output_sigmas.flatten() - output_ts.flatten()).max() < 1e-3, (
+            "ays timesteps and ays sigmas should have the same outputs"
+        )
+        assert np.abs(output.flatten() - output_ts.flatten()).max() > 1e-3, (
+            "use ays timesteps should have different outputs"
+        )
+        assert np.abs(output.flatten() - output_sigmas.flatten()).max() > 1e-3, (
+            "use ays sigmas should have different outputs"
+        )
 
     def test_stable_diffusion_prompt_embeds(self):
         components = self.get_dummy_components()
@@ -656,9 +656,9 @@ class StableDiffusionPipelineFastTests(
         sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         output_freeu = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
 
-        assert not np.allclose(
-            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
-        ), "Enabling of FreeU should lead to different results."
+        assert not np.allclose(output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]), (
+            "Enabling of FreeU should lead to different results."
+        )
 
     def test_freeu_disabled(self):
         components = self.get_dummy_components()
@@ -681,9 +681,9 @@ class StableDiffusionPipelineFastTests(
             prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)
         ).images
 
-        assert np.allclose(
-            output[0, -3:, -3:, -1], output_no_freeu[0, -3:, -3:, -1]
-        ), "Disabling of FreeU should lead to results similar to the default pipeline results."
+        assert np.allclose(output[0, -3:, -3:, -1], output_no_freeu[0, -3:, -3:, -1]), (
+            "Disabling of FreeU should lead to results similar to the default pipeline results."
+        )
 
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -706,15 +706,15 @@ class StableDiffusionPipelineFastTests(
         image = sd_pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
 
     def test_pipeline_interrupt(self):
         components = self.get_dummy_components()
@@ -1409,7 +1409,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
 
 # (sayakpaul): This test suite was run in the DGX with two GPUs (1, 2).
 @slow
-@require_torch_multi_gpu
+@require_torch_multi_accelerator
 @require_accelerate_version_greater("0.27.0")
 class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
     def tearDown(self):
@@ -1497,7 +1497,7 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
         assert sd_pipe_with_device_map.hf_device_map is None
 
         # Make sure `to()` can be used and the pipeline can be called.
-        pipe = sd_pipe_with_device_map.to("cuda")
+        pipe = sd_pipe_with_device_map.to(torch_device)
         _ = pipe("hello", num_inference_steps=2)
 
     def test_reset_device_map_enable_model_cpu_offload(self):
@@ -1509,7 +1509,7 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
         assert sd_pipe_with_device_map.hf_device_map is None
 
         # Make sure `enable_model_cpu_offload()` can be used and the pipeline can be called.
-        sd_pipe_with_device_map.enable_model_cpu_offload()
+        sd_pipe_with_device_map.enable_model_cpu_offload(device=torch_device)
         _ = sd_pipe_with_device_map("hello", num_inference_steps=2)
 
     def test_reset_device_map_enable_sequential_cpu_offload(self):
@@ -1521,5 +1521,5 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
         assert sd_pipe_with_device_map.hf_device_map is None
 
         # Make sure `enable_sequential_cpu_offload()` can be used and the pipeline can be called.
-        sd_pipe_with_device_map.enable_sequential_cpu_offload()
+        sd_pipe_with_device_map.enable_sequential_cpu_offload(device=torch_device)
         _ = sd_pipe_with_device_map("hello", num_inference_steps=2)
