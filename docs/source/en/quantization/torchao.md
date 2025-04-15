@@ -102,8 +102,7 @@ import torch
 from diffusers import AutoModel, TorchAoConfig
 
 quantization_config = TorchAoConfig("int8wo")
-transformer = from diffusers import AutoModel, TorchAoConfig
-.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -151,11 +150,8 @@ with init_empty_weights():
 transformer.load_state_dict(state_dict, strict=True, assign=True)
 ```
 
-<Tip>
-
-With Torch 2.6 or higher, you can directly do: `transformer = AutoModel.from_pretrained("/path/to/flux_uint4wo/")`.
-
-</Tip>
+> [!TIP]
+> The [`AutoModel`] API is supported for PyTorch >= 2.6 as shown in the examples below.
 
 ## Resources
 
