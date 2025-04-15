@@ -1731,6 +1731,7 @@ class TorchCompileTesterMixin:
 
     @require_torch_gpu
     @require_torch_2
+    @is_torch_compile
     @slow
     def test_torch_compile_recompilation_and_graph_break(self):
         torch._dynamo.reset()
@@ -1740,6 +1741,7 @@ class TorchCompileTesterMixin:
         model = torch.compile(model, fullgraph=True)
 
         with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
 
