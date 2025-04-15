@@ -714,7 +714,7 @@ def main(args):
         )
 
     vae.to(accelerator.device, dtype=torch.float32)
-    transformer.to(accelerator.device, dtype=weight_dtype)
+    # transformer.to(accelerator.device, dtype=weight_dtype)
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
