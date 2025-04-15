@@ -662,7 +662,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.gradient_checkpointing = False
 
     def unpatchify(self, x: torch.Tensor, img_sizes: List[Tuple[int, int]], is_training: bool) -> List[torch.Tensor]:
-        if is_training:
+        if is_training and False: # temporary!!!
             B, S, F = x.shape
             C = F // (self.config.patch_size * self.config.patch_size)
             x = (
