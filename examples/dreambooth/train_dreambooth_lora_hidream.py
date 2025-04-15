@@ -343,8 +343,8 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--max_sequence_length",
         type=int,
-        default=256,
-        help="Maximum sequence length to use with with the Gemma2 model",
+        default=128,
+        help="Maximum sequence length to use with t5 and llama encoders",
     )
 
     parser.add_argument(
@@ -1087,8 +1087,6 @@ def encode_prompt(
         attention_mask=attention_mask_list[1] if attention_mask_list else None,
     )
 
-    print("t5_prompt_embeds",t5_prompt_embeds.shape)
-    print("llama3_prompt_embeds",llama3_prompt_embeds.shape)
     prompt_embeds = [t5_prompt_embeds, llama3_prompt_embeds]
 
     return prompt_embeds, pooled_prompt_embeds
