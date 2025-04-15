@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
@@ -47,8 +48,12 @@ class LayerSkipConfig:
         skip_ff (`bool`, defaults to `True`):
             Whether to skip feed-forward blocks.
         skip_attention_scores (`bool`, defaults to `False`):
-            Whether to skip attention score computation in the attention blocks. This is equivalent to using
-            `value` projections as the output of scaled dot product attention.
+            Whether to skip attention score computation in the attention blocks. This is equivalent to using `value`
+            projections as the output of scaled dot product attention.
+        dropout (`float`, defaults to `1.0`):
+            The dropout probability for dropping the outputs of the skipped layers. By default, this is set to `1.0`,
+            meaning that the outputs of the skipped layers are completely ignored. If set to `0.0`, the outputs of the
+            skipped layers are fully retained, which is equivalent to not skipping any layers.
     """
 
     indices: List[int]
@@ -56,6 +61,11 @@ class LayerSkipConfig:
     skip_attention: bool = True
     skip_attention_scores: bool = False
     skip_ff: bool = True
+    dropout: float = 1.0
+
+    def __post_init__(self):
+        if not (0 <= self.dropout <= 1):
+            raise ValueError(f"Expected `dropout` to be between 0.0 and 1.0, but got {self.dropout}.")
 
 
 class AttentionScoreSkipFunctionMode(torch.overrides.TorchFunctionMode):
@@ -74,36 +84,62 @@ class AttentionScoreSkipFunctionMode(torch.overrides.TorchFunctionMode):
 
 
 class AttentionProcessorSkipHook(ModelHook):
-    def __init__(self, skip_processor_output_fn: Callable, skip_attention_scores: bool = False):
+    def __init__(self, skip_processor_output_fn: Callable, skip_attention_scores: bool = False, dropout: float = 1.0):
         self.skip_processor_output_fn = skip_processor_output_fn
         self.skip_attention_scores = skip_attention_scores
+        self.dropout = dropout
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         if self.skip_attention_scores:
+            if math.isclose(self.dropout, 1.0):
+                raise ValueError(
+                    "Cannot set `skip_attention_scores` to True when `dropout` is not 1.0. Please set `dropout` to 1.0."
+                )
             with AttentionScoreSkipFunctionMode():
-                return self.fn_ref.original_forward(*args, **kwargs)
+                output = self.fn_ref.original_forward(*args, **kwargs)
         else:
-            return self.skip_processor_output_fn(module, *args, **kwargs)
+            if math.isclose(self.dropout, 1.0):
+                output = self.skip_processor_output_fn(module, *args, **kwargs)
+            else:
+                output = self.fn_ref.original_forward(*args, **kwargs)
+                output = torch.nn.functional.dropout(output, p=self.dropout)
+        return output
 
 
 class FeedForwardSkipHook(ModelHook):
+    def __init__(self, dropout: float):
+        super().__init__()
+        self.dropout = dropout
+
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        output = kwargs.get("hidden_states", None)
-        if output is None:
-            output = kwargs.get("x", None)
-        if output is None and len(args) > 0:
-            output = args[0]
+        if math.isclose(self.dropout, 1.0):
+            output = kwargs.get("hidden_states", None)
+            if output is None:
+                output = kwargs.get("x", None)
+            if output is None and len(args) > 0:
+                output = args[0]
+        else:
+            output = self.fn_ref.original_forward(*args, **kwargs)
+            output = torch.nn.functional.dropout(output, p=self.dropout)
         return output
 
 
 class TransformerBlockSkipHook(ModelHook):
+    def __init__(self, dropout: float):
+        super().__init__()
+        self.dropout = dropout
+
     def initialize_hook(self, module):
         self._metadata = TransformerBlockRegistry.get(unwrap_module(module).__class__)
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        return self._metadata.skip_block_output_fn(module, *args, **kwargs)
-
+        if math.isclose(self.dropout, 1.0):
+            output = self._metadata.skip_block_output_fn(module, *args, **kwargs)
+        else:
+            output = self.fn_ref.original_forward(*args, **kwargs)
+            output = torch.nn.functional.dropout(output, p=self.dropout)
+        return output
 
 def apply_layer_skip(module: torch.nn.Module, config: LayerSkipConfig) -> None:
     r"""
@@ -132,6 +168,8 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
 
     if config.skip_attention and config.skip_attention_scores:
         raise ValueError("Cannot set both `skip_attention` and `skip_attention_scores` to True. Please choose one.")
+    if not math.isclose(config.dropout, 1.0) and config.skip_attention_scores:
+        raise ValueError("Cannot set `skip_attention_scores` to True when `dropout` is not 1.0. Please set `dropout` to 1.0.")
 
     if config.fqn == "auto":
         for identifier in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS:
@@ -157,26 +195,30 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
     for i, block in enumerate(transformer_blocks):
         if i not in config.indices:
             continue
+        
         blocks_found = True
+        
         if config.skip_attention and config.skip_ff:
             logger.debug(f"Applying TransformerBlockSkipHook to '{config.fqn}.{i}'")
             registry = HookRegistry.check_if_exists_or_initialize(block)
-            hook = TransformerBlockSkipHook()
+            hook = TransformerBlockSkipHook(config.dropout)
             registry.register_hook(hook, name)
+        
         elif config.skip_attention or config.skip_attention_scores:
             for submodule_name, submodule in block.named_modules():
                 if isinstance(submodule, _ATTENTION_CLASSES) and not submodule.is_cross_attention:
                     logger.debug(f"Applying AttentionProcessorSkipHook to '{config.fqn}.{i}.{submodule_name}'")
                     output_fn = AttentionProcessorRegistry.get(submodule.processor.__class__).skip_processor_output_fn
                     registry = HookRegistry.check_if_exists_or_initialize(submodule)
-                    hook = AttentionProcessorSkipHook(output_fn, config.skip_attention_scores)
+                    hook = AttentionProcessorSkipHook(output_fn, config.skip_attention_scores, config.dropout)
                     registry.register_hook(hook, name)
+        
         if config.skip_ff:
             for submodule_name, submodule in block.named_modules():
                 if isinstance(submodule, _FEEDFORWARD_CLASSES):
                     logger.debug(f"Applying FeedForwardSkipHook to '{config.fqn}.{i}.{submodule_name}'")
                     registry = HookRegistry.check_if_exists_or_initialize(submodule)
-                    hook = FeedForwardSkipHook()
+                    hook = FeedForwardSkipHook(config.dropout)
                     registry.register_hook(hook, name)
 
     if not blocks_found:

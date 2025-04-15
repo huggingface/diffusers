@@ -133,6 +133,7 @@ else:
     _import_structure["guiders"].extend(
         [
             "AdaptiveProjectedGuidance",
+            "AutoGuidance",
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
             "SkipLayerGuidance",
@@ -724,6 +725,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .guiders import (
             AdaptiveProjectedGuidance,
+            AutoGuidance,
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
             SkipLayerGuidance,
