@@ -4734,6 +4734,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
+            load_with_metadata: TODO
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
@@ -4768,6 +4769,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        load_with_metadata = kwargs.pop("load_with_metadata", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -4792,6 +4794,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+            load_with_metadata=load_with_metadata,
         )
         if any(k.startswith("diffusion_model.") for k in state_dict):
             state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
@@ -4859,6 +4862,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        load_with_metdata = kwargs.get("load_with_metdata", False)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -4885,12 +4889,20 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            load_with_metdata=load_with_metdata,
         )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->WanTransformer3DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        load_with_metadata: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
@@ -4931,6 +4943,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 Note that hotswapping adapters of the text encoder is not yet supported. There are some further
                 limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
+            load_with_metadata: TODO
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4946,6 +4959,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
+            load_with_metadata=load_with_metadata,
         )
 
     @classmethod
@@ -4958,6 +4972,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -4977,14 +4992,19 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            transformer_lora_adapter_metadata: TODO
         """
         state_dict = {}
+        lora_adapter_metadata = {}
 
         if not transformer_lora_layers:
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+
+        if transformer_lora_adapter_metadata:
+            lora_adapter_metadata.update(cls.pack_weights(transformer_lora_adapter_metadata, cls.transformer_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -4994,6 +5014,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
+            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
