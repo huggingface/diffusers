@@ -5195,7 +5195,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        load_with_metdata = kwargs.get("load_with_metdata", False)
+        load_with_metadata = kwargs.get("load_with_metadata", False)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -5222,7 +5222,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
-            load_with_metadata=load_with_metdata,
+            load_with_metadata=load_with_metadata,
         )
 
     @classmethod
