@@ -46,6 +46,8 @@ else:
         "AutoPipelineForImage2Image",
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
+        "AutoPipelineForText2Video",
+        "AutoPipelineForImage2Video",
     ]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["dance_diffusion"] = ["DanceDiffusionPipeline"]
@@ -468,8 +470,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .auto_pipeline import (
             AutoPipelineForImage2Image,
+            AutoPipelineForImage2Video,
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
+            AutoPipelineForText2Video,
         )
         from .consistency_models import ConsistencyModelPipeline
         from .dance_diffusion import DanceDiffusionPipeline

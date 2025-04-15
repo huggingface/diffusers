@@ -25,8 +25,10 @@ from transformers import CLIPVisionConfig, CLIPVisionModelWithProjection
 
 from diffusers import (
     AutoPipelineForImage2Image,
+    AutoPipelineForImage2Video,
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
+    AutoPipelineForText2Video,
     ControlNetModel,
     DiffusionPipeline,
 )
@@ -453,6 +455,32 @@ class AutoPipelineFastTest(unittest.TestCase):
 
         pipe = AutoPipelineForText2Image.from_pipe(pipe, image_encoder=None)
         assert pipe.image_encoder is None
+
+    def test_from_pretrained_text2video(self):
+        repo = "hf-internal-testing/tiny-cogvideox-pipe"
+        pipe = AutoPipelineForText2Video.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "CogVideoXPipeline"
+
+    def test_from_pretrained_image2video(self):
+        repo = "hf-internal-testing/tiny-cogvideox-pipe"
+        pipe = AutoPipelineForImage2Video.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "CogVideoXImageToVideoPipeline"
+
+    def test_from_pipe_text2video_image2video(self):
+        repo = "hf-internal-testing/tiny-cogvideox-pipe"
+        pipe = AutoPipelineForText2Video.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "CogVideoXPipeline"
+
+        pipe = AutoPipelineForImage2Video.from_pipe(pipe)
+        assert pipe.__class__.__name__ == "CogVideoXImageToVideoPipeline"
+
+    def test_from_pipe_image2video_text2video(self):
+        repo = "hf-internal-testing/tiny-cogvideox-pipe"
+        pipe = AutoPipelineForImage2Video.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "CogVideoXImageToVideoPipeline"
+
+        pipe = AutoPipelineForText2Video.from_pipe(pipe)
+        assert pipe.__class__.__name__ == "CogVideoXPipeline"
 
 
 @slow
