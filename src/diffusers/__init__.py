@@ -227,10 +227,10 @@ else:
         [
             "AudioPipelineOutput",
             "AutoPipelineForImage2Image",
+            "AutoPipelineForImage2Video",
             "AutoPipelineForInpainting",
             "AutoPipelineForText2Image",
             "AutoPipelineForText2Video",
-            "AutoPipelineForImage2Video",
             "ConsistencyModelPipeline",
             "DanceDiffusionPipeline",
             "DDIMPipeline",

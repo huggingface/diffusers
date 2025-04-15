@@ -1407,9 +1407,7 @@ class AutoPipelineForText2Video(ConfigMixin):
         ```py
         >>> from diffusers import AutoPipelineForText2Video, AutoPipelineForImage2Video
 
-        >>> pipe_i2v = AutoPipelineForImage2Video.from_pretrained(
-        ...     "Lightricks/LTX-Video"
-        ... )
+        >>> pipe_i2v = AutoPipelineForImage2Video.from_pretrained("Lightricks/LTX-Video")
 
         >>> pipe_t2v = AutoPipelineForText2Video.from_pipe(pipe_i2v)
         >>> video = pipe_t2v(prompt).videos[0]
@@ -1665,9 +1663,7 @@ class AutoPipelineForImage2Video(ConfigMixin):
         ```py
         >>> from diffusers import AutoPipelineForText2vmage, AutoPipelineForImage2Video
 
-        >>> pipe_t2v = AutoPipelineForText2vmage.from_pretrained(
-        ...     "Lightricks/LTX-Video"
-        ... )
+        >>> pipe_t2v = AutoPipelineForText2vmage.from_pretrained("Lightricks/LTX-Video")
 
         >>> pipe_i2v = AutoPipelineForImage2Video.from_pipe(pipe_t2v)
         >>> video = pipe_i2v(prompt, image).videos[0]
