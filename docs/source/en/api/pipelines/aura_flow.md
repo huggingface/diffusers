@@ -89,6 +89,19 @@ image = pipeline(prompt).images[0]
 image.save("auraflow.png")
 ```
 
+## Support for `torch.compile()`
+
+AuraFlow can be compiled with `torch.compile()` to speed up inference latency even for different resolutions. First, install PyTorch nightly following the instructions from [here](https://pytorch.org/). The snippet below shows the changes needed to enable this:
+
+```diff
++ torch.fx.experimental._config.use_duck_shape = False
++ pipeline.transformer = torch.compile(
+    pipeline.transformer, fullgraph=True, dynamic=True
+)
+```
+
+Thanks to [AstraliteHeart](https://github.com/huggingface/diffusers/pull/11297/) who helped us rewrite the [`AuraFlowTransformer2DModel`] class so that the above works for different resolutions ([PR](https://github.com/huggingface/diffusers/pull/11297/)).
+
 ## AuraFlowPipeline
 
 [[autodoc]] AuraFlowPipeline
