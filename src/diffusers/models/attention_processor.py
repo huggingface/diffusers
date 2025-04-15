@@ -5997,7 +5997,7 @@ class LoRAAttnAddedKVProcessor:
         pass
 
 
-class FluxSingleAttnProcessor2_0(FluxSingleAttnProcessorSDPA):
+class FluxSingleAttnProcessor2_0(FluxAttnProcessorSDPA):
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     """
@@ -6172,224 +6172,238 @@ class PAGIdentitySanaLinearAttnProcessorSDPA:
 
 class MochiAttnProcessor2_0(MochiAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`MochiAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `MochiAttnProcessorSDPA`"
-        deprecate("MochiAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`MochiAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `MochiAttnProcessorSDPA`"
+        deprecate("MochiAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class AttnAddedKVProcessor2_0(AttnAddedKVProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`AttnAddedKVAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessorSDPA`"
+        deprecation_message = "`AttnAddedKVAttentionProcessor2_0` is deprecated and this will be removed in a future version. Please use `AttnAddedKVProcessorSDPA`"
         deprecate("AttnAddedKVAttentionProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class JointAttnProcessor2_0(JointAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`JointAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `JointAttnProcessorSDPA`"
-        deprecate("JointAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`JointAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `JointAttnProcessorSDPA`"
+        deprecate("JointAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class PAGJointAttnProcessor2_0(PAGJointAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`PAGJointAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `PAGJointAttnProcessorSDPA`"
-        deprecate("PAGJointAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`PAGJointAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGJointAttnProcessorSDPA`"
+        deprecate("PAGJointAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class PAGCFGJointAttnProcessor2_0(PAGCFGJointAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`PAGCFGJointAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `PAGCFGJointAttnProcessorSDPA`"
-        deprecate("PAGCFGJointAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`PAGCFGJointAttnProcessor2_0 is deprecated and this will be removed in a future version. Please use `PAGCFGJointAttnProcessorSDPA`"
+        deprecate("PAGCFGJointAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class FusedJointAttnProcessor2_0(FusedJointAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`FusedJointAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `FusedJointAttnProcessorSDPA`"
-        deprecate("FusedJointAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`FusedJointAttnProcessor2_0 is deprecated and this will be removed in a future version. Please use `FusedJointAttnProcessorSDPA`"
+        deprecate("FusedJointAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class AllegroAttnProcessor2_0(AllegroAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`AllegroAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `AllegroAttnProcessorSDPA`"
-        deprecate("AllegroAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`AllegroAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AllegroAttnProcessorSDPA`"
+        deprecate("AllegroAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class AuraFlowAttnProcessor2_0(AuraFlowAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`AuraFlowAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `AuraFlowAttnProcessorSDPA`"
-        deprecate("AuraFlowAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`AuraFlowAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AuraFlowAttnProcessorSDPA`"
+        deprecate("AuraFlowAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class FusedAuraFlowAttnProcessor2_0(FusedAuraFlowAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`FusedAuraFlowAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `FusedAuraFlowAttnProcessorSDPA`"
-        deprecate("FusedAuraFlowAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`FusedAuraFlowAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedAuraFlowAttnProcessorSDPA`"
+        deprecate("FusedAuraFlowAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class FluxAttnProcessor2_0(FluxAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`FluxAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `FluxAttnProcessorSDPA`"
-        deprecate("FluxAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`FluxAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FluxAttnProcessorSDPA`"
+        deprecate("FluxAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class FusedFluxAttnProcessor2_0(FusedFluxAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`FusedFluxAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `FusedFluxAttnProcessorSDPA`"
-        deprecate("FusedFluxAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`FusedFluxAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedFluxAttnProcessorSDPA`"
+        deprecate("FusedFluxAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class CogVideoXAttnProcessor2_0(CogVideoXAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`CogVideoXAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `CogVideoXAttnProcessorSDPA`"
-        deprecate("CogVideoXAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`CogVideoXAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `CogVideoXAttnProcessorSDPA`"
+        deprecate("CogVideoXAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class FusedCogVideoXAttnProcessor2_0(FusedCogVideoXAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`FusedCogVideoXAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `FusedCogVideoXAttnProcessorSDPA`"
-        deprecate("FusedCogVideoXAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`FusedCogVideoXAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedCogVideoXAttnProcessorSDPA`"
+        deprecate("FusedCogVideoXAttnProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class AttnProcessor(AttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`AttnProcessor` is deprecated and this will be removed in a future version. Please use `AttnProcessorSDPA`"
+        deprecate("AttnProcessor", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class AttnProcessor2_0(AttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`AttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `AttnProcessorSDPA`"
-        deprecate("AttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`AttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `AttnProcessorSDPA`"
+        deprecate("AttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class XLAFlashAttnProcessor2_0(XLAFlashAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`XLAFlashAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `XLAFlashAttnProcessorSDPA`"
-        deprecate("XLAFlashAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`XLAFlashAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `XLAFlashAttnProcessorSDPA`"
+        deprecate("XLAFlashAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class XLAFluxFlashAttnProcessor2_0(XLAFluxFlashAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`XLAFluxFlashAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `XLAFluxFlashAttnProcessorSDPA`"
-        deprecate("XLAFluxFlashAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`XLAFluxFlashAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `XLAFluxFlashAttnProcessorSDPA`"
+        deprecate("XLAFluxFlashAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class MochiVaeAttnProcessor2_0(MochiVaeAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`MochiVaeAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `MochiVaeAttnProcessorSDPA`"
-        deprecate("MochiVaeAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`MochiVaeAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `MochiVaeAttnProcessorSDPA`"
+        deprecate("MochiVaeAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class StableAudioAttnProcessor2_0(StableAudioAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`StableAudioAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `StableAudioAttnProcessorSDPA`"
-        deprecate("StableAudioAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`StableAudioAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `StableAudioAttnProcessorSDPA`"
+        deprecate("StableAudioAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class HunyuanAttnProcessor2_0(HunyuanAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`HunyuanAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `HunyuanAttnProcessorSDPA`"
-        deprecate("HunyuanAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`HunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `HunyuanAttnProcessorSDPA`"
+        deprecate("HunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class FusedHunyuanAttnProcessor2_0(FusedHunyuanAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`FusedHunyuanAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `FusedHunyuanAttnProcessorSDPA`"
-        deprecate("FusedHunyuanAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`FusedHunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedHunyuanAttnProcessorSDPA`"
+        deprecate("FusedHunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class PAGHunyuanAttnProcessor2_0(PAGHunyuanAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`PAGHunyuanAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `PAGHunyuanAttnProcessorSDPA`"
-        deprecate("PAGHunyuanAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`PAGHunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGHunyuanAttnProcessorSDPA`"
+        deprecate("PAGHunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class PAGCFGHunyuanAttnProcessor2_0(PAGCFGHunyuanAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`PAGCFGHunyuanAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `PAGCFGHunyuanAttnProcessorSDPA`"
-        deprecate("PAGCFGHunyuanAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`PAGCFGHunyuanAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGHunyuanAttnProcessorSDPA`"
+        deprecate("PAGCFGHunyuanAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class LuminaAttnProcessor2_0(LuminaAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`LuminaAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `LuminaAttnProcessorSDPA`"
-        deprecate("LuminaAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`LuminaAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `LuminaAttnProcessorSDPA`"
+        deprecate("LuminaAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class FusedAttnProcessor2_0(FusedAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`FusedAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `FusedAttnProcessorSDPA`"
-        deprecate("FusedAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`FusedAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `FusedAttnProcessorSDPA`"
+        deprecate("FusedAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class PAGIdentitySelfAttnProcessor2_0(PAGIdentitySelfAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`PAGIdentitySelfAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `PAGIdentitySelfAttnProcessorSDPA`"
-        deprecate("PAGIdentitySelfAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`PAGIdentitySelfAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGIdentitySelfAttnProcessorSDPA`"
+        deprecate("PAGIdentitySelfAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class PAGCFGIdentitySelfAttnProcessor2_0(PAGCFGIdentitySelfAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`PAGCFGIdentitySelfAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `PAGCFGIdentitySelfAttnProcessorSDPA`"
-        deprecate("PAGCFGIdentitySelfAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`PAGCFGIdentitySelfAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGIdentitySelfAttnProcessorSDPA`"
+        deprecate("PAGCFGIdentitySelfAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class SanaMultiscaleAttnProcessor2_0(SanaMultiscaleAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`SanaMultiscaleAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `SanaMultiscaleAttnProcessorSDPA`"
-        deprecate("SanaMultiscaleAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`SanaMultiscaleAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `SanaMultiscaleAttnProcessorSDPA`"
+        deprecate("SanaMultiscaleAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class LoRAAttnProcessor2_0(LoRAAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`LoRAAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `LoRAAttnProcessorSDPA`"
-        deprecate("LoRAAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`LoRAAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `LoRAAttnProcessorSDPA`"
+        deprecate("LoRAAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class SanaLinearAttnProcessor2_0(SanaLinearAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`SanaLinearAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `SanaLinearAttnProcessorSDPA`"
-        deprecate("SanaLinearAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`SanaLinearAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `SanaLinearAttnProcessorSDPA`"
+        deprecate("SanaLinearAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class PAGCFGSanaLinearAttnProcessor2_0(PAGCFGSanaLinearAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`PAGCFGSanaLinearAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `PAGCFGSanaLinearAttnProcessorSDPA`"
-        deprecate("PAGCFGSanaLinearAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`PAGCFGSanaLinearAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGCFGSanaLinearAttnProcessorSDPA`"
+        deprecate("PAGCFGSanaLinearAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class PAGIdentitySanaLinearAttnProcessor2_0(PAGIdentitySanaLinearAttnProcessorSDPA):
     def __init__(self, *args, **kwargs):
-        deprecation_message = "`PAGIdentitySanaLinearAttnAttentionProcessorSDPA` is deprecated and this will be removed in a future version. Please use `PAGIdentitySanaLinearAttnProcessorSDPA`"
-        deprecate("PAGIdentitySanaLinearAttnAttentionProcessor2_0", "1.0.0", deprecation_message)
+        deprecation_message = "`PAGIdentitySanaLinearAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `PAGIdentitySanaLinearAttnProcessorSDPA`"
+        deprecate("PAGIdentitySanaLinearAttnProcessor2_0", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
+
+
+class IPAdapterAttnProcessor(IPAdapterAttnProcessorSDPA):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "`IPAdapterAttnProcessor` is deprecated and this will be removed in a future version. Please use `IPAdapterAttnProcessorSDPA`"
+        deprecate("IPAdapterAttnProcessor", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
 
 class IPAdapterAttnProcessor2_0(IPAdapterAttnProcessorSDPA):
     def __init__(self, *args, **kwargs) -> None:
-        deprecation_message = "`IPAdapterAttnProcessorSDPA` is deprecated and this will be removed in a future version. Please use `IPAdapterAttnProcessorSDPA`"
+        deprecation_message = "`IPAdapterAttnProcessor2_0` is deprecated and this will be removed in a future version. Please use `IPAdapterAttnProcessorSDPA`"
         deprecate("IPAdapterAttnProcessor2_0", "1.0.0", deprecation_message)
         super().__init__(*args, **kwargs)
 
