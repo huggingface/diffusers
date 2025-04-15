@@ -35,7 +35,7 @@
     title: Push files to the Hub
   title: Load pipelines and adapters
 - sections:
-  - local: using-diffusers/using_peft_for_inference
+  - local: tutorials/using_peft_for_inference
     title: LoRA
   - local: using-diffusers/ip_adapter
     title: IP-Adapter
