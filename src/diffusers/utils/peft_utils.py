@@ -151,9 +151,9 @@ def get_peft_kwargs(
     rank_dict, network_alpha_dict, peft_state_dict, is_unet=True, prefix=None, load_with_metadata=False
 ):
     if load_with_metadata:
-        if "_metadata" not in peft_state_dict:
+        if "lora_metadata" not in peft_state_dict:
             raise ValueError("Couldn't find '_metadata' key in the `peft_state_dict`.")
-        metadata = peft_state_dict["_metadata"]
+        metadata = peft_state_dict["lora_metadata"]
         if prefix is not None:
             metadata = {k.replace(f"{prefix}.", ""): v for k, v in metadata.items()}
         return metadata

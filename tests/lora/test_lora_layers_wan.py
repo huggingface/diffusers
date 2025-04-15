@@ -162,9 +162,9 @@ class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.unload_lora_weights()
             state_dict = pipe.lora_state_dict(tmpdir, load_with_metadata=True)
 
-            self.assertTrue("_metadata" in state_dict)
+            self.assertTrue("lora_metadata" in state_dict)
 
-            parsed_metadata = state_dict["_metadata"]
+            parsed_metadata = state_dict["lora_metadata"]
             parsed_metadata = {k[len("transformer.") :]: v for k, v in parsed_metadata.items()}
             check_if_dicts_are_equal(parsed_metadata, metadata)
 

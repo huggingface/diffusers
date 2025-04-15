@@ -4889,7 +4889,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             adapter_name=adapter_name,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
-            load_with_metdata=load_with_metdata,
+            load_with_metadata=load_with_metdata,
         )
 
     @classmethod

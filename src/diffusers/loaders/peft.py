@@ -236,15 +236,12 @@ class PeftAdapterMixin:
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
-        if load_with_metadata is not None and not use_safetensors:
-            raise ValueError("`load_with_metadata` cannot be specified when not using `use_safetensors`.")
-
         if prefix is not None:
-            metadata = state_dict.pop("_metadata", None)
+            metadata = state_dict.pop("lora_metadata", None)
             state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
             if metadata is not None:
-                state_dict["_metadata"] = metadata
+                state_dict["lora_metadata"] = metadata
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
