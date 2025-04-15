@@ -2231,9 +2231,9 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
         data.num_channels_unet = pipeline.unet.config.in_channels
         data.disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
         if data.disable_guidance:
-            pipeline.guider.force_disable()
+            pipeline.guider._force_disable()
         else:
-            pipeline.guider.force_enable()
+            pipeline.guider._force_enable()
 
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
@@ -2626,9 +2626,9 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         # (2) Prepare conditional inputs for unet using the guider
         data.disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
         if data.disable_guidance:
-            pipeline.guider.force_disable()
+            pipeline.guider._force_disable()
         else:
-            pipeline.guider.force_enable()
+            pipeline.guider._force_enable()
 
         # (4) Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
@@ -3039,9 +3039,9 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
         # adding default guider arguments: disable_guidance, guidance_scale, guidance_rescale
         data.disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
         if data.disable_guidance:
-            pipeline.guider.force_disable()
+            pipeline.guider._force_disable()
         else:
-            pipeline.guider.force_enable()
+            pipeline.guider._force_enable()
 
         data.control_type = data.control_type.reshape(1, -1).to(data.device, dtype=data.prompt_embeds.dtype)
         repeat_by = data.batch_size * data.num_images_per_prompt // data.control_type.shape[0]

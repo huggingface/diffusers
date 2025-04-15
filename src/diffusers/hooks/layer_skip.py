@@ -20,7 +20,7 @@ import torch
 
 from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
-from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS, _ATTENTION_CLASSES, _FEEDFORWARD_CLASSES
+from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS, _ATTENTION_CLASSES, _FEEDFORWARD_CLASSES, _get_submodule_from_fqn
 from ._helpers import AttentionProcessorRegistry, TransformerBlockRegistry
 from .hooks import HookRegistry, ModelHook
 
@@ -66,12 +66,13 @@ class LayerSkipConfig:
     def __post_init__(self):
         if not (0 <= self.dropout <= 1):
             raise ValueError(f"Expected `dropout` to be between 0.0 and 1.0, but got {self.dropout}.")
+        if not math.isclose(self.dropout, 1.0) and self.skip_attention_scores:
+            raise ValueError(
+                "Cannot set `skip_attention_scores` to True when `dropout` is not 1.0. Please set `dropout` to 1.0."
+            )
 
 
 class AttentionScoreSkipFunctionMode(torch.overrides.TorchFunctionMode):
-    def __init__(self) -> None:
-        super().__init__()
-
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
@@ -226,10 +227,3 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
             f"Could not find any transformer blocks matching the provided indices {config.indices} and "
             f"fully qualified name '{config.fqn}'. Please check the indices and fqn for correctness."
         )
-
-
-def _get_submodule_from_fqn(module: torch.nn.Module, fqn: str) -> Optional[torch.nn.Module]:
-    for submodule_name, submodule in module.named_modules():
-        if submodule_name == fqn:
-            return submodule
-    return None

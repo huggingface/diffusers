@@ -137,6 +137,7 @@ else:
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
             "SkipLayerGuidance",
+            "SmoothedEnergyGuidance",
         ]
     )
     _import_structure["hooks"].extend(
@@ -145,6 +146,7 @@ else:
             "HookRegistry",
             "PyramidAttentionBroadcastConfig",
             "LayerSkipConfig",
+            "SmoothedEnergyGuidanceConfig",
             "apply_faster_cache",
             "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
@@ -729,12 +731,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
             SkipLayerGuidance,
+            SmoothedEnergyGuidance,
         )
         from .hooks import (
             FasterCacheConfig,
             HookRegistry,
             LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
+            SmoothedEnergyGuidanceConfig,
             apply_layer_skip,
             apply_faster_cache,
             apply_pyramid_attention_broadcast,

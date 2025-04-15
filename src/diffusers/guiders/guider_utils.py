@@ -55,10 +55,10 @@ class BaseGuidance:
                 "`_input_predictions` must be a list of required prediction names for the guidance technique."
             )
 
-    def force_disable(self):
+    def _force_disable(self):
         self._enabled = False
     
-    def force_enable(self):
+    def _force_enable(self):
         self._enabled = True
     
     def set_state(self, step: int, num_inference_steps: int, timestep: torch.LongTensor) -> None:

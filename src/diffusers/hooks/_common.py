@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
+
+import torch
+
 from ..models.attention import FeedForward, LuminaFeedForward
 from ..models.attention_processor import Attention, MochiAttention
 
@@ -30,3 +34,10 @@ _ALL_TRANSFORMER_BLOCK_IDENTIFIERS = tuple(
         *_CROSS_TRANSFORMER_BLOCK_IDENTIFIERS,
     }
 )
+
+
+def _get_submodule_from_fqn(module: torch.nn.Module, fqn: str) -> Optional[torch.nn.Module]:
+    for submodule_name, submodule in module.named_modules():
+        if submodule_name == fqn:
+            return submodule
+    return None

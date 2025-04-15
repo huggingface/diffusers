@@ -17,55 +17,39 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from ..hooks import HookRegistry, LayerSkipConfig
-from ..hooks.layer_skip import _apply_layer_skip_hook
+from ..hooks import HookRegistry
+from ..hooks.smoothed_energy_guidance_utils import SmoothedEnergyGuidanceConfig, _apply_smoothed_energy_guidance_hook
 from .guider_utils import BaseGuidance, rescale_noise_cfg
 
 
-class SkipLayerGuidance(BaseGuidance):
+class SmoothedEnergyGuidance(BaseGuidance):
     """
-    Skip Layer Guidance (SLG): https://github.com/Stability-AI/sd3.5
-    
-    Spatio-Temporal Guidance (STG): https://huggingface.co/papers/2411.18664
-    
-    SLG was introduced by StabilityAI for improving structure and anotomy coherence in generated images. It works by
-    skipping the forward pass of specified transformer blocks during the denoising process on an additional conditional
-    batch of data, apart from the conditional and unconditional batches already used in CFG
-    ([~guiders.classifier_free_guidance.ClassifierFreeGuidance]), and then scaling and shifting the CFG predictions
-    based on the difference between conditional without skipping and conditional with skipping predictions.
-    
-    The intution behind SLG can be thought of as moving the CFG predicted distribution estimates further away from
-    worse versions of the conditional distribution estimates (because skipping layers is equivalent to using a worse
-    version of the model for the conditional prediction).
-    
-    STG is an improvement and follow-up work combining ideas from SLG, PAG and similar techniques for improving
-    generation quality in video diffusion models.
-    
-    Additional reading:
-    - [Guiding a Diffusion Model with a Bad Version of Itself](https://huggingface.co/papers/2406.02507)
-    
-    The values for `skip_layer_guidance_scale`, `skip_layer_guidance_start`, and `skip_layer_guidance_stop` are
-    defaulted to the recommendations by StabilityAI for Stable Diffusion 3.5 Medium.
+    Smoothed Energy Guidance (SEG): https://huggingface.co/papers/2408.00760
     
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
-        skip_layer_guidance_scale (`float`, defaults to `2.8`):
-            The scale parameter for skip layer guidance. Anatomy and structure coherence may improve with higher
+        seg_guidance_scale (`float`, defaults to `3.0`):
+            The scale parameter for smoothed energy guidance. Anatomy and structure coherence may improve with higher
             values, but it may also lead to overexposure and saturation.
-        skip_layer_guidance_start (`float`, defaults to `0.01`):
-            The fraction of the total number of denoising steps after which skip layer guidance starts.
-        skip_layer_guidance_stop (`float`, defaults to `0.2`):
-            The fraction of the total number of denoising steps after which skip layer guidance stops.
-        skip_layer_guidance_layers (`int` or `List[int]`, *optional*):
-            The layer indices to apply skip layer guidance to. Can be a single integer or a list of integers. If not
-            provided, `skip_layer_config` must be provided. The recommended values are `[7, 8, 9]` for Stable Diffusion
+        seg_blur_sigma (`float`, defaults to `9999999.0`):
+            The amount by which we blur the attention weights. Setting this value greater than 9999.0 results in
+            infinite blur, which means uniform queries. Controlling it exponentially is empirically effective.
+        seg_blur_threshold_inf (`float`, defaults to `9999.0`):
+            The threshold above which the blur is considered infinite.
+        seg_guidance_start (`float`, defaults to `0.0`):
+            The fraction of the total number of denoising steps after which smoothed energy guidance starts.
+        seg_guidance_stop (`float`, defaults to `1.0`):
+            The fraction of the total number of denoising steps after which smoothed energy guidance stops.
+        seg_guidance_layers (`int` or `List[int]`, *optional*):
+            The layer indices to apply smoothed energy guidance to. Can be a single integer or a list of integers. If not
+            provided, `seg_guidance_config` must be provided. The recommended values are `[7, 8, 9]` for Stable Diffusion
             3.5 Medium.
-        skip_layer_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
-            The configuration for the skip layer guidance. Can be a single `LayerSkipConfig` or a list of
-            `LayerSkipConfig`. If not provided, `skip_layer_guidance_layers` must be provided.
+        seg_guidance_config (`SmoothedEnergyGuidanceConfig` or `List[SmoothedEnergyGuidanceConfig]`, *optional*):
+            The configuration for the smoothed energy layer guidance. Can be a single `SmoothedEnergyGuidanceConfig` or a list of
+            `SmoothedEnergyGuidanceConfig`. If not provided, `seg_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
@@ -80,16 +64,18 @@ class SkipLayerGuidance(BaseGuidance):
             The fraction of the total number of denoising steps after which guidance stops.
     """
 
-    _input_predictions = ["pred_cond", "pred_uncond", "pred_cond_skip"]
+    _input_predictions = ["pred_cond", "pred_uncond", "pred_cond_seg"]
 
     def __init__(
         self,
         guidance_scale: float = 7.5,
-        skip_layer_guidance_scale: float = 2.8,
-        skip_layer_guidance_start: float = 0.01,
-        skip_layer_guidance_stop: float = 0.2,
-        skip_layer_guidance_layers: Optional[Union[int, List[int]]] = None,
-        skip_layer_config: Union[LayerSkipConfig, List[LayerSkipConfig]] = None,
+        seg_guidance_scale: float = 2.8,
+        seg_blur_sigma: float = 9999999.0,
+        seg_blur_threshold_inf: float = 9999.0,
+        seg_guidance_start: float = 0.0,
+        seg_guidance_stop: float = 1.0,
+        seg_guidance_layers: Optional[Union[int, List[int]]] = None,
+        seg_guidance_config: Union[SmoothedEnergyGuidanceConfig, List[SmoothedEnergyGuidanceConfig]] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -98,52 +84,54 @@ class SkipLayerGuidance(BaseGuidance):
         super().__init__(start, stop)
 
         self.guidance_scale = guidance_scale
-        self.skip_layer_guidance_scale = skip_layer_guidance_scale
-        self.skip_layer_guidance_start = skip_layer_guidance_start
-        self.skip_layer_guidance_stop = skip_layer_guidance_stop
+        self.seg_guidance_scale = seg_guidance_scale
+        self.seg_blur_sigma = seg_blur_sigma
+        self.seg_blur_threshold_inf = seg_blur_threshold_inf
+        self.seg_guidance_start = seg_guidance_start
+        self.seg_guidance_stop = seg_guidance_stop
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-        if not (0.0 <= skip_layer_guidance_start < 1.0):
+        if not (0.0 <= seg_guidance_start < 1.0):
             raise ValueError(
-                f"Expected `skip_layer_guidance_start` to be between 0.0 and 1.0, but got {skip_layer_guidance_start}."
+                f"Expected `seg_guidance_start` to be between 0.0 and 1.0, but got {seg_guidance_start}."
             )
-        if not (skip_layer_guidance_start <= skip_layer_guidance_stop <= 1.0):
+        if not (seg_guidance_start <= seg_guidance_stop <= 1.0):
             raise ValueError(
-                f"Expected `skip_layer_guidance_stop` to be between 0.0 and 1.0, but got {skip_layer_guidance_stop}."
+                f"Expected `seg_guidance_stop` to be between 0.0 and 1.0, but got {seg_guidance_stop}."
             )
 
-        if skip_layer_guidance_layers is None and skip_layer_config is None:
+        if seg_guidance_layers is None and seg_guidance_config is None:
             raise ValueError(
-                "Either `skip_layer_guidance_layers` or `skip_layer_config` must be provided to enable Skip Layer Guidance."
+                "Either `seg_guidance_layers` or `seg_guidance_config` must be provided to enable Smoothed Energy Guidance."
             )
-        if skip_layer_guidance_layers is not None and skip_layer_config is not None:
-            raise ValueError("Only one of `skip_layer_guidance_layers` or `skip_layer_config` can be provided.")
+        if seg_guidance_layers is not None and seg_guidance_config is not None:
+            raise ValueError("Only one of `seg_guidance_layers` or `seg_guidance_config` can be provided.")
 
-        if skip_layer_guidance_layers is not None:
-            if isinstance(skip_layer_guidance_layers, int):
-                skip_layer_guidance_layers = [skip_layer_guidance_layers]
-            if not isinstance(skip_layer_guidance_layers, list):
+        if seg_guidance_layers is not None:
+            if isinstance(seg_guidance_layers, int):
+                seg_guidance_layers = [seg_guidance_layers]
+            if not isinstance(seg_guidance_layers, list):
                 raise ValueError(
-                    f"Expected `skip_layer_guidance_layers` to be an int or a list of ints, but got {type(skip_layer_guidance_layers)}."
+                    f"Expected `seg_guidance_layers` to be an int or a list of ints, but got {type(seg_guidance_layers)}."
                 )
-            skip_layer_config = [LayerSkipConfig(layer, fqn="auto") for layer in skip_layer_guidance_layers]
+            seg_guidance_config = [SmoothedEnergyGuidanceConfig(layer, fqn="auto") for layer in seg_guidance_layers]
 
-        if isinstance(skip_layer_config, LayerSkipConfig):
-            skip_layer_config = [skip_layer_config]
+        if isinstance(seg_guidance_config, SmoothedEnergyGuidanceConfig):
+            seg_guidance_config = [seg_guidance_config]
 
-        if not isinstance(skip_layer_config, list):
+        if not isinstance(seg_guidance_config, list):
             raise ValueError(
-                f"Expected `skip_layer_config` to be a LayerSkipConfig or a list of LayerSkipConfig, but got {type(skip_layer_config)}."
+                f"Expected `seg_guidance_config` to be a SmoothedEnergyGuidanceConfig or a list of SmoothedEnergyGuidanceConfig, but got {type(seg_guidance_config)}."
             )
 
-        self.skip_layer_config = skip_layer_config
-        self._skip_layer_hook_names = [f"SkipLayerGuidance_{i}" for i in range(len(self.skip_layer_config))]
+        self.seg_guidance_config = seg_guidance_config
+        self._seg_layer_hook_names = [f"SmoothedEnergyGuidance_{i}" for i in range(len(self.seg_guidance_config))]
 
     def prepare_models(self, denoiser: torch.nn.Module) -> None:
-        if self._is_slg_enabled() and self.is_conditional and self._num_outputs_prepared > 0:
-            for name, config in zip(self._skip_layer_hook_names, self.skip_layer_config):
-                _apply_layer_skip_hook(denoiser, config, name=name)
+        if self._is_seg_enabled() and self.is_conditional and self._num_outputs_prepared > 0:
+            for name, config in zip(self._seg_layer_hook_names, self.seg_guidance_config):
+                _apply_smoothed_energy_guidance_hook(denoiser, config, self.seg_blur_sigma, name=name)
     
     def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
         num_conditions = self.num_conditions
@@ -173,43 +161,43 @@ class SkipLayerGuidance(BaseGuidance):
         if self._num_outputs_prepared > self.num_conditions:
             raise ValueError(f"Expected {self.num_conditions} outputs, but prepare_outputs called more times.")
         key = self._input_predictions[self._num_outputs_prepared - 1]
-        if not self._is_cfg_enabled() and self._is_slg_enabled():
-            # If we're predicting pred_cond and pred_cond_skip only, we need to set the key to pred_cond_skip
+        if not self._is_cfg_enabled() and self._is_seg_enabled():
+            # If we're predicting pred_cond and pred_cond_seg only, we need to set the key to pred_cond_seg
             # to avoid writing into pred_uncond which is not used
             if self._num_outputs_prepared == 2:
-                key = "pred_cond_skip"
+                key = "pred_cond_seg"
         self._preds[key] = pred
 
-        if key == "pred_cond_skip":
+        if key == "pred_cond_seg":
             # If we are in SLG mode, we need to remove the hooks after inference
             registry = HookRegistry.check_if_exists_or_initialize(denoiser)
             # Remove the hooks after inference
-            for hook_name in self._skip_layer_hook_names:
+            for hook_name in self._seg_layer_hook_names:
                 registry.remove_hook(hook_name, recurse=True)
 
     def forward(
         self,
         pred_cond: torch.Tensor,
         pred_uncond: Optional[torch.Tensor] = None,
-        pred_cond_skip: Optional[torch.Tensor] = None,
+        pred_cond_seg: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         pred = None
 
-        if not self._is_cfg_enabled() and not self._is_slg_enabled():
+        if not self._is_cfg_enabled() and not self._is_seg_enabled():
             pred = pred_cond
         elif not self._is_cfg_enabled():
-            shift = pred_cond - pred_cond_skip
-            pred = pred_cond if self.use_original_formulation else pred_cond_skip
-            pred = pred + self.skip_layer_guidance_scale * shift
-        elif not self._is_slg_enabled():
+            shift = pred_cond - pred_cond_seg
+            pred = pred_cond if self.use_original_formulation else pred_cond_seg
+            pred = pred + self.seg_guidance_scale * shift
+        elif not self._is_seg_enabled():
             shift = pred_cond - pred_uncond
             pred = pred_cond if self.use_original_formulation else pred_uncond
             pred = pred + self.guidance_scale * shift
         else:
             shift = pred_cond - pred_uncond
-            shift_skip = pred_cond - pred_cond_skip
+            shift_seg = pred_cond - pred_cond_seg
             pred = pred_cond if self.use_original_formulation else pred_uncond
-            pred = pred + self.guidance_scale * shift + self.skip_layer_guidance_scale * shift_skip
+            pred = pred + self.guidance_scale * shift + self.seg_guidance_scale * shift_seg
 
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
@@ -225,7 +213,7 @@ class SkipLayerGuidance(BaseGuidance):
         num_conditions = 1
         if self._is_cfg_enabled():
             num_conditions += 1
-        if self._is_slg_enabled():
+        if self._is_seg_enabled():
             num_conditions += 1
         return num_conditions
 
@@ -247,16 +235,16 @@ class SkipLayerGuidance(BaseGuidance):
         
         return is_within_range and not is_close
 
-    def _is_slg_enabled(self) -> bool:
+    def _is_seg_enabled(self) -> bool:
         if not self._enabled:
             return False
         
         is_within_range = True
         if self._num_inference_steps is not None:
-            skip_start_step = int(self.skip_layer_guidance_start * self._num_inference_steps)
-            skip_stop_step = int(self.skip_layer_guidance_stop * self._num_inference_steps)
+            skip_start_step = int(self.seg_guidance_start * self._num_inference_steps)
+            skip_stop_step = int(self.seg_guidance_stop * self._num_inference_steps)
             is_within_range = skip_start_step < self._step < skip_stop_step
         
-        is_zero = math.isclose(self.skip_layer_guidance_scale, 0.0)
+        is_zero = math.isclose(self.seg_guidance_scale, 0.0)
         
         return is_within_range and not is_zero
