@@ -53,6 +53,10 @@ class AttentionModuleMixin:
     This mixin adds functionality to set different attention processors, handle attention masks, compute attention
     scores, and manage projections.
     """
+    
+    # Default processor classes to be overridden by subclasses
+    default_processor_class = None
+    fused_processor_class = None
 
     def set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
         """
@@ -111,6 +115,74 @@ class AttentionModuleMixin:
                 else AttnProcessor()
             )
         self.set_processor(processor)
+        
+    @torch.no_grad()
+    def fuse_projections(self, fuse=True):
+        """
+        Fuse the query, key, and value projections into a single projection for efficiency.
+
+        Args:
+            fuse (`bool`): Whether to fuse the projections or not.
+        """
+        # Skip if already in desired state
+        if getattr(self, "fused_projections", False) == fuse:
+            return
+
+        device = self.to_q.weight.data.device
+        dtype = self.to_q.weight.data.dtype
+
+        if not self.is_cross_attention:
+            # Fuse self-attention projections
+            concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
+            in_features = concatenated_weights.shape[1]
+            out_features = concatenated_weights.shape[0]
+
+            self.to_qkv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+            self.to_qkv.weight.copy_(concatenated_weights)
+            if self.use_bias:
+                concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
+                self.to_qkv.bias.copy_(concatenated_bias)
+
+        else:
+            # Fuse cross-attention key-value projections
+            concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
+            in_features = concatenated_weights.shape[1]
+            out_features = concatenated_weights.shape[0]
+
+            self.to_kv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+            self.to_kv.weight.copy_(concatenated_weights)
+            if self.use_bias:
+                concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
+                self.to_kv.bias.copy_(concatenated_bias)
+
+        # Handle added projections for models like SD3, Flux, etc.
+        if (
+            getattr(self, "add_q_proj", None) is not None
+            and getattr(self, "add_k_proj", None) is not None
+            and getattr(self, "add_v_proj", None) is not None
+        ):
+            concatenated_weights = torch.cat(
+                [self.add_q_proj.weight.data, self.add_k_proj.weight.data, self.add_v_proj.weight.data]
+            )
+            in_features = concatenated_weights.shape[1]
+            out_features = concatenated_weights.shape[0]
+
+            self.to_added_qkv = nn.Linear(
+                in_features, out_features, bias=self.added_proj_bias, device=device, dtype=dtype
+            )
+            self.to_added_qkv.weight.copy_(concatenated_weights)
+            if self.added_proj_bias:
+                concatenated_bias = torch.cat(
+                    [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
+                )
+                self.to_added_qkv.bias.copy_(concatenated_bias)
+
+        self.fused_projections = fuse
+        
+        # Update processor based on fusion state
+        processor_class = self.fused_processor_class if fuse else self.default_processor_class
+        if processor_class is not None:
+            self.set_processor(processor_class())
 
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
@@ -480,68 +552,12 @@ class AttentionModuleMixin:
 
         return encoder_hidden_states
 
-    @torch.no_grad()
-    def fuse_projections(self, fuse=True):
-        """
-        Fuse the query, key, and value projections into a single projection for efficiency.
-
-        Args:
-            fuse (`bool`): Whether to fuse the projections or not.
-        """
-        device = self.to_q.weight.data.device
-        dtype = self.to_q.weight.data.dtype
-
-        if not self.is_cross_attention:
-            # fetch weight matrices.
-            concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
-            in_features = concatenated_weights.shape[1]
-            out_features = concatenated_weights.shape[0]
-
-            # create a new single projection layer and copy over the weights.
-            self.to_qkv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
-            self.to_qkv.weight.copy_(concatenated_weights)
-            if self.use_bias:
-                concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
-                self.to_qkv.bias.copy_(concatenated_bias)
-
-        else:
-            concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
-            in_features = concatenated_weights.shape[1]
-            out_features = concatenated_weights.shape[0]
-
-            self.to_kv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
-            self.to_kv.weight.copy_(concatenated_weights)
-            if self.use_bias:
-                concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
-                self.to_kv.bias.copy_(concatenated_bias)
-
-        # handle added projections for SD3 and others.
-        if (
-            getattr(self, "add_q_proj", None) is not None
-            and getattr(self, "add_k_proj", None) is not None
-            and getattr(self, "add_v_proj", None) is not None
-        ):
-            concatenated_weights = torch.cat(
-                [self.add_q_proj.weight.data, self.add_k_proj.weight.data, self.add_v_proj.weight.data]
-            )
-            in_features = concatenated_weights.shape[1]
-            out_features = concatenated_weights.shape[0]
-
-            self.to_added_qkv = nn.Linear(
-                in_features, out_features, bias=self.added_proj_bias, device=device, dtype=dtype
-            )
-            self.to_added_qkv.weight.copy_(concatenated_weights)
-            if self.added_proj_bias:
-                concatenated_bias = torch.cat(
-                    [self.add_q_proj.bias.data, self.add_k_proj.bias.data, self.add_v_proj.bias.data]
-                )
-                self.to_added_qkv.bias.copy_(concatenated_bias)
-
-        self.fused_projections = fuse
-
 
 @maybe_allow_in_graph
 class Attention(nn.Module, AttentionModuleMixin):
+    # Set default and fused processor classes
+    default_processor_class = AttnProcessorSDPA
+    fused_processor_class = None  # Will be set appropriately in the future
     r"""
     A cross attention layer.
 

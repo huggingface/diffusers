@@ -24,6 +24,7 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
+    AttentionModuleMixin,
     SanaLinearAttnProcessor2_0,
 )
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
@@ -33,6 +34,104 @@ from ..normalization import AdaLayerNormSingle, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@maybe_allow_in_graph
+class SanaAttention(nn.Module, AttentionModuleMixin):
+    """
+    Attention implementation specialized for Sana models.
+    
+    This module implements lightweight multi-scale linear attention as used in Sana.
+    """
+    # Set Sana-specific processor classes
+    default_processor_class = SanaLinearAttnProcessor2_0
+    
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_attention_heads: Optional[int] = None,
+        attention_head_dim: int = 8,
+        mult: float = 1.0,
+        norm_type: str = "batch_norm",
+        kernel_sizes: Tuple[int, ...] = (5,),
+        eps: float = 1e-15,
+        residual_connection: bool = False,
+    ):
+        super().__init__()
+        
+        # Core parameters
+        self.eps = eps
+        self.attention_head_dim = attention_head_dim
+        self.norm_type = norm_type
+        self.residual_connection = residual_connection
+        
+        # Calculate dimensions
+        num_attention_heads = (
+            int(in_channels // attention_head_dim * mult) if num_attention_heads is None else num_attention_heads
+        )
+        inner_dim = num_attention_heads * attention_head_dim
+        self.inner_dim = inner_dim
+        self.heads = num_attention_heads
+        
+        # Query, key, value projections
+        self.to_q = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_k = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_v = nn.Linear(in_channels, inner_dim, bias=False)
+        
+        # Multi-scale attention
+        self.to_qkv_multiscale = nn.ModuleList()
+        for kernel_size in kernel_sizes:
+            self.to_qkv_multiscale.append(
+                SanaMultiscaleAttentionProjection(inner_dim, num_attention_heads, kernel_size)
+            )
+        
+        # Output layers
+        self.nonlinearity = nn.ReLU()
+        self.to_out = nn.Linear(inner_dim * (1 + len(kernel_sizes)), out_channels, bias=False)
+        
+        # Get normalization based on type
+        if norm_type == "batch_norm":
+            self.norm_out = nn.BatchNorm1d(out_channels)
+        elif norm_type == "layer_norm":
+            self.norm_out = nn.LayerNorm(out_channels)
+        elif norm_type == "group_norm":
+            self.norm_out = nn.GroupNorm(32, out_channels)
+        elif norm_type == "instance_norm":
+            self.norm_out = nn.InstanceNorm1d(out_channels)
+        else:
+            self.norm_out = nn.Identity()
+        
+        # Set processor
+        self.processor = self.default_processor_class()
+
+
+class SanaMultiscaleAttentionProjection(nn.Module):
+    """Projection layer for Sana multi-scale attention."""
+    
+    def __init__(
+        self,
+        in_channels: int,
+        num_attention_heads: int,
+        kernel_size: int,
+    ) -> None:
+        super().__init__()
+        
+        channels = 3 * in_channels
+        self.proj_in = nn.Conv2d(
+            channels,
+            channels,
+            kernel_size,
+            padding=kernel_size // 2,
+            groups=channels,
+            bias=False,
+        )
+        self.proj_out = nn.Conv2d(channels, channels, 1, 1, 0, groups=3 * num_attention_heads, bias=False)
+    
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+        return hidden_states
 
 
 class GLUMBConv(nn.Module):

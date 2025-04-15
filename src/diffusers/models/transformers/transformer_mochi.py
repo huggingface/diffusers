@@ -24,7 +24,7 @@ from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
-from ..attention_processor import MochiAttention, MochiAttnProcessor2_0
+from ..attention_processor import MochiAttention, MochiAttnProcessor2_0, AttentionModuleMixin
 from ..cache_utils import CacheMixin
 from ..embeddings import MochiCombinedTimestepCaptionEmbedding, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -33,6 +33,85 @@ from ..normalization import AdaLayerNormContinuous, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@maybe_allow_in_graph
+class MochiAttention(nn.Module, AttentionModuleMixin):
+    """
+    Specialized attention module for Mochi video models.
+    
+    Features RMSNorm normalization and rotary position embeddings.
+    """
+    # Set Mochi-specific processor classes
+    default_processor_class = MochiAttnProcessor2_0
+    
+    def __init__(
+        self,
+        query_dim: int,
+        added_kv_proj_dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias: bool = False,
+        added_proj_bias: bool = True,
+        out_dim: Optional[int] = None,
+        out_context_dim: Optional[int] = None,
+        context_pre_only: bool = False,
+        eps: float = 1e-5,
+    ):
+        super().__init__()
+        
+        # Import here to avoid circular imports
+        from ..normalization import MochiRMSNorm
+        
+        # Core parameters
+        self.inner_dim = dim_head * heads
+        self.query_dim = query_dim
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+        self.use_bias = bias
+        self.scale_qk = True  # Always use scaled attention
+        self.context_pre_only = context_pre_only
+        self.eps = eps
+        
+        # Set output dimensions
+        self.out_dim = out_dim if out_dim is not None else query_dim
+        self.out_context_dim = out_context_dim if out_context_dim else query_dim
+        
+        # Self-attention projections
+        self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_k = nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_v = nn.Linear(query_dim, self.inner_dim, bias=bias)
+        
+        # Normalization for queries and keys
+        self.norm_q = MochiRMSNorm(dim_head, eps, True)
+        self.norm_k = MochiRMSNorm(dim_head, eps, True)
+        
+        # Added key/value projections for joint processing
+        self.added_kv_proj_dim = added_kv_proj_dim
+        self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+        self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+        self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+        
+        # Normalization for added projections
+        self.norm_added_q = MochiRMSNorm(dim_head, eps, True)
+        self.norm_added_k = MochiRMSNorm(dim_head, eps, True)
+        self.added_proj_bias = added_proj_bias
+        
+        # Output projections
+        self.to_out = nn.ModuleList([
+            nn.Linear(self.inner_dim, self.out_dim, bias=bias),
+            nn.Dropout(dropout)
+        ])
+        
+        # Context output projection
+        if not context_pre_only:
+            self.to_add_out = nn.Linear(self.inner_dim, self.out_context_dim, bias=added_proj_bias)
+        else:
+            self.to_add_out = None
+        
+        # Initialize attention processor using the default class
+        self.processor = self.default_processor_class()
 
 
 class MochiModulatedRMSNorm(nn.Module):
