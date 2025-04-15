@@ -108,7 +108,6 @@ These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
 The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [HiDream Image diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_hidream.md).
 
-
 ## Trigger words
 
 You should use `{instance_prompt}` to trigger the image generation.
@@ -120,7 +119,34 @@ You should use `{instance_prompt}` to trigger the image generation.
 ## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
 
 ```py
-TODO
+    >>> import torch
+    >>> from transformers import PreTrainedTokenizerFast, LlamaForCausalLM
+    >>> from diffusers import UniPCMultistepScheduler, HiDreamImagePipeline
+    
+    >>> scheduler = UniPCMultistepScheduler(
+    ...     flow_shift=3.0, prediction_type="flow_prediction", use_flow_sigmas=True
+    ... )
+    
+    >>> tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+    >>> text_encoder_4 = LlamaForCausalLM.from_pretrained(
+    ...     "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    ...     output_hidden_states=True,
+    ...     output_attentions=True,
+    ...     torch_dtype=torch.bfloat16,
+    ... )
+    
+    >>> pipe = HiDreamImagePipeline.from_pretrained(
+    ...     "HiDream-ai/HiDream-I1-Full",
+    ...     scheduler=scheduler,
+    ...     tokenizer_4=tokenizer_4,
+    ...     text_encoder_4=text_encoder_4,
+    ...     torch_dtype=torch.bfloat16,
+    ... )
+    >>> pipe.enable_model_cpu_offload()
+    >>> pipe.load_lora_weights(f"{repo_id}")
+    >>> image = pipe(f"{instance_prompt}").images[0]
+    
+     
 ```
 
 For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
