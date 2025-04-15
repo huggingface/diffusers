@@ -2499,6 +2499,7 @@ class FluxAttnProcessor2_0:
             hidden_states = torch.cat([hidden_states_region[:,:-4096,:], hidden_states_common], dim=1) 
         # thesea modified for quick validation of product shots    
         elif is_qv:
+            product_ratio = 0.65
             attention_mask = torch.zeros(query.size(-2), key.size(-2), device=query.device)
             prod_embeds_dim = 512 + int(729 * product_ratio)
             num_of_prompts = int ((query.size(-2) - 729 - 4096)/prod_embeds_dim)
