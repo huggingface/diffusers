@@ -377,7 +377,7 @@ class HiDreamImagePipeline(DiffusionPipeline):
                 pooled_prompt_embeds_2 = pooled_prompt_embeds_2.repeat(batch_size, 1)
 
         if do_classifier_free_guidance and negative_pooled_prompt_embeds is None:
-            negative_prompt_2 = negative_prompt_2 or ""
+            negative_prompt_2 = negative_prompt_2 or negative_prompt
             negative_prompt_2 = [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
 
             if len(negative_prompt_2) > 1 and len(negative_prompt_2) != batch_size:
@@ -411,7 +411,7 @@ class HiDreamImagePipeline(DiffusionPipeline):
                 prompt_embeds_t5 = prompt_embeds_t5.repeat(batch_size, 1, 1)
 
         if do_classifier_free_guidance and negative_prompt_embeds_t5 is None:
-            negative_prompt_3 = negative_prompt_3 or ""
+            negative_prompt_3 = negative_prompt_3 or negative_prompt
             negative_prompt_3 = [negative_prompt_3] if isinstance(negative_prompt_3, str) else negative_prompt_3
 
             if len(negative_prompt_3) > 1 and len(negative_prompt_3) != batch_size:
@@ -437,7 +437,7 @@ class HiDreamImagePipeline(DiffusionPipeline):
                 prompt_embeds_llama3 = prompt_embeds_llama3.repeat(1, batch_size, 1, 1)
 
         if do_classifier_free_guidance and negative_prompt_embeds_llama3 is None:
-            negative_prompt_4 = negative_prompt_4 or ""
+            negative_prompt_4 = negative_prompt_4 or negative_prompt
             negative_prompt_4 = [negative_prompt_4] if isinstance(negative_prompt_4, str) else negative_prompt_4
 
             if len(negative_prompt_4) > 1 and len(negative_prompt_4) != batch_size:
