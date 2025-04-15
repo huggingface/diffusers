@@ -1858,20 +1858,20 @@ class LoraHotSwappingForModelTesterMixin:
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_model_conv2d(self, rank0, rank1):
-        # It's important to add this context to raise an error on recompilation
         if "unet" not in self.model_class.__name__.lower():
             return
 
+        # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
         with torch._dynamo.config.patch(error_on_recompile=True):
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_model_both_linear_and_conv2d(self, rank0, rank1):
-        # It's important to add this context to raise an error on recompilation
         if "unet" not in self.model_class.__name__.lower():
             return
 
+        # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
         with torch._dynamo.config.patch(error_on_recompile=True):
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
@@ -1882,7 +1882,6 @@ class LoraHotSwappingForModelTesterMixin:
         # with `torch.compile()` for models that have both linear and conv layers. In this test, we check
         # if we can target a linear layer from the transformer blocks and another linear layer from non-attention
         # block.
-        # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q"]
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
@@ -1890,6 +1889,7 @@ class LoraHotSwappingForModelTesterMixin:
         target_modules.append(self.get_linear_module_name_other_than_attn(model))
         del model
 
+        # It's important to add this context to raise an error on recompilation
         with torch._dynamo.config.patch(error_on_recompile=True):
             self.check_model_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
