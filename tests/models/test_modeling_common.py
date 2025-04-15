@@ -1775,6 +1775,7 @@ class LoraHotSwappingForModelTesterMixin:
         fine.
         """
         # create 2 adapters with different ranks and alphas
+        torch.manual_seed(0)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).to(torch_device)
 
@@ -1809,7 +1810,8 @@ class LoraHotSwappingForModelTesterMixin:
             del model
 
             # load the first adapter
-            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            torch.manual_seed(0)
+            init_dict, _ = self.prepare_init_args_and_inputs_for_common()
             model = self.model_class(**init_dict).to(torch_device)
 
             if do_compile or (rank0 != rank1):
@@ -1824,7 +1826,6 @@ class LoraHotSwappingForModelTesterMixin:
                 model = torch.compile(model, mode="reduce-overhead")
 
             with torch.inference_mode():
-                torch.manual_seed(0)
                 output0_after = model(**inputs_dict)["sample"]
             assert torch.allclose(output0_before, output0_after, atol=tol, rtol=tol)
 
@@ -1833,7 +1834,6 @@ class LoraHotSwappingForModelTesterMixin:
 
             # we need to call forward to potentially trigger recompilation
             with torch.inference_mode():
-                torch.manual_seed(0)
                 output1_after = model(**inputs_dict)["sample"]
             assert torch.allclose(output1_before, output1_after, atol=tol, rtol=tol)
 
