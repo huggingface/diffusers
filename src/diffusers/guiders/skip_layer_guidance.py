@@ -54,6 +54,10 @@ class SkipLayerGuidance(BaseGuidance):
         skip_layer_guidance_scale (`float`, defaults to `2.8`):
             The scale parameter for skip layer guidance. Anatomy and structure coherence may improve with higher
             values, but it may also lead to overexposure and saturation.
+        skip_layer_guidance_start (`float`, defaults to `0.01`):
+            The fraction of the total number of denoising steps after which skip layer guidance starts.
+        skip_layer_guidance_stop (`float`, defaults to `0.2`):
+            The fraction of the total number of denoising steps after which skip layer guidance stops.
         skip_layer_guidance_layers (`int` or `List[int]`, *optional*):
             The layer indices to apply skip layer guidance to. Can be a single integer or a list of integers. If not
             provided, `skip_layer_config` must be provided. The recommended values are `[7, 8, 9]` for Stable Diffusion
@@ -81,19 +85,32 @@ class SkipLayerGuidance(BaseGuidance):
         self,
         guidance_scale: float = 7.5,
         skip_layer_guidance_scale: float = 2.8,
+        skip_layer_guidance_start: float = 0.01,
+        skip_layer_guidance_stop: float = 0.2,
         skip_layer_guidance_layers: Optional[Union[int, List[int]]] = None,
         skip_layer_config: Union[LayerSkipConfig, List[LayerSkipConfig]] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
-        start: float = 0.01,
-        stop: float = 0.2,
+        start: float = 0.0,
+        stop: float = 1.0,
     ):
         super().__init__(start, stop)
 
         self.guidance_scale = guidance_scale
         self.skip_layer_guidance_scale = skip_layer_guidance_scale
+        self.skip_layer_guidance_start = skip_layer_guidance_start
+        self.skip_layer_guidance_stop = skip_layer_guidance_stop
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
+
+        if not (0.0 <= skip_layer_guidance_start < 1.0):
+            raise ValueError(
+                f"Expected `skip_layer_guidance_start` to be between 0.0 and 1.0, but got {skip_layer_guidance_start}."
+            )
+        if not (skip_layer_guidance_start <= skip_layer_guidance_stop <= 1.0):
+            raise ValueError(
+                f"Expected `skip_layer_guidance_stop` to be between 0.0 and 1.0, but got {skip_layer_guidance_stop}."
+            )
 
         if skip_layer_guidance_layers is None and skip_layer_config is None:
             raise ValueError(
@@ -122,11 +139,12 @@ class SkipLayerGuidance(BaseGuidance):
         self.skip_layer_config = skip_layer_config
         self._skip_layer_hook_names = [f"SkipLayerGuidance_{i}" for i in range(len(self.skip_layer_config))]
 
-    def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
-        if self._num_outputs_prepared == 0 and self._is_slg_enabled():
+    def prepare_models(self, denoiser: torch.nn.Module) -> None:
+        if self._is_slg_enabled() and self.is_conditional and self._num_outputs_prepared > 0:
             for name, config in zip(self._skip_layer_hook_names, self.skip_layer_config):
                 _apply_layer_skip_hook(denoiser, config, name=name)
-        
+    
+    def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
         num_conditions = self.num_conditions
         list_of_inputs = []
         for arg in args:
@@ -161,7 +179,8 @@ class SkipLayerGuidance(BaseGuidance):
                 key = "pred_cond_skip"
         self._preds[key] = pred
 
-        if self._num_outputs_prepared == self.num_conditions:
+        if key == "pred_cond_skip":
+            # If we are in SLG mode, we need to remove the hooks after inference
             registry = HookRegistry.check_if_exists_or_initialize(denoiser)
             # Remove the hooks after inference
             for hook_name in self._skip_layer_hook_names:
@@ -233,8 +252,8 @@ class SkipLayerGuidance(BaseGuidance):
         
         is_within_range = True
         if self._num_inference_steps is not None:
-            skip_start_step = int(self._start * self._num_inference_steps)
-            skip_stop_step = int(self._stop * self._num_inference_steps)
+            skip_start_step = int(self.skip_layer_guidance_start * self._num_inference_steps)
+            skip_stop_step = int(self.skip_layer_guidance_stop * self._num_inference_steps)
             is_within_range = skip_start_step < self._step < skip_stop_step
         
         is_zero = math.isclose(self.skip_layer_guidance_scale, 0.0)

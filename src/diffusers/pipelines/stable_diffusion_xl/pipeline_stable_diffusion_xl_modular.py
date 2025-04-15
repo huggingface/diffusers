@@ -2267,6 +2267,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
                 ) in enumerate(zip(
                     latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
                 )):
+                    pipeline.guider.prepare_models(pipeline.unet)
                     latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
                     
                     # Prepare for inpainting
@@ -2670,6 +2671,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                 ) in enumerate(zip(
                     latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
                 )):
+                    pipeline.guider.prepare_models(pipeline.unet)
                     latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
                     
                     # Prepare for inpainting
@@ -3085,6 +3087,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
                 ) in enumerate(zip(
                     latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
                 )):
+                    pipeline.guider.prepare_models(pipeline.unet)
                     latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
                     
                     # Prepare for inpainting

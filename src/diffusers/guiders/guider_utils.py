@@ -68,6 +68,13 @@ class BaseGuidance:
         self._preds = {}
         self._num_outputs_prepared = 0
 
+    def prepare_models(self, denoiser: torch.nn.Module) -> None:
+        """
+        Prepares the models for the guidance technique on a given batch of data. This method should be overridden in
+        subclasses to implement specific model preparation logic.
+        """
+        pass
+    
     def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
         raise NotImplementedError("BaseGuidance::prepare_inputs must be implemented in subclasses.")
 

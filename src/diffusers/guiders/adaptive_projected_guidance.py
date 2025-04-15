@@ -86,7 +86,7 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
         pred = None
 
-        if not self._is_cfg_enabled():
+        if not self._is_apg_enabled():
             pred = pred_cond
         else:
             pred = normalized_guidance(
@@ -111,11 +111,11 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     @property
     def num_conditions(self) -> int:
         num_conditions = 1
-        if self._is_cfg_enabled():
+        if self._is_apg_enabled():
             num_conditions += 1
         return num_conditions
 
-    def _is_cfg_enabled(self) -> bool:
+    def _is_apg_enabled(self) -> bool:
         if not self._enabled:
             return False
         

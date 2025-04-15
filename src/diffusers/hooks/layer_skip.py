@@ -80,14 +80,17 @@ class AttentionProcessorSkipHook(ModelHook):
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         if self.skip_attention_scores:
+            print("Skipping attention scores")
             with AttentionScoreSkipFunctionMode():
                 return self.fn_ref.original_forward(*args, **kwargs)
         else:
+            print("Skipping attention processor output")
             return self.skip_processor_output_fn(module, *args, **kwargs)
 
 
 class FeedForwardSkipHook(ModelHook):
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
+        print("Skipping feed-forward block")
         output = kwargs.get("hidden_states", None)
         if output is None:
             output = kwargs.get("x", None)
@@ -102,18 +105,22 @@ class TransformerBlockSkipHook(ModelHook):
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
+        print("Skipping transformer block")
         return self._metadata.skip_block_output_fn(module, *args, **kwargs)
 
 
 def apply_layer_skip(module: torch.nn.Module, config: LayerSkipConfig) -> None:
     r"""
     Apply layer skipping to internal layers of a transformer.
+    
     Args:
         module (`torch.nn.Module`):
             The transformer model to which the layer skip hook should be applied.
         config (`LayerSkipConfig`):
             The configuration for the layer skip hook.
+    
     Example:
+    
     ```python
     >>> from diffusers import apply_layer_skip_hook, CogVideoXTransformer3DModel, LayerSkipConfig
     >>> transformer = CogVideoXTransformer3DModel.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
@@ -168,17 +175,13 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
                     registry = HookRegistry.check_if_exists_or_initialize(submodule)
                     hook = AttentionProcessorSkipHook(output_fn, config.skip_attention_scores)
                     registry.register_hook(hook, name)
-        elif config.skip_ff:
+        if config.skip_ff:
             for submodule_name, submodule in block.named_modules():
                 if isinstance(submodule, _FEEDFORWARD_CLASSES):
                     logger.debug(f"Applying FeedForwardSkipHook to '{config.fqn}.{i}.{submodule_name}'")
                     registry = HookRegistry.check_if_exists_or_initialize(submodule)
                     hook = FeedForwardSkipHook()
                     registry.register_hook(hook, name)
-        else:
-            raise ValueError(
-                "At least one of `skip_attention`, `skip_attention_scores`, or `skip_ff` must be set to True."
-            )
 
     if not blocks_found:
         raise ValueError(
