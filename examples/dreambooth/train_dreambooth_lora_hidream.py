@@ -1673,6 +1673,11 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * noise + sigmas * model_input
                 # Predict the noise residual
+
+                print("noisy_model_input", noisy_model_input.shape)
+                print("prompt_embeds", prompt_embeds[0].shape, prompt_embeds[1].shape)
+                print("pooled_prompt_embeds", pooled_prompt_embeds.shape)
+
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
@@ -1682,7 +1687,7 @@ def main(args):
                     img_ids=img_ids,
                     return_dict=False,
                 )[0]
-
+                print("model_pred", model_pred.shape)
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
