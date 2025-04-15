@@ -1,4 +1,4 @@
-__version__ = "0.33.0.dev0"
+__version__ = "0.34.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -190,6 +190,7 @@ else:
             "OmniGenTransformer2DModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
+            "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
@@ -428,6 +429,7 @@ else:
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
             "ReduxImageEncoder",
+            "SanaControlNetPipeline",
             "SanaPAGPipeline",
             "SanaPipeline",
             "SanaSprintPipeline",
@@ -782,6 +784,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            SanaControlNetModel,
             SanaTransformer2DModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
@@ -857,6 +860,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EulerDiscreteScheduler,
             FlowMatchEulerDiscreteScheduler,
             FlowMatchHeunDiscreteScheduler,
+            FlowMatchLCMScheduler,
             HeunDiscreteScheduler,
             IPNDMScheduler,
             KarrasVeScheduler,
@@ -999,6 +1003,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
             ReduxImageEncoder,
+            SanaControlNetPipeline,
             SanaPAGPipeline,
             SanaPipeline,
             SanaSprintPipeline,
