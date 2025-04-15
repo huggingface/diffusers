@@ -48,6 +48,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
+    UniPCMultistepScheduler,
     HiDreamImagePipeline,
     HiDreamImageTransformer2DModel,
 )
@@ -1454,7 +1455,7 @@ def main(args):
 
     # Clear the memory here
     if not train_dataset.custom_instance_prompts:
-        # delete tokenizers and text encoders except for llama (tokenizer & te four)
+        # delete tokenizers and text ecnoders except for llama (tokenizer & te four)
         # as it's needed for inference with pipeline
         del text_encoder_one, text_encoder_two, text_encoder_three, tokenizer_one, tokenizer_two,tokenizer_three
         if not args.validation_prompt:
@@ -1646,8 +1647,7 @@ def main(args):
                 # Add noise according to flow matching.
                 # zt = (1 - texp) * x + texp * z1
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
-                noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
-
+                noisy_model_input = (1.0 - sigmas) * noise + sigmas * model_input
                 # Predict the noise residual
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
@@ -1780,10 +1780,17 @@ def main(args):
 
         # Final inference
         # Load previous pipeline
+        tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        text_encoder_4 = LlamaForCausalLM.from_pretrained(
+             "meta-llama/Meta-Llama-3.1-8B-Instruct",
+             output_hidden_states=True,
+             output_attentions=True,
+             torch_dtype=torch.bfloat16,
+        )
         pipeline = HiDreamImagePipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            # tokenizer_4=tokenizer_4,
-            # text_encoder_4=text_encoder_4,
+            tokenizer_4=tokenizer_4,
+            text_encoder_4=text_encoder_4,
             revision=args.revision,
             variant=args.variant,
             torch_dtype=weight_dtype,
