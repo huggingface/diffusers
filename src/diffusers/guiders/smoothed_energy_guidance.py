@@ -25,6 +25,9 @@ from .guider_utils import BaseGuidance, rescale_noise_cfg
 class SmoothedEnergyGuidance(BaseGuidance):
     """
     Smoothed Energy Guidance (SEG): https://huggingface.co/papers/2408.00760
+
+    SEG is only supported as an experimental prototype feature for now, so the implementation may be modified
+    in the future without warning or guarantee of reproducibility.
     
     Args:
         guidance_scale (`float`, defaults to `7.5`):
