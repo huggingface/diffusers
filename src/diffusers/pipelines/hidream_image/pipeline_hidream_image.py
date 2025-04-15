@@ -15,7 +15,7 @@ from transformers import (
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, HiDreamImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
-from ...utils import is_torch_xla_available, logging
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HiDreamImagePipelineOutput
@@ -523,6 +523,7 @@ class HiDreamImagePipeline(DiffusionPipeline):
         return self._interrupt
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
