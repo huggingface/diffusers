@@ -268,6 +268,7 @@ else:
             "EulerDiscreteScheduler",
             "FlowMatchEulerDiscreteScheduler",
             "FlowMatchHeunDiscreteScheduler",
+            "FlowMatchLCMScheduler",
             "HeunDiscreteScheduler",
             "IPNDMScheduler",
             "KarrasVeScheduler",
