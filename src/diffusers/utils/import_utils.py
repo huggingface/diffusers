@@ -101,17 +101,20 @@ _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
     candidates = (
         "onnxruntime",
+        "onnxruntime-cann",
+        "onnxruntime-directml",
+        "ort_nightly_directml",
         "onnxruntime-gpu",
         "ort_nightly_gpu",
-        "onnxruntime-directml",
-        "onnxruntime-openvino",
-        "ort_nightly_directml",
-        "onnxruntime-rocm",
         "onnxruntime-migraphx",
+        "onnxruntime-openvino",
+        "onnxruntime-qnn",
+        "onnxruntime-rocm",
         "onnxruntime-training",
+        "onnxruntime-vitisai",
     )
     _onnxruntime_version = None
-    # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
+    # For the metadata, we have to look for both onnxruntime and onnxruntime-x
     for pkg in candidates:
         try:
             _onnxruntime_version = importlib_metadata.version(pkg)

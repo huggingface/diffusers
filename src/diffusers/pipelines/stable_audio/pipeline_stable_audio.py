@@ -584,7 +584,7 @@ class StableAudioPipeline(DiffusionPipeline):
 
         if audio_end_in_s - audio_start_in_s > max_audio_length_in_s:
             raise ValueError(
-                f"The total audio length requested ({audio_end_in_s-audio_start_in_s}s) is longer than the model maximum possible length ({max_audio_length_in_s}). Make sure that 'audio_end_in_s-audio_start_in_s<={max_audio_length_in_s}'."
+                f"The total audio length requested ({audio_end_in_s - audio_start_in_s}s) is longer than the model maximum possible length ({max_audio_length_in_s}). Make sure that 'audio_end_in_s-audio_start_in_s<={max_audio_length_in_s}'."
             )
 
         waveform_start = int(audio_start_in_s * self.vae.config.sampling_rate)

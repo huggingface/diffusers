@@ -23,7 +23,7 @@ from transformers import AutoTokenizer, GemmaForCausalLM
 from diffusers import (
     AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    Lumina2Text2ImgPipeline,
+    Lumina2Pipeline,
     Lumina2Transformer2DModel,
 )
 from diffusers.utils.testing_utils import floats_tensor, is_torch_version, require_peft_backend, skip_mps, torch_device
@@ -36,7 +36,7 @@ from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa:
 
 @require_peft_backend
 class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
-    pipeline_class = Lumina2Text2ImgPipeline
+    pipeline_class = Lumina2Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}

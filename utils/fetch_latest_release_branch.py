@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import requests
 from packaging.version import parse
 
@@ -27,7 +28,11 @@ def fetch_all_branches(user, repo):
     page = 1  # Start from first page
     while True:
         # Make a request to the GitHub API for the branches
-        response = requests.get(f"https://api.github.com/repos/{user}/{repo}/branches", params={"page": page})
+        response = requests.get(
+            f"https://api.github.com/repos/{user}/{repo}/branches",
+            params={"page": page},
+            timeout=60,
+        )
 
         # Check if the request was successful
         if response.status_code == 200:
