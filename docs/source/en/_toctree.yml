@@ -65,8 +65,6 @@
     title: Create a server
   - local: training/distributed_inference
     title: Distributed inference
-  - local: using-diffusers/merge_loras
-    title: Merge LoRAs
   - local: using-diffusers/scheduler_features
     title: Scheduler features
   - local: using-diffusers/callback
