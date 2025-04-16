@@ -772,11 +772,19 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         **kwargs,
     ):
         encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
+        img_ids = kwargs.get("img_ids", None)
+        img_sizes = kwargs.get("img_sizes", None)
         if encoder_hidden_states is not None:
             deprecation_message = "The `encoder_hidden_states` argument is deprecated. Please use `encoder_hidden_states_t5` and `encoder_hidden_states_llama3` instead."
             deprecate("encoder_hidden_states", "0.34.0", deprecation_message)
             encoder_hidden_states_t5 = encoder_hidden_states[0]
             encoder_hidden_states_llama3 = encoder_hidden_states[1]
+        if img_ids is not None:
+            deprecation_message = "The `img_ids` argument is deprecated and will be ignored."
+            deprecate("img_ids", "0.34.0", deprecation_message)
+        if img_sizes is not None:
+            deprecation_message = "The `img_sizes` argument is deprecated and will be ignored."
+            deprecate("img_sizes", "0.34.0", deprecation_message)
 
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
