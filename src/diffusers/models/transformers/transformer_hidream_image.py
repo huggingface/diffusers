@@ -687,15 +687,6 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         return x
 
     def patchify(self, hidden_states):
-        """
-        Convert input tensor to patches and create corresponding image IDs and masks.
-
-        Args:
-            hidden_states: Input tensor of shape [B, C, H, W]
-        Returns:
-            hidden_states: Patchified hidden states hidden_states_masks: Masks for hidden states img_sizes: Image sizes
-            img_ids: Image token positional IDs
-        """
         batch_size, channels, height, width = hidden_states.shape
         patch_size = self.config.patch_size
         patch_height, patch_width = height // patch_size, width // patch_size
