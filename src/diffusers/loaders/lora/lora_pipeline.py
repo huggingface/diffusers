@@ -73,10 +73,10 @@ _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX = {"x_embedder": "in_channels"}
 
 def _maybe_dequantize_weight_for_expanded_lora(model, module):
     if is_bitsandbytes_available():
-        from ..quantizers.bitsandbytes import dequantize_bnb_weight
+        from ...quantizers.bitsandbytes import dequantize_bnb_weight
 
     if is_gguf_available():
-        from ..quantizers.gguf.utils import dequantize_gguf_tensor
+        from ...quantizers.gguf.utils import dequantize_gguf_tensor
 
     is_bnb_4bit_quantized = module.weight.__class__.__name__ == "Params4bit"
     is_gguf_quantized = module.weight.__class__.__name__ == "GGUFParameter"
