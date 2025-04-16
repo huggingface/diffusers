@@ -344,7 +344,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         )
         prompt_embeds = self.text_encoder(
             **expanded_inputs,
-            pixel_value=image_embeds,
+            pixel_values=image_embeds,
             output_hidden_states=True,
         ).hidden_states[-(num_hidden_layers_to_skip + 1)]
         prompt_embeds = prompt_embeds.to(dtype=dtype)
