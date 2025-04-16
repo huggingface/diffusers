@@ -21,7 +21,7 @@ from huggingface_hub.utils import LocalEntryNotFoundError, validate_hf_hub_args
 from packaging import version
 from typing_extensions import Self
 
-from ..utils import deprecate, is_transformers_available, logging
+from ...utils import deprecate, is_transformers_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     _is_legacy_scheduler_kwargs,

@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..models.embeddings import (
+from ...models.embeddings import (
     ImageProjection,
     IPAdapterFaceIDImageProjection,
     IPAdapterFaceIDPlusImageProjection,
@@ -30,8 +30,8 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
-from ..utils import (
+from ...models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
+from ...utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     convert_unet_state_dict_to_peft,
@@ -43,9 +43,9 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from .lora_base import _func_optionally_disable_offloading
-from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
-from .utils import AttnProcsLayers
+from ..lora import _func_optionally_disable_offloading
+from ..lora.lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
+from ..utils import AttnProcsLayers
 
 
 logger = logging.get_logger(__name__)
@@ -247,7 +247,7 @@ class UNet2DConditionLoadersMixin:
         # Unsafe code />
 
     def _process_custom_diffusion(self, state_dict):
-        from ..models.attention_processor import CustomDiffusionAttnProcessor
+        from ...models.attention_processor import CustomDiffusionAttnProcessor
 
         attn_processors = {}
         custom_diffusion_grouped_dict = defaultdict(dict)
@@ -451,7 +451,7 @@ class UNet2DConditionLoadersMixin:
         pipeline.unet.save_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
         ```
         """
-        from ..models.attention_processor import (
+        from ...models.attention_processor import (
             CustomDiffusionAttnProcessor,
             CustomDiffusionAttnProcessor2_0,
             CustomDiffusionXFormersAttnProcessor,
@@ -513,7 +513,7 @@ class UNet2DConditionLoadersMixin:
         logger.info(f"Model weights saved in {save_path}")
 
     def _get_custom_diffusion_state_dict(self):
-        from ..models.attention_processor import (
+        from ...models.attention_processor import (
             CustomDiffusionAttnProcessor,
             CustomDiffusionAttnProcessor2_0,
             CustomDiffusionXFormersAttnProcessor,
@@ -759,7 +759,7 @@ class UNet2DConditionLoadersMixin:
         return image_projection
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
-        from ..models.attention_processor import (
+        from ...models.attention_processor import (
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
             IPAdapterXFormersAttnProcessor,

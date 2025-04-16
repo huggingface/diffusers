@@ -25,8 +25,8 @@ import requests
 import torch
 import yaml
 
-from ..models.modeling_utils import load_state_dict
-from ..schedulers import (
+from ...models.modeling_utils import load_state_dict
+from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     EDMDPMSolverMultistepScheduler,
@@ -54,7 +54,7 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
 
-    from ..models.modeling_utils import load_model_dict_into_meta
+    from ...models.modeling_utils import load_model_dict_into_meta
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

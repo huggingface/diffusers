@@ -21,9 +21,9 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from typing_extensions import Self
 
-from .. import __version__
-from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, logging
+from ... import __version__
+from ...quantizers import DiffusersAutoQuantizer
+from ...utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
@@ -58,7 +58,7 @@ logger = logging.get_logger(__name__)
 if is_accelerate_available():
     from accelerate import dispatch_model, init_empty_weights
 
-    from ..models.modeling_utils import load_model_dict_into_meta
+    from ...models.modeling_utils import load_model_dict_into_meta
 
 
 SINGLE_FILE_LOADABLE_CLASSES = {
