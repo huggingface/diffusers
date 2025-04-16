@@ -104,6 +104,7 @@ class PeftLoraLoaderMixinTests:
     vae_kwargs = None
 
     text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
+    denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
 
     def get_dummy_components(self, scheduler_cls=None, use_dora=False):
         if self.unet_kwargs and self.transformer_kwargs:
@@ -157,7 +158,7 @@ class PeftLoraLoaderMixinTests:
         denoiser_lora_config = LoraConfig(
             r=rank,
             lora_alpha=rank,
-            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            target_modules=self.denoiser_target_modules,
             init_lora_weights=False,
             use_dora=use_dora,
         )
@@ -602,9 +603,9 @@ class PeftLoraLoaderMixinTests:
             # Verify `StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
             text_lora_config = LoraConfig(
                 r=4,
-                rank_pattern={"q_proj": 1, "k_proj": 2, "v_proj": 3},
+                rank_pattern={self.text_encoder_target_modules[i]: i + 1 for i in range(3)},
                 lora_alpha=4,
-                target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+                target_modules=self.text_encoder_target_modules,
                 init_lora_weights=False,
                 use_dora=False,
             )
@@ -1451,17 +1452,27 @@ class PeftLoraLoaderMixinTests:
                     ].weight += float("inf")
                 else:
                     named_modules = [name for name, _ in pipe.transformer.named_modules()]
-                    tower_name = (
-                        "transformer_blocks"
-                        if any(name == "transformer_blocks" for name in named_modules)
-                        else "blocks"
-                    )
-                    transformer_tower = getattr(pipe.transformer, tower_name)
-                    has_attn1 = any("attn1" in name for name in named_modules)
-                    if has_attn1:
-                        transformer_tower[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
-                    else:
-                        transformer_tower[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
+                    possible_tower_names = [
+                        "transformer_blocks",
+                        "blocks",
+                        "joint_transformer_blocks",
+                        "single_transformer_blocks",
+                    ]
+                    filtered_tower_names = [
+                        tower_name for tower_name in possible_tower_names if hasattr(pipe.transformer, tower_name)
+                    ]
+                    if len(filtered_tower_names) == 0:
+                        reason = (
+                            f"`pipe.transformer` didn't have any of the following attributes: {possible_tower_names}."
+                        )
+                        raise ValueError(reason)
+                    for tower_name in filtered_tower_names:
+                        transformer_tower = getattr(pipe.transformer, tower_name)
+                        has_attn1 = any("attn1" in name for name in named_modules)
+                        if has_attn1:
+                            transformer_tower[0].attn1.to_q.lora_A["adapter-1"].weight += float("inf")
+                        else:
+                            transformer_tower[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
 
             # with `safe_fusing=True` we should see an Error
             with self.assertRaises(ValueError):
@@ -1908,7 +1919,7 @@ class PeftLoraLoaderMixinTests:
         bias_values = {}
         denoiser = pipe.unet if self.unet_kwargs is not None else pipe.transformer
         for name, module in denoiser.named_modules():
-            if any(k in name for k in ["to_q", "to_k", "to_v", "to_out.0"]):
+            if any(k in name for k in self.denoiser_target_modules):
                 if module.bias is not None:
                     bias_values[name] = module.bias.data.clone()
 
