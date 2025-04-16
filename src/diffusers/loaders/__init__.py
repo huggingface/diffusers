@@ -83,6 +83,7 @@ if is_torch_available():
             "IPAdapterMixin",
             "FluxIPAdapterMixin",
             "SD3IPAdapterMixin",
+            "ModularIPAdapterMixin",
         ]
 
 _import_structure["peft"] = ["PeftAdapterMixin"]
@@ -101,6 +102,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 FluxIPAdapterMixin,
                 IPAdapterMixin,
                 SD3IPAdapterMixin,
+                ModularIPAdapterMixin,
             )
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
