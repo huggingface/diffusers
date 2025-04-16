@@ -156,6 +156,8 @@ else:
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
+    _import_structure["consisid"] = ["ConsisIDPipeline"]
+    _import_structure["cosmos"] = ["CosmosPipeline", "CosmosVideoToWorldPipeline"]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -545,6 +547,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
         )
+        from .cosmos import CosmosPipeline, CosmosVideoToWorldPipeline
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
