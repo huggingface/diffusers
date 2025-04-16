@@ -23,10 +23,13 @@ from transformers import (
     CLIPTextConfig,
     CLIPTextModel,
     CLIPTokenizer,
+    LlavaForConditionalGeneration,
+    LlavaConfig,
     LlamaConfig,
     LlamaModel,
     LlamaTokenizer,
 )
+from transformers.models.clip import CLIPVisionConfig
 
 from diffusers import (
     AutoencoderKLHunyuanVideo,
@@ -116,7 +119,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
 
-        llama_text_encoder_config = LlamaConfig(
+        text_config = LlamaConfig(
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=16,
@@ -129,6 +132,18 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             hidden_act="gelu",
             projection_dim=32,
         )
+        vision_config = CLIPVisionConfig(
+            hidden_size=8,
+            intermediate_size=37,
+            projection_dim=32,
+            num_attention_heads=4,
+            num_hidden_layers=2,
+            image_size=224,
+        )
+        llava_text_encoder_config = LlavaConfig(
+            vision_config, text_config, image_seq_length=7, pad_token_id=1, image_token_index=8
+        )
+
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
@@ -144,7 +159,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         )
 
         torch.manual_seed(0)
-        text_encoder = LlamaModel(llama_text_encoder_config)
+        text_encoder = LlavaForConditionalGeneration(llava_text_encoder_config)
         tokenizer = LlamaTokenizer.from_pretrained("finetrainers/dummy-hunyaunvideo", subfolder="tokenizer")
 
         torch.manual_seed(0)
@@ -153,14 +168,14 @@ class HunyuanVideoImageToVideoPipelineFastTests(
 
         torch.manual_seed(0)
         image_processor = CLIPImageProcessor(
-            crop_size=336,
+            crop_size=224,
             do_center_crop=True,
             do_normalize=True,
             do_resize=True,
             image_mean=[0.48145466, 0.4578275, 0.40821073],
             image_std=[0.26862954, 0.26130258, 0.27577711],
             resample=3,
-            size=336,
+            size=224,
         )
 
         components = {
@@ -188,8 +203,21 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             "image": image,
             "prompt": "dance monkey",
             "prompt_template": {
-                "template": "{}",
-                "crop_start": 0,
+                "template": (
+                    "<|start_header_id|>system<|end_header_id|>\n\n<image>\nDescribe the video by detailing the following aspects according to the reference image: "
+                    "1. The main content and theme of the video."
+                    "2. The color, shape, size, texture, quantity, text, and spatial relationships of the objects."
+                    "3. Actions, events, behaviors temporal relationships, physical movement changes of the objects."
+                    "4. background environment, light, style and atmosphere."
+                    "5. camera angles, movements, and transitions used in the video:<|eot_id|>\n\n"
+                    "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|>"
+                    "<|start_header_id|>assistant<|end_header_id|>\n\n"
+                ),
+                "crop_start": 5,
+                "image_emb_len": 49,
+                "image_emb_start": 5,
+                "image_emb_end": 54,
+                "double_return_token_id": 10,
             },
             "generator": generator,
             "num_inference_steps": 2,
@@ -197,7 +225,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             "height": image_height,
             "width": image_width,
             "num_frames": 9,
-            "max_sequence_length": 16,
+            "max_sequence_length": 64,
             "output_type": "pt",
         }
         return inputs
