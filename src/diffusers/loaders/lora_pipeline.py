@@ -154,7 +154,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 Defaults to `False`. Whether to substitute an existing (LoRA) adapter with the newly loaded adapter
                 in-place. This means that, instead of loading an additional adapter, this will take the existing
                 adapter weights and replace them with the weights of the new adapter. This can be faster and more
@@ -368,7 +368,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if not USE_PEFT_BACKEND:
@@ -430,7 +430,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         _load_lora_into_text_encoder(
@@ -821,7 +821,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if not USE_PEFT_BACKEND:
@@ -884,7 +884,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         _load_lora_into_text_encoder(
@@ -1244,7 +1244,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -1301,7 +1301,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         _load_lora_into_text_encoder(
@@ -1610,8 +1610,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
-            hotswap=hotswap,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
         )
 
     @classmethod
@@ -1635,7 +1635,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -1944,7 +1944,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 `Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -2069,7 +2069,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
@@ -2180,7 +2180,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         _load_lora_into_text_encoder(
@@ -2641,7 +2641,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
@@ -2698,7 +2698,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         _load_lora_into_text_encoder(
@@ -2898,7 +2898,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -2953,7 +2953,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -3215,7 +3215,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -3270,7 +3270,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -3534,7 +3534,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -3589,7 +3589,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -3853,7 +3853,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -3908,7 +3908,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -4175,7 +4175,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -4230,7 +4230,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -4498,7 +4498,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -4553,7 +4553,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -4846,7 +4846,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -4905,7 +4905,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
@@ -5169,7 +5169,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
@@ -5224,7 +5224,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`bool`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
-            hotswap : (`bool`, *optional*)
+            hotswap (`bool`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
