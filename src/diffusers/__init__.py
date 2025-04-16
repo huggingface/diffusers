@@ -1,4 +1,4 @@
-__version__ = "0.33.0.dev0"
+__version__ = "0.34.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -14,6 +14,7 @@ from .utils import (
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
+    is_opencv_available,
     is_optimum_quanto_available,
     is_scipy_available,
     is_sentencepiece_available,
@@ -157,6 +158,7 @@ else:
             "AutoencoderKLWan",
             "AutoencoderOobleck",
             "AutoencoderTiny",
+            "AutoModel",
             "CacheMixin",
             "CogVideoXTransformer3DModel",
             "CogView3PlusTransformer2DModel",
@@ -171,6 +173,7 @@ else:
             "FluxControlNetModel",
             "FluxMultiControlNetModel",
             "FluxTransformer2DModel",
+            "HiDreamImageTransformer2DModel",
             "HunyuanDiT2DControlNetModel",
             "HunyuanDiT2DModel",
             "HunyuanDiT2DMultiControlNetModel",
@@ -189,6 +192,7 @@ else:
             "OmniGenTransformer2DModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
+            "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
@@ -199,6 +203,7 @@ else:
             "T2IAdapter",
             "T5FilmDecoder",
             "Transformer2DModel",
+            "TransformerTemporalModel",
             "UNet1DModel",
             "UNet2DConditionModel",
             "UNet2DModel",
@@ -265,6 +270,7 @@ else:
             "EulerDiscreteScheduler",
             "FlowMatchEulerDiscreteScheduler",
             "FlowMatchHeunDiscreteScheduler",
+            "FlowMatchLCMScheduler",
             "HeunDiscreteScheduler",
             "IPNDMScheduler",
             "KarrasVeScheduler",
@@ -352,7 +358,6 @@ else:
             "CogView3PlusPipeline",
             "CogView4ControlPipeline",
             "CogView4Pipeline",
-            "ConsisIDPipeline",
             "CycleDiffusionPipeline",
             "EasyAnimateControlPipeline",
             "EasyAnimateInpaintPipeline",
@@ -368,6 +373,7 @@ else:
             "FluxInpaintPipeline",
             "FluxPipeline",
             "FluxPriorReduxPipeline",
+            "HiDreamImagePipeline",
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
             "HunyuanDiTPipeline",
@@ -426,6 +432,7 @@ else:
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
             "ReduxImageEncoder",
+            "SanaControlNetPipeline",
             "SanaPAGPipeline",
             "SanaPipeline",
             "SanaSprintPipeline",
@@ -517,6 +524,19 @@ else:
             "WuerstchenPriorPipeline",
         ]
     )
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torch_and_transformers_and_opencv_objects  # noqa F403
+
+    _import_structure["utils.dummy_torch_and_transformers_and_opencv_objects"] = [
+        name for name in dir(dummy_torch_and_transformers_and_opencv_objects) if not name.startswith("_")
+    ]
+
+else:
+    _import_structure["pipelines"].extend(["ConsisIDPipeline"])
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
@@ -735,6 +755,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderTiny,
+            AutoModel,
             CacheMixin,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
@@ -749,6 +770,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxControlNetModel,
             FluxMultiControlNetModel,
             FluxTransformer2DModel,
+            HiDreamImageTransformer2DModel,
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DModel,
             HunyuanDiT2DMultiControlNetModel,
@@ -767,6 +789,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            SanaControlNetModel,
             SanaTransformer2DModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
@@ -776,6 +799,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             T2IAdapter,
             T5FilmDecoder,
             Transformer2DModel,
+            TransformerTemporalModel,
             UNet1DModel,
             UNet2DConditionModel,
             UNet2DModel,
@@ -841,6 +865,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EulerDiscreteScheduler,
             FlowMatchEulerDiscreteScheduler,
             FlowMatchHeunDiscreteScheduler,
+            FlowMatchLCMScheduler,
             HeunDiscreteScheduler,
             IPNDMScheduler,
             KarrasVeScheduler,
@@ -909,7 +934,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView3PlusPipeline,
             CogView4ControlPipeline,
             CogView4Pipeline,
-            ConsisIDPipeline,
             CycleDiffusionPipeline,
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
@@ -925,6 +949,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxInpaintPipeline,
             FluxPipeline,
             FluxPriorReduxPipeline,
+            HiDreamImagePipeline,
             HunyuanDiTControlNetPipeline,
             HunyuanDiTPAGPipeline,
             HunyuanDiTPipeline,
@@ -983,6 +1008,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
             ReduxImageEncoder,
+            SanaControlNetPipeline,
             SanaPAGPipeline,
             SanaPipeline,
             SanaSprintPipeline,
@@ -1088,6 +1114,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_and_sentencepiece_objects import *  # noqa F403
     else:
         from .pipelines import KolorsImg2ImgPipeline, KolorsPAGPipeline, KolorsPipeline
+
+    try:
+        if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_transformers_and_opencv_objects import *  # noqa F403
+    else:
+        from .pipelines import ConsisIDPipeline
+
     try:
         if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
             raise OptionalDependencyNotAvailable()

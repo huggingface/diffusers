@@ -241,7 +241,7 @@ def _set_state_dict_into_text_encoder(
     """
 
     text_encoder_state_dict = {
-        f'{k.replace(prefix, "")}': v for k, v in lora_state_dict.items() if k.startswith(prefix)
+        f"{k.replace(prefix, '')}": v for k, v in lora_state_dict.items() if k.startswith(prefix)
     }
     text_encoder_state_dict = convert_state_dict_to_peft(convert_state_dict_to_diffusers(text_encoder_state_dict))
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
@@ -583,7 +583,7 @@ class EMAModel:
         """
 
         if self.temp_stored_params is None:
-            raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
+            raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights to `restore()`")
         if self.foreach:
             torch._foreach_copy_(
                 [param.data for param in parameters], [c_param.data for c_param in self.temp_stored_params]

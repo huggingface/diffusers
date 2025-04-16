@@ -17,8 +17,6 @@
 import requests
 from packaging.version import parse
 
-from ..src.diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
-
 
 # GitHub repository details
 USER = "huggingface"
@@ -33,7 +31,7 @@ def fetch_all_branches(user, repo):
         response = requests.get(
             f"https://api.github.com/repos/{user}/{repo}/branches",
             params={"page": page},
-            timeout=DIFFUSERS_REQUEST_TIMEOUT,
+            timeout=60,
         )
 
         # Check if the request was successful

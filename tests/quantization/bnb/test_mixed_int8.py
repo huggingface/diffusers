@@ -68,6 +68,8 @@ if is_torch_available():
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
 
+    from diffusers.quantizers.bitsandbytes import replace_with_bnb_linear
+
 
 @require_bitsandbytes_version_greater("0.43.2")
 @require_accelerate
@@ -317,6 +319,18 @@ class BnB8bitBasicTests(Base8bitTests):
         # Check that this does not throw an error
         _ = self.model_fp16.to(torch_device)
 
+    def test_bnb_8bit_logs_warning_for_no_quantization(self):
+        model_with_no_linear = torch.nn.Sequential(torch.nn.Conv2d(4, 4, 3), torch.nn.ReLU())
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        logger = logging.get_logger("diffusers.quantizers.bitsandbytes.utils")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            _ = replace_with_bnb_linear(model_with_no_linear, quantization_config=quantization_config)
+        assert (
+            "You are loading your model in 8bit or 4bit but no linear modules were found in your model."
+            in cap_logger.out
+        )
+
 
 class Bnb8bitDeviceTests(Base8bitTests):
     def setUp(self) -> None:
@@ -379,7 +393,7 @@ class BnB8bitTrainingTests(Base8bitTests):
         model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
 
         # Step 4: Check if the gradient is not None
-        with torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.amp.autocast(torch_device, dtype=torch.float16):
             out = self.model_8bit(**model_inputs)[0]
             out.norm().backward()
 
