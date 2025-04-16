@@ -14,6 +14,7 @@
 
 import copy
 import inspect
+import json
 import os
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -45,6 +46,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from ..utils.state_dict_utils import _maybe_populate_state_dict_with_metadata
 
 
 if is_transformers_available():
@@ -206,6 +208,7 @@ def _fetch_state_dict(
     subfolder,
     user_agent,
     allow_pickle,
+    load_with_metadata=False,
 ):
     model_file = None
     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -223,6 +226,9 @@ def _fetch_state_dict(
                         file_extension=".safetensors",
                         local_files_only=local_files_only,
                     )
+                if load_with_metadata and not weight_name.endswith(".safetensors"):
+                    raise ValueError("`load_with_metadata` cannot be set to True when not using safetensors.")
+
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
                     weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
@@ -236,6 +242,11 @@ def _fetch_state_dict(
                     user_agent=user_agent,
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                if load_with_metadata:
+                    state_dict = _maybe_populate_state_dict_with_metadata(
+                        state_dict, model_file, metadata_key="lora_adapter_metadata"
+                    )
+
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:
                     raise e
@@ -882,16 +893,31 @@ class LoraBaseMixin:
         weight_name: str,
         save_function: Callable,
         safe_serialization: bool,
+        lora_adapter_metadata: dict = None,
     ):
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
+        if lora_adapter_metadata is not None and not safe_serialization:
+            raise ValueError("`lora_adapter_metadata` cannot be specified when not using `safe_serialization`.")
+        if not isinstance(lora_adapter_metadata, dict):
+            raise ValueError("`lora_adapter_metadata` must be of type `dict`.")
+
         if save_function is None:
             if safe_serialization:
 
                 def save_function(weights, filename):
-                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+                    # We need to be able to serialize the NoneTypes too, otherwise we run into
+                    # 'NoneType' object cannot be converted to 'PyString'
+                    metadata = {"format": "pt"}
+                    if lora_adapter_metadata is not None:
+                        for key, value in lora_adapter_metadata.items():
+                            if isinstance(value, set):
+                                lora_adapter_metadata[key] = list(value)
+                        metadata["lora_adapter_metadata"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+
+                    return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
             else:
                 save_function = torch.save

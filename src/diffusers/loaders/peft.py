@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import json
 import os
 from functools import partial
 from pathlib import Path
@@ -114,7 +115,12 @@ class PeftAdapterMixin:
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
     def load_lora_adapter(
-        self, pretrained_model_name_or_path_or_dict, prefix="transformer", hotswap: bool = False, **kwargs
+        self,
+        pretrained_model_name_or_path_or_dict,
+        prefix="transformer",
+        hotswap: bool = False,
+        load_with_metadata: bool = False,
+        **kwargs,
     ):
         r"""
         Loads a LoRA adapter into the underlying model.
@@ -182,6 +188,8 @@ class PeftAdapterMixin:
                 Note that hotswapping adapters of the text encoder is not yet supported. There are some further
                 limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
+
+            load_with_metadata: TODO
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
@@ -224,12 +232,17 @@ class PeftAdapterMixin:
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+            load_with_metadata=load_with_metadata,
         )
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
         if prefix is not None:
+            metadata = state_dict.pop("lora_metadata", None)
             state_dict = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
+
+            if metadata is not None:
+                state_dict["lora_metadata"] = metadata
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}) and not hotswap:
@@ -262,7 +275,13 @@ class PeftAdapterMixin:
                 alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
+            lora_config_kwargs = get_peft_kwargs(
+                rank,
+                network_alpha_dict=network_alphas,
+                peft_state_dict=state_dict,
+                load_with_metadata=load_with_metadata,
+                prefix=prefix,
+            )
             _maybe_raise_error_for_ambiguity(lora_config_kwargs)
 
             if "use_dora" in lora_config_kwargs:
@@ -285,7 +304,11 @@ class PeftAdapterMixin:
                     if is_peft_version("<=", "0.13.2"):
                         lora_config_kwargs.pop("lora_bias")
 
-            lora_config = LoraConfig(**lora_config_kwargs)
+            try:
+                lora_config = LoraConfig(**lora_config_kwargs)
+            except TypeError as e:
+                logger.error(f"`LoraConfig` class could not be instantiated with the following trace: {e}.")
+
             # adapter_name
             if adapter_name is None:
                 adapter_name = get_adapter_name(self)
@@ -429,6 +452,7 @@ class PeftAdapterMixin:
         upcast_before_saving: bool = False,
         safe_serialization: bool = True,
         weight_name: Optional[str] = None,
+        lora_adapter_metadata: Optional[dict] = None,
     ):
         """
         Save the LoRA parameters corresponding to the underlying model.
@@ -440,17 +464,19 @@ class PeftAdapterMixin:
                 underlying model has multiple adapters loaded.
             upcast_before_saving (`bool`, defaults to `False`):
                 Whether to cast the underlying model to `torch.float32` before serialization.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             weight_name: (`str`, *optional*, defaults to `None`): Name of the file to serialize the state dict with.
+            lora_adapter_metadata: TODO
         """
         from peft.utils import get_peft_model_state_dict
 
         from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
+
+        if lora_adapter_metadata is not None and not safe_serialization:
+            raise ValueError("`lora_adapter_metadata` cannot be specified when not using `safe_serialization`.")
+        if not isinstance(lora_adapter_metadata, dict):
+            raise ValueError("`lora_adapter_metadata` must be of type `dict`.")
 
         if adapter_name is None:
             adapter_name = get_adapter_name(self)
@@ -467,7 +493,16 @@ class PeftAdapterMixin:
         if safe_serialization:
 
             def save_function(weights, filename):
-                return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+                # We need to be able to serialize the NoneTypes too, otherwise we run into
+                # 'NoneType' object cannot be converted to 'PyString'
+                metadata = {"format": "pt"}
+                if lora_adapter_metadata is not None:
+                    for key, value in lora_adapter_metadata.items():
+                        if isinstance(value, set):
+                            lora_adapter_metadata[key] = list(value)
+                    metadata["lora_adapter_metadata"] = json.dumps(lora_adapter_metadata, indent=2, sort_keys=True)
+
+                return safetensors.torch.save_file(weights, filename, metadata=metadata)
 
         else:
             save_function = torch.save
