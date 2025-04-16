@@ -18,7 +18,7 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import (
+from ...utils import (
     USE_PEFT_BACKEND,
     deprecate,
     get_submodule_by_name,

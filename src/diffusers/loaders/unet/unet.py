@@ -43,7 +43,7 @@ from ...utils import (
     is_torch_version,
     logging,
 )
-from ..lora import _func_optionally_disable_offloading
+from ..lora.lora_base import _func_optionally_disable_offloading
 from ..lora.lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
 from ..utils import AttnProcsLayers
 
