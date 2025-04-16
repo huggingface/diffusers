@@ -174,8 +174,11 @@ class CosmosAttnProcessor2_0:
             key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
 
         # 4. Prepare for GQA
-        key = key.repeat_interleave(query.size(3) // key.size(3), dim=3)
-        value = value.repeat_interleave(query.size(3) // value.size(3), dim=3)
+        query_idx = torch.tensor(query.size(3)).to(query.get_device())
+        key_idx = torch.tensor(key.size(3)).to(key.get_device())
+        value_idx = torch.tensor(value.size(3)).to(value.get_device())
+        key = key.repeat_interleave(query_idx // key_idx, dim=3)
+        value = value.repeat_interleave(query_idx // value_idx, dim=3)
 
         # 5. Attention
         hidden_states = F.scaled_dot_product_attention(
