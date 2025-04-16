@@ -98,7 +98,7 @@ class PeftAdapterMixin:
     _prepare_lora_hotswap_kwargs: Optional[dict] = None
 
     @classmethod
-    # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
+    # Copied from diffusers.loaders.lora.lora_base.LoraBaseMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
         """
         Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
