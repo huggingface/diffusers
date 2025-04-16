@@ -346,6 +346,7 @@ else:
             "AudioLDM2UNet2DConditionModel",
             "AudioLDMPipeline",
             "AuraFlowPipeline",
+            "AuraFlowImg2ImgPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
             "CLIPImageProjection",
