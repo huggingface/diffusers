@@ -693,8 +693,34 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         device = hidden_states.device
         dtype = hidden_states.dtype
 
-        hidden_states_masks = torch.zeros((batch_size, self.max_seq), dtype=dtype, device=device)
+        # create img_sizes
+        img_sizes = torch.tensor([patch_height, patch_width], dtype=torch.int64, device=device).reshape(-1)
+        img_sizes = img_sizes.unsqueeze(0).repeat(batch_size, 1)
 
+        # create hidden_states_masks
+        if hidden_states.shape[-2] != hidden_states.shape[-1]:
+            hidden_states_masks = torch.zeros((batch_size, self.max_seq), dtype=dtype, device=device)
+            hidden_states_masks[:, : patch_height * patch_width] = 1.0
+        else:
+            hidden_states_masks = None
+
+        # create img_ids
+        img_ids = torch.zeros(patch_height, patch_width, 3, device=device)
+        row_indices = torch.arange(patch_height, device=device)[:, None]
+        col_indices = torch.arange(patch_width, device=device)[None, :]
+        img_ids[..., 1] = img_ids[..., 1] + row_indices
+        img_ids[..., 2] = img_ids[..., 2] + col_indices
+        img_ids = img_ids.reshape(patch_height * patch_width, -1)
+
+        if hidden_states.shape[-2] != hidden_states.shape[-1]:
+            # Handle non-square latents
+            img_ids_pad = torch.zeros(self.max_seq, 3, device=device)
+            img_ids_pad[: patch_height * patch_width, :] = img_ids
+            img_ids = img_ids_pad.unsqueeze(0).repeat(batch_size, 1, 1)
+        else:
+            img_ids = img_ids.unsqueeze(0).repeat(batch_size, 1, 1)
+
+        # patchify hidden_states
         if hidden_states.shape[-2] != hidden_states.shape[-1]:
             # Handle non-square latents
             out = torch.zeros(
@@ -711,28 +737,10 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             )
             out[:, :, 0 : patch_height * patch_width] = hidden_states
             hidden_states = out
-
-            img_sizes = torch.tensor([patch_height, patch_width], dtype=torch.int64, device=device).reshape(-1)
-            img_ids = torch.zeros(patch_height, patch_width, 3, device=device)
-
-            row_indices = torch.arange(patch_height, device=device)[:, None]
-            col_indices = torch.arange(patch_width, device=device)[None, :]
-
-            img_ids[..., 1] = img_ids[..., 1] + row_indices
-            img_ids[..., 2] = img_ids[..., 2] + col_indices
-
-            img_ids = img_ids.reshape(patch_height * patch_width, -1)
-            img_ids_pad = torch.zeros(self.max_seq, 3, device=device)
-            img_ids_pad[: patch_height * patch_width, :] = img_ids
-
-            img_sizes = img_sizes.unsqueeze(0).repeat(batch_size, 1)
-            img_ids = img_ids_pad.unsqueeze(0).repeat(batch_size, 1, 1)
-
-            hidden_states_masks[:, : patch_height * patch_width] = 1.0
-
             hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(
                 batch_size, self.max_seq, patch_size * patch_size * channels
             )
+
         else:
             # Handle square latents
             hidden_states = hidden_states.reshape(
@@ -741,21 +749,6 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             hidden_states = hidden_states.permute(0, 2, 4, 3, 5, 1)
             hidden_states = hidden_states.reshape(
                 batch_size, patch_height * patch_width, patch_size * patch_size * channels
-            )
-            img_sizes = [[patch_height, patch_width]] * batch_size
-            hidden_states_masks = None
-
-            img_ids = torch.zeros(patch_height, patch_width, 3, device=device)
-
-            row_indices = torch.arange(patch_height, device=device)[:, None]
-            col_indices = torch.arange(patch_width, device=device)[None, :]
-            img_ids[..., 1] = img_ids[..., 1] + row_indices
-            img_ids[..., 2] = img_ids[..., 2] + col_indices
-
-            img_ids = (
-                img_ids.reshape(img_ids.shape[0] * img_ids.shape[1], img_ids.shape[2])
-                .unsqueeze(0)
-                .repeat(batch_size, 1, 1)
             )
 
         return hidden_states, hidden_states_masks, img_sizes, img_ids
@@ -767,24 +760,33 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         encoder_hidden_states_t5: torch.Tensor = None,
         encoder_hidden_states_llama3: torch.Tensor = None,
         pooled_embeds: torch.Tensor = None,
+        img_ids: Optional[torch.Tensor] = None,
+        img_sizes: Optional[torch.Tensor] = None,
+        hidden_states_masks: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         **kwargs,
     ):
         encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
-        img_ids = kwargs.get("img_ids", None)
-        img_sizes = kwargs.get("img_sizes", None)
+
         if encoder_hidden_states is not None:
             deprecation_message = "The `encoder_hidden_states` argument is deprecated. Please use `encoder_hidden_states_t5` and `encoder_hidden_states_llama3` instead."
             deprecate("encoder_hidden_states", "0.34.0", deprecation_message)
             encoder_hidden_states_t5 = encoder_hidden_states[0]
             encoder_hidden_states_llama3 = encoder_hidden_states[1]
-        if img_ids is not None:
-            deprecation_message = "The `img_ids` argument is deprecated and will be ignored."
+
+        if img_ids is not None and img_sizes is not None and hidden_states_masks is None:
+            deprecation_message = (
+                "Passing `img_ids` and `img_sizes` with unpachified `hidden_states` is deprecated and will be ignored."
+            )
             deprecate("img_ids", "0.34.0", deprecation_message)
-        if img_sizes is not None:
-            deprecation_message = "The `img_sizes` argument is deprecated and will be ignored."
-            deprecate("img_sizes", "0.34.0", deprecation_message)
+
+        if hidden_states_masks is not None and (img_ids is None or img_sizes is None):
+            raise ValueError("if `hidden_states_masks` is passed, `img_ids` and `img_sizes` must also be passed.")
+        elif hidden_states_masks is not None and hidden_states.ndim != 3:
+            raise ValueError(
+                "if `hidden_states_masks` is passed, `hidden_states` must be a 3D tensors with shape (batch_size, patch_height * patch_width, patch_size * patch_size * channels)"
+            )
 
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
@@ -806,7 +808,8 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         hidden_states_type = hidden_states.dtype
 
         # Patchify the input
-        hidden_states, hidden_states_masks, img_sizes, img_ids = self.patchify(hidden_states)
+        if hidden_states_masks is None:
+            hidden_states, hidden_states_masks, img_sizes, img_ids = self.patchify(hidden_states)
 
         # Embed the hidden states
         hidden_states = self.x_embedder(hidden_states)

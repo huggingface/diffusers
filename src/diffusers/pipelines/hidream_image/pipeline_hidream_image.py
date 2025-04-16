@@ -38,9 +38,6 @@ EXAMPLE_DOC_STRING = """
         >>> from transformers import PreTrainedTokenizerFast, LlamaForCausalLM
         >>> from diffusers import UniPCMultistepScheduler, HiDreamImagePipeline
 
-        >>> scheduler = UniPCMultistepScheduler(
-        ...     flow_shift=3.0, prediction_type="flow_prediction", use_flow_sigmas=True
-        ... )
 
         >>> tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
         >>> text_encoder_4 = LlamaForCausalLM.from_pretrained(
@@ -52,7 +49,6 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = HiDreamImagePipeline.from_pretrained(
         ...     "HiDream-ai/HiDream-I1-Full",
-        ...     scheduler=scheduler,
         ...     tokenizer_4=tokenizer_4,
         ...     text_encoder_4=text_encoder_4,
         ...     torch_dtype=torch.bfloat16,
