@@ -2241,7 +2241,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
 
         with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
-                pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t, sigma=pipeline.scheduler.sigmas[i], sigma_next=pipeline.scheduler.sigmas[i + 1])
 
                 (
                     latents,
@@ -2301,6 +2301,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
                 data.latents = pipeline.scheduler.step(data.noise_pred, t, data.latents, **data.extra_step_kwargs, return_dict=False)[0]
+                data.latents = pipeline.guider.post_scheduler_step(data.latents)
 
                 if data.latents.dtype != data.latents_dtype:
                     if torch.backends.mps.is_available():
@@ -2637,7 +2638,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         # (5) Denoise loop
         with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
-                pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t, sigma=pipeline.scheduler.sigmas[i], sigma_next=pipeline.scheduler.sigmas[i + 1])
 
                 (
                     latents,
@@ -2730,6 +2731,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
                 data.latents = pipeline.scheduler.step(data.noise_pred, t, data.latents, **data.extra_step_kwargs, return_dict=False)[0]
+                data.latents = pipeline.guider.post_scheduler_step(data.latents)
                 
                 if data.latents.dtype != data.latents_dtype:
                     if torch.backends.mps.is_available():
@@ -3053,7 +3055,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
 
         with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
-                pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t, sigma=pipeline.scheduler.sigmas[i], sigma_next=pipeline.scheduler.sigmas[i + 1])
 
                 (
                     latents,
@@ -3148,6 +3150,7 @@ class StableDiffusionXLControlNetUnionDenoiseStep(PipelineBlock):
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
                 data.latents = pipeline.scheduler.step(data.noise_pred, t, data.latents, **data.extra_step_kwargs, return_dict=False)[0]
+                data.latents = pipeline.guider.post_scheduler_step(data.latents)
                 
                 if data.latents.dtype != data.latents_dtype:
                     if torch.backends.mps.is_available():

@@ -669,6 +669,35 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         prev_sample = sample + derivative * dt
 
+        # denoised = sample - model_output * sigmas[i]
+        # d = (sample - denoised) / sigmas[i]
+        # new_sample = denoised + d * sigmas[i + 1]
+
+        # new_sample = denoised + (sample - denoised) * sigmas[i + 1] / sigmas[i]
+        # new_sample = sample - model_output * sigmas[i] + model_output * sigmas[i + 1]
+        # new_sample = sample + model_output * (sigmas[i + 1] - sigmas[i])
+        # new_sample = sample - model_output * sigmas[i] + model_output * sigmas[i + 1] --- (1)
+
+        # CFG++ =====
+        # denoised = sample - model_output * sigmas[i]
+        # uncond_denoised = sample - model_output_uncond * sigmas[i]
+        # d = (sample - uncond_denoised) / sigmas[i]
+        # new_sample = denoised + d * sigmas[i + 1]
+
+        # new_sample = denoised + (sample - uncond_denoised) * sigmas[i + 1] / sigmas[i]
+        # new_sample = sample - model_output * sigmas[i] + model_output_uncond * sigmas[i + 1] --- (2)
+
+        # To go from (1) to (2):
+        # new_sample_2 = new_sample_1 - model_output * sigmas[i + 1] + model_output_uncond * sigmas[i + 1]
+        # new_sample_2 = new_sample_1 + (model_output_uncond - model_output) * sigmas[i + 1]
+        # new_sample_2 = new_sample_1 + diff * sigmas[i + 1]
+
+        # diff = model_output_uncond - model_output
+        # diff = model_output_uncond - (model_output_uncond + g * (model_output_cond - model_output_uncond))
+        # diff = model_output_uncond - (g * model_output_cond + (1 - g) * model_output_uncond)
+        # diff = model_output_uncond - g * model_output_cond + (g - 1) * model_output_uncond
+        # diff = g * (model_output_uncond - model_output_cond)
+        
         # Cast sample back to model compatible dtype
         prev_sample = prev_sample.to(model_output.dtype)
 

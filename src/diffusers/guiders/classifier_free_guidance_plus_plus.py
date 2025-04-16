@@ -20,12 +20,12 @@ import torch
 from .guider_utils import BaseGuidance, rescale_noise_cfg, _default_prepare_inputs
 
 
-class TangentialClassifierFreeGuidance(BaseGuidance):
+class CFGPlusPlusGuidance(BaseGuidance):
     """
-    Tangential Classifier Free Guidance (TCFG): https://huggingface.co/papers/2503.18137
+    CFG++: https://huggingface.co/papers/2406.08070
     
     Args:
-        guidance_scale (`float`, defaults to `7.5`):
+        guidance_scale (`float`, defaults to `0.7`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
@@ -47,7 +47,7 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
 
     def __init__(
         self,
-        guidance_scale: float = 7.5,
+        guidance_scale: float = 0.7,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -72,14 +72,25 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
         pred = None
 
-        if not self._is_tcfg_enabled():
+        if not self._is_cfgpp_enabled():
             pred = pred_cond
         else:
-            pred = normalized_guidance(pred_cond, pred_uncond, self.guidance_scale, self.use_original_formulation)
+            shift = pred_cond - pred_uncond
+            pred = pred_cond if self.use_original_formulation else pred_uncond
+            pred = pred + self.guidance_scale * shift
 
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
+        return pred
+
+    def post_scheduler_step(self, pred: torch.Tensor) -> torch.Tensor:
+        if self._is_cfgpp_enabled():
+            # TODO(aryan): this probably only makes sense for EulerDiscreteScheduler. Look into the others later!
+            pred_cond = self._preds["pred_cond"]
+            pred_uncond = self._preds["pred_uncond"]
+            diff = pred_uncond - pred_cond
+            pred = pred + diff * self.guidance_scale * self._sigma_next
         return pred
 
     @property
@@ -89,11 +100,11 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
     @property
     def num_conditions(self) -> int:
         num_conditions = 1
-        if self._is_tcfg_enabled():
+        if self._is_cfgpp_enabled():
             num_conditions += 1
         return num_conditions
 
-    def _is_tcfg_enabled(self) -> bool:
+    def _is_cfgpp_enabled(self) -> bool:
         if not self._enabled:
             return False
         
@@ -103,30 +114,4 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
             skip_stop_step = int(self._stop * self._num_inference_steps)
             is_within_range = skip_start_step <= self._step < skip_stop_step
         
-        is_close = False
-        if self.use_original_formulation:
-            is_close = math.isclose(self.guidance_scale, 0.0)
-        else:
-            is_close = math.isclose(self.guidance_scale, 1.0)
-        
-        return is_within_range and not is_close
-
-
-def normalized_guidance(pred_cond: torch.Tensor, pred_uncond: torch.Tensor, guidance_scale: float, use_original_formulation: bool = False) -> torch.Tensor:
-    cond_dtype = pred_cond.dtype    
-    preds = torch.stack([pred_cond, pred_uncond], dim=1).float()
-    preds = preds.flatten(2)
-    U, S, Vh = torch.linalg.svd(preds, full_matrices=False)
-    Vh_modified = Vh.clone()
-    Vh_modified[:, 1] = 0
-
-    uncond_flat = pred_uncond.reshape(pred_uncond.size(0), 1, -1).float()
-    x_Vh = torch.matmul(uncond_flat, Vh.transpose(-2, -1))
-    x_Vh_V = torch.matmul(x_Vh, Vh_modified)
-    pred_uncond = x_Vh_V.reshape(pred_uncond.shape).to(cond_dtype)
-    
-    pred = pred_cond if use_original_formulation else pred_uncond
-    shift = pred_cond - pred_uncond
-    pred = pred + guidance_scale * shift
-    
-    return pred
+        return is_within_range
