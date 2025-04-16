@@ -54,14 +54,14 @@ if is_transformers_available():
 _import_structure = {}
 
 if is_torch_available():
+    _import_structure["ip_adapter.transformer_flux"] = ["FluxTransformer2DLoadersMixin"]
+    _import_structure["ip_adapter.transformer_sd3"] = ["SD3Transformer2DLoadersMixin"]
     _import_structure["single_file.single_file_model"] = ["FromOriginalModelMixin"]
-    _import_structure["transformer_flux"] = ["FluxTransformer2DLoadersMixin"]
-    _import_structure["transformer_sd3"] = ["SD3Transformer2DLoadersMixin"]
-    _import_structure["unet"] = ["UNet2DConditionLoadersMixin"]
+    _import_structure["unet.unet"] = ["UNet2DConditionLoadersMixin"]
     _import_structure["utils"] = ["AttnProcsLayers"]
     if is_transformers_available():
-        _import_structure["single_file"] = ["FromSingleFileMixin"]
-        _import_structure["lora_pipeline"] = [
+        _import_structure["single_file.single_file"] = ["FromSingleFileMixin"]
+        _import_structure["lora.lora_pipeline"] = [
             "AmusedLoraLoaderMixin",
             "StableDiffusionLoraLoaderMixin",
             "SD3LoraLoaderMixin",
@@ -80,7 +80,7 @@ if is_torch_available():
             "LoraBaseMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
-        _import_structure["ip_adapter"] = [
+        _import_structure["ip_adapter.ip_adapter"] = [
             "IPAdapterMixin",
             "FluxIPAdapterMixin",
             "SD3IPAdapterMixin",
