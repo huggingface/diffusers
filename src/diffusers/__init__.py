@@ -1,4 +1,4 @@
-__version__ = "0.33.0.dev0"
+__version__ = "0.34.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -268,6 +268,7 @@ else:
             "EulerDiscreteScheduler",
             "FlowMatchEulerDiscreteScheduler",
             "FlowMatchHeunDiscreteScheduler",
+            "FlowMatchLCMScheduler",
             "HeunDiscreteScheduler",
             "IPNDMScheduler",
             "KarrasVeScheduler",
