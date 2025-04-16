@@ -39,11 +39,11 @@ class FirstBlockCacheConfig:
     Args:
         threshold (`float`, defaults to `0.05`):
             The threshold to determine whether or not a forward pass through all layers of the model is required. A
-            higher threshold usually results in lower number of forward passes and faster inference, but might lead to
-            poorer generation quality. A lower threshold may not result in significant generation speedup. The
-            threshold is compared against the absmean difference of the residuals between the current and cached
-            outputs from the first transformer block. If the difference is below the threshold, the forward pass is
-            skipped.
+            higher threshold usually results in a forward pass through a lower number of layers and faster inference,
+            but might lead to poorer generation quality. A lower threshold may not result in significant generation
+            speedup. The threshold is compared against the absmean difference of the residuals between the current and
+            cached outputs from the first transformer block. If the difference is below the threshold, the forward pass
+            is skipped.
     """
 
     threshold: float = 0.05
@@ -79,43 +79,45 @@ class FBCHeadBlockHook(ModelHook):
         outputs_if_skipped = self._metadata.skip_block_output_fn(module, *args, **kwargs)
 
         if isinstance(outputs_if_skipped, tuple):
-            original_hs = outputs_if_skipped[self._metadata.return_hidden_states_index]
+            original_hidden_states = outputs_if_skipped[self._metadata.return_hidden_states_index]
         else:
-            original_hs = outputs_if_skipped
+            original_hidden_states = outputs_if_skipped
 
         output = self.fn_ref.original_forward(*args, **kwargs)
         is_output_tuple = isinstance(output, tuple)
 
         if is_output_tuple:
-            hs_residual = output[self._metadata.return_hidden_states_index] - original_hs
+            hidden_states_residual = output[self._metadata.return_hidden_states_index] - original_hidden_states
         else:
-            hs_residual = output - original_hs
+            hidden_states_residual = output - original_hidden_states
 
-        hs, ehs = None, None
-        should_compute = self._should_compute_remaining_blocks(hs_residual)
+        hidden_states, encoder_hidden_states = None, None
+        should_compute = self._should_compute_remaining_blocks(hidden_states_residual)
         self.shared_state.should_compute = should_compute
 
         if not should_compute:
             # Apply caching
             if is_output_tuple:
-                hs = self.shared_state.tail_block_residuals[0] + output[self._metadata.return_hidden_states_index]
+                hidden_states = (
+                    self.shared_state.tail_block_residuals[0] + output[self._metadata.return_hidden_states_index]
+                )
             else:
-                hs = self.shared_state.tail_block_residuals[0] + output
+                hidden_states = self.shared_state.tail_block_residuals[0] + output
 
             if self._metadata.return_encoder_hidden_states_index is not None:
                 assert is_output_tuple
-                ehs = (
+                encoder_hidden_states = (
                     self.shared_state.tail_block_residuals[1]
                     + output[self._metadata.return_encoder_hidden_states_index]
                 )
 
             if is_output_tuple:
                 return_output = [None] * len(output)
-                return_output[self._metadata.return_hidden_states_index] = hs
-                return_output[self._metadata.return_encoder_hidden_states_index] = ehs
+                return_output[self._metadata.return_hidden_states_index] = hidden_states
+                return_output[self._metadata.return_encoder_hidden_states_index] = encoder_hidden_states
                 return_output = tuple(return_output)
             else:
-                return_output = hs
+                return_output = hidden_states
             output = return_output
         else:
             if is_output_tuple:
@@ -125,7 +127,7 @@ class FBCHeadBlockHook(ModelHook):
             else:
                 head_block_output = output
             self.shared_state.head_block_output = head_block_output
-            self.shared_state.head_block_residual = hs_residual
+            self.shared_state.head_block_residual = hidden_states_residual
 
         return output
 
@@ -134,13 +136,13 @@ class FBCHeadBlockHook(ModelHook):
         return module
 
     @torch.compiler.disable
-    def _should_compute_remaining_blocks(self, hs_residual: torch.Tensor) -> bool:
+    def _should_compute_remaining_blocks(self, hidden_states_residual: torch.Tensor) -> bool:
         if self.shared_state.head_block_residual is None:
             return True
-        prev_hs_residual = self.shared_state.head_block_residual
-        hs_absmean = (hs_residual - prev_hs_residual).abs().mean()
-        prev_hs_mean = prev_hs_residual.abs().mean()
-        diff = (hs_absmean / prev_hs_mean).item()
+        prev_hidden_states_residual = self.shared_state.head_block_residual
+        absmean = (hidden_states_residual - prev_hidden_states_residual).abs().mean()
+        prev_hidden_states_absmean = prev_hidden_states_residual.abs().mean()
+        diff = (absmean / prev_hidden_states_absmean).item()
         return diff > self.threshold
 
 
@@ -159,35 +161,35 @@ class FBCBlockHook(ModelHook):
         outputs_if_skipped = self._metadata.skip_block_output_fn(module, *args, **kwargs)
         if not isinstance(outputs_if_skipped, tuple):
             outputs_if_skipped = (outputs_if_skipped,)
-        original_hs = outputs_if_skipped[self._metadata.return_hidden_states_index]
-        original_ehs = None
+        original_hidden_states = outputs_if_skipped[self._metadata.return_hidden_states_index]
+        original_encoder_hidden_states = None
         if self._metadata.return_encoder_hidden_states_index is not None:
-            original_ehs = outputs_if_skipped[self._metadata.return_encoder_hidden_states_index]
+            original_encoder_hidden_states = outputs_if_skipped[self._metadata.return_encoder_hidden_states_index]
 
         if self.shared_state.should_compute:
             output = self.fn_ref.original_forward(*args, **kwargs)
             if self.is_tail:
-                hs_residual, ehs_residual = None, None
+                hidden_states_residual = encoder_hidden_states_residual = None
                 if isinstance(output, tuple):
-                    hs_residual = (
+                    hidden_states_residual = (
                         output[self._metadata.return_hidden_states_index] - self.shared_state.head_block_output[0]
                     )
-                    ehs_residual = (
+                    encoder_hidden_states_residual = (
                         output[self._metadata.return_encoder_hidden_states_index]
                         - self.shared_state.head_block_output[1]
                     )
                 else:
-                    hs_residual = output - self.shared_state.head_block_output
-                self.shared_state.tail_block_residuals = (hs_residual, ehs_residual)
+                    hidden_states_residual = output - self.shared_state.head_block_output
+                self.shared_state.tail_block_residuals = (hidden_states_residual, encoder_hidden_states_residual)
             return output
 
         output_count = len(outputs_if_skipped)
         if output_count == 1:
-            return_output = original_hs
+            return_output = original_hidden_states
         else:
             return_output = [None] * output_count
-            return_output[self._metadata.return_hidden_states_index] = original_hs
-            return_output[self._metadata.return_encoder_hidden_states_index] = original_ehs
+            return_output[self._metadata.return_hidden_states_index] = original_hidden_states
+            return_output[self._metadata.return_encoder_hidden_states_index] = original_encoder_hidden_states
         return return_output
 
 
@@ -205,23 +207,23 @@ def apply_first_block_cache(module: torch.nn.Module, config: FirstBlockCacheConf
     tail_block_name, tail_block = remaining_blocks.pop(-1)
 
     logger.debug(f"Applying FBCHeadBlockHook to '{head_block_name}'")
-    apply_fbc_head_block_hook(head_block, shared_state, config.threshold)
+    _apply_fbc_head_block_hook(head_block, shared_state, config.threshold)
 
     for name, block in remaining_blocks:
         logger.debug(f"Applying FBCBlockHook to '{name}'")
-        apply_fbc_block_hook(block, shared_state)
+        _apply_fbc_block_hook(block, shared_state)
 
     logger.debug(f"Applying FBCBlockHook to tail block '{tail_block_name}'")
-    apply_fbc_block_hook(tail_block, shared_state, is_tail=True)
+    _apply_fbc_block_hook(tail_block, shared_state, is_tail=True)
 
 
-def apply_fbc_head_block_hook(block: torch.nn.Module, state: FBCSharedBlockState, threshold: float) -> None:
+def _apply_fbc_head_block_hook(block: torch.nn.Module, state: FBCSharedBlockState, threshold: float) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(block)
     hook = FBCHeadBlockHook(state, threshold)
     registry.register_hook(hook, _FBC_LEADER_BLOCK_HOOK)
 
 
-def apply_fbc_block_hook(block: torch.nn.Module, state: FBCSharedBlockState, is_tail: bool = False) -> None:
+def _apply_fbc_block_hook(block: torch.nn.Module, state: FBCSharedBlockState, is_tail: bool = False) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(block)
     hook = FBCBlockHook(state, is_tail)
     registry.register_hook(hook, _FBC_BLOCK_HOOK)

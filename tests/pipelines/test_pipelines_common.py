@@ -2780,12 +2780,12 @@ class FirstBlockCacheTesterMixin:
         output = run_forward(pipe).flatten()
         image_slice_fbc_disabled = np.concatenate((output[:8], output[-8:]))
 
-        assert np.allclose(
-            original_image_slice, image_slice_fbc_enabled, atol=expected_atol
-        ), "FirstBlockCache outputs should not differ much."
-        assert np.allclose(
-            original_image_slice, image_slice_fbc_disabled, atol=1e-4
-        ), "Outputs from normal inference and after disabling cache should not differ."
+        assert np.allclose(original_image_slice, image_slice_fbc_enabled, atol=expected_atol), (
+            "FirstBlockCache outputs should not differ much."
+        )
+        assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

@@ -15,8 +15,10 @@
 from dataclasses import dataclass
 from typing import Any, Callable, Type
 
+from ..models.attention import BasicTransformerBlock
+from ..models.attention_processor import AttnProcessor2_0
 from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
-from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
+from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor, CogView4TransformerBlock
 from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
 from ..models.transformers.transformer_hunyuan_video import (
     HunyuanVideoSingleTransformerBlock,
@@ -30,10 +32,29 @@ from ..models.transformers.transformer_wan import WanTransformerBlock
 
 
 @dataclass
+class AttentionProcessorMetadata:
+    skip_processor_output_fn: Callable[[Any], Any]
+
+
+@dataclass
 class TransformerBlockMetadata:
     skip_block_output_fn: Callable[[Any], Any]
     return_hidden_states_index: int = None
     return_encoder_hidden_states_index: int = None
+
+
+class AttentionProcessorRegistry:
+    _registry = {}
+
+    @classmethod
+    def register(cls, model_class: Type, metadata: AttentionProcessorMetadata):
+        cls._registry[model_class] = metadata
+
+    @classmethod
+    def get(cls, model_class: Type) -> AttentionProcessorMetadata:
+        if model_class not in cls._registry:
+            raise ValueError(f"Model class {model_class} not registered.")
+        return cls._registry[model_class]
 
 
 class TransformerBlockRegistry:
@@ -50,7 +71,35 @@ class TransformerBlockRegistry:
         return cls._registry[model_class]
 
 
+def _register_attention_processors_metadata():
+    # AttnProcessor2_0
+    AttentionProcessorRegistry.register(
+        model_class=AttnProcessor2_0,
+        metadata=AttentionProcessorMetadata(
+            skip_processor_output_fn=_skip_proc_output_fn_Attention_AttnProcessor2_0,
+        ),
+    )
+
+    # CogView4AttnProcessor
+    AttentionProcessorRegistry.register(
+        model_class=CogView4AttnProcessor,
+        metadata=AttentionProcessorMetadata(
+            skip_processor_output_fn=_skip_proc_output_fn_Attention_CogView4AttnProcessor,
+        ),
+    )
+
+
 def _register_transformer_blocks_metadata():
+    # BasicTransformerBlock
+    TransformerBlockRegistry.register(
+        model_class=BasicTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            skip_block_output_fn=_skip_block_output_fn_BasicTransformerBlock,
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+        ),
+    )
+
     # CogVideoX
     TransformerBlockRegistry.register(
         model_class=CogVideoXBlock,
@@ -155,6 +204,27 @@ def _register_transformer_blocks_metadata():
 
 
 # fmt: off
+def _skip_attention___ret___hidden_states(self, *args, **kwargs):
+    hidden_states = kwargs.get("hidden_states", None)
+    if hidden_states is None and len(args) > 0:
+        hidden_states = args[0]
+    return hidden_states
+
+
+def _skip_attention___ret___hidden_states___encoder_hidden_states(self, *args, **kwargs):
+    hidden_states = kwargs.get("hidden_states", None)
+    encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
+    if hidden_states is None and len(args) > 0:
+        hidden_states = args[0]
+    if encoder_hidden_states is None and len(args) > 1:
+        encoder_hidden_states = args[1]
+    return hidden_states, encoder_hidden_states
+
+
+_skip_proc_output_fn_Attention_AttnProcessor2_0 = _skip_attention___ret___hidden_states
+_skip_proc_output_fn_Attention_CogView4AttnProcessor = _skip_attention___ret___hidden_states___encoder_hidden_states
+
+
 def _skip_block_output_fn___hidden_states_0___ret___hidden_states(self, *args, **kwargs):
     hidden_states = kwargs.get("hidden_states", None)
     if hidden_states is None and len(args) > 0:
@@ -182,6 +252,7 @@ def _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___en
     return encoder_hidden_states, hidden_states
 
 
+_skip_block_output_fn_BasicTransformerBlock = _skip_block_output_fn___hidden_states_0___ret___hidden_states
 _skip_block_output_fn_CogVideoXBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___hidden_states___encoder_hidden_states
 _skip_block_output_fn_CogView4TransformerBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___hidden_states___encoder_hidden_states
 _skip_block_output_fn_FluxTransformerBlock = _skip_block_output_fn___hidden_states_0___encoder_hidden_states_1___ret___encoder_hidden_states___hidden_states
@@ -196,4 +267,5 @@ _skip_block_output_fn_WanTransformerBlock = _skip_block_output_fn___hidden_state
 # fmt: on
 
 
+_register_attention_processors_metadata()
 _register_transformer_blocks_metadata()
