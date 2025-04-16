@@ -36,7 +36,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ..utils import (
+from ...utils import (
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     deprecate,
@@ -44,8 +44,8 @@ from ..utils import (
     is_transformers_available,
     logging,
 )
-from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
-from ..utils.hub_utils import _get_model_file
+from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from ...utils.hub_utils import _get_model_file
 
 
 if is_transformers_available():
