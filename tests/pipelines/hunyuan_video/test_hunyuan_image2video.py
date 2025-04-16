@@ -23,11 +23,10 @@ from transformers import (
     CLIPTextConfig,
     CLIPTextModel,
     CLIPTokenizer,
-    LlavaForConditionalGeneration,
-    LlavaConfig,
     LlamaConfig,
-    LlamaModel,
-    LlamaTokenizer,
+    LlamaTokenizerFast,
+    LlavaConfig,
+    LlavaForConditionalGeneration,
 )
 from transformers.models.clip import CLIPVisionConfig
 
@@ -127,7 +126,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             layer_norm_eps=1e-05,
             num_attention_heads=4,
             num_hidden_layers=2,
-            pad_token_id=1,
+            pad_token_id=100,
             vocab_size=1000,
             hidden_act="gelu",
             projection_dim=32,
@@ -140,9 +139,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             num_hidden_layers=2,
             image_size=224,
         )
-        llava_text_encoder_config = LlavaConfig(
-            vision_config, text_config, image_seq_length=7, pad_token_id=1, image_token_index=8
-        )
+        llava_text_encoder_config = LlavaConfig(vision_config, text_config, pad_token_id=100, image_token_index=101)
 
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
@@ -160,7 +157,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
 
         torch.manual_seed(0)
         text_encoder = LlavaForConditionalGeneration(llava_text_encoder_config)
-        tokenizer = LlamaTokenizer.from_pretrained("finetrainers/dummy-hunyaunvideo", subfolder="tokenizer")
+        tokenizer = LlamaTokenizerFast.from_pretrained("finetrainers/dummy-hunyaunvideo", subfolder="tokenizer")
 
         torch.manual_seed(0)
         text_encoder_2 = CLIPTextModel(clip_text_encoder_config)
@@ -203,21 +200,12 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             "image": image,
             "prompt": "dance monkey",
             "prompt_template": {
-                "template": (
-                    "<|start_header_id|>system<|end_header_id|>\n\n<image>\nDescribe the video by detailing the following aspects according to the reference image: "
-                    "1. The main content and theme of the video."
-                    "2. The color, shape, size, texture, quantity, text, and spatial relationships of the objects."
-                    "3. Actions, events, behaviors temporal relationships, physical movement changes of the objects."
-                    "4. background environment, light, style and atmosphere."
-                    "5. camera angles, movements, and transitions used in the video:<|eot_id|>\n\n"
-                    "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|>"
-                    "<|start_header_id|>assistant<|end_header_id|>\n\n"
-                ),
-                "crop_start": 5,
+                "template": "{}",
+                "crop_start": 0,
                 "image_emb_len": 49,
                 "image_emb_start": 5,
                 "image_emb_end": 54,
-                "double_return_token_id": 10,
+                "double_return_token_id": 0,
             },
             "generator": generator,
             "num_inference_steps": 2,
