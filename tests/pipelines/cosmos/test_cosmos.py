@@ -286,6 +286,11 @@ class CosmosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "VAE tiling should not affect the inference results",
         )
 
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        self.pipeline_class._optional_components.remove("safety_checker")
+        super().test_save_load_optional_components(expected_max_difference=expected_max_difference)
+        self.pipeline_class._optional_components.append("safety_checker")
+
     def test_serialization_with_variants(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

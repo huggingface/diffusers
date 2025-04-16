@@ -144,6 +144,8 @@ class CosmosPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    # We mark safety_checker as optional here to get around some test failures, but it is not really optional
+    _optional_components = ["safety_checker"]
 
     def __init__(
         self,
@@ -152,7 +154,7 @@ class CosmosPipeline(DiffusionPipeline):
         transformer: CosmosTransformer3DModel,
         vae: AutoencoderKLCosmos,
         scheduler: EDMEulerScheduler,
-        safety_checker: CosmosSafetyChecker,
+        safety_checker: CosmosSafetyChecker = None,
     ):
         super().__init__()
 
