@@ -24,8 +24,8 @@ import torch.nn as nn
 from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
-from ..models.modeling_utils import ModelMixin, load_state_dict
-from ..utils import (
+from ...models.modeling_utils import ModelMixin, load_state_dict
+from ...utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     convert_state_dict_to_diffusers,
@@ -50,7 +50,7 @@ from ..utils import (
 if is_transformers_available():
     from transformers import PreTrainedModel
 
-    from ..models.lora import text_encoder_attn_modules, text_encoder_mlp_modules
+    from ...models.lora import text_encoder_attn_modules, text_encoder_mlp_modules
 
 if is_peft_available():
     from peft.tuners.tuners_utils import BaseTunerLayer
