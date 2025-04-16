@@ -584,6 +584,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
+        _model_output_uncond: Optional[torch.Tensor] = None,
+        _use_cfgpp: bool = False,
     ) -> Union[EulerDiscreteSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
@@ -627,6 +629,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
                 "See `StableDiffusionPipeline` for a usage example."
             )
+        
+        if _use_cfgpp and self.config.prediction_type != "epsilon":
+            raise ValueError(
+                f"CFG++ is only supported for prediction type `epsilon`, but got {self.config.prediction_type}."
+            )
 
         if self.step_index is None:
             self._init_step_index(timestep)
@@ -668,7 +675,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         dt = self.sigmas[self.step_index + 1] - sigma_hat
 
         prev_sample = sample + derivative * dt
-
+        if _use_cfgpp:
+            prev_sample = prev_sample + (_model_output_uncond - model_output) * self.sigmas[self.step_index + 1]
+        
         # denoised = sample - model_output * sigmas[i]
         # d = (sample - denoised) / sigmas[i]
         # new_sample = denoised + d * sigmas[i + 1]

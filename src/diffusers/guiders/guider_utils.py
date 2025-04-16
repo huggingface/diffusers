@@ -37,8 +37,6 @@ class BaseGuidance:
         self._step: int = None
         self._num_inference_steps: int = None
         self._timestep: torch.LongTensor = None
-        self._sigma: torch.Tensor = None
-        self._sigma_next: torch.Tensor = None
         self._preds: Dict[str, torch.Tensor] = {}
         self._num_outputs_prepared: int = 0
         self._enabled = True
@@ -63,12 +61,10 @@ class BaseGuidance:
     def _force_enable(self):
         self._enabled = True
     
-    def set_state(self, step: int, num_inference_steps: int, timestep: torch.LongTensor, sigma: torch.Tensor, sigma_next: torch.Tensor) -> None:
+    def set_state(self, step: int, num_inference_steps: int, timestep: torch.LongTensor) -> None:
         self._step = step
         self._num_inference_steps = num_inference_steps
         self._timestep = timestep
-        self._sigma = sigma
-        self._sigma_next = sigma_next
         self._preds = {}
         self._num_outputs_prepared = 0
 
@@ -95,9 +91,6 @@ class BaseGuidance:
     def forward(self, *args, **kwargs) -> Any:
         raise NotImplementedError("BaseGuidance::forward must be implemented in subclasses.")
 
-    def post_scheduler_step(self, pred: torch.Tensor) -> torch.Tensor:
-        return pred
-
     @property
     def is_conditional(self) -> bool:
         raise NotImplementedError("BaseGuidance::is_conditional must be implemented in subclasses.")
@@ -112,7 +105,7 @@ class BaseGuidance:
 
     @property
     def outputs(self) -> Dict[str, torch.Tensor]:
-        return self._preds
+        return self._preds, {}
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):

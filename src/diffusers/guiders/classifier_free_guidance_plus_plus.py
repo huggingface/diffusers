@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-from typing import Optional, Union, Tuple, List
+from typing import Dict, Optional, Union, Tuple, List
 
 import torch
 
@@ -84,15 +83,6 @@ class CFGPlusPlusGuidance(BaseGuidance):
 
         return pred
 
-    def post_scheduler_step(self, pred: torch.Tensor) -> torch.Tensor:
-        if self._is_cfgpp_enabled():
-            # TODO(aryan): this probably only makes sense for EulerDiscreteScheduler. Look into the others later!
-            pred_cond = self._preds["pred_cond"]
-            pred_uncond = self._preds["pred_uncond"]
-            diff = pred_uncond - pred_cond
-            pred = pred + diff * self.guidance_scale * self._sigma_next
-        return pred
-
     @property
     def is_conditional(self) -> bool:
         return self._num_outputs_prepared == 0
@@ -103,6 +93,14 @@ class CFGPlusPlusGuidance(BaseGuidance):
         if self._is_cfgpp_enabled():
             num_conditions += 1
         return num_conditions
+
+    @property
+    def outputs(self) -> Dict[str, torch.Tensor]:
+        scheduler_step_kwargs = {}
+        if self._is_cfgpp_enabled():
+            scheduler_step_kwargs["_use_cfgpp"] = True
+            scheduler_step_kwargs["_model_output_uncond"] = self._preds.get("pred_uncond")
+        return self._preds, scheduler_step_kwargs
 
     def _is_cfgpp_enabled(self) -> bool:
         if not self._enabled:
