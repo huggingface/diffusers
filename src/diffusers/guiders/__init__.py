@@ -24,5 +24,6 @@ if is_torch_available():
     from .classifier_free_zero_star_guidance import ClassifierFreeZeroStarGuidance
     from .skip_layer_guidance import SkipLayerGuidance
     from .smoothed_energy_guidance import SmoothedEnergyGuidance
+    from .tangential_classifier_free_guidance import TangentialClassifierFreeGuidance
 
-    GuiderType = Union[AdaptiveProjectedGuidance, ClassifierFreeGuidance, ClassifierFreeZeroStarGuidance, SkipLayerGuidance]
+    GuiderType = Union[AdaptiveProjectedGuidance, AutoGuidance, ClassifierFreeGuidance, ClassifierFreeZeroStarGuidance, SkipLayerGuidance, SmoothedEnergyGuidance, TangentialClassifierFreeGuidance]

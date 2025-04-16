@@ -20,19 +20,15 @@ import torch
 from .guider_utils import BaseGuidance, rescale_noise_cfg, _default_prepare_inputs
 
 
-class AdaptiveProjectedGuidance(BaseGuidance):
+class TangentialClassifierFreeGuidance(BaseGuidance):
     """
-    Adaptive Projected Guidance (APG): https://huggingface.co/papers/2410.02416
+    Tangential Classifier Free Guidance (TCFG): https://huggingface.co/papers/2503.18137
     
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
-        adaptive_projected_guidance_momentum (`float`, defaults to `None`):
-            The momentum parameter for the adaptive projected guidance. Disabled if set to `None`.
-        adaptive_projected_guidance_rescale (`float`, defaults to `15.0`):
-            The rescale factor applied to the noise predictions. This is used to improve image quality and fix
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
@@ -52,9 +48,6 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     def __init__(
         self,
         guidance_scale: float = 7.5,
-        adaptive_projected_guidance_momentum: Optional[float] = None,
-        adaptive_projected_guidance_rescale: float = 15.0,
-        eta: float = 1.0,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -63,17 +56,11 @@ class AdaptiveProjectedGuidance(BaseGuidance):
         super().__init__(start, stop)
 
         self.guidance_scale = guidance_scale
-        self.adaptive_projected_guidance_momentum = adaptive_projected_guidance_momentum
-        self.adaptive_projected_guidance_rescale = adaptive_projected_guidance_rescale
-        self.eta = eta
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
         self.momentum_buffer = None
 
     def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
-        if self._step == 0:
-            if self.adaptive_projected_guidance_momentum is not None:
-                self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)
         return _default_prepare_inputs(denoiser, self.num_conditions, *args)
 
     def prepare_outputs(self, denoiser: torch.nn.Module, pred: torch.Tensor) -> None:
@@ -86,18 +73,10 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
         pred = None
 
-        if not self._is_apg_enabled():
+        if not self._is_tcfg_enabled():
             pred = pred_cond
         else:
-            pred = normalized_guidance(
-                pred_cond,
-                pred_uncond,
-                self.guidance_scale,
-                self.momentum_buffer,
-                self.eta,
-                self.adaptive_projected_guidance_rescale,
-                self.use_original_formulation,
-            )
+            pred = normalized_guidance(pred_cond, pred_uncond, self.guidance_scale, self.use_original_formulation)
 
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
@@ -111,11 +90,11 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     @property
     def num_conditions(self) -> int:
         num_conditions = 1
-        if self._is_apg_enabled():
+        if self._is_tcfg_enabled():
             num_conditions += 1
         return num_conditions
 
-    def _is_apg_enabled(self) -> bool:
+    def _is_tcfg_enabled(self) -> bool:
         if not self._enabled:
             return False
         
@@ -134,46 +113,21 @@ class AdaptiveProjectedGuidance(BaseGuidance):
         return is_within_range and not is_close
 
 
-class MomentumBuffer:
-    def __init__(self, momentum: float):
-        self.momentum = momentum
-        self.running_average = 0
+def normalized_guidance(pred_cond: torch.Tensor, pred_uncond: torch.Tensor, guidance_scale: float, use_original_formulation: bool = False) -> torch.Tensor:
+    cond_dtype = pred_cond.dtype    
+    preds = torch.stack([pred_cond, pred_uncond], dim=1).float()
+    preds = preds.flatten(2)
+    U, S, Vh = torch.linalg.svd(preds, full_matrices=False)
+    Vh_modified = Vh.clone()
+    Vh_modified[:, 1] = 0
 
-    def update(self, update_value: torch.Tensor):
-        new_average = self.momentum * self.running_average
-        self.running_average = update_value + new_average
-
-
-def normalized_guidance(
-    pred_cond: torch.Tensor,
-    pred_uncond: torch.Tensor,
-    guidance_scale: float,
-    momentum_buffer: Optional[MomentumBuffer] = None,
-    eta: float = 1.0,
-    norm_threshold: float = 0.0,
-    use_original_formulation: bool = False,
-):
-    diff = pred_cond - pred_uncond
-    dim = [-i for i in range(1, len(diff.shape))]
-    
-    if momentum_buffer is not None:
-        momentum_buffer.update(diff)
-        diff = momentum_buffer.running_average
-    
-    if norm_threshold > 0:
-        ones = torch.ones_like(diff)
-        diff_norm = diff.norm(p=2, dim=dim, keepdim=True)
-        scale_factor = torch.minimum(ones, norm_threshold / diff_norm)
-        diff = diff * scale_factor
-    
-    v0, v1 = diff.double(), pred_cond.double()
-    v1 = torch.nn.functional.normalize(v1, dim=dim)
-    v0_parallel = (v0 * v1).sum(dim=dim, keepdim=True) * v1
-    v0_orthogonal = v0 - v0_parallel
-    diff_parallel, diff_orthogonal = v0_parallel.type_as(diff), v0_orthogonal.type_as(diff)
-    normalized_update = diff_orthogonal + eta * diff_parallel
+    uncond_flat = pred_uncond.reshape(pred_uncond.size(0), 1, -1).float()
+    x_Vh = torch.matmul(uncond_flat, Vh.transpose(-2, -1))
+    x_Vh_V = torch.matmul(x_Vh, Vh_modified)
+    pred_uncond = x_Vh_V.reshape(pred_uncond.shape).to(cond_dtype)
     
     pred = pred_cond if use_original_formulation else pred_uncond
-    pred = pred + guidance_scale * normalized_update
+    shift = pred_cond - pred_uncond
+    pred = pred + guidance_scale * shift
     
     return pred

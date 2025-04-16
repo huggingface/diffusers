@@ -138,6 +138,7 @@ else:
             "ClassifierFreeZeroStarGuidance",
             "SkipLayerGuidance",
             "SmoothedEnergyGuidance",
+            "TangentialClassifierFreeGuidance",
         ]
     )
     _import_structure["hooks"].extend(
@@ -732,6 +733,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ClassifierFreeZeroStarGuidance,
             SkipLayerGuidance,
             SmoothedEnergyGuidance,
+            TangentialClassifierFreeGuidance,
         )
         from .hooks import (
             FasterCacheConfig,

@@ -92,7 +92,7 @@ class AttentionProcessorSkipHook(ModelHook):
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         if self.skip_attention_scores:
-            if math.isclose(self.dropout, 1.0):
+            if not math.isclose(self.dropout, 1.0):
                 raise ValueError(
                     "Cannot set `skip_attention_scores` to True when `dropout` is not 1.0. Please set `dropout` to 1.0."
                 )

@@ -27,7 +27,10 @@ class SmoothedEnergyGuidance(BaseGuidance):
     Smoothed Energy Guidance (SEG): https://huggingface.co/papers/2408.00760
 
     SEG is only supported as an experimental prototype feature for now, so the implementation may be modified
-    in the future without warning or guarantee of reproducibility.
+    in the future without warning or guarantee of reproducibility. This implementation assumes:
+    - Generated images are square (height == width)
+    - The model does not combine different modalities together (e.g., text and image latent streams are
+      not combined together such as Flux)
     
     Args:
         guidance_scale (`float`, defaults to `7.5`):
