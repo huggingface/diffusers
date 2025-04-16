@@ -28,7 +28,7 @@ from ....utils import (
 )
 from ....utils.outputs import BaseOutput
 from ....utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline
 from .modeling_text_decoder import UniDiffuserTextDecoder
 from .modeling_uvit import UniDiffuserModel
 
@@ -225,7 +225,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         return mode
 
-    # Copied from ..pipeline_utils.StableDiffusionMixin.enable_vae_slicing
+    # Copied from ...pipeline_utils.StableDiffusionMixin.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -233,7 +233,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         """
         self.vae.enable_slicing()
 
-    # Copied from ..pipeline_utils.StableDiffusionMixin.disable_vae_slicing
+    # Copied from ...pipeline_utils.StableDiffusionMixin.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -241,7 +241,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         """
         self.vae.disable_slicing()
 
-    # Copied from ..pipeline_utils.StableDiffusionMixin.enable_vae_tiling
+    # Copied from ...pipeline_utils.StableDiffusionMixin.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -250,7 +250,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         """
         self.vae.enable_tiling()
 
-    # Copied from ..pipeline_utils.StableDiffusionMixin.disable_vae_tiling
+    # Copied from ...pipeline_utils.StableDiffusionMixin.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to

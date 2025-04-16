@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from ...models.attention_processor import Attention
+from ....models.attention_processor import Attention
 
 
 class WuerstchenLayerNorm(nn.LayerNorm):

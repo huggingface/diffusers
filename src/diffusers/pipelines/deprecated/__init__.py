@@ -1,8 +1,8 @@
-from typing import TYPE_CHECKING
 import functools
 import inspect
-import warnings
 import sys
+import warnings
+from typing import TYPE_CHECKING
 
 from ...utils import (
     DIFFUSERS_SLOW_IMPORT,
@@ -13,24 +13,26 @@ from ...utils import (
     is_note_seq_available,
     is_torch_available,
     is_transformers_available,
+    logging,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 # Custom Lazy Module for deprecated pipelines that shows a warning
 class _DeprecatedLazyModule(_LazyModule):
     """
-    Module class that surfaces all objects but only performs associated imports when the objects are requested,
-    and shows deprecation warnings when any of its attributes are accessed.
+    Module class that surfaces all objects but only performs associated imports when the objects are requested, and
+    shows deprecation warnings when any of its attributes are accessed.
     """
 
     def __getattr__(self, name):
         # Regular attribute access - first check if it's supposed to be loaded
         if name in self._modules or name in self._class_to_module:
             # Only warn for actual pipeline components, not utility functions
-            warnings.warn(
-                f"{name} is deprecated and will no longer be maintained.",
-                FutureWarning,
-                stacklevel=2,
+            logger.warning(
+                f"{name} is deprecated and will no longer be maintained or receive future updates.",
             )
 
         # Use the standard lazy module behavior to load the attribute
@@ -184,7 +186,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
-        from .shap_e import ShapEPipeline, ShapEImg2ImgPipeline
+        from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
         from .stable_diffusion_gligen import StableDiffusionGLIGENPipeline, StableDiffusionGLIGENTextImagePipeline
@@ -208,7 +210,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TextToVideoZeroPipeline,
             TextToVideoZeroSDXLPipeline,
         )
-        from .unclip import UnCLIPPipeline, UnCLIPImageVariationPipeline
+        from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
         from .unidiffuser import UniDiffuserPipeline
         from .versatile_diffusion import (
             VersatileDiffusionDualGuidedPipeline,

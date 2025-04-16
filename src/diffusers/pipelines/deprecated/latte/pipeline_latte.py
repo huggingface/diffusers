@@ -25,7 +25,6 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ....callbacks import MultiPipelineCallbacks, PipelineCallback
 from ....models import AutoencoderKL, LatteTransformer3DModel
-from ...pipeline_utils import DiffusionPipeline
 from ....schedulers import KarrasDiffusionSchedulers
 from ....utils import (
     BACKENDS_MAPPING,
@@ -39,6 +38,7 @@ from ....utils import (
 )
 from ....utils.torch_utils import is_compiled_module, randn_tensor
 from ....video_processor import VideoProcessor
+from ...pipeline_utils import DiffusionPipeline
 
 
 if is_torch_xla_available():

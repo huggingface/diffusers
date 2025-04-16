@@ -22,7 +22,12 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ....image_processor import PipelineImageInput, VaeImageProcessorLDM3D
-from ....loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ....loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    StableDiffusionLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from ....models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ....models.lora import adjust_lora_scale_text_encoder
 from ....schedulers import KarrasDiffusionSchedulers
@@ -37,7 +42,7 @@ from ....utils import (
     unscale_lora_layers,
 )
 from ....utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 

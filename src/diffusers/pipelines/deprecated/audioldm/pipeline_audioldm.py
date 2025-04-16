@@ -24,7 +24,7 @@ from ....models import AutoencoderKL, UNet2DConditionModel
 from ....schedulers import KarrasDiffusionSchedulers
 from ....utils import is_torch_xla_available, logging, replace_example_docstring
 from ....utils.torch_utils import randn_tensor
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, StableDiffusionMixin
+from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline, StableDiffusionMixin
 
 
 if is_torch_xla_available():
@@ -96,9 +96,7 @@ class AudioLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
 
         logger.warning(f"{self.__class__.__name__} is deprecated and will no longer be actively maintained")
 
-        logger.warning(
-            f"{self.__class__.__name__} is deprecated and will no longer be actively maintained"
-        )
+        logger.warning(f"{self.__class__.__name__} is deprecated and will no longer be actively maintained")
 
         self.register_modules(
             vae=vae,

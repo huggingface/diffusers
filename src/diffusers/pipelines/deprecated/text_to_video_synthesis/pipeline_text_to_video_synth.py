@@ -33,7 +33,7 @@ from ....utils import (
 )
 from ....utils.torch_utils import randn_tensor
 from ....video_processor import VideoProcessor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import TextToVideoSDPipelineOutput
 
 

@@ -8,7 +8,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....schedulers import KarrasDiffusionSchedulers
 from ....utils import logging
-from ..pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline
 from .pipeline_versatile_diffusion_dual_guided import VersatileDiffusionDualGuidedPipeline
 from .pipeline_versatile_diffusion_image_variation import VersatileDiffusionImageVariationPipeline
 from .pipeline_versatile_diffusion_text_to_image import VersatileDiffusionTextToImagePipeline

@@ -35,7 +35,7 @@ from ....utils import (
     unscale_lora_layers,
 )
 from ....utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 
 
 if is_invisible_watermark_available():

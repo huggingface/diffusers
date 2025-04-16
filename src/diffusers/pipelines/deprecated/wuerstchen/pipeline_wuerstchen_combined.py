@@ -18,7 +18,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ....schedulers import DDPMWuerstchenScheduler
 from ....utils import deprecate, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 from .modeling_wuerstchen_prior import WuerstchenPrior

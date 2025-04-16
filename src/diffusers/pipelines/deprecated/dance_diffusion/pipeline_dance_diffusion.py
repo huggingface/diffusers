@@ -21,7 +21,7 @@ from ....models import UNet1DModel
 from ....schedulers import SchedulerMixin
 from ....utils import is_torch_xla_available, logging
 from ....utils.torch_utils import randn_tensor
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
+from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
 if is_torch_xla_available():

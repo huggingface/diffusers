@@ -36,7 +36,7 @@ from ....utils import (
     replace_example_docstring,
 )
 from ....utils.torch_utils import randn_tensor
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, StableDiffusionMixin
+from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline, StableDiffusionMixin
 
 
 if is_librosa_available():

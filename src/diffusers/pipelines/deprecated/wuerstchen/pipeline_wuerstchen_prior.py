@@ -24,7 +24,7 @@ from ....loaders import StableDiffusionLoraLoaderMixin
 from ....schedulers import DDPMWuerstchenScheduler
 from ....utils import BaseOutput, deprecate, is_torch_xla_available, logging, replace_example_docstring
 from ....utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline
 from .modeling_wuerstchen_prior import WuerstchenPrior
 
 
