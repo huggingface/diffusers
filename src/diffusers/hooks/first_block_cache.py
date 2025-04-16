@@ -21,7 +21,7 @@ from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
 from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS
 from ._helpers import TransformerBlockRegistry
-from .hooks import BaseMarkedState, HookRegistry, ModelHook
+from .hooks import ContextAwareState, HookRegistry, ModelHook
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -49,7 +49,7 @@ class FirstBlockCacheConfig:
     threshold: float = 0.05
 
 
-class FBCSharedBlockState(BaseMarkedState):
+class FBCSharedBlockState(ContextAwareState):
     def __init__(self) -> None:
         super().__init__()
 

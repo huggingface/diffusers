@@ -128,7 +128,7 @@ class _CacheContextManager:
     def __init__(self, model: CacheMixin):
         self.model = model
 
-    def mark_state(self, name: str) -> None:
+    def set_context(self, name: str) -> None:
         from ..hooks import HookRegistry
 
         if self.model.is_cache_enabled:

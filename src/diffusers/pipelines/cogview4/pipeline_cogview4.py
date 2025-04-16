@@ -619,7 +619,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
 
-                cc.mark_state("cond")
+                cc.set_context("cond")
                 noise_pred_cond = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
@@ -633,7 +633,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
-                    cc.mark_state("uncond")
+                    cc.set_context("uncond")
                     noise_pred_uncond = self.transformer(
                         hidden_states=latent_model_input,
                         encoder_hidden_states=negative_prompt_embeds,

@@ -792,7 +792,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 timestep = t.expand(latent_model_input.shape[0])
                 timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask)
 
-                cc.mark_state("cond_uncond")
+                cc.set_context("cond_uncond")
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,

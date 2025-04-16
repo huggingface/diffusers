@@ -1105,7 +1105,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                 if is_conditioning_image_or_video:
                     timestep = torch.min(timestep, (1 - conditioning_mask_model_input) * 1000.0)
 
-                cc.mark_state("cond_uncond")
+                cc.set_context("cond_uncond")
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,

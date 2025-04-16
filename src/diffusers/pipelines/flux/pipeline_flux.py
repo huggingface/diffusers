@@ -917,7 +917,7 @@ class FluxPipeline(
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                cc.mark_state("cond")
+                cc.set_context("cond")
                 noise_pred = self.transformer(
                     hidden_states=latents,
                     timestep=timestep / 1000,
@@ -934,7 +934,7 @@ class FluxPipeline(
                     if negative_image_embeds is not None:
                         self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
 
-                    cc.mark_state("uncond")
+                    cc.set_context("uncond")
                     neg_noise_pred = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,

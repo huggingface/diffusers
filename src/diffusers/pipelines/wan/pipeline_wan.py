@@ -530,7 +530,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latent_model_input = latents.to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
 
-                cc.mark_state("cond")
+                cc.set_context("cond")
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
@@ -540,7 +540,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 )[0]
 
                 if self.do_classifier_free_guidance:
-                    cc.mark_state("uncond")
+                    cc.set_context("uncond")
                     noise_uncond = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
