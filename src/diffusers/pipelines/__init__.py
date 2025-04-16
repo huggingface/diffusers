@@ -115,10 +115,43 @@ else:
             "VersatileDiffusionImageVariationPipeline",
             "VersatileDiffusionPipeline",
             "VersatileDiffusionTextToImagePipeline",
+            "AmusedImg2ImgPipeline",
+            "AmusedInpaintPipeline",
+            "AmusedPipeline",
+            "StableDiffusionControlNetXSPipeline",
+            "StableDiffusionXLControlNetXSPipeline",
+            "I2VGenXLPipeline",
+            "LattePipeline",
+            "MusicLDMPipeline",
+            "PaintByExamplePipeline",
+            "PIAPipeline",
+            "SemanticStableDiffusionPipeline",
+            "ShapEImg2ImgPipeline",
+            "ShapEPipeline",
+            "StableDiffusionAttendAndExcitePipeline",
+            "StableDiffusionPipelineSafe",
+            "StableDiffusionSAGPipeline",
+            "StableDiffusionGLIGENPipeline",
+            "StableDiffusionGLIGENTextImagePipeline",
+            "StableDiffusionDiffEditPipeline",
+            "StableDiffusionLDM3DPipeline",
+            "StableDiffusionPanoramaPipeline",
+            "TextToVideoSDPipeline",
+            "TextToVideoZeroPipeline",
+            "TextToVideoZeroSDXLPipeline",
+            "VideoToVideoSDPipeline",
+            "UnCLIPImageVariationPipeline",
+            "UnCLIPPipeline",
+            "ImageTextPipelineOutput",
+            "UniDiffuserModel",
+            "UniDiffuserPipeline",
+            "UniDiffuserTextDecoder",
+            "WuerstchenCombinedPipeline",
+            "WuerstchenDecoderPipeline",
+            "WuerstchenPriorPipeline",
         ]
     )
     _import_structure["allegro"] = ["AllegroPipeline"]
-    _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
         "AnimateDiffControlNetPipeline",
@@ -191,12 +224,6 @@ else:
             "SanaPAGPipeline",
         ]
     )
-    _import_structure["controlnet_xs"].extend(
-        [
-            "StableDiffusionControlNetXSPipeline",
-            "StableDiffusionXLControlNetXSPipeline",
-        ]
-    )
     _import_structure["controlnet_hunyuandit"].extend(
         [
             "HunyuanDiTControlNetPipeline",
@@ -264,7 +291,6 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
         ]
     )
-    _import_structure["latte"] = ["LattePipeline"]
     _import_structure["ltx"] = ["LTXPipeline", "LTXImageToVideoPipeline", "LTXConditionPipeline"]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
@@ -276,14 +302,9 @@ else:
         ]
     )
     _import_structure["mochi"] = ["MochiPipeline"]
-    _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
-    _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
-    _import_structure["pia"] = ["PIAPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
     _import_structure["sana"] = ["SanaPipeline", "SanaSprintPipeline", "SanaControlNetPipeline"]
-    _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
-    _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_audio"] = [
         "StableAudioProjectionModel",
         "StableAudioPipeline",
@@ -315,13 +336,6 @@ else:
         "StableDiffusion3Img2ImgPipeline",
         "StableDiffusion3InpaintPipeline",
     ]
-    _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
-    _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
-    _import_structure["stable_diffusion_sag"] = ["StableDiffusionSAGPipeline"]
-    _import_structure["stable_diffusion_gligen"] = [
-        "StableDiffusionGLIGENPipeline",
-        "StableDiffusionGLIGENTextImagePipeline",
-    ]
     _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline"]
     _import_structure["stable_diffusion_xl"].extend(
         [
@@ -331,31 +345,9 @@ else:
             "StableDiffusionXLPipeline",
         ]
     )
-    _import_structure["stable_diffusion_diffedit"] = ["StableDiffusionDiffEditPipeline"]
-    _import_structure["stable_diffusion_ldm3d"] = ["StableDiffusionLDM3DPipeline"]
-    _import_structure["stable_diffusion_panorama"] = ["StableDiffusionPanoramaPipeline"]
     _import_structure["t2i_adapter"] = [
         "StableDiffusionAdapterPipeline",
         "StableDiffusionXLAdapterPipeline",
-    ]
-    _import_structure["text_to_video_synthesis"] = [
-        "TextToVideoSDPipeline",
-        "TextToVideoZeroPipeline",
-        "TextToVideoZeroSDXLPipeline",
-        "VideoToVideoSDPipeline",
-    ]
-    _import_structure["i2vgen_xl"] = ["I2VGenXLPipeline"]
-    _import_structure["unclip"] = ["UnCLIPImageVariationPipeline", "UnCLIPPipeline"]
-    _import_structure["unidiffuser"] = [
-        "ImageTextPipelineOutput",
-        "UniDiffuserModel",
-        "UniDiffuserPipeline",
-        "UniDiffuserTextDecoder",
-    ]
-    _import_structure["wuerstchen"] = [
-        "WuerstchenCombinedPipeline",
-        "WuerstchenDecoderPipeline",
-        "WuerstchenPriorPipeline",
     ]
     _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline"]
 try:

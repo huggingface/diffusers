@@ -23,7 +23,7 @@ from PIL import Image
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....schedulers import DDIMScheduler, DDPMScheduler
 from ....utils.torch_utils import randn_tensor
-from ...pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from .mel import Mel
 
 
