@@ -15,8 +15,8 @@ import torch
 from torch import nn
 from transformers import CLIPPreTrainedModel, CLIPVisionModel
 
+from ....models.attention import BasicTransformerBlock
 from ....utils import logging
-from ...models.attention import BasicTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

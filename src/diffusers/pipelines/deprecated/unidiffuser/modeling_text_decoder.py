@@ -6,8 +6,8 @@ from torch import nn
 from transformers import GPT2Config, GPT2LMHeadModel
 from transformers.modeling_utils import ModuleUtilsMixin
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...models import ModelMixin
+from ....configuration_utils import ConfigMixin, register_to_config
+from ....models import ModelMixin
 
 
 # Modified from ClipCaptionModel in https://github.com/thu-ml/unidiffuser/blob/main/libs/caption_decoder.py

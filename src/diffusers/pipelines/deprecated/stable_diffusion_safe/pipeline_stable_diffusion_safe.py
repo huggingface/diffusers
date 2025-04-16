@@ -7,13 +7,13 @@ import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from ....configuration_utils import FrozenDict
 from ....image_processor import PipelineImageInput
 from ....loaders import IPAdapterMixin
 from ....models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ....schedulers import KarrasDiffusionSchedulers
 from ....utils import deprecate, is_torch_xla_available, logging
 from ....utils.torch_utils import randn_tensor
-from ...configuration_utils import FrozenDict
 from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import StableDiffusionSafePipelineOutput
 from .safety_checker import SafeStableDiffusionSafetyChecker

@@ -21,9 +21,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ....configuration_utils import ConfigMixin, register_to_config
+from ....models import ModelMixin
 from ....utils import BaseOutput
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...models import ModelMixin
 from .camera import create_pan_cameras
 
 
