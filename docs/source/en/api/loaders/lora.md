@@ -25,6 +25,8 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`SanaLoraLoaderMixin`] provides similar functions for [Sana](https://huggingface.co/docs/diffusers/main/en/api/pipelines/sana).
 - [`HunyuanVideoLoraLoaderMixin`] provides similar functions for [HunyuanVideo](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hunyuan_video).
 - [`Lumina2LoraLoaderMixin`] provides similar functions for [Lumina2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/lumina2).
+- [`WanLoraLoaderMixin`] provides similar functions for [Lumina2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/wan).
+- [`CogView4LoraLoaderMixin`] provides similar functions for [CogView3](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogview4).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
@@ -36,50 +38,58 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 ## StableDiffusionLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.StableDiffusionLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.StableDiffusionLoraLoaderMixin
 
 ## StableDiffusionXLLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.StableDiffusionXLLoraLoaderMixin
 
 ## SD3LoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.SD3LoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.SD3LoraLoaderMixin
 
 ## FluxLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.FluxLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.FluxLoraLoaderMixin
 
 ## CogVideoXLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.CogVideoXLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.CogVideoXLoraLoaderMixin
 
 ## Mochi1LoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.Mochi1LoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.Mochi1LoraLoaderMixin
 ## AuraFlowLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.AuraFlowLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.AuraFlowLoraLoaderMixin
 
 ## LTXVideoLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.LTXVideoLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.LTXVideoLoraLoaderMixin
 
 ## SanaLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.SanaLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.SanaLoraLoaderMixin
 
 ## HunyuanVideoLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.HunyuanVideoLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.HunyuanVideoLoraLoaderMixin
 
 ## Lumina2LoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.Lumina2LoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.Lumina2LoraLoaderMixin
+
+## WanLoraLoaderMixin
+
+[[autodoc]] loaders.lora.lora_pipeline.WanLoraLoaderMixin
+
+## CogView4LoraLoaderMixin
+
+[[autodoc]] loaders.lora.lora_pipeline.CogView4LoraLoaderMixin
 
 ## AmusedLoraLoaderMixin
 
-[[autodoc]] loaders.lora_pipeline.AmusedLoraLoaderMixin
+[[autodoc]] loaders.lora.lora_pipeline.AmusedLoraLoaderMixin
 
 ## LoraBaseMixin
 
