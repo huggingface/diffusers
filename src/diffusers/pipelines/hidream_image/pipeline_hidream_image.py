@@ -927,26 +927,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
             latents,
         )
 
-        if latents.shape[-2] != latents.shape[-1]:
-            B, C, H, W = latents.shape
-            pH, pW = H // self.transformer.config.patch_size, W // self.transformer.config.patch_size
-
-            img_sizes = torch.tensor([pH, pW], dtype=torch.int64).reshape(-1)
-            img_ids = torch.zeros(pH, pW, 3)
-            img_ids[..., 1] = img_ids[..., 1] + torch.arange(pH)[:, None]
-            img_ids[..., 2] = img_ids[..., 2] + torch.arange(pW)[None, :]
-            img_ids = img_ids.reshape(pH * pW, -1)
-            img_ids_pad = torch.zeros(self.transformer.max_seq, 3)
-            img_ids_pad[: pH * pW, :] = img_ids
-
-            img_sizes = img_sizes.unsqueeze(0).to(latents.device)
-            img_ids = img_ids_pad.unsqueeze(0).to(latents.device)
-            if self.do_classifier_free_guidance:
-                img_sizes = img_sizes.repeat(2 * B, 1)
-                img_ids = img_ids.repeat(2 * B, 1, 1)
-        else:
-            img_sizes = img_ids = None
-
         # 5. Prepare timesteps
         mu = calculate_shift(self.transformer.max_seq)
         scheduler_kwargs = {"mu": mu}
@@ -981,8 +961,6 @@ class HiDreamImagePipeline(DiffusionPipeline):
                     encoder_hidden_states_t5=prompt_embeds_t5,
                     encoder_hidden_states_llama3=prompt_embeds_llama3,
                     pooled_embeds=pooled_prompt_embeds,
-                    img_sizes=img_sizes,
-                    img_ids=img_ids,
                     return_dict=False,
                 )[0]
                 noise_pred = -noise_pred
