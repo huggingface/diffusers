@@ -608,7 +608,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         transformer_dtype = self.transformer.dtype
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar, self.transformer._cache_context() as cc:
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
@@ -619,24 +619,10 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
 
-                cc.set_context("cond")
-                noise_pred_cond = self.transformer(
-                    hidden_states=latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep=timestep,
-                    original_size=original_size,
-                    target_size=target_size,
-                    crop_coords=crops_coords_top_left,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
-
-                # perform guidance
-                if self.do_classifier_free_guidance:
-                    cc.set_context("uncond")
-                    noise_pred_uncond = self.transformer(
+                with self.transformer.cache_context("cond"):
+                    noise_pred_cond = self.transformer(
                         hidden_states=latent_model_input,
-                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
                         timestep=timestep,
                         original_size=original_size,
                         target_size=target_size,
@@ -645,6 +631,19 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                         return_dict=False,
                     )[0]
 
+                # perform guidance
+                if self.do_classifier_free_guidance:
+                    with self.transformer.cache_context("uncond"):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=latent_model_input,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            timestep=timestep,
+                            original_size=original_size,
+                            target_size=target_size,
+                            crop_coords=crops_coords_top_left,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0]
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
                 else:
                     noise_pred = noise_pred_cond

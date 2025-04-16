@@ -778,7 +778,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         )
 
         # 7. Denoising loop
-        with self.progress_bar(total=num_inference_steps) as progress_bar, self.transformer._cache_context() as cc:
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
@@ -792,19 +792,19 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 timestep = t.expand(latent_model_input.shape[0])
                 timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask)
 
-                cc.set_context("cond_uncond")
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep=timestep,
-                    encoder_attention_mask=prompt_attention_mask,
-                    num_frames=latent_num_frames,
-                    height=latent_height,
-                    width=latent_width,
-                    rope_interpolation_scale=rope_interpolation_scale,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond_uncond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep=timestep,
+                        encoder_attention_mask=prompt_attention_mask,
+                        num_frames=latent_num_frames,
+                        height=latent_height,
+                        width=latent_width,
+                        rope_interpolation_scale=rope_interpolation_scale,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )[0]
                 noise_pred = noise_pred.float()
 
                 if self.do_classifier_free_guidance:

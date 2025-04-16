@@ -160,7 +160,7 @@ class ModelHook:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
         return module
 
-    def _mark_state(self, module: torch.nn.Module, name: str) -> None:
+    def _set_context(self, module: torch.nn.Module, name: str) -> None:
         # Iterate over all attributes of the hook to see if any of them have the type `ContextAwareState`. If so, call `set_context` on them.
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
@@ -293,18 +293,18 @@ class HookRegistry:
             module._diffusers_hook = cls(module)
         return module._diffusers_hook
 
-    def _mark_state(self, name: str) -> None:
+    def _set_context(self, name: Optional[str] = None) -> None:
         for hook_name in reversed(self._hook_order):
             hook = self.hooks[hook_name]
             if hook._is_stateful:
-                hook._mark_state(self._module_ref, name)
+                hook._set_context(self._module_ref, name)
 
         for module_name, module in unwrap_module(self._module_ref).named_modules():
             if module_name == "":
                 continue
             module = unwrap_module(module)
             if hasattr(module, "_diffusers_hook"):
-                module._diffusers_hook._mark_state(name)
+                module._diffusers_hook._set_context(name)
 
     def __repr__(self) -> str:
         registry_repr = ""

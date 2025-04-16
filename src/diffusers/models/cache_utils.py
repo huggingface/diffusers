@@ -118,19 +118,13 @@ class CacheMixin:
         HookRegistry.check_if_exists_or_initialize(self).reset_stateful_hooks(recurse=recurse)
 
     @contextmanager
-    def _cache_context(self):
+    def cache_context(self, name: str):
         r"""Context manager that provides additional methods for cache management."""
-        cache_context = _CacheContextManager(self)
-        yield cache_context
-
-
-class _CacheContextManager:
-    def __init__(self, model: CacheMixin):
-        self.model = model
-
-    def set_context(self, name: str) -> None:
         from ..hooks import HookRegistry
 
-        if self.model.is_cache_enabled:
-            registry = HookRegistry.check_if_exists_or_initialize(self.model)
-            registry._mark_state(name)
+        if self.is_cache_enabled:
+            registry = HookRegistry.check_if_exists_or_initialize(self)
+            registry._set_context(name)
+        yield
+        if self.is_cache_enabled:
+            registry._set_context(None)
