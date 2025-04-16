@@ -196,22 +196,35 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-
-    pipeline = pipeline.to(accelerator.device)
+    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
 
-    with autocast_ctx:
-        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+    # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
+    with torch.no_grad():
+        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds= pipeline.encode_prompt(
+            pipeline_args["prompt"], prompt_2=pipeline_args["prompt"], prompt_3=pipeline_args["prompt"], prompt_4=pipeline_args["prompt"]
+        )
+    images = []
+    for _ in range(args.num_validation_images):
+        with autocast_ctx:
+            image = pipeline(
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                pooled_prompt_embeds=pooled_prompt_embeds,
+                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds, generator=generator
+            ).images[0]
+            images.append(image)
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
@@ -222,7 +235,7 @@ def log_validation(
             tracker.log(
                 {
                     phase_name: [
-                        wandb.Image(image, caption=f"{i}: {pipeline_args['prompt']}") for i, image in enumerate(images)
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
                     ]
                 }
             )
@@ -1481,7 +1494,7 @@ def main(args):
     if not train_dataset.custom_instance_prompts:
         # delete tokenizers and text ecnoders except for llama (tokenizer & te four)
         # as it's needed for inference with pipeline
-        del text_encoder_one, text_encoder_two, text_encoder_three, tokenizer_one, tokenizer_two,tokenizer_three
+        del text_encoder_one, text_encoder_two, text_encoder_three, tokenizer_one, tokenizer_two, tokenizer_three
         if not args.validation_prompt:
             del tokenizer_four, text_encoder_four
         free_memory()
@@ -1643,7 +1656,7 @@ def main(args):
                     img_ids[..., 1] = img_ids[..., 1] + torch.arange(pH)[:, None]
                     img_ids[..., 2] = img_ids[..., 2] + torch.arange(pW)[None, :]
                     img_ids = img_ids.reshape(pH * pW, -1)
-                    img_ids_pad = torch.zeros(transformer.max_seq, 3)
+                    img_ids_pad = torch.zeros(self.transformer.max_seq, 3)
                     img_ids_pad[: pH * pW, :] = img_ids
 
                     img_sizes = img_sizes.unsqueeze(0).to(model_input.device)
@@ -1785,6 +1798,7 @@ def main(args):
                     args=args,
                     accelerator=accelerator,
                     pipeline_args=pipeline_args,
+                    torch_dtype=weight_dtype,
                     epoch=epoch,
                 )
                 free_memory()
@@ -1840,6 +1854,7 @@ def main(args):
                 pipeline_args=pipeline_args,
                 epoch=epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         if args.push_to_hub:
