@@ -761,7 +761,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         encoder_hidden_states_llama3: torch.Tensor = None,
         pooled_embeds: torch.Tensor = None,
         img_ids: Optional[torch.Tensor] = None,
-        img_sizes: Optional[torch.Tensor] = None,
+        img_sizes: Optional[List[Tuple[int, int]]] = None,
         hidden_states_masks: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
