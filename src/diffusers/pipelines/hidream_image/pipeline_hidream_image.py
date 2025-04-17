@@ -878,8 +878,8 @@ class HiDreamImagePipeline(DiffusionPipeline):
         lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
         (
             prompt_embeds_t5,
-            prompt_embeds_llama3,
             negative_prompt_embeds_t5,
+            prompt_embeds_llama3,
             negative_prompt_embeds_llama3,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
