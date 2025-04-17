@@ -139,19 +139,17 @@ export_to_video(output, "wan-i2v.mp4", fps=16)
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLWan, WanImageToVideoPipeline, WanTransformer3DModel, UniPCMultistepScheduler
+from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 
-transformer = WanTransformer3DModel.from_pretrained("Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers", torch_dtype=torch.bfloat16)
 
-model_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
+model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers"
 image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipe = WanImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, transformer=transformer, torch_dtype=torch.bfloat16
+    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
 )
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=16.0)
 pipe.to("cuda")
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
