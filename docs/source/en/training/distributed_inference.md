@@ -165,10 +165,10 @@ flush()
 Load the diffusion transformer next which has 12.5B parameters. This time, set `device_map="auto"` to automatically distribute the model across two 16GB GPUs. The `auto` strategy is backed by [Accelerate](https://hf.co/docs/accelerate/index) and available as a part of the [Big Model Inference](https://hf.co/docs/accelerate/concept_guides/big_model_inference) feature. It starts by distributing a model across the fastest device first (GPU) before moving to slower devices like the CPU and hard drive if needed. The trade-off of storing model parameters on slower devices is slower inference latency.
 
 ```py
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 import torch 
 
-transformer = FluxTransformer2DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map="auto",
