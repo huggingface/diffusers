@@ -58,6 +58,7 @@ from ..utils import (
     _is_valid_type,
     is_accelerate_available,
     is_accelerate_version,
+    is_hpu_available,
     is_torch_npu_available,
     is_torch_version,
     is_transformers_version,
@@ -446,18 +447,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # Enable generic support for Intel Gaudi accelerator using GPU/HPU migration
-        if device_type == "hpu" and kwargs.pop("hpu_migration", True):
-            os.environ["PT_HPU_GPU_MIGRATION"] = "1"
-            logger.debug('Environment variable set: PT_HPU_GPU_MIGRATION=1')
-
+        if kwargs.pop("hpu_migration", True) and is_hpu_available():
             os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
             logger.debug('Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1')
-
-            try:
-                import habana_frameworks.torch.core as htcore  # noqa: F401
-                logger.debug("Successfully imported habana_frameworks.torch.core")
-            except ImportError as e:
-                logger.warning("Could not import habana_frameworks.torch.core: %s", e)
 
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]

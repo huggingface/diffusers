@@ -335,6 +335,19 @@ def is_optimum_quanto_available():
 def is_timm_available():
     return _timm_available
 
+def is_hpu_available():
+    if (
+        importlib.util.find_spec("habana_frameworks") is None
+        or importlib.util.find_spec("habana_frameworks.torch") is None
+    ):
+        return False
+
+    os.environ["PT_HPU_GPU_MIGRATION"] = "1"
+    logger.debug('Environment variable set: PT_HPU_GPU_MIGRATION=1')
+
+    import torch
+    import habana_frameworks.torch  # noqa: F401
+    return hasattr(torch, "hpu") and torch.hpu.is_available()
 
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
