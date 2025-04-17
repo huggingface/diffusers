@@ -338,6 +338,10 @@ def get_class_obj_and_candidates(
     component_folder = os.path.join(cache_dir, component_name)
 
     if is_pipeline_module:
+        deprecated_pipelines = getattr(pipelines, "deprecated")
+        if hasattr(deprecated_pipelines, library_name):
+            pipelines = deprecated_pipelines
+
         pipeline_module = getattr(pipelines, library_name)
 
         class_obj = getattr(pipeline_module, class_name)
@@ -679,7 +683,6 @@ def load_sub_model(
     """Helper method to load the module `name` from `library_name` and `class_name`"""
 
     # retrieve class candidates
-
     class_obj, class_candidates = get_class_obj_and_candidates(
         library_name,
         class_name,

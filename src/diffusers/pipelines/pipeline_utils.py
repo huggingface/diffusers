@@ -939,6 +939,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # 7.3 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
+            is_deprecated_pipeline_module = hasattr(getattr(pipelines, "deprecated"), library_name)
+            is_pipeline_module = is_pipeline_module or is_deprecated_pipeline_module
+
             importable_classes = ALL_IMPORTABLE_CLASSES
             loaded_sub_model = None
 
