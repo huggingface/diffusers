@@ -938,8 +938,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
             # 7.3 Define all importable classes
-            is_pipeline_module = hasattr(pipelines, library_name)
             is_deprecated_pipeline_module = hasattr(getattr(pipelines, "deprecated"), library_name)
+            is_pipeline_module = hasattr(pipelines, library_name)
             is_pipeline_module = is_pipeline_module or is_deprecated_pipeline_module
 
             importable_classes = ALL_IMPORTABLE_CLASSES
@@ -1016,6 +1016,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # 10. Type checking init arguments
         for kw, arg in init_kwargs.items():
+            # For pipeline kwargs that are not model components
+            if kw not in expected_types.keys():
+                continue
             # Too complex to validate with type annotation alone
             if "scheduler" in kw:
                 continue
