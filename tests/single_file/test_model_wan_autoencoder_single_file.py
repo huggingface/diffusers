@@ -16,9 +16,7 @@
 import gc
 import unittest
 
-from diffusers import (
-    AutoencoderKLWan,
-)
+from diffusers import AutoencoderKLWan
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,

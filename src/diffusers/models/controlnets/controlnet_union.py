@@ -17,7 +17,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders.single_file_model import FromOriginalModelMixin
+from ...loaders import FromOriginalModelMixin
 from ...utils import logging
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,

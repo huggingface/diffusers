@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # SD3Transformer2D
 
-This class is useful when *only* loading weights into a [`SD3Transformer2DModel`]. If you need to load weights into the text encoder or a text encoder and SD3Transformer2DModel, check [`SD3LoraLoaderMixin`](lora#diffusers.loaders.SD3LoraLoaderMixin) class instead.
+This class is useful when *only* loading weights into a [`SD3Transformer2DModel`]. If you need to load weights into the text encoder or a text encoder and [SD3Transformer2DModel], check [`SD3LoraLoaderMixin`](lora#diffusers.loaders.SD3LoraLoaderMixin) class instead.
 
 The [`SD3Transformer2DLoadersMixin`] class currently only loads IP-Adapter weights, but will be used in the future to save weights and load LoRAs.
 
@@ -24,6 +24,6 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 ## SD3Transformer2DLoadersMixin
 
-[[autodoc]] loaders.transformer_sd3.SD3Transformer2DLoadersMixin
+[[autodoc]] loaders.ip_adapter.transformer_sd3.SD3Transformer2DLoadersMixin
     - all
     - _load_ip_adapter_weights
