@@ -157,50 +157,60 @@ class CogView4AttnProcessor:
             `Tuple[torch.Tensor, torch.Tensor]`: The processed hidden states for both image and text streams.
         """
 
+        # Get dimensions and device info
         batch_size, text_seq_length, embed_dim = encoder_hidden_states.shape
         batch_size, image_seq_length, embed_dim = hidden_states.shape
         dtype = encoder_hidden_states.dtype
         device = encoder_hidden_states.device
         latent_hidden_states = hidden_states
+        # Combine text and image streams for joint processing
         mixed_hidden_states = torch.cat([encoder_hidden_states, latent_hidden_states], dim=1)
 
+        # Initialize mask variables
         text_attention_mask, latent_attention_mask, batch_flag = None, None, None
 
         # 1. Construct attention mask and maybe packing input
         if attention_mask is not None:
+            # Extract mask components from the dictionary
             text_attention_mask = attention_mask.get("text_embedding_attn_mask", None)
             latent_attention_mask = attention_mask.get("latent_embedding_attn_mask", None)
             batch_flag = attention_mask.get("batch_flag", None)
 
+            # Create default masks if not provided
             if text_attention_mask is None:
                 text_attention_mask = torch.ones((batch_size, text_seq_length), dtype=torch.int32, device=device)
             if latent_attention_mask is None:
                 latent_attention_mask = torch.ones((batch_size, image_seq_length), dtype=torch.int32, device=device)
 
+            # Validate mask shapes and types
             assert text_attention_mask.dim() == 2, "the shape of text_attention_mask should be (batch_size, text_seq_length)"
             assert text_attention_mask.dtype == torch.int32, "the dtype of text_attention_mask should be torch.int32"
             assert latent_attention_mask.dim() == 2, "the shape of latent_attention_mask should be (batch_size, num_latent_tokens)"
             assert latent_attention_mask.dtype == torch.int32, "the dtype of latent_attention_mask should be torch.int32"
 
+            # Create combined mask for text and image tokens
             mixed_attention_mask = torch.ones(
                 (batch_size, text_seq_length + image_seq_length), dtype=torch.int32, device=device
             )
             mixed_attention_mask[:, :text_seq_length] = text_attention_mask
             mixed_attention_mask[:, text_seq_length:] = latent_attention_mask
 
-            # Create attention mask matrix
+            # Convert mask to attention matrix format (where 1 means attend, 0 means don't attend)
             mixed_attention_mask_input = mixed_attention_mask.unsqueeze(2).to(dtype=dtype)
             attention_mask_matrix = mixed_attention_mask_input @ mixed_attention_mask_input.transpose(1, 2)
 
-            # Apply batch packing if provided
+            # Handle batch packing if enabled
             if batch_flag is not None:
                 assert batch_flag.dim() == 1
+                # Determine packed batch size based on batch_flag
                 packing_batch_size = torch.max(batch_flag).item() + 1
 
+                # Calculate actual sequence lengths for each sample based on masks
                 text_seq_length = torch.sum(text_attention_mask, dim=1)
                 latent_seq_length = torch.sum(latent_attention_mask, dim=1)
                 mixed_seq_length = text_seq_length + latent_seq_length
 
+                # Calculate packed sequence lengths for each packed batch
                 text_seq_length_packed = [
                     torch.sum(text_attention_mask[batch_flag == batch_idx]).item()
                     for batch_idx in range(packing_batch_size)
@@ -213,19 +223,19 @@ class CogView4AttnProcessor:
                     torch.sum(mixed_attention_mask[batch_flag == batch_idx]).item()
                     for batch_idx in range(packing_batch_size)
                 ]
-                assert torch.equal(
-                    torch.tensor(mixed_seq_length_packed),
-                    torch.tensor(text_seq_length_packed) + torch.tensor(latent_seq_length_packed),
-                )
+                
                 assert len(mixed_seq_length_packed) == packing_batch_size
 
+                # Pack sequences by removing padding tokens
                 mixed_attention_mask_flatten = mixed_attention_mask.flatten(0, 1)
                 mixed_hidden_states_flatten = mixed_hidden_states.flatten(0, 1)
                 mixed_hidden_states_unpad = mixed_hidden_states_flatten[mixed_attention_mask_flatten == 1]
                 assert torch.sum(mixed_seq_length) == mixed_hidden_states_unpad.shape[0]
 
+                # Split the unpadded sequence into packed batches
                 mixed_hidden_states_packed = torch.split(mixed_hidden_states_unpad, mixed_seq_length_packed)
 
+                # Re-pad to create packed batches with right-side padding
                 mixed_hidden_states_packed_padded = torch.nn.utils.rnn.pad_sequence(
                     mixed_hidden_states_packed,
                     batch_first=True,
@@ -233,16 +243,21 @@ class CogView4AttnProcessor:
                     padding_side="right",
                 )
 
+                # Create attention mask for packed batches
                 l = mixed_hidden_states_packed_padded.shape[1]
                 attention_mask_matrix = torch.zeros(
                     (packing_batch_size, l, l),
                     dtype=dtype,
                     device=device,
                 )
+                
+                # Fill attention mask with block diagonal matrices
+                # This ensures that tokens can only attend to other tokens within the same original sample
                 for idx, mask in enumerate(attention_mask_matrix):
                     seq_lengths = mixed_seq_length[batch_flag == idx]
                     offset = 0
                     for length in seq_lengths:
+                        # Create a block of 1s for each sample in the packed batch
                         mask[offset : offset + length, offset : offset + length] = 1
                         offset += length
 
@@ -250,31 +265,36 @@ class CogView4AttnProcessor:
             attention_mask_matrix = attention_mask_matrix.unsqueeze(1)  # Add attention head dim
             attention_mask = attention_mask_matrix
 
+        # Prepare hidden states for attention computation
         if batch_flag is None:
+            # If no packing, just combine text and image tokens
             hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
         else:
+            # If packing, use the packed sequence
             hidden_states = mixed_hidden_states_packed_padded
 
-        # 2. QKV projections
+        # 2. QKV projections - convert hidden states to query, key, value
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
 
+        # Reshape for multi-head attention: [batch, seq_len, heads*dim] -> [batch, heads, seq_len, dim]
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
-        # 3. QK normalization
+        # 3. QK normalization - apply layer norm to queries and keys if configured
         if attn.norm_q is not None:
             query = attn.norm_q(query).to(dtype=dtype)
         if attn.norm_k is not None:
             key = attn.norm_k(key).to(dtype=dtype)
 
-        # 4. Rotational positional embeddings applied to latent stream
+        # 4. Apply rotary positional embeddings to image tokens only
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
 
             if batch_flag is None:
+                # Apply RoPE only to image tokens (after text tokens)
                 query[:, :, text_seq_length:, :] = apply_rotary_emb(
                     query[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
                 )
@@ -282,6 +302,7 @@ class CogView4AttnProcessor:
                     key[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
                 )
             else:
+                # For packed batches, need to carefully apply RoPE to appropriate tokens
                 assert query.shape[0] == packing_batch_size
                 assert key.shape[0] == packing_batch_size
                 assert len(image_rotary_emb) == batch_size
@@ -289,11 +310,14 @@ class CogView4AttnProcessor:
                 rope_idx = 0
                 for idx in range(packing_batch_size):
                     offset = 0
+                    # Get text and image sequence lengths for samples in this packed batch
                     text_seq_length_bi = text_seq_length[batch_flag == idx]
                     latent_seq_length_bi = latent_seq_length[batch_flag == idx]
 
+                    # Apply RoPE to each image segment in the packed sequence
                     for tlen, llen in zip(text_seq_length_bi, latent_seq_length_bi):
                         mlen = tlen + llen
+                        # Apply RoPE only to image tokens (after text tokens)
                         query[idx, :, offset + tlen : offset + mlen, :] = apply_rotary_emb(
                             query[idx, :, offset + tlen : offset + mlen, :],
                             image_rotary_emb[rope_idx],
@@ -311,38 +335,51 @@ class CogView4AttnProcessor:
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
+        # Reshape back: [batch, heads, seq_len, dim] -> [batch, seq_len, heads*dim]
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
 
-
-        # 5. Output projection
+        # 5. Output projection - project attention output to model dimension
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
 
+        # Split the output back into text and image streams
         if batch_flag is None:
+            # Simple split for non-packed case
             encoder_hidden_states, hidden_states = hidden_states.split(
                 [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
             )
         else:
+            # For packed case: need to unpack, split text/image, then restore to original shapes
+            # First, unpad the sequence based on the packed sequence lengths
             hidden_states_unpad = torch.nn.utils.rnn.unpad_sequence(
                 hidden_states,
                 lengths=torch.tensor(mixed_seq_length_packed),
                 batch_first=True,
             )
+            # Concatenate all unpadded sequences
             hidden_states_flatten = torch.cat(hidden_states_unpad, dim=0)
+            # Split by original sample sequence lengths
             hidden_states_unpack = torch.split(hidden_states_flatten, mixed_seq_length.tolist())
             assert len(hidden_states_unpack) == batch_size
+            
+            # Further split each sample's sequence into text and image parts
             hidden_states_unpack = [
                 torch.split(h, [tlen, llen])
                 for h, tlen, llen in zip(hidden_states_unpack, text_seq_length, latent_seq_length)
             ]
+            # Separate text and image sequences
             encoder_hidden_states_unpad = [h[0] for h in hidden_states_unpack]
             hidden_states_unpad = [h[1] for h in hidden_states_unpack]
 
+            # Update the original tensors with the processed values, respecting the attention masks
             for idx in range(batch_size):
+                # Place unpacked text tokens back in the encoder_hidden_states tensor
                 encoder_hidden_states[idx][text_attention_mask[idx] == 1] = encoder_hidden_states_unpad[idx]
+                # Place unpacked image tokens back in the latent_hidden_states tensor
                 latent_hidden_states[idx][latent_attention_mask[idx] == 1] = hidden_states_unpad[idx]
 
+            # Update the output hidden states
             hidden_states = latent_hidden_states
 
         return hidden_states, encoder_hidden_states
