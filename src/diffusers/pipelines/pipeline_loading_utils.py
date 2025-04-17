@@ -821,6 +821,7 @@ def _fetch_class_library_tuple(module):
     # import it here to avoid circular import
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     pipelines = getattr(diffusers_module, "pipelines")
+    deprecated_pipelines = getattr(pipelines, "deprecated")
 
     # register the config from the original module, not the dynamo compiled one
     not_compiled_module = _unwrap_model(module)
@@ -831,7 +832,9 @@ def _fetch_class_library_tuple(module):
     pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
 
     path = not_compiled_module.__module__.split(".")
-    is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+    is_pipeline_module = pipeline_dir in path and (
+        hasattr(pipelines, pipeline_dir) or hasattr(deprecated_pipelines, pipeline_dir)
+    )
 
     # if library is not in LOADABLE_CLASSES, then it is a custom module.
     # Or if it's a pipeline module, then the module is inside the pipeline
