@@ -495,8 +495,8 @@ class HiDreamImagePipeline(DiffusionPipeline):
 
         return (
             prompt_embeds_t5,
-            prompt_embeds_llama3,
             negative_prompt_embeds_t5,
+            prompt_embeds_llama3,
             negative_prompt_embeds_llama3,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
