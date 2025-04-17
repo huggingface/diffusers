@@ -1246,7 +1246,7 @@ def main(args):
 
     # Load scheduler and models
     noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision, shift=3.0
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
     text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(text_encoder_cls_one,
