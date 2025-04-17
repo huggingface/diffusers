@@ -21,10 +21,10 @@ from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AuraFlowTransformer2DModel, AutoencoderKL
 from diffusers.models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 if is_torch_xla_available():
@@ -119,12 +119,12 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should be in [0.0, 1.0] but is {strength}")
-            
+
         patch_size = 2  # AuraFlow uses patch size of 2
         required_divisor = self.vae_scale_factor * patch_size
         if height % required_divisor != 0 or width % required_divisor != 0:
             raise ValueError(
-                f"\`height\` and \`width\` have to be divisible by the VAE scale factor ({self.vae_scale_factor}) times the transformer patch size ({patch_size}), which is {required_divisor}. "
+                rf"\`height\` and \`width\` have to be divisible by the VAE scale factor ({self.vae_scale_factor}) times the transformer patch size ({patch_size}), which is {required_divisor}. "
                 f"Your dimensions are ({height}, {width})."
             )
 
@@ -339,7 +339,7 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
 
     def get_timesteps(self, num_inference_steps, strength, device):
         # 1. Call set_timesteps with num_inference_steps
-        self.scheduler.set_timesteps(num_inference_steps, device=device) # Ensure scheduler uses the correct number of steps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
 
         # 2. Calculate strength-based number of steps and offset
         init_timestep_count = min(int(num_inference_steps * strength), num_inference_steps)
@@ -353,14 +353,7 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
         return timesteps, num_actual_inference_steps
 
     def prepare_img2img_latents(
-        self, 
-        image, 
-        timestep, 
-        batch_size, 
-        num_images_per_prompt, 
-        dtype, 
-        device, 
-        generator=None
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None
     ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -380,34 +373,87 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
                     f" size of {batch_size}. Make sure the batch size matches the length of the generators."
                 )
 
-            if image.shape[0] == 1:
-                image = image.repeat(batch_size, 1, 1, 1)
+            # Handle different batch size scenarios
+            if image.shape[0] < batch_size:
+                if batch_size % image.shape[0] == 0:
+                    # Duplicate the image to match the batch size
+                    additional_image_per_prompt = batch_size // image.shape[0]
+                    image = torch.cat([image] * additional_image_per_prompt, dim=0)
+                else:
+                    raise ValueError(
+                        f"Cannot duplicate `image` of batch size {image.shape[0]} to {batch_size} text prompts."
+                        f" Batch size must be divisible by the image batch size."
+                    )
 
             # encode the init image into latents and scale the latents
-            latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+            # 1. Get VAE distribution parameters (on device)
+            latent_dist = self.vae.encode(image).latent_dist
+            mean, std = latent_dist.mean, latent_dist.std  # Already on device
+
+            # 2. Sample noise for each batch element individually if using multiple generators
+            if isinstance(generator, list):
+                sample = torch.cat(
+                    [
+                        torch.randn(
+                            (1, *mean.shape[1:]),
+                            generator=generator[i],
+                            device=generator[i].device if hasattr(generator[i], "device") else "cpu",
+                            dtype=mean.dtype,
+                        ).to(mean.device)
+                        for i in range(batch_size)
+                    ]
+                )
+            else:
+                # Single generator - use its device if it has one
+                generator_device = getattr(generator, "device", "cpu") if generator is not None else "cpu"
+                noise = torch.randn(mean.shape, generator=generator, device=generator_device, dtype=mean.dtype)
+                sample = noise.to(mean.device)
+
+            # Compute latents
+            latents = mean + std * sample
+
+            # Scale latents
             latents = latents * self.vae.config.scaling_factor
 
             # get the original timestep using init_timestep
             init_timestep = timestep
 
             # add noise to latents using the timesteps
-            noise = torch.randn(latents.shape, generator=generator, device=device, dtype=dtype)
-            
+            # Handle noise generation with multiple generators if provided
+            if isinstance(generator, list):
+                noise = torch.cat(
+                    [
+                        torch.randn(
+                            (1, *latents.shape[1:]),
+                            generator=generator[i],
+                            device=generator[i].device if hasattr(generator[i], "device") else "cpu",
+                            dtype=latents.dtype,
+                        ).to(latents.device)
+                        for i in range(batch_size)
+                    ]
+                )
+            else:
+                # Single generator - use its device if it has one
+                generator_device = getattr(generator, "device", "cpu") if generator is not None else "cpu"
+                noise = torch.randn(
+                    latents.shape, generator=generator, device=generator_device, dtype=latents.dtype
+                ).to(latents.device)
+
             # Ensure timestep tensor is on the same device
             t = init_timestep.to(latents.device)
-            
+
             # Normalize timestep to [0, 1] range (using scheduler's config)
             t = t / self.scheduler.config.num_train_timesteps
-            
+
             # Reshape t to match the dimensions needed for broadcasting
             required_dims = len(latents.shape)
             current_dims = len(t.shape)
             for _ in range(required_dims - current_dims):
                 t = t.unsqueeze(-1)
-            
+
             # Interpolation: x_t = t * x_1 + (1 - t) * x_0
             latents = t * noise + (1 - t) * latents
-            
+
         return latents
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.upcast_vae
@@ -606,13 +652,14 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             max_sequence_length=max_sequence_length,
         )
+
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1]
-        
+
         # 6. Prepare latent variables
         latents = self.prepare_img2img_latents(
             image,
@@ -632,10 +679,13 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-                # aura use timestep value between 0 and 1, with t=1 as noise and t=0 as the image
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = torch.tensor([t / 1000]).expand(latent_model_input.shape[0])
-                timestep = timestep.to(latents.device, dtype=latents.dtype)
+                # AureFlow use timestep value between 0 and 1, with t=1 as noise and t=0 as the image
+                # create a timestep tensor with the correct batch size
+                # ensure it matches the batch size of the model input
+                t_float = t / 1000
+                timestep_tensor = torch.full(
+                    (latent_model_input.shape[0],), t_float, device=latents.device, dtype=latents.dtype
+                )
 
                 # Make sure latent_model_input has the same dtype as the transformer
                 transformer_dtype = self.transformer.dtype
@@ -646,7 +696,7 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
-                    timestep=timestep,
+                    timestep=timestep_tensor,
                     return_dict=False,
                 )[0]
 
@@ -682,15 +732,19 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
             if needs_upcasting:
                 self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-            
+
             # Apply proper scaling factor and shift factor if available
-            if hasattr(self.vae.config, "scaling_factor") and hasattr(self.vae.config, "shift_factor") and getattr(self.vae.config, "shift_factor", None) is not None:
+            if (
+                hasattr(self.vae.config, "scaling_factor")
+                and hasattr(self.vae.config, "shift_factor")
+                and getattr(self.vae.config, "shift_factor", None) is not None
+            ):
                 # Handle both scaling and shifting
                 latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
             else:
                 # Just scale using standard approach
                 latents = latents / self.vae.config.scaling_factor
-                
+
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
@@ -700,4 +754,4 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(images=image) 
+        return ImagePipelineOutput(images=image)

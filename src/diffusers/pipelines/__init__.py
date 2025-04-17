@@ -515,7 +515,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
         )
-        from .aura_flow import AuraFlowPipeline, AuraFlowImg2ImgPipeline
+        from .aura_flow import AuraFlowImg2ImgPipeline, AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,

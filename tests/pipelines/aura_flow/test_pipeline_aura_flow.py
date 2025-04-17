@@ -135,3 +135,6 @@ class AuraFlowPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     @unittest.skip("xformers attention processor does not exist for AuraFlow")
     def test_xformers_attention_forwardGenerator_pass(self):
         pass
+
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=0.0004):
+        self._test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
