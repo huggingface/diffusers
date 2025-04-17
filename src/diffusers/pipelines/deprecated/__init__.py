@@ -76,6 +76,8 @@ else:
         "StableDiffusionControlNetXSPipeline",
         "StableDiffusionXLControlNetXSPipeline",
     ]
+    _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
+    _import_structure["controlnet"] = ["BlipDiffusionControlNetPipeline"]
     _import_structure["i2vgen_xl"] = ["I2VGenXLPipeline"]
     _import_structure["latte"] = ["LattePipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]

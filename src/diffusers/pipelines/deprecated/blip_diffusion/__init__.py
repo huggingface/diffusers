@@ -5,7 +5,7 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import OptionalDependencyNotAvailable, is_torch_available, is_transformers_available
+from ....utils import OptionalDependencyNotAvailable, is_torch_available, is_transformers_available
 
 
 try:

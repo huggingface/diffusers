@@ -149,6 +149,8 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "BlipDiffusionPipeline",
+            "BlipDiffusionControlNetPipeline",
         ]
     )
     _import_structure["allegro"] = ["AllegroPipeline"]
@@ -180,7 +182,6 @@ else:
         "AudioLDM2ProjectionModel",
         "AudioLDM2UNet2DConditionModel",
     ]
-    _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -191,7 +192,6 @@ else:
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["controlnet"].extend(
         [
-            "BlipDiffusionControlNetPipeline",
             "StableDiffusionControlNetImg2ImgPipeline",
             "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionControlNetPipeline",
