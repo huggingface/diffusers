@@ -117,14 +117,14 @@ class WanImageEmbedding(torch.nn.Module):
         self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
         self.norm2 = FP32LayerNorm(out_features)
         if pos_embed_seq_len is not None:
-            self.pos_embed = nn.Parameter(torch.zeros(1, pos_embed_seq_len, 1280))
+            self.pos_embed = nn.Parameter(torch.zeros(1, pos_embed_seq_len, in_features))
         else:
             self.pos_embed = None
 
     def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
         if self.pos_embed is not None:
-            batch_size, seq_len, h = encoder_hidden_states_image.shape
-            encoder_hidden_states_image = encoder_hidden_states_image.view(-1, 2 * seq_len, h)
+            batch_size, seq_len, embed_dim = encoder_hidden_states_image.shape
+            encoder_hidden_states_image = encoder_hidden_states_image.view(-1, 2 * seq_len, embed_dim)
             encoder_hidden_states_image = encoder_hidden_states_image + self.pos_embed
 
         hidden_states = self.norm1(encoder_hidden_states_image)
