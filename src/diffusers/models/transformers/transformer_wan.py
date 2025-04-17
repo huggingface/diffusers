@@ -110,7 +110,7 @@ class WanAttnProcessor2_0:
 
 
 class WanImageEmbedding(torch.nn.Module):
-    def __init__(self, in_features: int, out_features: int, pos_embed_seq_len = None):
+    def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
 
         self.norm1 = FP32LayerNorm(in_features)

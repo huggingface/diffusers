@@ -41,7 +41,6 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
     # for the FLF2V model
     "img_emb.emb_pos": "condition_embedder.image_embedder.pos_embed",
-    
     # Add attention component mappings
     "self_attn.q": "attn1.to_q",
     "self_attn.k": "attn1.to_k",
@@ -49,14 +48,12 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "self_attn.o": "attn1.to_out.0",
     "self_attn.norm_q": "attn1.norm_q",
     "self_attn.norm_k": "attn1.norm_k",
-    
     "cross_attn.q": "attn2.to_q",
     "cross_attn.k": "attn2.to_k",
     "cross_attn.v": "attn2.to_v",
     "cross_attn.o": "attn2.to_out.0",
     "cross_attn.norm_q": "attn2.norm_q",
     "cross_attn.norm_k": "attn2.norm_k",
-    
     # Fix these mappings for the image-specific projections
     "attn2.to_k_img": "attn2.add_k_proj",
     "attn2.to_v_img": "attn2.add_v_proj",

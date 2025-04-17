@@ -406,7 +406,8 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             last_image = last_image.unsqueeze(2)
             video_condition = torch.cat(
-                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image], dim=2
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image],
+                dim=2,
             )
         video_condition = video_condition.to(device=device, dtype=dtype)
 
@@ -643,7 +644,9 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
         if last_image is not None:
-            last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(device, dtype=torch.float32)
+            last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
+                device, dtype=torch.float32
+            )
         latents, condition = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
