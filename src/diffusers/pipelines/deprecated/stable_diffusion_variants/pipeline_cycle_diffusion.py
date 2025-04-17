@@ -30,8 +30,8 @@ from ....schedulers import DDIMScheduler
 from ....utils import PIL_INTERPOLATION, USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ....utils.torch_utils import randn_tensor
 from ...pipeline_utils import DiffusionPipeline
-from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from ...stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

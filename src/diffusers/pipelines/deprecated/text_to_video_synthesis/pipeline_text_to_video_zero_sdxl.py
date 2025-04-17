@@ -39,7 +39,7 @@ from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 
 
 if is_invisible_watermark_available():
-    from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
+    from ...stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
 
 from ....utils import is_torch_xla_available

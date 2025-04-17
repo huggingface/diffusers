@@ -11,7 +11,7 @@ from ....schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ....utils import deprecate, logging
 from ...onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline
-from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+from ...stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

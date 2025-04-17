@@ -43,7 +43,7 @@ from ....utils import (
 )
 from ....utils.torch_utils import randn_tensor
 from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from ...stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

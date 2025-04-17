@@ -26,8 +26,8 @@ from ....schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ....utils import deprecate, is_torch_xla_available, logging
 from ....utils.torch_utils import randn_tensor
 from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from ..stable_diffusion import StableDiffusionPipelineOutput
-from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from ...stable_diffusion import StableDiffusionPipelineOutput
+from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .image_encoder import PaintByExampleImageEncoder
 
 
