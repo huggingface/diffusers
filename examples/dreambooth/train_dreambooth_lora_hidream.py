@@ -68,7 +68,6 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
 
-
 if is_wandb_available():
     import wandb
 
@@ -82,12 +81,12 @@ if is_torch_npu_available():
 
 
 def save_model_card(
-    repo_id: str,
-    images=None,
-    base_model: str = None,
-    instance_prompt=None,
-    validation_prompt=None,
-    repo_folder=None,
+        repo_id: str,
+        images=None,
+        base_model: str = None,
+        instance_prompt=None,
+        validation_prompt=None,
+        repo_folder=None,
 ):
     widget_dict = []
     if images is not None:
@@ -122,11 +121,11 @@ You should use `{instance_prompt}` to trigger the image generation.
     >>> import torch
     >>> from transformers import PreTrainedTokenizerFast, LlamaForCausalLM
     >>> from diffusers import UniPCMultistepScheduler, HiDreamImagePipeline
-    
+
     >>> scheduler = UniPCMultistepScheduler(
     ...     flow_shift=3.0, prediction_type="flow_prediction", use_flow_sigmas=True
     ... )
-    
+
     >>> tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
     >>> text_encoder_4 = LlamaForCausalLM.from_pretrained(
     ...     "meta-llama/Meta-Llama-3.1-8B-Instruct",
@@ -134,7 +133,7 @@ You should use `{instance_prompt}` to trigger the image generation.
     ...     output_attentions=True,
     ...     torch_dtype=torch.bfloat16,
     ... )
-    
+
     >>> pipe = HiDreamImagePipeline.from_pretrained(
     ...     "HiDream-ai/HiDream-I1-Full",
     ...     scheduler=scheduler,
@@ -145,8 +144,8 @@ You should use `{instance_prompt}` to trigger the image generation.
     >>> pipe.enable_model_cpu_offload()
     >>> pipe.load_lora_weights(f"{repo_id}")
     >>> image = pipe(f"{instance_prompt}").images[0]
-    
-     
+
+
 ```
 
 For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
@@ -173,6 +172,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
     model_card = populate_model_card(model_card, tags=tags)
     model_card.save(os.path.join(repo_folder, "README.md"))
 
+
 def load_text_encoders(class_one, class_two, class_three):
     text_encoder_one = class_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
@@ -184,20 +184,21 @@ def load_text_encoders(class_one, class_two, class_three):
         args.pretrained_model_name_or_path, subfolder="text_encoder_3", revision=args.revision, variant=args.variant
     )
     text_encoder_four = LlamaForCausalLM.from_pretrained(
-       "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "meta-llama/Meta-Llama-3.1-8B-Instruct",
         output_hidden_states=True,
         output_attentions=True,
-        torch_dtype=torch.bfloat16,)
+        torch_dtype=torch.bfloat16, )
     return text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four
 
+
 def log_validation(
-    pipeline,
-    args,
-    accelerator,
-    pipeline_args,
-    epoch,
-    torch_dtype,
-    is_final_validation=False,
+        pipeline,
+        args,
+        accelerator,
+        pipeline_args,
+        epoch,
+        torch_dtype,
+        is_final_validation=False,
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -212,8 +213,9 @@ def log_validation(
 
     # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
     with torch.no_grad():
-        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds= pipeline.encode_prompt(
-            pipeline_args["prompt"], prompt_2=pipeline_args["prompt"], prompt_3=pipeline_args["prompt"], prompt_4=pipeline_args["prompt"]
+        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = pipeline.encode_prompt(
+            pipeline_args["prompt"], prompt_2=pipeline_args["prompt"], prompt_3=pipeline_args["prompt"],
+            prompt_4=pipeline_args["prompt"]
         )
     images = []
     for _ in range(args.num_validation_images):
@@ -246,8 +248,9 @@ def log_validation(
 
     return images
 
+
 def import_model_class_from_model_name_or_path(
-    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
@@ -263,6 +266,7 @@ def import_model_class_from_model_name_or_path(
         return T5EncoderModel
     else:
         raise ValueError(f"{model_class} is not supported.")
+
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -321,8 +325,8 @@ def parse_args(input_args=None):
         type=str,
         default="image",
         help="The column of the dataset containing the target image. By "
-        "default, the standard Image Dataset maps out 'file_name' "
-        "to 'image'.",
+             "default, the standard Image Dataset maps out 'file_name' "
+             "to 'image'.",
     )
     parser.add_argument(
         "--caption_column",
@@ -570,7 +574,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="coefficients for computing the Prodigy stepsize using running averages. If set to None, "
-        "uses the value of square root of beta2. Ignored if optimizer is adamW",
+             "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
@@ -601,7 +605,7 @@ def parse_args(input_args=None):
         type=bool,
         default=True,
         help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. "
-        "Ignored if optimizer is adamW",
+             "Ignored if optimizer is adamW",
     )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
@@ -708,15 +712,15 @@ class DreamBoothDataset(Dataset):
     """
 
     def __init__(
-        self,
-        instance_data_root,
-        instance_prompt,
-        class_prompt,
-        class_data_root=None,
-        class_num=None,
-        size=1024,
-        repeats=1,
-        center_crop=False,
+            self,
+            instance_data_root,
+            instance_prompt,
+            class_prompt,
+            class_data_root=None,
+            class_num=None,
+            size=1024,
+            repeats=1,
+            center_crop=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -903,15 +907,16 @@ class PromptDataset(Dataset):
         example["index"] = index
         return example
 
+
 def _encode_prompt_with_llama(
-    text_encoder,
-    tokenizer,
-    max_sequence_length=128,
-    prompt=None,
-    num_images_per_prompt=1,
-    device=None,
-    text_input_ids=None,
-    attention_mask=None,
+        text_encoder,
+        tokenizer,
+        max_sequence_length=128,
+        prompt=None,
+        num_images_per_prompt=1,
+        device=None,
+        text_input_ids=None,
+        attention_mask=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
@@ -958,14 +963,14 @@ def _encode_prompt_with_llama(
 
 
 def _encode_prompt_with_t5(
-    text_encoder,
-    tokenizer,
-    max_sequence_length=128,
-    prompt=None,
-    num_images_per_prompt=1,
-    device=None,
-    text_input_ids=None,
-    attention_mask=None,
+        text_encoder,
+        tokenizer,
+        max_sequence_length=128,
+        prompt=None,
+        num_images_per_prompt=1,
+        device=None,
+        text_input_ids=None,
+        attention_mask=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
@@ -1004,13 +1009,13 @@ def _encode_prompt_with_t5(
 
 
 def _encode_prompt_with_clip(
-    text_encoder,
-    tokenizer,
-    prompt: str,
-    max_sequence_length=128,
-    device=None,
-    text_input_ids=None,
-    num_images_per_prompt: int = 1,
+        text_encoder,
+        tokenizer,
+        prompt: str,
+        max_sequence_length=128,
+        device=None,
+        text_input_ids=None,
+        num_images_per_prompt: int = 1,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
@@ -1047,14 +1052,14 @@ def _encode_prompt_with_clip(
 
 
 def encode_prompt(
-    text_encoders,
-    tokenizers,
-    prompt: str,
-    max_sequence_length,
-    device=None,
-    num_images_per_prompt: int = 1,
-    text_input_ids_list=None,
-    attention_mask_list=None,
+        text_encoders,
+        tokenizers,
+        prompt: str,
+        max_sequence_length,
+        device=None,
+        num_images_per_prompt: int = 1,
+        text_input_ids_list=None,
+        attention_mask_list=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -1103,6 +1108,7 @@ def encode_prompt(
     prompt_embeds = [t5_prompt_embeds, llama3_prompt_embeds]
 
     return prompt_embeds, pooled_prompt_embeds
+
 
 def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
@@ -1181,7 +1187,7 @@ def main(args):
             pipeline.to(accelerator.device)
 
             for example in tqdm(
-                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
                 images = pipeline(example["prompt"]).images
 
@@ -1243,7 +1249,9 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="scheduler", revision=args.revision
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three)
+    text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four = load_text_encoders(text_encoder_cls_one,
+                                                                                                   text_encoder_cls_two,
+                                                                                                   text_encoder_cls_three)
 
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -1371,7 +1379,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Make sure the trainable params are in float32.
@@ -1466,6 +1474,7 @@ def main(args):
 
     tokenizers = [tokenizer_one, tokenizer_two, tokenizer_three, tokenizer_four]
     text_encoders = [text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four]
+
     def compute_text_embeddings(prompt, text_encoders, tokenizers):
         with torch.no_grad():
             prompt_embeds, pooled_prompt_embeds = encode_prompt(
@@ -1684,12 +1693,12 @@ def main(args):
                 # Add noise according to flow matching.
                 # zt = (1 - texp) * x + texp * z1
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
-                noisy_model_input = (1.0 - sigmas) * noise + sigmas * model_input
+                noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
                 # Predict the noise residual
 
-                print("noisy_model_input", noisy_model_input.shape)
-                print("prompt_embeds", prompt_embeds[0].shape, prompt_embeds[1].shape)
-                print("pooled_prompt_embeds", pooled_prompt_embeds.shape)
+                # print("noisy_model_input", noisy_model_input.shape)
+                # print("prompt_embeds", prompt_embeds[0].shape, prompt_embeds[1].shape)
+                # print("pooled_prompt_embeds", pooled_prompt_embeds.shape)
 
                 model_pred = transformer(
                     hidden_states=noisy_model_input,
@@ -1699,15 +1708,14 @@ def main(args):
                     img_sizes=img_sizes,
                     img_ids=img_ids,
                     return_dict=False,
-                )[0]
-                print("model_pred", model_pred.shape)
+                )[0] * -1
+                # print("model_pred", model_pred.shape)
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
                 # flow matching loss via reverse ODE (HiDream uses an inverted flow field as compared to the more typical `noise - model_input` target)
-                target = model_input - noise
-
+                target = noise - model_input
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
                     model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
@@ -1825,10 +1833,10 @@ def main(args):
         # Load previous pipeline
         tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
         text_encoder_4 = LlamaForCausalLM.from_pretrained(
-             "meta-llama/Meta-Llama-3.1-8B-Instruct",
-             output_hidden_states=True,
-             output_attentions=True,
-             torch_dtype=torch.bfloat16,
+            "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            output_hidden_states=True,
+            output_attentions=True,
+            torch_dtype=torch.bfloat16,
         )
         pipeline = HiDreamImagePipeline.from_pretrained(
             args.pretrained_model_name_or_path,
