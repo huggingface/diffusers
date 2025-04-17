@@ -54,7 +54,6 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "cross_attn.o": "attn2.to_out.0",
     "cross_attn.norm_q": "attn2.norm_q",
     "cross_attn.norm_k": "attn2.norm_k",
-    # Fix these mappings for the image-specific projections
     "attn2.to_k_img": "attn2.add_k_proj",
     "attn2.to_v_img": "attn2.add_v_proj",
     "attn2.norm_k_img": "attn2.norm_added_k",
