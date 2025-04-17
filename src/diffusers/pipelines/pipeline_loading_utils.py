@@ -947,6 +947,7 @@ def _get_custom_components_and_folders(
 
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     pipelines = getattr(diffusers_module, "pipelines")
+    deprecated_pipelines = getattr(pipelines, "deprecated")
 
     # optionally create a custom component <> custom file mapping
     custom_components = {}
@@ -961,7 +962,9 @@ def _get_custom_components_and_folders(
 
         if candidate_file in filenames:
             custom_components[component] = module_candidate
-        elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
+        elif module_candidate not in LOADABLE_CLASSES and (
+            not hasattr(pipelines, module_candidate) and not hasattr(deprecated_pipelines, module_candidate)
+        ):
             raise ValueError(
                 f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
             )
