@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> init_image = Image.open(BytesIO(response.content)).convert("RGB")
         >>> init_image = init_image.resize((768, 512))
 
-        >>> pipe = AuraFlowImg2ImgPipeline.from_pretrained("fal/AuraFlow", torch_dtype=torch.float16)
+        >>> pipe = AuraFlowImg2ImgPipeline.from_pretrained("fal/AuraFlow-v0.3", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
         >>> prompt = "A fantasy landscape, trending on artstation"
         >>> image = pipe(prompt=prompt, image=init_image, strength=0.75, num_inference_steps=50).images[0]
@@ -338,19 +338,20 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
         return latents
 
     def get_timesteps(self, num_inference_steps, strength, device):
-        # 1. Call set_timesteps with num_inference_steps
+        # Set timesteps using the full range initially
         self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps.to(device=device)
 
-        # 2. Calculate strength-based number of steps and offset
-        init_timestep_count = min(int(num_inference_steps * strength), num_inference_steps)
-        t_start = max(num_inference_steps - init_timestep_count, 0)
+        if len(timesteps) != num_inference_steps:
+            num_inference_steps = len(timesteps)  # Adjust if scheduler changed num_steps
 
-        # 3. Get the timesteps *after* set_timesteps has been called (now has length num_inference_steps)
+        # Get the original timestep using init_timestep
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+        t_start = int(max(num_inference_steps - init_timestep, 0))
         timesteps = self.scheduler.timesteps[t_start:]
 
-        # 4. Return the correct slice and the number of actual steps
-        num_actual_inference_steps = len(timesteps)
-        return timesteps, num_actual_inference_steps
+        return timesteps, num_inference_steps - t_start
 
     def prepare_img2img_latents(
         self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None
@@ -385,10 +386,19 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
                         f" Batch size must be divisible by the image batch size."
                     )
 
+            # Temporarily move VAE to float32 for encoding
+            vae_dtype = self.vae.dtype
+            if vae_dtype != torch.float32:
+                self.vae.to(dtype=torch.float32)
+
             # encode the init image into latents and scale the latents
             # 1. Get VAE distribution parameters (on device)
-            latent_dist = self.vae.encode(image).latent_dist
+            latent_dist = self.vae.encode(image.to(dtype=torch.float32)).latent_dist
             mean, std = latent_dist.mean, latent_dist.std  # Already on device
+
+            # Restore VAE dtype
+            if vae_dtype != torch.float32:
+                self.vae.to(dtype=vae_dtype)
 
             # 2. Sample noise for each batch element individually if using multiple generators
             if isinstance(generator, list):
@@ -416,7 +426,7 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
             latents = latents * self.vae.config.scaling_factor
 
             # get the original timestep using init_timestep
-            init_timestep = timestep
+            init_timestep = timestep # Use the passed timestep directly
 
             # add noise to latents using the timesteps
             # Handle noise generation with multiple generators if provided
@@ -439,20 +449,7 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
                     latents.shape, generator=generator, device=generator_device, dtype=latents.dtype
                 ).to(latents.device)
 
-            # Ensure timestep tensor is on the same device
-            t = init_timestep.to(latents.device)
-
-            # Normalize timestep to [0, 1] range (using scheduler's config)
-            t = t / self.scheduler.config.num_train_timesteps
-
-            # Reshape t to match the dimensions needed for broadcasting
-            required_dims = len(latents.shape)
-            current_dims = len(t.shape)
-            for _ in range(required_dims - current_dims):
-                t = t.unsqueeze(-1)
-
-            # Interpolation: x_t = t * x_1 + (1 - t) * x_0
-            latents = t * noise + (1 - t) * latents
+            latents = self.scheduler.scale_noise(latents, init_timestep, noise)
 
         return latents
 
@@ -657,8 +654,10 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         # 5. Prepare timesteps
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
-        latent_timestep = timesteps[:1]
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps, strength, device
+        )
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt) # Get the first timestep(s) for initial noise
 
         # 6. Prepare latent variables
         latents = self.prepare_img2img_latents(
@@ -727,11 +726,11 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
         if output_type == "latent":
             image = latents
         else:
-            # make sure the VAE is in float32 mode, as it overflows in float16
-            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
-            if needs_upcasting:
-                self.upcast_vae()
-                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+            # Always upcast VAE to float32 for decoding
+            vae_dtype = self.vae.dtype
+            if vae_dtype != torch.float32:
+                self.vae.to(dtype=torch.float32)
+                latents = latents.to(dtype=torch.float32)
 
             # Apply proper scaling factor and shift factor if available
             if (
@@ -746,6 +745,11 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
                 latents = latents / self.vae.config.scaling_factor
 
             image = self.vae.decode(latents, return_dict=False)[0]
+
+            # Restore VAE dtype
+            if vae_dtype != torch.float32:
+                self.vae.to(dtype=vae_dtype)
+
             image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
