@@ -449,7 +449,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Enable generic support for Intel Gaudi accelerator using GPU/HPU migration
         if kwargs.pop("hpu_migration", True) and is_hpu_available():
             os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
-            logger.debug('Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1')
+            logger.debug("Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1")
 
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
