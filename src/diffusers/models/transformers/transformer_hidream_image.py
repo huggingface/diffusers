@@ -663,24 +663,12 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     def unpatchify(self, x: torch.Tensor, img_sizes: List[Tuple[int, int]], is_training: bool) -> List[torch.Tensor]:
         if is_training:
-            pH, pW = img_sizes[0]  # Get target patch height/width
-            expected_S = pH * pW
-            # Ensure sequence length S matches expected H*W before rearranging
-            # This might require padding/truncating x if training uses fixed max_seq
-            current_S = x.shape[1]
-            if current_S > expected_S:
-                x = x[:, :expected_S, :]  # Use only the relevant part of the sequence
-            elif current_S < expected_S:
-                # This case is less likely if padding happens earlier, but handle defensively
-                raise ValueError(
-                    f"Sequence length {current_S} is less than expected {expected_S} ({pH}x{pW}) during unpatchify.")
-
-            # Corrected line using einops and H, W:
-            x = einops.rearrange(
-                x,
-                'B (H W) (p1 p2 C) -> B C (H p1) (W p2)',
-                H=pH, W=pW,
-                p1=self.config.patch_size, p2=self.config.patch_size
+            B, S, F = x.shape
+            C = F // (self.config.patch_size * self.config.patch_size)
+            x = (
+                x.reshape(B, S, self.config.patch_size, self.config.patch_size, C)
+                .permute(0, 4, 1, 2, 3)
+                .reshape(B, C, S, self.config.patch_size * self.config.patch_size)
             )
         else:
             x_arr = []
