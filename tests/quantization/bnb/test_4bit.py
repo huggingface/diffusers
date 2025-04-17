@@ -526,7 +526,7 @@ class SlowBnb4BitTests(Base4bitTests):
         reason="Test will pass after https://github.com/huggingface/accelerate/pull/3223 is in a release.",
         strict=True,
     )
-    def test_pipeline_device_placement_works_with_nf4(self):
+    def test_pipeline_cuda_placement_works_with_nf4(self):
         transformer_nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -560,7 +560,7 @@ class SlowBnb4BitTests(Base4bitTests):
         ).to(torch_device)
 
         # Check if inference works.
-        _ = pipeline_4bit("table", max_sequence_length=20, num_inference_steps=2)
+        _ = pipeline_4bit(self.prompt, max_sequence_length=20, num_inference_steps=2)
 
         del pipeline_4bit
 
