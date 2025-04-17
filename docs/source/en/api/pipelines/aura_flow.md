@@ -100,6 +100,8 @@ AuraFlow can be compiled with `torch.compile()` to speed up inference latency ev
 )
 ```
 
+Specifying `use_duck_shape` to be `False` instructs the compiler if it should use the same symbolic variable to represent input sizes that are the same. For more details, check out [this comment](https://github.com/huggingface/diffusers/pull/11327#discussion_r2047659790).
+
 This enables from 100% (on low resolutions) to a 30% (on 1536x1536 resolution) speed improvements.
 
 Thanks to [AstraliteHeart](https://github.com/huggingface/diffusers/pull/11297/) who helped us rewrite the [`AuraFlowTransformer2DModel`] class so that the above works for different resolutions ([PR](https://github.com/huggingface/diffusers/pull/11297/)).
