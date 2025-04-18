@@ -1266,7 +1266,7 @@ def main(args):
         variant=args.variant,
     )
     transformer = HiDreamImageTransformer2DModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant, force_inference_output=True
     )
 
     # We only train the additional adapter LoRA layers
