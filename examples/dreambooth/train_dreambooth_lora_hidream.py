@@ -1291,8 +1291,7 @@ def main(args):
             "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
         )
 
-    # keep VAE in FP32 to ensure numerical stability.
-    vae.to(dtype=torch.float32)
+    vae.to(dtype=weight_dtype)
     transformer.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
