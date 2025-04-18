@@ -5359,6 +5359,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         """
         super().unfuse_lora(components=components, **kwargs)
 
+
 class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     r"""
     Load LoRA layers into [`HiDreamImageTransformer2DModel`]. Specific to [`HiDreamImagePipeline`].
@@ -5694,6 +5695,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
         """
         super().unfuse_lora(components=components, **kwargs)
+
 
 class LoraLoaderMixin(StableDiffusionLoraLoaderMixin):
     def __init__(self, *args, **kwargs):
