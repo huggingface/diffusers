@@ -214,7 +214,13 @@ def log_validation(
 
     # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
     with torch.no_grad():
-        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = (
+
+        ( prompt_embeds_t5,
+        negative_prompt_embeds_t5,
+        prompt_embeds_llama3,
+        negative_prompt_embeds_llama3,
+        pooled_prompt_embeds,
+        negative_pooled_prompt_embeds ) = (
             pipeline.encode_prompt(
                 pipeline_args["prompt"],
                 prompt_2=pipeline_args["prompt"],
@@ -226,8 +232,10 @@ def log_validation(
     for _ in range(args.num_validation_images):
         with autocast_ctx:
             image = pipeline(
-                prompt_embeds=prompt_embeds,
-                negative_prompt_embeds=negative_prompt_embeds,
+                prompt_embeds_t5=prompt_embeds_t5,
+                prompt_embeds_llama3=prompt_embeds_llama3,
+                negative_prompt_embeds_t5=negative_prompt_embeds_t5,
+                negative_prompt_embeds_llama3=negative_prompt_embeds_llama3,
                 pooled_prompt_embeds=pooled_prompt_embeds,
                 negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
                 generator=generator,
@@ -1111,9 +1119,8 @@ def encode_prompt(
         attention_mask=attention_mask_list[1] if attention_mask_list else None,
     )
 
-    prompt_embeds = [t5_prompt_embeds, llama3_prompt_embeds]
 
-    return prompt_embeds, pooled_prompt_embeds
+    return t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds
 
 
 def main(args):
@@ -1482,27 +1489,29 @@ def main(args):
 
     def compute_text_embeddings(prompt, text_encoders, tokenizers):
         with torch.no_grad():
-            prompt_embeds, pooled_prompt_embeds = encode_prompt(
+            t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = encode_prompt(
                 text_encoders, tokenizers, prompt, args.max_sequence_length
             )
-            prompt_embeds[0] = prompt_embeds[0].to(accelerator.device)
-            prompt_embeds[1] = prompt_embeds[1].to(accelerator.device)
+            t5_prompt_embeds = t5_prompt_embeds.to(accelerator.device)
+            llama3_prompt_embeds = llama3_prompt_embeds.to(accelerator.device)
             pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
-        return prompt_embeds, pooled_prompt_embeds
+        return t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
         (
-            instance_prompt_hidden_states,
+            instance_prompt_hidden_states_t5,
+            instance_prompt_hidden_states_llama3,
             instance_pooled_prompt_embeds,
         ) = compute_text_embeddings(args.instance_prompt, text_encoders, tokenizers)
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         (
-            class_prompt_hidden_states,
+            class_prompt_hidden_states_t5,
+            class_prompt_hidden_states_llama3,
             class_pooled_prompt_embeds,
         ) = compute_text_embeddings(args.class_prompt, text_encoders, tokenizers)
 
@@ -1519,10 +1528,12 @@ def main(args):
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
     if not train_dataset.custom_instance_prompts:
-        prompt_embeds = instance_prompt_hidden_states
+        t5_prompt_embeds = instance_prompt_hidden_states_t5
+        llama3_prompt_embeds = instance_prompt_hidden_states_llama3
         pooled_prompt_embeds = instance_pooled_prompt_embeds
         if args.with_prior_preservation:
-            prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
+            t5_prompt_embeds = torch.cat([instance_prompt_hidden_states_t5, class_prompt_hidden_states_t5], dim=0)
+            llama3_prompt_embeds = torch.cat([instance_prompt_hidden_states_llama3, class_prompt_hidden_states_llama3], dim=0)
             pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, class_pooled_prompt_embeds], dim=0)
 
     vae_config_scaling_factor = vae.config.scaling_factor
@@ -1646,10 +1657,10 @@ def main(args):
             with accelerator.accumulate(models_to_accumulate):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-                    prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(prompts, text_encoders, tokenizers)
+                    t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(prompts, text_encoders, tokenizers)
                 else:
-                    prompt_embeds[0] = prompt_embeds[0].repeat(len(prompts), 1, 1)
-                    prompt_embeds[1] = prompt_embeds[1].repeat(1, len(prompts), 1, 1)
+                    t5_prompt_embeds = t5_prompt_embeds.repeat(len(prompts), 1, 1)
+                    llama3_prompt_embeds = llama3_prompt_embeds.repeat(1, len(prompts), 1, 1)
                     pooled_prompt_embeds = pooled_prompt_embeds.repeat(len(prompts), 1)
                 # Convert images to latent space
                 if args.cache_latents:
@@ -1703,18 +1714,15 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
                 # Predict the noise residual
 
-                # print("noisy_model_input", noisy_model_input.shape)
-                # print("prompt_embeds", prompt_embeds[0].shape, prompt_embeds[1].shape)
-                # print("pooled_prompt_embeds", pooled_prompt_embeds.shape)
-
                 model_pred = (
                     transformer(
                         hidden_states=noisy_model_input,
-                        encoder_hidden_states=prompt_embeds,
+                        encoder_hidden_states_t5=prompt_embeds_t5,
+                        encoder_hidden_states_llama3=prompt_embeds_llama3,
                         pooled_embeds=pooled_prompt_embeds,
                         timesteps=timesteps,
-                        img_sizes=img_sizes,
-                        img_ids=img_ids,
+                        # img_sizes=img_sizes,
+                        # img_ids=img_ids,
                         return_dict=False,
                     )[0]
                     * -1
