@@ -144,7 +144,7 @@ from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 
 
-model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers"
+model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers"
 image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipe = WanImageToVideoPipeline.from_pretrained(
