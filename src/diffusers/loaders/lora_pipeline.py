@@ -5473,11 +5473,11 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-                pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-                adapter_name: Optional[str] = None,
-                hotswap: bool = False,
-                **kwargs,
-        ):
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        adapter_name: Optional[str] = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
         `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
@@ -5521,8 +5521,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self,
-                                                                            "transformer") else self.transformer,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
@@ -5532,9 +5531,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->Lumina2Transformer2DModel
     def load_lora_into_transformer(
-        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False,
-        hotswap: bool = False
-        ):
+        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False, hotswap: bool = False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
 
