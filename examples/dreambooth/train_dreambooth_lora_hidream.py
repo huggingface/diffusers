@@ -42,7 +42,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
-from transformers import CLIPTokenizer, LlamaForCausalLM, PretrainedConfig, PreTrainedTokenizerFast, T5TokenizerFast
+from transformers import CLIPTokenizer, LlamaForCausalLM, PretrainedConfig, PreTrainedTokenizerFast, T5Tokenizer
 
 import diffusers
 from diffusers import (
@@ -922,207 +922,6 @@ class PromptDataset(Dataset):
         return example
 
 
-def _encode_prompt_with_llama(
-    text_encoder,
-    tokenizer,
-    max_sequence_length=128,
-    prompt=None,
-    num_images_per_prompt=1,
-    device=None,
-    text_input_ids=None,
-    attention_mask=None,
-):
-    prompt = [prompt] if isinstance(prompt, str) else prompt
-    batch_size = len(prompt)
-
-    if tokenizer is not None:
-        text_inputs = tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=min(max_sequence_length, tokenizer.model_max_length),
-            truncation=True,
-            add_special_tokens=True,
-            return_tensors="pt",
-        )
-
-        text_input_ids = text_inputs.input_ids
-        attention_mask = text_inputs.attention_mask
-
-    else:
-        if text_input_ids is None:
-            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
-        if attention_mask is None:
-            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
-
-    outputs = text_encoder(
-        text_input_ids.to(device),
-        attention_mask=attention_mask.to(device),
-        output_hidden_states=True,
-        output_attentions=True,
-    )
-
-    if hasattr(text_encoder, "module"):
-        dtype = text_encoder.module.dtype
-    else:
-        dtype = text_encoder.dtype
-
-    prompt_embeds = outputs.hidden_states[1:]
-    prompt_embeds = torch.stack(prompt_embeds, dim=0).to(dtype=dtype, device=device)
-    _, _, seq_len, dim = prompt_embeds.shape
-
-    # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-    prompt_embeds = prompt_embeds.repeat(1, 1, num_images_per_prompt, 1)
-    prompt_embeds = prompt_embeds.view(-1, batch_size * num_images_per_prompt, seq_len, dim)
-    return prompt_embeds
-
-
-def _encode_prompt_with_t5(
-    text_encoder,
-    tokenizer,
-    max_sequence_length=128,
-    prompt=None,
-    num_images_per_prompt=1,
-    device=None,
-    text_input_ids=None,
-    attention_mask=None,
-):
-    prompt = [prompt] if isinstance(prompt, str) else prompt
-    batch_size = len(prompt)
-
-    if tokenizer is not None:
-        text_inputs = tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=min(max_sequence_length, tokenizer.model_max_length),
-            truncation=True,
-            add_special_tokens=True,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-        attention_mask = text_inputs.attention_mask
-    else:
-        if text_input_ids is None:
-            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
-        if attention_mask is None:
-            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
-
-    prompt_embeds = text_encoder(text_input_ids.to(device), attention_mask=attention_mask.to(device))[0]
-
-    if hasattr(text_encoder, "module"):
-        dtype = text_encoder.module.dtype
-    else:
-        dtype = text_encoder.dtype
-    prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-    _, seq_len, _ = prompt_embeds.shape
-
-    # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-    prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-    prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-    return prompt_embeds
-
-
-def _encode_prompt_with_clip(
-    text_encoder,
-    tokenizer,
-    prompt: str,
-    max_sequence_length=128,
-    device=None,
-    text_input_ids=None,
-    num_images_per_prompt: int = 1,
-):
-    prompt = [prompt] if isinstance(prompt, str) else prompt
-    batch_size = len(prompt)
-
-    if tokenizer is not None:
-        text_inputs = tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=min(max_sequence_length, 218),
-            truncation=True,
-            return_tensors="pt",
-        )
-
-        text_input_ids = text_inputs.input_ids
-    else:
-        if text_input_ids is None:
-            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
-
-    prompt_embeds = text_encoder(text_input_ids.to(device))
-
-    if hasattr(text_encoder, "module"):
-        dtype = text_encoder.module.dtype
-    else:
-        dtype = text_encoder.dtype
-    # Use pooled output of CLIPTextModel
-    prompt_embeds = prompt_embeds[0]
-    prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-
-    # duplicate text embeddings for each generation per prompt, using mps friendly method
-    prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-    prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, -1)
-
-    return prompt_embeds
-
-
-def encode_prompt(
-    text_encoders,
-    tokenizers,
-    prompt: str,
-    max_sequence_length,
-    device=None,
-    num_images_per_prompt: int = 1,
-    text_input_ids_list=None,
-    attention_mask_list=None,
-):
-    prompt = [prompt] if isinstance(prompt, str) else prompt
-
-    pooled_prompt_embeds_1 = _encode_prompt_with_clip(
-        text_encoder=text_encoders[0],
-        tokenizer=tokenizers[0],
-        prompt=prompt,
-        device=device if device is not None else text_encoders[0].device,
-        num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[0] if text_input_ids_list else None,
-    )
-
-    pooled_prompt_embeds_2 = _encode_prompt_with_clip(
-        text_encoder=text_encoders[1],
-        tokenizer=tokenizers[1],
-        prompt=prompt,
-        device=device if device is not None else text_encoders[1].device,
-        num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[1] if text_input_ids_list else None,
-    )
-
-    pooled_prompt_embeds = torch.cat([pooled_prompt_embeds_1, pooled_prompt_embeds_2], dim=-1)
-
-    t5_prompt_embeds = _encode_prompt_with_t5(
-        text_encoder=text_encoders[2],
-        tokenizer=tokenizers[2],
-        max_sequence_length=max_sequence_length,
-        prompt=prompt,
-        num_images_per_prompt=num_images_per_prompt,
-        device=device if device is not None else text_encoders[2].device,
-        text_input_ids=text_input_ids_list[2] if text_input_ids_list else None,
-        attention_mask=attention_mask_list[0] if attention_mask_list else None,
-    )
-
-    llama3_prompt_embeds = _encode_prompt_with_llama(
-        text_encoder=text_encoders[3],
-        tokenizer=tokenizers[3],
-        max_sequence_length=max_sequence_length,
-        prompt=prompt,
-        num_images_per_prompt=num_images_per_prompt,
-        device=device if device is not None else text_encoders[3].device,
-        text_input_ids=text_input_ids_list[3] if text_input_ids_list else None,
-        attention_mask=attention_mask_list[1] if attention_mask_list else None,
-    )
-
-
-    return t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds
-
-
 def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
@@ -1234,7 +1033,7 @@ def main(args):
         subfolder="tokenizer_2",
         revision=args.revision,
     )
-    tokenizer_three = T5TokenizerFast.from_pretrained(
+    tokenizer_three = T5Tokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer_3",
         revision=args.revision,
@@ -1304,6 +1103,21 @@ def main(args):
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
     text_encoder_three.to(accelerator.device, dtype=weight_dtype)
     text_encoder_four.to(accelerator.device, dtype=weight_dtype)
+
+    # Initialize a text encoding pipeline and keep it to CPU for now.
+    text_encoding_pipeline = HiDreamImagePipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=None,
+        transformer=None,
+        text_encoder=text_encoder_one,
+        tokenizer=tokenizer_one,
+        text_encoder_2=text_encoder_two,
+        tokenizer_2= tokenizer_two,
+        text_encoder_3= text_encoder_three,
+        tokenizer_3= tokenizer_three,
+        text_encoder_4= text_encoder_four,
+        tokenizer_4= tokenizer_four,
+    )
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
@@ -1484,17 +1298,14 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
-    tokenizers = [tokenizer_one, tokenizer_two, tokenizer_three, tokenizer_four]
-    text_encoders = [text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four]
-
-    def compute_text_embeddings(prompt, text_encoders, tokenizers):
+    def compute_text_embeddings(prompt, text_encoding_pipeline):
+        text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
         with torch.no_grad():
-            t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = encode_prompt(
-                text_encoders, tokenizers, prompt, args.max_sequence_length
+            t5_prompt_embeds,_, llama3_prompt_embeds,_, pooled_prompt_embeds,_ = text_encoding_pipeline.encode_prompt(
+                prompt=prompt, max_sequence_length=args.max_sequence_length
             )
-            t5_prompt_embeds = t5_prompt_embeds.to(accelerator.device)
-            llama3_prompt_embeds = llama3_prompt_embeds.to(accelerator.device)
-            pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
+        if args.offload:
+            text_encoding_pipeline = text_encoding_pipeline.to("cpu")
         return t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
@@ -1505,7 +1316,7 @@ def main(args):
             instance_prompt_hidden_states_t5,
             instance_prompt_hidden_states_llama3,
             instance_pooled_prompt_embeds,
-        ) = compute_text_embeddings(args.instance_prompt, text_encoders, tokenizers)
+        ) = compute_text_embeddings(args.instance_prompt, text_encoding_pipeline)
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
@@ -1513,7 +1324,7 @@ def main(args):
             class_prompt_hidden_states_t5,
             class_prompt_hidden_states_llama3,
             class_pooled_prompt_embeds,
-        ) = compute_text_embeddings(args.class_prompt, text_encoders, tokenizers)
+        ) = compute_text_embeddings(args.class_prompt, text_encoding_pipeline)
 
     # Clear the memory here
     if not train_dataset.custom_instance_prompts:
@@ -1657,7 +1468,7 @@ def main(args):
             with accelerator.accumulate(models_to_accumulate):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-                    t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(prompts, text_encoders, tokenizers)
+                    t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(prompts, text_encoding_pipeline)
                 else:
                     t5_prompt_embeds = t5_prompt_embeds.repeat(len(prompts), 1, 1)
                     llama3_prompt_embeds = llama3_prompt_embeds.repeat(1, len(prompts), 1, 1)
