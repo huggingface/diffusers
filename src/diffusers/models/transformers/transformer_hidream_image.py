@@ -294,7 +294,6 @@ class MoEGate(nn.Module):
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
-        # print(bsz, seq_len, h)
         ### compute gating score
         hidden_states = hidden_states.view(-1, h)
         logits = F.linear(hidden_states, self.weight, None)
@@ -367,7 +366,6 @@ class MOEFeedForwardSwiGLU(nn.Module):
         topk_idx, topk_weight, aux_loss = self.gate(x)
         x = x.view(-1, x.shape[-1])
         flat_topk_idx = topk_idx.view(-1)
-        print("forward 2: self.config._force_inference_output", self._force_inference_output)
         if self.training and not self._force_inference_output:
             x = x.repeat_interleave(self.num_activated_experts, dim=0)
             y = torch.empty_like(x, dtype=wtype)
