@@ -23,7 +23,9 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
-from diffusers.pipelines.semantic_stable_diffusion import SemanticStableDiffusionPipeline as StableDiffusionPipeline
+from diffusers.pipelines.deprecated.semantic_stable_diffusion import (
+    SemanticStableDiffusionPipeline as StableDiffusionPipeline,
+)
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,

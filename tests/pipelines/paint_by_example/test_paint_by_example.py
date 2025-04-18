@@ -23,7 +23,7 @@ from PIL import Image
 from transformers import CLIPImageProcessor, CLIPVisionConfig
 
 from diffusers import AutoencoderKL, PaintByExamplePipeline, PNDMScheduler, UNet2DConditionModel
-from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
+from diffusers.pipelines.deprecated.paint_by_example import PaintByExampleImageEncoder
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,

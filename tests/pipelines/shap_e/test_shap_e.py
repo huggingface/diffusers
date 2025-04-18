@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEPipeline
-from diffusers.pipelines.shap_e import ShapERenderer
+from diffusers.pipelines.deprecated.shap_e import ShapERenderer
 from diffusers.utils.testing_utils import load_numpy, nightly, require_torch_gpu, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference

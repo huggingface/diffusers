@@ -107,6 +107,7 @@ else:
             "AltDiffusionPipeline",
             "AltDiffusionImg2ImgPipeline",
             "CycleDiffusionPipeline",
+            "StableDiffusionLDM3DPipeline",
             "StableDiffusionInpaintPipelineLegacy",
             "StableDiffusionPix2PixZeroPipeline",
             "StableDiffusionParadigmsPipeline",
@@ -327,7 +328,6 @@ else:
             "StableDiffusionUpscalePipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
-            "StableDiffusionLDM3DPipeline",
         ]
     )
     _import_structure["aura_flow"] = ["AuraFlowPipeline"]
@@ -555,15 +555,27 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
             CycleDiffusionPipeline,
+            PaintByExamplePipeline,
+            StableDiffusionAttendAndExcitePipeline,
+            StableDiffusionControlNetXSPipeline,
+            StableDiffusionDiffEditPipeline,
+            StableDiffusionGLIGENPipeline,
+            StableDiffusionGLIGENTextImagePipeline,
             StableDiffusionInpaintPipelineLegacy,
             StableDiffusionModelEditingPipeline,
+            StableDiffusionPanoramaPipeline,
             StableDiffusionParadigmsPipeline,
             StableDiffusionPix2PixZeroPipeline,
+            StableDiffusionXLControlNetXSPipeline,
             VersatileDiffusionDualGuidedPipeline,
             VersatileDiffusionImageVariationPipeline,
             VersatileDiffusionPipeline,
             VersatileDiffusionTextToImagePipeline,
+            VideoToVideoSDPipeline,
             VQDiffusionPipeline,
+            WuerstchenCombinedPipeline,
+            WuerstchenDecoderPipeline,
+            WuerstchenPriorPipeline,
         )
         from .easyanimate import (
             EasyAnimateControlPipeline,
@@ -659,7 +671,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
         )
-        from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintPipeline
@@ -689,13 +700,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusion3InpaintPipeline,
             StableDiffusion3Pipeline,
         )
-        from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
-        from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
-        from .stable_diffusion_gligen import StableDiffusionGLIGENPipeline, StableDiffusionGLIGENTextImagePipeline
-        from .stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
-        from .stable_diffusion_panorama import StableDiffusionPanoramaPipeline
-        from .stable_diffusion_safe import StableDiffusionPipelineSafe
-        from .stable_diffusion_sag import StableDiffusionSAGPipeline
         from .stable_diffusion_xl import (
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,
@@ -707,25 +711,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionAdapterPipeline,
             StableDiffusionXLAdapterPipeline,
         )
-        from .text_to_video_synthesis import (
-            TextToVideoSDPipeline,
-            TextToVideoZeroPipeline,
-            TextToVideoZeroSDXLPipeline,
-            VideoToVideoSDPipeline,
-        )
-        from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
-        from .unidiffuser import (
-            ImageTextPipelineOutput,
-            UniDiffuserModel,
-            UniDiffuserPipeline,
-            UniDiffuserTextDecoder,
-        )
         from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
-        from .wuerstchen import (
-            WuerstchenCombinedPipeline,
-            WuerstchenDecoderPipeline,
-            WuerstchenPriorPipeline,
-        )
 
         try:
             if not is_onnx_available():
@@ -756,7 +742,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         except OptionalDependencyNotAvailable:
             from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
         else:
-            from .stable_diffusion_k_diffusion import (
+            from .deprecated import (
                 StableDiffusionKDiffusionPipeline,
                 StableDiffusionXLKDiffusionPipeline,
             )

@@ -113,12 +113,16 @@ else:
         "TextToVideoSDPipeline",
         "TextToVideoZeroPipeline",
         "TextToVideoZeroSDXLPipeline",
+        "VideoToVideoSDPipeline",
     ]
     _import_structure["unclip"] = [
         "UnCLIPPipeline",
         "UnCLIPImageVariationPipeline",
     ]
     _import_structure["unidiffuser"] = [
+        "UniDiffuserTextDecoder",
+        "UniDiffuserModel",
+        "UTransformer2DModel",
         "UniDiffuserPipeline",
     ]
     _import_structure["versatile_diffusion"] = [
