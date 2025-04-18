@@ -1665,7 +1665,7 @@ def main(args):
                     img_ids[..., 1] = img_ids[..., 1] + torch.arange(pH)[:, None]
                     img_ids[..., 2] = img_ids[..., 2] + torch.arange(pW)[None, :]
                     img_ids = img_ids.reshape(pH * pW, -1)
-                    img_ids_pad = torch.zeros(self.transformer.max_seq, 3)
+                    img_ids_pad = torch.zeros(transformer.max_seq, 3)
                     img_ids_pad[: pH * pW, :] = img_ids
 
                     img_sizes = img_sizes.unsqueeze(0).to(model_input.device)
