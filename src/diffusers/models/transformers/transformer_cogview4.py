@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union, List
 
 import torch
 import torch.nn as nn
@@ -126,7 +126,7 @@ class CogView4AttnProcessor:
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[Dict[str, torch.Tensor]] = None,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor] | List[Tuple[torch.Tensor, torch.Tensor]]] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -604,7 +604,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor] | List[Tuple[torch.Tensor, torch.Tensor]]] = None,
         **kwargs,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         if attention_kwargs is not None:
