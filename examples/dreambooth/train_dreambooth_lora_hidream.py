@@ -1674,24 +1674,6 @@ def main(args):
                 model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
-                if model_input.shape[-2] != model_input.shape[-1]:
-                    B, C, H, W = model_input.shape
-                    pH, pW = H // transformer.config.patch_size, W // transformer.config.patch_size
-
-                    img_sizes = torch.tensor([pH, pW], dtype=torch.int64).reshape(-1)
-                    img_ids = torch.zeros(pH, pW, 3)
-                    img_ids[..., 1] = img_ids[..., 1] + torch.arange(pH)[:, None]
-                    img_ids[..., 2] = img_ids[..., 2] + torch.arange(pW)[None, :]
-                    img_ids = img_ids.reshape(pH * pW, -1)
-                    img_ids_pad = torch.zeros(transformer.max_seq, 3)
-                    img_ids_pad[: pH * pW, :] = img_ids
-
-                    img_sizes = img_sizes.unsqueeze(0).to(model_input.device)
-                    img_ids = img_ids_pad.unsqueeze(0).to(model_input.device)
-
-                else:
-                    img_sizes = img_ids = None
-
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
                 bsz = model_input.shape[0]
@@ -1721,8 +1703,6 @@ def main(args):
                         encoder_hidden_states_llama3=prompt_embeds_llama3,
                         pooled_embeds=pooled_prompt_embeds,
                         timesteps=timesteps,
-                        # img_sizes=img_sizes,
-                        # img_ids=img_ids,
                         return_dict=False,
                     )[0]
                     * -1
