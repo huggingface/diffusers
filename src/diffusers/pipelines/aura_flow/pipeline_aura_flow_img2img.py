@@ -103,6 +103,31 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    @staticmethod
+    def calculate_shift(
+        image_seq_len,
+        base_seq_len: int = 256,
+        max_seq_len: int = 4096,
+        base_shift: float = 0.5,
+        max_shift: float = 1.15,
+    ):
+        """Calculate shift parameter based on image dimensions.
+        
+        Args:
+            image_seq_len: Length of the image sequence (height/vae_factor/2 * width/vae_factor/2)
+            base_seq_len: Base sequence length for interpolation
+            max_seq_len: Maximum sequence length for interpolation
+            base_shift: Base shift value
+            max_shift: Maximum shift value
+            
+        Returns:
+            Calculated shift parameter (mu)
+        """
+        m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+        b = base_shift - m * base_seq_len
+        mu = image_seq_len * m + b
+        return mu
+
     def check_inputs(
         self,
         prompt,
@@ -305,41 +330,8 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
-    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.prepare_latents
-    def prepare_latents(
-        self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        latents=None,
-    ):
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-
-        shape = (
-            batch_size,
-            num_channels_latents,
-            int(height) // self.vae_scale_factor,
-            int(width) // self.vae_scale_factor,
-        )
-
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-
-        return latents
-
     def get_timesteps(self, num_inference_steps, strength, device):
         # Set timesteps using the full range initially
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps.to(device=device)
 
         if len(timesteps) != num_inference_steps:
@@ -349,17 +341,28 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
 
         t_start = int(max(num_inference_steps - init_timestep, 0))
-        timesteps = self.scheduler.timesteps[t_start:]
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order:]
+        
+        # Set begin index if scheduler supports it
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_img2img_latents(
+    def prepare_latents(
         self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None
     ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
+
+        # Check for latents_mean and latents_std in the VAE config
+        latents_mean = latents_std = None
+        if hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None:
+            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
+        if hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None:
+            latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
 
         image = image.to(device=device, dtype=dtype)
 
@@ -404,26 +407,30 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
             if isinstance(generator, list):
                 sample = torch.cat(
                     [
-                        torch.randn(
+                        randn_tensor(
                             (1, *mean.shape[1:]),
                             generator=generator[i],
-                            device=generator[i].device if hasattr(generator[i], "device") else "cpu",
+                            device=mean.device,
                             dtype=mean.dtype,
-                        ).to(mean.device)
+                        )
                         for i in range(batch_size)
                     ]
                 )
             else:
                 # Single generator - use its device if it has one
-                generator_device = getattr(generator, "device", "cpu") if generator is not None else "cpu"
-                noise = torch.randn(mean.shape, generator=generator, device=generator_device, dtype=mean.dtype)
-                sample = noise.to(mean.device)
+                sample = randn_tensor(mean.shape, generator=generator, device=mean.device, dtype=mean.dtype)
 
             # Compute latents
             latents = mean + std * sample
 
-            # Scale latents
-            latents = latents * self.vae.config.scaling_factor
+            # Apply standardization if VAE has mean and std defined in config
+            if latents_mean is not None and latents_std is not None:
+                latents_mean = latents_mean.to(device=device, dtype=dtype)
+                latents_std = latents_std.to(device=device, dtype=dtype)
+                latents = (latents - latents_mean) * self.vae.config.scaling_factor / latents_std
+            else:
+                # Scale latents
+                latents = latents * self.vae.config.scaling_factor
 
             # get the original timestep using init_timestep
             init_timestep = timestep # Use the passed timestep directly
@@ -433,21 +440,20 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
             if isinstance(generator, list):
                 noise = torch.cat(
                     [
-                        torch.randn(
+                        randn_tensor(
                             (1, *latents.shape[1:]),
                             generator=generator[i],
-                            device=generator[i].device if hasattr(generator[i], "device") else "cpu",
+                            device=latents.device,
                             dtype=latents.dtype,
-                        ).to(latents.device)
+                        )
                         for i in range(batch_size)
                     ]
                 )
             else:
                 # Single generator - use its device if it has one
-                generator_device = getattr(generator, "device", "cpu") if generator is not None else "cpu"
-                noise = torch.randn(
-                    latents.shape, generator=generator, device=generator_device, dtype=latents.dtype
-                ).to(latents.device)
+                noise = randn_tensor(
+                    latents.shape, generator=generator, device=latents.device, dtype=latents.dtype
+                )
 
             latents = self.scheduler.scale_noise(latents, init_timestep, noise)
 
@@ -654,13 +660,29 @@ class AuraFlowImg2ImgPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         # 5. Prepare timesteps
+        # Calculate shift parameter based on image dimensions
+        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
+        
+        # Calculate mu (shift parameter) based on image dimensions
+        mu = self.calculate_shift(
+            image_seq_len,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
+        )
+        
+        # Set timesteps with shift parameter
+        self.scheduler.set_timesteps(num_inference_steps, device=device, mu=mu)
+        
+        # Now adjust for strength
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps, strength, device
         )
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt) # Get the first timestep(s) for initial noise
 
         # 6. Prepare latent variables
-        latents = self.prepare_img2img_latents(
+        latents = self.prepare_latents(
             image,
             latent_timestep,
             batch_size,
