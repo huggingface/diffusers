@@ -500,7 +500,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
         from .allegro import AllegroPipeline
-        from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
         from .animatediff import (
             AnimateDiffControlNetPipeline,
             AnimateDiffPipeline,
@@ -509,7 +508,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
         )
-        from .audioldm import AudioLDMPipeline
         from .audioldm2 import (
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
@@ -539,10 +537,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiTControlNetPipeline,
         )
         from .controlnet_sd3 import StableDiffusion3ControlNetInpaintingPipeline, StableDiffusion3ControlNetPipeline
-        from .controlnet_xs import (
-            StableDiffusionControlNetXSPipeline,
-            StableDiffusionXLControlNetXSPipeline,
-        )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
@@ -554,8 +548,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .deprecated import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
+            AmusedImg2ImgPipeline,
+            AmusedInpaintPipeline,
+            AmusedPipeline,
+            AudioLDMPipeline,
             CycleDiffusionPipeline,
+            I2VGenXLPipeline,
             PaintByExamplePipeline,
+            PIAPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionControlNetXSPipeline,
             StableDiffusionDiffEditPipeline,
@@ -602,8 +602,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
         )
-        from .hunyuandit import HunyuanDiTPipeline
-        from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
@@ -650,8 +648,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
-        from .musicldm import MusicLDMPipeline
-        from .omnigen import OmniGenPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
@@ -671,8 +667,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
         )
-        from .pia import PIAPipeline
-        from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
