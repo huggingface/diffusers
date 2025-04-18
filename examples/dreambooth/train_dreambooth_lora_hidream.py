@@ -1699,15 +1699,14 @@ def main(args):
                 model_pred = (
                     transformer(
                         hidden_states=noisy_model_input,
-                        encoder_hidden_states_t5=prompt_embeds_t5,
-                        encoder_hidden_states_llama3=prompt_embeds_llama3,
+                        encoder_hidden_states_t5=t5_prompt_embeds,
+                        encoder_hidden_states_llama3=llama3_prompt_embeds,
                         pooled_embeds=pooled_prompt_embeds,
                         timesteps=timesteps,
                         return_dict=False,
                     )[0]
                     * -1
                 )
-                # print("model_pred", model_pred.shape)
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
