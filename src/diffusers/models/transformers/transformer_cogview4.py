@@ -128,9 +128,9 @@ class CogView4AttnProcessor:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[Dict[str, torch.Tensor]] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         dtype = encoder_hidden_states.dtype
         device = encoder_hidden_states.device
 
@@ -166,7 +166,7 @@ class CogView4AttnProcessor:
 
         # 4. Attention
         if attention_mask is not None:
-            text_attn_mask = attention_mask["text_attn_mask"]
+            text_attn_mask = attention_mask
             assert text_attn_mask.dim() == 2, "the shape of text_attn_mask should be (batch_size, text_seq_length)"
             text_attn_mask = text_attn_mask.float().to(query.device)
             mix_attn_mask = torch.ones((batch_size, text_seq_length + image_seq_length), device=query.device)
@@ -210,9 +210,12 @@ class CogView4TrainingAttnProcessor:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[Dict[str, torch.Tensor]] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor] | List[Tuple[torch.Tensor, torch.Tensor]]] = None,
-    ) -> torch.Tensor:
+        latent_attn_mask: Optional[torch.Tensor] = None,
+        text_attn_mask: Optional[torch.Tensor] = None,
+        batch_flag: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]] = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             attn (`Attention`):
@@ -221,23 +224,20 @@ class CogView4TrainingAttnProcessor:
                 The input hidden states.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states for cross-attention.
-            attention_mask (`Dict[str, torch.Tensor]`, *optional*):
-                Dictionary containing mask configurations:
-                - `batch_flag` (`torch.Tensor`, *optional*):
-                    Values from 0 to n-1 indicating which samples belong to the same batch.
-                    Samples with the same batch_flag are packed together.
-                    Example: [0, 1, 1, 2, 2] means sample 0 forms batch0, samples 1-2 form batch1, and samples 3-4 form batch2.
-                    If None, no packing is used.
-                - `text_attn_mask` (`torch.Tensor`, *optional*):
-                    Mask for text tokens where 0 indicates pad token and 1 indicates non-pad token.
-                    If None, full attention is used for all text tokens.
-                - `latent_attn_mask` (`torch.Tensor`, *optional*):
-                    Mask for latent tokens where 0 indicates pad token and 1 indicates non-pad token.
-                    If None, full attention is used for all latent tokens.
-                    Note: the shape of latent_attn_mask is (batch_size, num_latent_tokens).
-            image_rotary_emb (`torch.Tensor` or `list[torch.Tensor]`, *optional*):
+            latent_attn_mask (`torch.Tensor`, *optional*):
+                Mask for latent tokens where 0 indicates pad token and 1 indicates non-pad token.
+                If None, full attention is used for all latent tokens.
+                Note: the shape of latent_attn_mask is (batch_size, num_latent_tokens).
+            text_attn_mask (`torch.Tensor`, *optional*):
+                Mask for text tokens where 0 indicates pad token and 1 indicates non-pad token.
+                If None, full attention is used for all text tokens.
+            batch_flag (`torch.Tensor`, *optional*):
+                Values from 0 to n-1 indicating which samples belong to the same batch.
+                Samples with the same batch_flag are packed together.
+                Example: [0, 1, 1, 2, 2] means sample 0 forms batch0, samples 1-2 form batch1, and samples 3-4 form batch2.
+                If None, no packing is used.
+            image_rotary_emb (`Tuple[torch.Tensor, torch.Tensor]` or `list[Tuple[torch.Tensor, torch.Tensor]]`, *optional*):
                 The rotary embedding for the image part of the input.
-
         Returns:
             `Tuple[torch.Tensor, torch.Tensor]`: The processed hidden states for both image and text streams.
         """
@@ -251,104 +251,87 @@ class CogView4TrainingAttnProcessor:
         # Combine text and image streams for joint processing
         mixed_hidden_states = torch.cat([encoder_hidden_states, latent_hidden_states], dim=1)
 
-        # Initialize mask variables
-        text_attn_mask, latent_attn_mask, batch_flag = None, None, None
-
         # 1. Construct attention mask and maybe packing input
-        if attention_mask is not None:
-            # Extract mask components from the dictionary
-            text_attn_mask = attention_mask.get("text_attn_mask", None)
-            latent_attn_mask = attention_mask.get("latent_attn_mask", None)
-            batch_flag = attention_mask.get("batch_flag", None)
+        # Create default masks if not provided
+        if text_attn_mask is None:
+            text_attn_mask = torch.ones((batch_size, text_seq_length), dtype=torch.int32, device=device)
+        if latent_attn_mask is None:
+            latent_attn_mask = torch.ones((batch_size, image_seq_length), dtype=torch.int32, device=device)
 
-            # Create default masks if not provided
-            if text_attn_mask is None:
-                text_attn_mask = torch.ones((batch_size, text_seq_length), dtype=torch.int32, device=device)
-            if latent_attn_mask is None:
-                latent_attn_mask = torch.ones((batch_size, image_seq_length), dtype=torch.int32, device=device)
+        # Validate mask shapes and types
+        assert text_attn_mask.dim() == 2, "the shape of text_attn_mask should be (batch_size, text_seq_length)"
+        assert text_attn_mask.dtype == torch.int32, "the dtype of text_attn_mask should be torch.int32"
+        assert latent_attn_mask.dim() == 2, "the shape of latent_attn_mask should be (batch_size, num_latent_tokens)"
+        assert latent_attn_mask.dtype == torch.int32, "the dtype of latent_attn_mask should be torch.int32"
 
-            # Validate mask shapes and types
-            assert text_attn_mask.dim() == 2, "the shape of text_attn_mask should be (batch_size, text_seq_length)"
-            assert text_attn_mask.dtype == torch.int32, "the dtype of text_attn_mask should be torch.int32"
-            assert latent_attn_mask.dim() == 2, "the shape of latent_attn_mask should be (batch_size, num_latent_tokens)"
-            assert latent_attn_mask.dtype == torch.int32, "the dtype of latent_attn_mask should be torch.int32"
+        # Create combined mask for text and image tokens
+        mixed_attn_mask = torch.ones(
+            (batch_size, text_seq_length + image_seq_length), dtype=torch.int32, device=device
+        )
+        mixed_attn_mask[:, :text_seq_length] = text_attn_mask
+        mixed_attn_mask[:, text_seq_length:] = latent_attn_mask
 
-            # Create combined mask for text and image tokens
-            mixed_attn_mask = torch.ones(
-                (batch_size, text_seq_length + image_seq_length), dtype=torch.int32, device=device
+        # Convert mask to attention matrix format (where 1 means attend, 0 means don't attend)
+        mixed_attn_mask_input = mixed_attn_mask.unsqueeze(2).to(dtype=dtype)
+        attn_mask_matrix = mixed_attn_mask_input @ mixed_attn_mask_input.transpose(1, 2)
+
+        # Handle batch packing if enabled
+        if batch_flag is not None:
+            assert batch_flag.dim() == 1
+            # Determine packed batch size based on batch_flag
+            packing_batch_size = torch.max(batch_flag).item() + 1
+
+            # Calculate actual sequence lengths for each sample based on masks
+            text_seq_length = torch.sum(text_attn_mask, dim=1)
+            latent_seq_length = torch.sum(latent_attn_mask, dim=1)
+            mixed_seq_length = text_seq_length + latent_seq_length
+
+            # Calculate packed sequence lengths for each packed batch
+            mixed_seq_length_packed = [
+                torch.sum(mixed_attn_mask[batch_flag == batch_idx]).item()
+                for batch_idx in range(packing_batch_size)
+            ]
+            
+            assert len(mixed_seq_length_packed) == packing_batch_size
+
+            # Pack sequences by removing padding tokens
+            mixed_attn_mask_flatten = mixed_attn_mask.flatten(0, 1)
+            mixed_hidden_states_flatten = mixed_hidden_states.flatten(0, 1)
+            mixed_hidden_states_unpad = mixed_hidden_states_flatten[mixed_attn_mask_flatten == 1]
+            assert torch.sum(mixed_seq_length) == mixed_hidden_states_unpad.shape[0]
+
+            # Split the unpadded sequence into packed batches
+            mixed_hidden_states_packed = torch.split(mixed_hidden_states_unpad, mixed_seq_length_packed)
+
+            # Re-pad to create packed batches with right-side padding
+            mixed_hidden_states_packed_padded = torch.nn.utils.rnn.pad_sequence(
+                mixed_hidden_states_packed,
+                batch_first=True,
+                padding_value=0.0,
+                padding_side="right",
             )
-            mixed_attn_mask[:, :text_seq_length] = text_attn_mask
-            mixed_attn_mask[:, text_seq_length:] = latent_attn_mask
 
-            # Convert mask to attention matrix format (where 1 means attend, 0 means don't attend)
-            mixed_attn_mask_input = mixed_attn_mask.unsqueeze(2).to(dtype=dtype)
-            attn_mask_matrix = mixed_attn_mask_input @ mixed_attn_mask_input.transpose(1, 2)
+            # Create attention mask for packed batches
+            l = mixed_hidden_states_packed_padded.shape[1]
+            attn_mask_matrix = torch.zeros(
+                (packing_batch_size, l, l),
+                dtype=dtype,
+                device=device,
+            )
+            
+            # Fill attention mask with block diagonal matrices
+            # This ensures that tokens can only attend to other tokens within the same original sample
+            for idx, mask in enumerate(attn_mask_matrix):
+                seq_lengths = mixed_seq_length[batch_flag == idx]
+                offset = 0
+                for length in seq_lengths:
+                    # Create a block of 1s for each sample in the packed batch
+                    mask[offset : offset + length, offset : offset + length] = 1
+                    offset += length
 
-            # Handle batch packing if enabled
-            if batch_flag is not None:
-                assert batch_flag.dim() == 1
-                # Determine packed batch size based on batch_flag
-                packing_batch_size = torch.max(batch_flag).item() + 1
-
-                # Calculate actual sequence lengths for each sample based on masks
-                text_seq_length = torch.sum(text_attn_mask, dim=1)
-                latent_seq_length = torch.sum(latent_attn_mask, dim=1)
-                mixed_seq_length = text_seq_length + latent_seq_length
-
-                # Calculate packed sequence lengths for each packed batch
-                text_seq_length_packed = [
-                    torch.sum(text_attn_mask[batch_flag == batch_idx]).item()
-                    for batch_idx in range(packing_batch_size)
-                ]
-                latent_seq_length_packed = [
-                    torch.sum(latent_attn_mask[batch_flag == batch_idx]).item()
-                    for batch_idx in range(packing_batch_size)
-                ]
-                mixed_seq_length_packed = [
-                    torch.sum(mixed_attn_mask[batch_flag == batch_idx]).item()
-                    for batch_idx in range(packing_batch_size)
-                ]
-                
-                assert len(mixed_seq_length_packed) == packing_batch_size
-
-                # Pack sequences by removing padding tokens
-                mixed_attn_mask_flatten = mixed_attn_mask.flatten(0, 1)
-                mixed_hidden_states_flatten = mixed_hidden_states.flatten(0, 1)
-                mixed_hidden_states_unpad = mixed_hidden_states_flatten[mixed_attn_mask_flatten == 1]
-                assert torch.sum(mixed_seq_length) == mixed_hidden_states_unpad.shape[0]
-
-                # Split the unpadded sequence into packed batches
-                mixed_hidden_states_packed = torch.split(mixed_hidden_states_unpad, mixed_seq_length_packed)
-
-                # Re-pad to create packed batches with right-side padding
-                mixed_hidden_states_packed_padded = torch.nn.utils.rnn.pad_sequence(
-                    mixed_hidden_states_packed,
-                    batch_first=True,
-                    padding_value=0.0,
-                    padding_side="right",
-                )
-
-                # Create attention mask for packed batches
-                l = mixed_hidden_states_packed_padded.shape[1]
-                attn_mask_matrix = torch.zeros(
-                    (packing_batch_size, l, l),
-                    dtype=dtype,
-                    device=device,
-                )
-                
-                # Fill attention mask with block diagonal matrices
-                # This ensures that tokens can only attend to other tokens within the same original sample
-                for idx, mask in enumerate(attn_mask_matrix):
-                    seq_lengths = mixed_seq_length[batch_flag == idx]
-                    offset = 0
-                    for length in seq_lengths:
-                        # Create a block of 1s for each sample in the packed batch
-                        mask[offset : offset + length, offset : offset + length] = 1
-                        offset += length
-
-            attn_mask_matrix = attn_mask_matrix.to(dtype=torch.bool)
-            attn_mask_matrix = attn_mask_matrix.unsqueeze(1)  # Add attention head dim
-            attention_mask = attn_mask_matrix
+        attn_mask_matrix = attn_mask_matrix.to(dtype=torch.bool)
+        attn_mask_matrix = attn_mask_matrix.unsqueeze(1)  # Add attention head dim
+        attention_mask = attn_mask_matrix
 
         # Prepare hidden states for attention computation
         if batch_flag is None:
@@ -477,7 +460,6 @@ class CogView4TransformerBlock(nn.Module):
         num_attention_heads: int = 64,
         attention_head_dim: int = 40,
         time_embed_dim: int = 512,
-        attn_processor: Union[CogView4AttnProcessor, CogView4TrainingAttnProcessor] = CogView4AttnProcessor(),
     ) -> None:
         super().__init__()
 
@@ -492,7 +474,7 @@ class CogView4TransformerBlock(nn.Module):
             qk_norm="layer_norm",
             elementwise_affine=False,
             eps=1e-5,
-            processor=attn_processor,
+            processor=CogView4AttnProcessor(),
         )
 
         # 2. Feedforward
@@ -505,9 +487,9 @@ class CogView4TransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]] = None,
         attention_mask: Optional[Dict[str, torch.Tensor]] = None,
-        **kwargs,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
         # 1. Timestep conditioning
         (
@@ -524,12 +506,14 @@ class CogView4TransformerBlock(nn.Module):
         ) = self.norm1(hidden_states, encoder_hidden_states, temb)
 
         # 2. Attention
+        if attention_kwargs is None:
+            attention_kwargs = {}
         attn_hidden_states, attn_encoder_hidden_states = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
             attention_mask=attention_mask,
-            **kwargs,
+            **attention_kwargs,
         )
         hidden_states = hidden_states + attn_hidden_states * gate_msa.unsqueeze(1)
         encoder_hidden_states = encoder_hidden_states + attn_encoder_hidden_states * c_gate_msa.unsqueeze(1)
@@ -647,7 +631,6 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         pos_embed_max_size: int = 128,
         sample_size: int = 128,
         rope_axes_dim: Tuple[int, int] = (256, 256),
-        attn_processor: Union[CogView4AttnProcessor, CogView4TrainingAttnProcessor] = CogView4AttnProcessor(),
     ):
         super().__init__()
 
@@ -673,7 +656,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         # 3. Transformer blocks
         self.transformer_blocks = nn.ModuleList(
             [
-                CogView4TransformerBlock(inner_dim, num_attention_heads, attention_head_dim, time_embed_dim, attn_processor)
+                CogView4TransformerBlock(inner_dim, num_attention_heads, attention_head_dim, time_embed_dim)
                 for _ in range(num_layers)
             ]
         )
@@ -694,9 +677,8 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         crop_coords: torch.Tensor,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-        attention_mask: Optional[Dict[str, torch.Tensor]] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor] | List[Tuple[torch.Tensor, torch.Tensor]]] = None,
-        **kwargs,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]] = None,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
@@ -733,11 +715,22 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_mask, **kwargs
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    image_rotary_emb,
+                    attention_mask,
+                    attention_kwargs,
                 )
             else:
                 hidden_states, encoder_hidden_states = block(
-                    hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_mask, **kwargs
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    image_rotary_emb,
+                    attention_mask,
+                    attention_kwargs,
                 )
 
         # 4. Output norm & projection
