@@ -214,19 +214,18 @@ def log_validation(
 
     # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
     with torch.no_grad():
-
-        ( prompt_embeds_t5,
-        negative_prompt_embeds_t5,
-        prompt_embeds_llama3,
-        negative_prompt_embeds_llama3,
-        pooled_prompt_embeds,
-        negative_pooled_prompt_embeds ) = (
-            pipeline.encode_prompt(
-                pipeline_args["prompt"],
-                prompt_2=pipeline_args["prompt"],
-                prompt_3=pipeline_args["prompt"],
-                prompt_4=pipeline_args["prompt"],
-            )
+        (
+            prompt_embeds_t5,
+            negative_prompt_embeds_t5,
+            prompt_embeds_llama3,
+            negative_prompt_embeds_llama3,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = pipeline.encode_prompt(
+            pipeline_args["prompt"],
+            prompt_2=pipeline_args["prompt"],
+            prompt_3=pipeline_args["prompt"],
+            prompt_4=pipeline_args["prompt"],
         )
     images = []
     for _ in range(args.num_validation_images):
@@ -1072,7 +1071,11 @@ def main(args):
         variant=args.variant,
     )
     transformer = HiDreamImageTransformer2DModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant, force_inference_output=True
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        revision=args.revision,
+        variant=args.variant,
+        force_inference_output=True,
     )
 
     # We only train the additional adapter LoRA layers
@@ -1112,11 +1115,11 @@ def main(args):
         text_encoder=text_encoder_one,
         tokenizer=tokenizer_one,
         text_encoder_2=text_encoder_two,
-        tokenizer_2= tokenizer_two,
-        text_encoder_3= text_encoder_three,
-        tokenizer_3= tokenizer_three,
-        text_encoder_4= text_encoder_four,
-        tokenizer_4= tokenizer_four,
+        tokenizer_2=tokenizer_two,
+        text_encoder_3=text_encoder_three,
+        tokenizer_3=tokenizer_three,
+        text_encoder_4=text_encoder_four,
+        tokenizer_4=tokenizer_four,
     )
 
     if args.gradient_checkpointing:
@@ -1301,8 +1304,8 @@ def main(args):
     def compute_text_embeddings(prompt, text_encoding_pipeline):
         text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
         with torch.no_grad():
-            t5_prompt_embeds,_, llama3_prompt_embeds,_, pooled_prompt_embeds,_ = text_encoding_pipeline.encode_prompt(
-                prompt=prompt, max_sequence_length=args.max_sequence_length
+            t5_prompt_embeds, _, llama3_prompt_embeds, _, pooled_prompt_embeds, _ = (
+                text_encoding_pipeline.encode_prompt(prompt=prompt, max_sequence_length=args.max_sequence_length)
             )
         if args.offload:
             text_encoding_pipeline = text_encoding_pipeline.to("cpu")
@@ -1344,7 +1347,9 @@ def main(args):
         pooled_prompt_embeds = instance_pooled_prompt_embeds
         if args.with_prior_preservation:
             t5_prompt_embeds = torch.cat([instance_prompt_hidden_states_t5, class_prompt_hidden_states_t5], dim=0)
-            llama3_prompt_embeds = torch.cat([instance_prompt_hidden_states_llama3, class_prompt_hidden_states_llama3], dim=0)
+            llama3_prompt_embeds = torch.cat(
+                [instance_prompt_hidden_states_llama3, class_prompt_hidden_states_llama3], dim=0
+            )
             pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, class_pooled_prompt_embeds], dim=0)
 
     vae_config_scaling_factor = vae.config.scaling_factor
@@ -1468,7 +1473,9 @@ def main(args):
             with accelerator.accumulate(models_to_accumulate):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-                    t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(prompts, text_encoding_pipeline)
+                    t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(
+                        prompts, text_encoding_pipeline
+                    )
                 else:
                     t5_prompt_embeds = t5_prompt_embeds.repeat(len(prompts), 1, 1)
                     llama3_prompt_embeds = llama3_prompt_embeds.repeat(1, len(prompts), 1, 1)

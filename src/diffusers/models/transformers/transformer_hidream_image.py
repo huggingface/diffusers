@@ -275,7 +275,14 @@ class HiDreamAttnProcessor:
 
 # Modified from https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
 class MoEGate(nn.Module):
-    def __init__(self, embed_dim, num_routed_experts=4, num_activated_experts=2, aux_loss_alpha=0.01, _force_inference_output=False):
+    def __init__(
+        self,
+        embed_dim,
+        num_routed_experts=4,
+        num_activated_experts=2,
+        aux_loss_alpha=0.01,
+        _force_inference_output=False,
+    ):
         super().__init__()
         self.top_k = num_activated_experts
         self.n_routed_experts = num_routed_experts
@@ -290,7 +297,6 @@ class MoEGate(nn.Module):
         self.weight = nn.Parameter(torch.randn(self.n_routed_experts, self.gating_dim) / embed_dim**0.5)
 
         self._force_inference_output = _force_inference_output
-
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
@@ -355,7 +361,7 @@ class MOEFeedForwardSwiGLU(nn.Module):
             embed_dim=dim,
             num_routed_experts=num_routed_experts,
             num_activated_experts=num_activated_experts,
-            _force_inference_output=_force_inference_output
+            _force_inference_output=_force_inference_output,
         )
         self.num_activated_experts = num_activated_experts
 
@@ -444,7 +450,7 @@ class HiDreamImageSingleTransformerBlock(nn.Module):
                 hidden_dim=4 * dim,
                 num_routed_experts=num_routed_experts,
                 num_activated_experts=num_activated_experts,
-                _force_inference_output=_force_inference_output
+                _force_inference_output=_force_inference_output,
             )
         else:
             self.ff_i = HiDreamImageFeedForwardSwiGLU(dim=dim, hidden_dim=4 * dim)
@@ -514,7 +520,7 @@ class HiDreamImageTransformerBlock(nn.Module):
                 hidden_dim=4 * dim,
                 num_routed_experts=num_routed_experts,
                 num_activated_experts=num_activated_experts,
-                _force_inference_output=_force_inference_output
+                _force_inference_output=_force_inference_output,
             )
         else:
             self.ff_i = HiDreamImageFeedForwardSwiGLU(dim=dim, hidden_dim=4 * dim)
@@ -617,7 +623,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         axes_dims_rope: Tuple[int, int] = (32, 32),
         max_resolution: Tuple[int, int] = (128, 128),
         llama_layers: List[int] = None,
-        force_inference_output: bool = False
+        force_inference_output: bool = False,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -641,7 +647,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         attention_head_dim=attention_head_dim,
                         num_routed_experts=num_routed_experts,
                         num_activated_experts=num_activated_experts,
-                        _force_inference_output=force_inference_output
+                        _force_inference_output=force_inference_output,
                     )
                 )
                 for _ in range(num_layers)
@@ -657,7 +663,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         attention_head_dim=attention_head_dim,
                         num_routed_experts=num_routed_experts,
                         num_activated_experts=num_activated_experts,
-                        _force_inference_output=force_inference_output
+                        _force_inference_output=force_inference_output,
                     )
                 )
                 for _ in range(num_single_layers)
