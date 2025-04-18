@@ -275,7 +275,7 @@ class HiDreamAttnProcessor:
 
 # Modified from https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py
 class MoEGate(nn.Module):
-    def __init__(self, embed_dim, num_routed_experts=4, num_activated_experts=2, aux_loss_alpha=0.01):
+    def __init__(self, embed_dim, num_routed_experts=4, num_activated_experts=2, aux_loss_alpha=0.01, _force_inference_output=False):
         super().__init__()
         self.top_k = num_activated_experts
         self.n_routed_experts = num_routed_experts
@@ -288,6 +288,9 @@ class MoEGate(nn.Module):
         self.norm_topk_prob = False
         self.gating_dim = embed_dim
         self.weight = nn.Parameter(torch.randn(self.n_routed_experts, self.gating_dim) / embed_dim**0.5)
+
+        self._force_inference_output = _force_inference_output
+
 
     def forward(self, hidden_states):
         bsz, seq_len, h = hidden_states.shape
@@ -309,7 +312,7 @@ class MoEGate(nn.Module):
             topk_weight = topk_weight / denominator
 
         ### expert-level computation auxiliary loss
-        if self.training and self.alpha > 0.0:
+        if self.training and self.alpha > 0.0 and not self._force_inference_output:
             scores_for_aux = scores
             aux_topk = self.top_k
             # always compute aux loss based on the naive greedy topk method
@@ -341,14 +344,19 @@ class MOEFeedForwardSwiGLU(nn.Module):
         hidden_dim: int,
         num_routed_experts: int,
         num_activated_experts: int,
+        _force_inference_output: bool = False,
     ):
         super().__init__()
         self.shared_experts = HiDreamImageFeedForwardSwiGLU(dim, hidden_dim // 2)
         self.experts = nn.ModuleList(
             [HiDreamImageFeedForwardSwiGLU(dim, hidden_dim) for i in range(num_routed_experts)]
         )
+        self._force_inference_output = _force_inference_output
         self.gate = MoEGate(
-            embed_dim=dim, num_routed_experts=num_routed_experts, num_activated_experts=num_activated_experts
+            embed_dim=dim,
+            num_routed_experts=num_routed_experts,
+            num_activated_experts=num_activated_experts,
+            _force_inference_output=_force_inference_output
         )
         self.num_activated_experts = num_activated_experts
 
@@ -359,7 +367,8 @@ class MOEFeedForwardSwiGLU(nn.Module):
         topk_idx, topk_weight, aux_loss = self.gate(x)
         x = x.view(-1, x.shape[-1])
         flat_topk_idx = topk_idx.view(-1)
-        if self.training:
+        print("forward 2: self.config._force_inference_output", self._force_inference_output)
+        if self.training and not self._force_inference_output:
             x = x.repeat_interleave(self.num_activated_experts, dim=0)
             y = torch.empty_like(x, dtype=wtype)
             for i, expert in enumerate(self.experts):
@@ -413,6 +422,7 @@ class HiDreamImageSingleTransformerBlock(nn.Module):
         attention_head_dim: int,
         num_routed_experts: int = 4,
         num_activated_experts: int = 2,
+        _force_inference_output: bool = False,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -436,6 +446,7 @@ class HiDreamImageSingleTransformerBlock(nn.Module):
                 hidden_dim=4 * dim,
                 num_routed_experts=num_routed_experts,
                 num_activated_experts=num_activated_experts,
+                _force_inference_output=_force_inference_output
             )
         else:
             self.ff_i = HiDreamImageFeedForwardSwiGLU(dim=dim, hidden_dim=4 * dim)
@@ -480,6 +491,7 @@ class HiDreamImageTransformerBlock(nn.Module):
         attention_head_dim: int,
         num_routed_experts: int = 4,
         num_activated_experts: int = 2,
+        _force_inference_output: bool = False,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -504,6 +516,7 @@ class HiDreamImageTransformerBlock(nn.Module):
                 hidden_dim=4 * dim,
                 num_routed_experts=num_routed_experts,
                 num_activated_experts=num_activated_experts,
+                _force_inference_output=_force_inference_output
             )
         else:
             self.ff_i = HiDreamImageFeedForwardSwiGLU(dim=dim, hidden_dim=4 * dim)
@@ -606,6 +619,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         axes_dims_rope: Tuple[int, int] = (32, 32),
         max_resolution: Tuple[int, int] = (128, 128),
         llama_layers: List[int] = None,
+        force_inference_output: bool = False
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -629,6 +643,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         attention_head_dim=attention_head_dim,
                         num_routed_experts=num_routed_experts,
                         num_activated_experts=num_activated_experts,
+                        _force_inference_output=force_inference_output
                     )
                 )
                 for _ in range(num_layers)
@@ -644,6 +659,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         attention_head_dim=attention_head_dim,
                         num_routed_experts=num_routed_experts,
                         num_activated_experts=num_activated_experts,
+                        _force_inference_output=force_inference_output
                     )
                 )
                 for _ in range(num_single_layers)
@@ -662,7 +678,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.gradient_checkpointing = False
 
     def unpatchify(self, x: torch.Tensor, img_sizes: List[Tuple[int, int]], is_training: bool) -> List[torch.Tensor]:
-        if is_training:
+        if is_training and not self.config.force_inference_output:
             B, S, F = x.shape
             C = F // (self.config.patch_size * self.config.patch_size)
             x = (
