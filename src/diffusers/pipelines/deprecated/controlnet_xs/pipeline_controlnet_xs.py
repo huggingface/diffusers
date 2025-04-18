@@ -27,8 +27,6 @@ from ....loaders import FromSingleFileMixin, StableDiffusionLoraLoaderMixin, Tex
 from ....models import AutoencoderKL, ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
 from ....models.lora import adjust_lora_scale_text_encoder
 from ....schedulers import KarrasDiffusionSchedulers
-from ....stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from ....stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ....utils import (
     USE_PEFT_BACKEND,
     deprecate,
@@ -40,6 +38,8 @@ from ....utils import (
 )
 from ....utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ...stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
 if is_torch_xla_available():

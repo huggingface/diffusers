@@ -11,7 +11,7 @@ from diffusers import (
     WuerstchenDecoderPipeline,
     WuerstchenPriorPipeline,
 )
-from diffusers.pipelines.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt, WuerstchenPrior
+from diffusers.pipelines.deprecated.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt, WuerstchenPrior
 
 
 model_path = "models/"

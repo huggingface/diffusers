@@ -50,8 +50,8 @@ from ....utils import (
 )
 from ....utils.torch_utils import randn_tensor
 from ....video_processor import VideoProcessor
+from ...free_init_utils import FreeInitMixin
 from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from ..free_init_utils import FreeInitMixin
 
 
 if is_torch_xla_available():

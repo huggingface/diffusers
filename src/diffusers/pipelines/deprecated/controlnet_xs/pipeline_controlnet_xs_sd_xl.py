@@ -38,7 +38,6 @@ from ....models.attention_processor import (
 )
 from ....models.lora import adjust_lora_scale_text_encoder
 from ....schedulers import KarrasDiffusionSchedulers
-from ....stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from ....utils import (
     USE_PEFT_BACKEND,
     logging,
@@ -48,6 +47,7 @@ from ....utils import (
 )
 from ....utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 from ...pipeline_utils import DiffusionPipeline
+from ...stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
 if is_invisible_watermark_available():

@@ -48,7 +48,6 @@ else:
         "AutoPipelineForText2Image",
     ]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
-    _import_structure["dance_diffusion"] = ["DanceDiffusionPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
@@ -62,6 +61,7 @@ else:
     _import_structure["deprecated"].extend(
         [
             "PNDMPipeline",
+            "DanceDiffusionPipeline",
             "LDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
@@ -387,10 +387,12 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
 else:
-    _import_structure["stable_diffusion_k_diffusion"] = [
-        "StableDiffusionKDiffusionPipeline",
-        "StableDiffusionXLKDiffusionPipeline",
-    ]
+    _import_structure["deprecated"].extend(
+        [
+            "StableDiffusionKDiffusionPipeline",
+            "StableDiffusionXLKDiffusionPipeline",
+        ]
+    )
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
@@ -464,10 +466,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForText2Image,
         )
         from .consistency_models import ConsistencyModelPipeline
-        from .dance_diffusion import DanceDiffusionPipeline
         from .ddim import DDIMPipeline
         from .ddpm import DDPMPipeline
-        from .deprecated import KarrasVePipeline, LDMPipeline, PNDMPipeline, RePaintPipeline, ScoreSdeVePipeline
+        from .deprecated import (
+            DanceDiffusionPipeline,
+            KarrasVePipeline,
+            LDMPipeline,
+            PNDMPipeline,
+            RePaintPipeline,
+            ScoreSdeVePipeline,
+        )
         from .dit import DiTPipeline
         from .latent_diffusion import LDMSuperResolutionPipeline
         from .pipeline_utils import (

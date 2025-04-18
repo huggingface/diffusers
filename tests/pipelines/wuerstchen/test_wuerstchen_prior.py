@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenPriorPipeline
-from diffusers.pipelines.wuerstchen import WuerstchenPrior
+from diffusers.pipelines.deprecated.wuerstchen import WuerstchenPrior
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import enable_full_determinism, require_peft_backend, skip_mps, torch_device
 

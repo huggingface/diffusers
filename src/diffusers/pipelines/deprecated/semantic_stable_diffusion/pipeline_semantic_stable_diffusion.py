@@ -8,10 +8,10 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from ....image_processor import VaeImageProcessor
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....schedulers import KarrasDiffusionSchedulers
-from ....stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ....utils import deprecate, is_torch_xla_available, logging
 from ....utils.torch_utils import randn_tensor
 from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .pipeline_output import SemanticStableDiffusionPipelineOutput
 
 
