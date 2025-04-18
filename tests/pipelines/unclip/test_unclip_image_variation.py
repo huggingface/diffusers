@@ -35,7 +35,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
 )
-from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
+from diffusers.pipelines.deprecated.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,

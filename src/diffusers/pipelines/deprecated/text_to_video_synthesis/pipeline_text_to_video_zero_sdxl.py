@@ -55,32 +55,32 @@ else:
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_0
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_0
 def rearrange_0(tensor, f):
     F, C, H, W = tensor.size()
     tensor = torch.permute(torch.reshape(tensor, (F // f, f, C, H, W)), (0, 2, 1, 3, 4))
     return tensor
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_1
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_1
 def rearrange_1(tensor):
     B, C, F, H, W = tensor.size()
     return torch.reshape(torch.permute(tensor, (0, 2, 1, 3, 4)), (B * F, C, H, W))
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_3
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_3
 def rearrange_3(tensor, f):
     F, D, C = tensor.size()
     return torch.reshape(tensor, (F // f, f, D, C))
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_4
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_4
 def rearrange_4(tensor):
     B, F, D, C = tensor.size()
     return torch.reshape(tensor, (B * F, D, C))
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor
 class CrossFrameAttnProcessor:
     """
     Cross frame attention processor. Each frame attends the first frame.
@@ -140,7 +140,7 @@ class CrossFrameAttnProcessor:
         return hidden_states
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor2_0
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor2_0
 class CrossFrameAttnProcessor2_0:
     """
     Cross frame attention processor with scaled_dot_product attention of Pytorch 2.0.
@@ -230,7 +230,7 @@ class TextToVideoSDXLPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.coords_grid
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.coords_grid
 def coords_grid(batch, ht, wd, device):
     # Adapted from https://github.com/princeton-vl/RAFT/blob/master/core/utils/utils.py
     coords = torch.meshgrid(torch.arange(ht, device=device), torch.arange(wd, device=device))
@@ -238,7 +238,7 @@ def coords_grid(batch, ht, wd, device):
     return coords[None].repeat(batch, 1, 1, 1)
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.warp_single_latent
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.warp_single_latent
 def warp_single_latent(latent, reference_flow):
     """
     Warp latent of a single frame with given flow
@@ -266,7 +266,7 @@ def warp_single_latent(latent, reference_flow):
     return warped
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.create_motion_field
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.create_motion_field
 def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_ids, device, dtype):
     """
     Create translation motion field
@@ -290,7 +290,7 @@ def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_
     return reference_flow
 
 
-# Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.create_motion_field_and_warp_latents
+# Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.create_motion_field_and_warp_latents
 def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_strength_y, frame_ids, latents):
     """
     Creates translation motion and warps the latents accordingly
@@ -832,7 +832,7 @@ class TextToVideoZeroSDXLPipeline(
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.TextToVideoZeroPipeline.forward_loop
+    # Copied from diffusers.pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.TextToVideoZeroPipeline.forward_loop
     def forward_loop(self, x_t0, t0, t1, generator):
         """
         Perform DDPM forward process from time t0 to t1. This is the same as adding noise with corresponding variance.

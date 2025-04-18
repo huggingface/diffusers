@@ -72,7 +72,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.ModelWrapper
+# Copied from diffusers.pipelines.deprecated.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.ModelWrapper
 class ModelWrapper:
     def __init__(self, model, alphas_cumprod):
         self.model = model
@@ -187,7 +187,7 @@ class StableDiffusionXLKDiffusionPipeline(
         else:
             self.k_diffusion_model = CompVisDenoiser(model)
 
-    # Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.StableDiffusionKDiffusionPipeline.set_scheduler
+    # Copied from diffusers.pipelines.deprecated.stable_diffusion_k_diffusion..pipeline_stable_diffusion_k_diffusion.StableDiffusionKDiffusionPipeline.set_scheduler
     def set_scheduler(self, scheduler_type: str):
         library = importlib.import_module("k_diffusion")
         sampling = getattr(library, "sampling")

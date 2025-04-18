@@ -27,7 +27,7 @@ from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
 
 
-# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm with WuerstchenLayerNorm -> SDCascadeLayerNorm
+# Copied from diffusers.pipelines.deprecated.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm with WuerstchenLayerNorm -> SDCascadeLayerNorm
 class SDCascadeLayerNorm(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

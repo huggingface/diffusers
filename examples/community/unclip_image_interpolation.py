@@ -18,7 +18,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
 )
-from diffusers.pipelines.unclip import UnCLIPTextProjModel
+from diffusers.pipelines.deprecated.unclip import UnCLIPTextProjModel
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -84,7 +84,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline.__init__
+    # Copied from diffusers.pipelines.deprecated.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline.__init__
     def __init__(
         self,
         decoder: UNet2DConditionModel,
@@ -113,7 +113,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
             super_res_scheduler=super_res_scheduler,
         )
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
+    # Copied from diffusers.pipelines.deprecated.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -125,7 +125,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline._encode_prompt
+    # Copied from diffusers.pipelines.deprecated.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
@@ -189,7 +189,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline._encode_image
+    # Copied from diffusers.pipelines.deprecated.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline._encode_image
     def _encode_image(self, image, device, num_images_per_prompt, image_embeddings: Optional[torch.Tensor] = None):
         dtype = next(self.image_encoder.parameters()).dtype
 

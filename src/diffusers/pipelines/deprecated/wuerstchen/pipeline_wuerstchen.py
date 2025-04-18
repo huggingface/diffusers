@@ -107,7 +107,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         )
         self.register_to_config(latent_dim_scale=latent_dim_scale)
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
+    # Copied from diffusers.pipelines.deprecated.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
