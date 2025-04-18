@@ -1,4 +1,4 @@
-# Copyright 2024 MIT, Tsinghua University, NVIDIA CORPORATION and The HuggingFace Team.
+# Copyright 2025 MIT, Tsinghua University, NVIDIA CORPORATION and The HuggingFace Team.
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
