@@ -15,8 +15,8 @@
 # limitations under the License.
 
 """
-    Script to fine-tune Stable Diffusion for LORA InstructPix2Pix.
-    Base code referred from: https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py
+Script to fine-tune Stable Diffusion for LORA InstructPix2Pix.
+Base code referred from: https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py
 """
 
 import argparse
@@ -54,6 +54,7 @@ from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2P
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, cast_training_params
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, deprecate, is_wandb_available
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
@@ -475,7 +476,7 @@ def convert_to_np(image, resolution):
 
 
 def download_image(url):
-    image = PIL.Image.open(requests.get(url, stream=True).raw)
+    image = PIL.Image.open(requests.get(url, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT).raw)
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image

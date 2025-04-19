@@ -51,7 +51,7 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     FluxTransformer2DModel,
 )
-from diffusers.models.controlnet_flux import FluxControlNetModel
+from diffusers.models.controlnets.controlnet_flux import FluxControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
 from diffusers.training_utils import compute_density_for_timestep_sampling, free_memory
@@ -65,7 +65,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():

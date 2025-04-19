@@ -26,6 +26,7 @@ _import_structure = {}
 
 if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
+    _import_structure["auto_model"] = ["AutoModel"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
@@ -48,6 +49,7 @@ if is_torch_available():
         "HunyuanDiT2DControlNetModel",
         "HunyuanDiT2DMultiControlNetModel",
     ]
+    _import_structure["controlnets.controlnet_sana"] = ["SanaControlNetModel"]
     _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
     _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
     _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
@@ -75,6 +77,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
     _import_structure["transformers.transformer_easyanimate"] = ["EasyAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
+    _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
@@ -103,6 +106,7 @@ if is_flax_available():
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
         from .adapter import MultiAdapter, T2IAdapter
+        from .auto_model import AutoModel
         from .autoencoders import (
             AsymmetricAutoencoderKL,
             AutoencoderDC,
@@ -131,6 +135,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DMultiControlNetModel,
             MultiControlNetModel,
             MultiControlNetUnionModel,
+            SanaControlNetModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SparseControlNetModel,
@@ -149,6 +154,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
             FluxTransformer2DModel,
+            HiDreamImageTransformer2DModel,
             HunyuanDiT2DModel,
             HunyuanVideoTransformer3DModel,
             LatteTransformer3DModel,
