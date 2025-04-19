@@ -71,6 +71,10 @@ snapshot_download(
 This will also allow us to push the trained LoRA parameters to the Hugging Face Hub platform.
 
 Now, we can launch training using:
+> [!NOTE]
+> The following training configuration prioritizes lower memory consumption by using gradient checkpointing, 8-bit Adam, latent caching and no validation. 
+> Additionally, when provided with 'instance_prompt' only and no 'caption_column' (used for custom prompts for each image)
+> text embeddings are pre-computed to save memory.
 
 ```bash
 export MODEL_NAME="HiDream-ai/HiDream-I1-Dev"
@@ -92,8 +96,9 @@ accelerate launch train_dreambooth_lora_hidream.py \
   --report_to="wandb" \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --max_train_steps=500 \
-  --validation_prompt="A photo of sks dog in a bucket" \
+  --max_train_steps=1000 \
+  --cache_latents \
+  --gradient_checkpointing \
   --validation_epochs=25 \
   --seed="0" \
   --push_to_hub
@@ -115,9 +120,7 @@ To better track our training experiments, we're using the following flags in the
 Additionally, we welcome you to explore the following CLI arguments:
 
 * `--lora_layers`: The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v" will result in lora training of attention layers only.
-* `--system_prompt`: A custom system prompt to provide additional personality to the model.
-* `--max_sequence_length`: Maximum sequence length to use for text embeddings.
-
+* `--rank`: The rank of the LoRA layers. The higher the rank, the more parameters are trained. The default is 16.
 
 We provide several options for optimizing memory optimization:
 
