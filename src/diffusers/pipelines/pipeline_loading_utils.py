@@ -675,8 +675,10 @@ def load_sub_model(
     use_safetensors: bool,
     dduf_entries: Optional[Dict[str, DDUFEntry]],
     provider_options: Any,
+    quantization_config: Optional[Any] = None,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
+    from ..quantizers import PipelineQuantizationConfig
 
     # retrieve class candidates
 
@@ -768,6 +770,17 @@ def load_sub_model(
             loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
         else:
             loading_kwargs["low_cpu_mem_usage"] = False
+
+    if (
+        quantization_config is not None
+        and isinstance(quantization_config, PipelineQuantizationConfig)
+        and issubclass(class_obj, torch.nn.Module)
+    ):
+        model_quant_config = quantization_config._resolve_quant_config(
+            is_diffusers=is_diffusers_model, module_name=name
+        )
+        if model_quant_config is not None:
+            loading_kwargs["quantization_config"] = model_quant_config
 
     # check if the module is in a subdirectory
     if dduf_entries:
