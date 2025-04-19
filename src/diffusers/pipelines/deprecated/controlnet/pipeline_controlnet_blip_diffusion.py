@@ -1,5 +1,6 @@
 # Copyright 2024 Salesforce.com, inc.
-# Copyright 2024 The HuggingFace Team. All rights reserved.#
+# Copyright 2024 The HuggingFace Team. All rights reserved.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -17,18 +18,18 @@ import PIL.Image
 import torch
 from transformers import CLIPTokenizer
 
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import PNDMScheduler
-from ...utils import (
+from ....models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ....schedulers import PNDMScheduler
+from ....utils import (
     is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .blip_image_processing import BlipImageProcessor
-from .modeling_blip2 import Blip2QFormerModel
-from .modeling_ctx_clip import ContextCLIPTextModel
+from ....utils.torch_utils import randn_tensor
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..blip_diffusion.blip_image_processing import BlipImageProcessor
+from ..blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from ..blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 
 
 if is_torch_xla_available():
@@ -44,31 +45,37 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers.pipelines import BlipDiffusionPipeline
+        >>> from diffusers.pipelines import BlipDiffusionControlNetPipeline
         >>> from diffusers.utils import load_image
+        >>> from controlnet_aux import CannyDetector
         >>> import torch
 
-        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained(
-        ...     "Salesforce/blipdiffusion", torch_dtype=torch.float16
+        >>> blip_diffusion_pipe = BlipDiffusionControlNetPipeline.from_pretrained(
+        ...     "Salesforce/blipdiffusion-controlnet", torch_dtype=torch.float16
         ... ).to("cuda")
 
+        >>> style_subject = "flower"
+        >>> tgt_subject = "teapot"
+        >>> text_prompt = "on a marble table"
 
-        >>> cond_subject = "dog"
-        >>> tgt_subject = "dog"
-        >>> text_prompt_input = "swimming underwater"
-
-        >>> cond_image = load_image(
-        ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/dog.jpg"
+        >>> cldm_cond_image = load_image(
+        ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/kettle.jpg"
+        ... ).resize((512, 512))
+        >>> canny = CannyDetector()
+        >>> cldm_cond_image = canny(cldm_cond_image, 30, 70, output_type="pil")
+        >>> style_image = load_image(
+        ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/flower.jpg"
         ... )
         >>> guidance_scale = 7.5
-        >>> num_inference_steps = 25
+        >>> num_inference_steps = 50
         >>> negative_prompt = "over-exposure, under-exposure, saturated, duplicate, out of frame, lowres, cropped, worst quality, low quality, jpeg artifacts, morbid, mutilated, out of frame, ugly, bad anatomy, bad proportions, deformed, blurry, duplicate"
 
 
         >>> output = blip_diffusion_pipe(
-        ...     text_prompt_input,
-        ...     cond_image,
-        ...     cond_subject,
+        ...     text_prompt,
+        ...     style_image,
+        ...     cldm_cond_image,
+        ...     style_subject,
         ...     tgt_subject,
         ...     guidance_scale=guidance_scale,
         ...     num_inference_steps=num_inference_steps,
@@ -81,9 +88,9 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class BlipDiffusionPipeline(DiffusionPipeline):
+class BlipDiffusionControlNetPipeline(DiffusionPipeline):
     """
-    Pipeline for Zero-Shot Subject Driven Generation using Blip Diffusion.
+    Pipeline for Canny Edge based Controlled subject-driven generation using Blip Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -101,6 +108,8 @@ class BlipDiffusionPipeline(DiffusionPipeline):
              A scheduler to be used in combination with `unet` to generate image latents.
         qformer ([`Blip2QFormerModel`]):
             QFormer model to get multi-modal embeddings from the text and image.
+        controlnet ([`ControlNetModel`]):
+            ControlNet model to get the conditioning image embedding.
         image_processor ([`BlipImageProcessor`]):
             Image Processor to preprocess and postprocess the image.
         ctx_begin_pos (int, `optional`, defaults to 2):
@@ -117,6 +126,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: PNDMScheduler,
         qformer: Blip2QFormerModel,
+        controlnet: ControlNetModel,
         image_processor: BlipImageProcessor,
         ctx_begin_pos: int = 2,
         mean: List[float] = None,
@@ -131,6 +141,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             unet=unet,
             scheduler=scheduler,
             qformer=qformer,
+            controlnet=controlnet,
             image_processor=image_processor,
         )
         self.register_to_config(ctx_begin_pos=ctx_begin_pos, mean=mean, std=std)
@@ -192,12 +203,50 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         return text_embeddings
 
+    # Adapted from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
+    def prepare_control_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+    ):
+        image = self.image_processor.preprocess(
+            image,
+            size={"width": width, "height": height},
+            do_rescale=True,
+            do_center_crop=False,
+            do_normalize=False,
+            return_tensors="pt",
+        )["pixel_values"].to(device)
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance:
+            image = torch.cat([image] * 2)
+
+        return image
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: List[str],
         reference_image: PIL.Image.Image,
+        condtioning_image: PIL.Image.Image,
         source_subject_category: List[str],
         target_subject_category: List[str],
         latents: Optional[torch.Tensor] = None,
@@ -220,6 +269,8 @@ class BlipDiffusionPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             reference_image (`PIL.Image.Image`):
                 The reference image to condition the generation on.
+            condtioning_image (`PIL.Image.Image`):
+                The conditioning canny edge image to condition the generation on.
             source_subject_category (`List[str]`):
                 The source subject category.
             target_subject_category (`List[str]`):
@@ -238,6 +289,8 @@ class BlipDiffusionPipeline(DiffusionPipeline):
                 The height of the generated image.
             width (`int`, *optional*, defaults to 512):
                 The width of the generated image.
+            seed (`int`, *optional*, defaults to 42):
+                The seed to use for random generation.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -252,11 +305,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
                 to amplify the prompt.
             prompt_reps (`int`, *optional*, defaults to 20):
                 The number of times the prompt is repeated along with prompt_strength to amplify the prompt.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
-                (`np.array`) or `"pt"` (`torch.Tensor`).
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
         Examples:
 
         Returns:
@@ -286,6 +334,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         )
         query_embeds = self.get_query_embeddings(reference_image, source_subject_category)
         text_embeddings = self.encode_prompt(query_embeds, prompt, device)
+        # 3. unconditional embedding
         do_classifier_free_guidance = guidance_scale > 1.0
         if do_classifier_free_guidance:
             max_length = self.text_encoder.text_model.config.max_position_embeddings
@@ -304,7 +353,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-
         scale_down_factor = 2 ** (len(self.unet.config.block_out_channels) - 1)
         latents = self.prepare_latents(
             batch_size=batch_size,
@@ -320,18 +368,36 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         extra_set_kwargs = {}
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
+        cond_image = self.prepare_control_image(
+            image=condtioning_image,
+            width=width,
+            height=height,
+            batch_size=batch_size,
+            num_images_per_prompt=1,
+            device=device,
+            dtype=self.controlnet.dtype,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+        )
+
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             do_classifier_free_guidance = guidance_scale > 1.0
 
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            down_block_res_samples, mid_block_res_sample = self.controlnet(
+                latent_model_input,
+                t,
+                encoder_hidden_states=text_embeddings,
+                controlnet_cond=cond_image,
+                return_dict=False,
+            )
 
             noise_pred = self.unet(
                 latent_model_input,
                 timestep=t,
                 encoder_hidden_states=text_embeddings,
-                down_block_additional_residuals=None,
-                mid_block_additional_residual=None,
+                down_block_additional_residuals=down_block_res_samples,
+                mid_block_additional_residual=mid_block_res_sample,
             )["sample"]
 
             # perform guidance

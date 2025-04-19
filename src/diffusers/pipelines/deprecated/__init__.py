@@ -42,6 +42,7 @@ else:
         "AltDiffusionPipeline",
         "AltDiffusionPipelineOutput",
     ]
+    _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
     _import_structure["versatile_diffusion"] = [
         "VersatileDiffusionDualGuidedPipeline",
         "VersatileDiffusionImageVariationPipeline",
@@ -56,6 +57,7 @@ else:
         "StableDiffusionParadigmsPipeline",
         "StableDiffusionModelEditingPipeline",
     ]
+    _import_structure["controlnet"] = ["BlipDiffusionControlNetPipeline"]
 
 try:
     if not (is_torch_available() and is_librosa_available()):
@@ -103,6 +105,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline, AltDiffusionPipelineOutput
         from .audio_diffusion import AudioDiffusionPipeline, Mel
+        from .blip_diffusion import BlipDiffusionPipeline
+        from .controlnet import BlipDiffusionControlNetPipeline
         from .spectrogram_diffusion import SpectrogramDiffusionPipeline
         from .stable_diffusion_variants import (
             CycleDiffusionPipeline,
