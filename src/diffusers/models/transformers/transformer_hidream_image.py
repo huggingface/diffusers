@@ -938,5 +938,5 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            return (output, hidden_states_masks)
-        return Transformer2DModelOutput(sample=output, mask=hidden_states_masks)
+            return (output,)
+        return Transformer2DModelOutput(sample=output)
