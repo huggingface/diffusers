@@ -335,7 +335,7 @@ jobs:
     - name: Environment
       run: |
         python utils/print_env.py
-    - name: Run example tests on GPU
+    - name: Run torch compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         RUN_COMPILE: yes
