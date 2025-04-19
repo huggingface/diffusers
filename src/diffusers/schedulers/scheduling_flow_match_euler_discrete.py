@@ -443,10 +443,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             lower_mask = sigmas < per_token_sigmas[None] - 1e-6
             lower_sigmas = lower_mask * sigmas
             lower_sigmas, _ = lower_sigmas.max(dim=0)
-            
+
             current_sigma = per_token_sigmas[..., None]
             next_sigma = lower_sigmas[..., None]
-            dt = next_sigma - current_sigma # Equivalent to sigma_next - sigma
+            dt = next_sigma - current_sigma  # Equivalent to sigma_next - sigma
         else:
             sigma_idx = self.step_index
             sigma = self.sigmas[sigma_idx]
