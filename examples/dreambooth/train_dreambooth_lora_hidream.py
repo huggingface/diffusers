@@ -1312,7 +1312,7 @@ def main(args):
             t5_prompt_embeds, _, llama3_prompt_embeds, _, pooled_prompt_embeds, _ = (
                 text_encoding_pipeline.encode_prompt(prompt=prompt, max_sequence_length=args.max_sequence_length)
             )
-        if args.offload: # back to cpu
+        if args.offload:  # back to cpu
             text_encoding_pipeline = text_encoding_pipeline.to("cpu")
         return t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds
 
@@ -1532,7 +1532,6 @@ def main(args):
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
-
 
                 target = noise - model_input
                 if args.with_prior_preservation:
