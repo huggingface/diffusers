@@ -53,7 +53,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTesterMixin, UNetTesterMixin
 
 
 if is_peft_available():
@@ -350,7 +350,9 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
     return custom_diffusion_attn_procs
 
 
-class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class UNet2DConditionModelTests(
+    ModelTesterMixin, LoraHotSwappingForModelTesterMixin, UNetTesterMixin, unittest.TestCase
+):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
     # We override the items here because the unet under consideration is small.
