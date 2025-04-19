@@ -65,6 +65,8 @@ from .import_utils import (
     is_bitsandbytes_available,
     is_bitsandbytes_version,
     is_bs4_available,
+    is_flash_attn_available,
+    is_flash_attn_version,
     is_flax_available,
     is_ftfy_available,
     is_gguf_available,
@@ -85,6 +87,8 @@ from .import_utils import (
     is_peft_available,
     is_peft_version,
     is_safetensors_available,
+    is_sageattention_available,
+    is_sageattention_version,
     is_scipy_available,
     is_sentencepiece_available,
     is_tensorboard_available,
@@ -103,6 +107,7 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
+    is_xformers_version,
     requires_backends,
 )
 from .loading_utils import get_module_from_name, get_submodule_by_name, load_image, load_video

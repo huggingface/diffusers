@@ -190,6 +190,8 @@ _gguf_available, _gguf_version = _is_package_available("gguf")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
 _torchao_available, _torchao_version = _is_package_available("torchao")
+_sageattention_available, _sageattention_version = _is_package_available("sageattention")
+_flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 
 _optimum_quanto_available = importlib.util.find_spec("optimum") is not None
 if _optimum_quanto_available:
@@ -334,6 +336,14 @@ def is_optimum_quanto_available():
 
 def is_timm_available():
     return _timm_available
+
+
+def is_sageattention_available():
+    return _sageattention_available
+
+
+def is_flash_attn_available():
+    return _flash_attn_available
 
 
 # docstyle-ignore
@@ -741,6 +751,51 @@ def is_optimum_quanto_version(operation: str, version: str):
     if not _optimum_quanto_available:
         return False
     return compare_versions(parse(_optimum_quanto_version), operation, version)
+
+
+def is_xformers_version(operation: str, version: str):
+    """
+    Compares the current xformers version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _xformers_available:
+        return False
+    return compare_versions(parse(_xformers_version), operation, version)
+
+
+def is_sageattention_version(operation: str, version: str):
+    """
+    Compares the current sageattention version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _sageattention_available:
+        return False
+    return compare_versions(parse(_sageattention_version), operation, version)
+
+
+def is_flash_attn_version(operation: str, version: str):
+    """
+    Compares the current flash-attention version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _flash_attn_available:
+        return False
+    return compare_versions(parse(_flash_attn_version), operation, version)
 
 
 def get_objects_from_module(module):
