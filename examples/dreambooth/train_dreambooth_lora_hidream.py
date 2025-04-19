@@ -1510,18 +1510,15 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
                 # Predict the noise residual
-
-                model_pred = (
-                    transformer(
-                        hidden_states=noisy_model_input,
-                        encoder_hidden_states_t5=t5_prompt_embeds,
-                        encoder_hidden_states_llama3=llama3_prompt_embeds,
-                        pooled_embeds=pooled_prompt_embeds,
-                        timesteps=timesteps,
-                        return_dict=False,
-                    )[0]
-                    * -1
-                )
+                model_pred = transformer(
+                    hidden_states=noisy_model_input,
+                    encoder_hidden_states_t5=t5_prompt_embeds,
+                    encoder_hidden_states_llama3=llama3_prompt_embeds,
+                    pooled_embeds=pooled_prompt_embeds,
+                    timesteps=timesteps,
+                    return_dict=False,
+                )[0]
+                model_pred = model_pred * -1
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
