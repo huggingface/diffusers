@@ -490,14 +490,6 @@ class FluxPipeline(
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
 
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
-
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
@@ -821,7 +813,7 @@ class FluxPipeline(
             (
                 negative_prompt_embeds,
                 negative_pooled_prompt_embeds,
-                _,
+                negative_text_ids,
             ) = self.encode_prompt(
                 prompt=negative_prompt,
                 prompt_2=negative_prompt_2,
@@ -938,7 +930,7 @@ class FluxPipeline(
                         guidance=guidance,
                         pooled_projections=negative_pooled_prompt_embeds,
                         encoder_hidden_states=negative_prompt_embeds,
-                        txt_ids=text_ids,
+                        txt_ids=negative_text_ids,
                         img_ids=latent_image_ids,
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
