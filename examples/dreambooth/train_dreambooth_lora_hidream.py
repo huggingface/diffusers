@@ -223,9 +223,6 @@ def log_validation(
             negative_pooled_prompt_embeds,
         ) = pipeline.encode_prompt(
             pipeline_args["prompt"],
-            prompt_2=pipeline_args["prompt"],
-            prompt_3=pipeline_args["prompt"],
-            prompt_4=pipeline_args["prompt"],
         )
     images = []
     for _ in range(args.num_validation_images):
