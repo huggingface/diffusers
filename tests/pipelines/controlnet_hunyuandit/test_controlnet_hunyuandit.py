@@ -29,6 +29,7 @@ from diffusers import (
 from diffusers.models import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
@@ -238,8 +239,12 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
 
-        expected_image = np.array(
-            [0.43652344, 0.4399414, 0.44921875, 0.45043945, 0.45703125, 0.44873047, 0.43579102, 0.44018555, 0.42578125]
+        expected_image = Expectations(
+            {
+                ("xpu", 3): np.array([0.64709055, 0.64534926, 0.644328, 0.6434535, 0.6505399, 0.638746, 0.6558074, 0.6602831, 0.646336]),
+                ("cuda", 7): np.array([0.43652344, 0.4399414, 0.44921875, 0.45043945, 0.45703125, 0.44873047, 0.43579102, 0.44018555, 0.42578125])
+            }
+            
         )
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
