@@ -1097,7 +1097,10 @@ def main(args):
             "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
         )
 
-    vae.to(dtype=weight_dtype)
+    if not args.offload:
+         vae.to(dtype=weight_dtype, device=accelerator.device)
+    else:
+        vae.to(dtype=weight_dtype)
     transformer.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
