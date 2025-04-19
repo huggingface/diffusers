@@ -21,7 +21,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadeCombinedPipeline
 from diffusers.models import StableCascadeUNet
-from diffusers.pipelines.wuerstchen import PaellaVQModel
+from diffusers.pipelines.deprecated.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin

@@ -338,6 +338,10 @@ def get_class_obj_and_candidates(
     component_folder = os.path.join(cache_dir, component_name)
 
     if is_pipeline_module:
+        deprecated_pipelines = getattr(pipelines, "deprecated")
+        if hasattr(deprecated_pipelines, library_name):
+            pipelines = deprecated_pipelines
+
         pipeline_module = getattr(pipelines, library_name)
 
         class_obj = getattr(pipeline_module, class_name)
@@ -679,7 +683,6 @@ def load_sub_model(
     """Helper method to load the module `name` from `library_name` and `class_name`"""
 
     # retrieve class candidates
-
     class_obj, class_candidates = get_class_obj_and_candidates(
         library_name,
         class_name,
@@ -818,6 +821,7 @@ def _fetch_class_library_tuple(module):
     # import it here to avoid circular import
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     pipelines = getattr(diffusers_module, "pipelines")
+    deprecated_pipelines = getattr(pipelines, "deprecated")
 
     # register the config from the original module, not the dynamo compiled one
     not_compiled_module = _unwrap_model(module)
@@ -828,7 +832,9 @@ def _fetch_class_library_tuple(module):
     pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
 
     path = not_compiled_module.__module__.split(".")
-    is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+    is_pipeline_module = pipeline_dir in path and (
+        hasattr(pipelines, pipeline_dir) or hasattr(deprecated_pipelines, pipeline_dir)
+    )
 
     # if library is not in LOADABLE_CLASSES, then it is a custom module.
     # Or if it's a pipeline module, then the module is inside the pipeline
@@ -947,6 +953,7 @@ def _get_custom_components_and_folders(
 
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     pipelines = getattr(diffusers_module, "pipelines")
+    deprecated_pipelines = getattr(pipelines, "deprecated")
 
     # optionally create a custom component <> custom file mapping
     custom_components = {}
@@ -961,7 +968,9 @@ def _get_custom_components_and_folders(
 
         if candidate_file in filenames:
             custom_components[component] = module_candidate
-        elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
+        elif module_candidate not in LOADABLE_CLASSES and (
+            not hasattr(pipelines, module_candidate) and not hasattr(deprecated_pipelines, module_candidate)
+        ):
             raise ValueError(
                 f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
             )

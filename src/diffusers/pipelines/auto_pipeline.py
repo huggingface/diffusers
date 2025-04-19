@@ -39,6 +39,7 @@ from .controlnet_sd3 import (
     StableDiffusion3ControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .deprecated.wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .flux import (
     FluxControlImg2ImgPipeline,
     FluxControlInpaintPipeline,
@@ -106,7 +107,6 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
-from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(

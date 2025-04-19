@@ -333,7 +333,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.latte.pipeline_latte.LattePipeline.check_inputs
+    # Copied from diffusers.pipelines.deprecated.latte.pipeline_latte.LattePipeline.check_inputs
     def check_inputs(
         self,
         prompt,
