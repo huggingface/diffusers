@@ -1526,7 +1526,7 @@ def main(args):
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
-                # flow matching loss via reverse ODE (HiDream uses an inverted flow field as compared to the more typical `noise - model_input` target)
+
                 target = noise - model_input
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
