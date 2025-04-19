@@ -1098,7 +1098,7 @@ def main(args):
         )
 
     if not args.offload:
-         vae.to(dtype=weight_dtype, device=accelerator.device)
+        vae.to(dtype=weight_dtype, device=accelerator.device)
     else:
         vae.to(dtype=weight_dtype)
     transformer.to(accelerator.device, dtype=weight_dtype)
@@ -1356,7 +1356,8 @@ def main(args):
     vae_config_shift_factor = vae.config.shift_factor
     if args.cache_latents:
         latents_cache = []
-        vae = vae.to(accelerator.device)
+        if not args.offload:
+            vae = vae.to(accelerator.device)
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
                 batch["pixel_values"] = batch["pixel_values"].to(
@@ -1484,7 +1485,8 @@ def main(args):
                 if args.cache_latents:
                     model_input = latents_cache[step].sample()
                 else:
-                    vae = vae.to(accelerator.device)
+                    if args.offload:
+                        vae = vae.to(accelerator.device)
                     pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.sample()
                     if args.offload:
