@@ -18,9 +18,70 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from ..utils.logging import get_logger
+from ..utils.torch_utils import unwrap_module
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class BaseState:
+    def reset(self, *args, **kwargs) -> None:
+        raise NotImplementedError(
+            "BaseState::reset is not implemented. Please implement this method in the derived class."
+        )
+
+
+class ContextAwareState(BaseState):
+    def __init__(self, init_args=None, init_kwargs=None):
+        super().__init__()
+
+        self._init_args = init_args if init_args is not None else ()
+        self._init_kwargs = init_kwargs if init_kwargs is not None else {}
+        self._current_context = None
+        self._state_cache = {}
+
+    def get_state(self) -> "ContextAwareState":
+        if self._current_context is None:
+            # If no context is set, simply return a dummy object since we're not going to be using it
+            return self
+        if self._current_context not in self._state_cache.keys():
+            self._state_cache[self._current_context] = ContextAwareState._create_state(
+                self.__class__, self._init_args, self._init_kwargs
+            )
+        return self._state_cache[self._current_context]
+
+    def set_context(self, name: str) -> None:
+        self._current_context = name
+
+    def reset(self, *args, **kwargs) -> None:
+        for name, state in list(self._state_cache.items()):
+            state.reset(*args, **kwargs)
+            self._state_cache.pop(name)
+        self._current_context = None
+
+    @staticmethod
+    def _create_state(cls, init_args, init_kwargs) -> "ContextAwareState":
+        return cls(*init_args, **init_kwargs)
+
+    def __getattribute__(self, name):
+        # fmt: off
+        direct_attrs = ("get_state", "set_context", "reset", "_init_args", "_init_kwargs", "_current_context", "_state_cache", "_create_state")
+        # fmt: on
+        if name in direct_attrs or _is_dunder_method(name):
+            return object.__getattribute__(self, name)
+        else:
+            current_state = ContextAwareState.get_state(self)
+            return object.__getattribute__(current_state, name)
+
+    def __setattr__(self, name, value):
+        # fmt: off
+        direct_attrs = ("get_state", "set_context", "reset", "_init_args", "_init_kwargs", "_current_context", "_state_cache", "_create_state")
+        # fmt: on
+        if name in direct_attrs or _is_dunder_method(name):
+            object.__setattr__(self, name, value)
+        else:
+            current_state = ContextAwareState.get_state(self)
+            object.__setattr__(current_state, name, value)
 
 
 class ModelHook:
@@ -97,6 +158,14 @@ class ModelHook:
     def reset_state(self, module: torch.nn.Module):
         if self._is_stateful:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
+        return module
+
+    def _set_context(self, module: torch.nn.Module, name: str) -> None:
+        # Iterate over all attributes of the hook to see if any of them have the type `ContextAwareState`. If so, call `set_context` on them.
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if isinstance(attr, ContextAwareState):
+                attr.set_context(name)
         return module
 
 
@@ -211,9 +280,10 @@ class HookRegistry:
                 hook.reset_state(self._module_ref)
 
         if recurse:
-            for module_name, module in self._module_ref.named_modules():
+            for module_name, module in unwrap_module(self._module_ref).named_modules():
                 if module_name == "":
                     continue
+                module = unwrap_module(module)
                 if hasattr(module, "_diffusers_hook"):
                     module._diffusers_hook.reset_stateful_hooks(recurse=False)
 
@@ -222,6 +292,19 @@ class HookRegistry:
         if not hasattr(module, "_diffusers_hook"):
             module._diffusers_hook = cls(module)
         return module._diffusers_hook
+
+    def _set_context(self, name: Optional[str] = None) -> None:
+        for hook_name in reversed(self._hook_order):
+            hook = self.hooks[hook_name]
+            if hook._is_stateful:
+                hook._set_context(self._module_ref, name)
+
+        for module_name, module in unwrap_module(self._module_ref).named_modules():
+            if module_name == "":
+                continue
+            module = unwrap_module(module)
+            if hasattr(module, "_diffusers_hook"):
+                module._diffusers_hook._set_context(name)
 
     def __repr__(self) -> str:
         registry_repr = ""
@@ -234,3 +317,7 @@ class HookRegistry:
             if i < len(self._hook_order) - 1:
                 registry_repr += "\n"
         return f"HookRegistry(\n{registry_repr}\n)"
+
+
+def _is_dunder_method(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__") and name in dir(object)
