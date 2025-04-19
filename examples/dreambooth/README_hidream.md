@@ -72,7 +72,8 @@ This will also allow us to push the trained LoRA parameters to the Hugging Face 
 
 Now, we can launch training using:
 > [!NOTE]
-> The following training configuration prioritizes lower memory consumption by using gradient checkpointing, 8-bit Adam, latent caching and no validation. 
+> The following training configuration prioritizes lower memory consumption by using gradient checkpointing, 
+> 8-bit Adam optimizer, latent caching, offloading, no validation. 
 > Additionally, when provided with 'instance_prompt' only and no 'caption_column' (used for custom prompts for each image)
 > text embeddings are pre-computed to save memory.
 
@@ -127,5 +128,5 @@ We provide several options for optimizing memory optimization:
 * `--offload`: When enabled, we will offload the text encoder and VAE to CPU, when they are not used.
 * `cache_latents`: When enabled, we will pre-compute the latents from the input images with the VAE and remove the VAE from memory once done.
 * `--use_8bit_adam`: When enabled, we will use the 8bit version of AdamW provided by the `bitsandbytes` library.
-
+* `--instance_prompt` and no `--caption_column`: when only an instance prompt is provided, we will pre-compute the text embeddings and remove the text encoders from memory once done.
 Refer to the [official documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/) of the `HiDreamImagePipeline` to know more about the model.
