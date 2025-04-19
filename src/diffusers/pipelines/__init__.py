@@ -10,6 +10,7 @@ from ..utils import (
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
+    is_opencv_available,
     is_sentencepiece_available,
     is_torch_available,
     is_torch_npu_available,
@@ -155,7 +156,6 @@ else:
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
-    _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -221,6 +221,7 @@ else:
         "EasyAnimateInpaintPipeline",
         "EasyAnimateControlPipeline",
     ]
+    _import_structure["hidream_image"] = ["HiDreamImagePipeline"]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["hunyuan_video"] = [
         "HunyuanVideoPipeline",
@@ -280,7 +281,7 @@ else:
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
-    _import_structure["sana"] = ["SanaPipeline", "SanaSprintPipeline"]
+    _import_structure["sana"] = ["SanaPipeline", "SanaSprintPipeline", "SanaControlNetPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_audio"] = [
@@ -356,7 +357,7 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
-    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline"]
+    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -413,6 +414,18 @@ else:
         "KolorsPipeline",
         "KolorsImg2ImgPipeline",
     ]
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils import (
+        dummy_torch_and_transformers_and_opencv_objects,
+    )
+
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_opencv_objects))
+else:
+    _import_structure["consisid"] = ["ConsisIDPipeline"]
 
 try:
     if not is_flax_available():
@@ -512,7 +525,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .cogview3 import CogView3PlusPipeline
         from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
-        from .consisid import ConsisIDPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
@@ -574,6 +586,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
+        from .hidream_image import HiDreamImagePipeline
         from .hunyuan_video import (
             HunyuanSkyreelsImageToVideoPipeline,
             HunyuanVideoImageToVideoPipeline,
@@ -651,7 +664,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
-        from .sana import SanaPipeline, SanaSprintPipeline
+        from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
@@ -709,7 +722,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserPipeline,
             UniDiffuserTextDecoder,
         )
-        from .wan import WanImageToVideoPipeline, WanPipeline
+        from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
@@ -760,6 +773,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 KolorsImg2ImgPipeline,
                 KolorsPipeline,
             )
+
+        try:
+            if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
+                raise OptionalDependencyNotAvailable()
+        except OptionalDependencyNotAvailable:
+            from ..utils.dummy_torch_and_transformers_and_opencv_objects import *
+        else:
+            from .consisid import ConsisIDPipeline
 
         try:
             if not is_flax_available():
