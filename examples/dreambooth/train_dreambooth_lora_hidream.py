@@ -1099,13 +1099,17 @@ def main(args):
 
     if not args.offload:
         vae.to(dtype=weight_dtype, device=accelerator.device)
+        text_encoder_one.to(dtype=weight_dtype, device=accelerator.device)
+        text_encoder_two.to(dtype=weight_dtype, device=accelerator.device)
+        text_encoder_three.to(dtype=weight_dtype, device=accelerator.device)
+        text_encoder_four.to(dtype=weight_dtype, device=accelerator.device)
     else:
         vae.to(dtype=weight_dtype)
+        text_encoder_one.to(dtype=weight_dtype)
+        text_encoder_two.to(dtype=weight_dtype)
+        text_encoder_three.to(dtype=weight_dtype)
+        text_encoder_four.to(dtype=weight_dtype)
     transformer.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_three.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_four.to(accelerator.device, dtype=weight_dtype)
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
     text_encoding_pipeline = HiDreamImagePipeline.from_pretrained(
@@ -1302,12 +1306,13 @@ def main(args):
     )
 
     def compute_text_embeddings(prompt, text_encoding_pipeline):
-        text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
+        if args.offload:
+            text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
         with torch.no_grad():
             t5_prompt_embeds, _, llama3_prompt_embeds, _, pooled_prompt_embeds, _ = (
                 text_encoding_pipeline.encode_prompt(prompt=prompt, max_sequence_length=args.max_sequence_length)
             )
-        if args.offload:
+        if args.offload: # back to cpu
             text_encoding_pipeline = text_encoding_pipeline.to("cpu")
         return t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds
 
