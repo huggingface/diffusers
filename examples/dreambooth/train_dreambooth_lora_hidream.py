@@ -1097,18 +1097,14 @@ def main(args):
             "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
         )
 
-    if not args.offload:
-        vae.to(dtype=weight_dtype, device=accelerator.device)
-        text_encoder_one.to(dtype=weight_dtype, device=accelerator.device)
-        text_encoder_two.to(dtype=weight_dtype, device=accelerator.device)
-        text_encoder_three.to(dtype=weight_dtype, device=accelerator.device)
-        text_encoder_four.to(dtype=weight_dtype, device=accelerator.device)
-    else:
-        vae.to(dtype=weight_dtype)
-        text_encoder_one.to(dtype=weight_dtype)
-        text_encoder_two.to(dtype=weight_dtype)
-        text_encoder_three.to(dtype=weight_dtype)
-        text_encoder_four.to(dtype=weight_dtype)
+    to_kwargs = {"dtype": weight_dtype, "device": accelerator.device} if not args.offload else {"dtype": weight_dtype}
+    # flux vae is stable in bf16 so load it in weight_dtype to reduce memory
+    vae.to(**to_kwargs)
+    text_encoder_one.to(**to_kwargs)
+    text_encoder_two.to(**to_kwargs)
+    text_encoder_three.to(**to_kwargs)
+    text_encoder_four.to(**to_kwargs)
+    # we never offload the transformer to CPU, so we can just use the accelerator device
     transformer.to(accelerator.device, dtype=weight_dtype)
 
     # Initialize a text encoding pipeline and keep it to CPU for now.
