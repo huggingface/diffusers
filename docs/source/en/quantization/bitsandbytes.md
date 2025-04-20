@@ -49,7 +49,7 @@ For Ada and higher-series GPUs. we recommend changing `torch_dtype` to `torch.bf
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(load_in_8bit=True,)
@@ -63,7 +63,7 @@ text_encoder_2_8bit = T5EncoderModel.from_pretrained(
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True,)
 
-transformer_8bit = FluxTransformer2DModel.from_pretrained(
+transformer_8bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -74,7 +74,7 @@ transformer_8bit = FluxTransformer2DModel.from_pretrained(
 By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `torch_dtype` parameter.
 
 ```diff
-transformer_8bit = FluxTransformer2DModel.from_pretrained(
+transformer_8bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -133,7 +133,7 @@ For Ada and higher-series GPUs. we recommend changing `torch_dtype` to `torch.bf
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(load_in_4bit=True,)
@@ -147,7 +147,7 @@ text_encoder_2_4bit = T5EncoderModel.from_pretrained(
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True,)
 
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -158,7 +158,7 @@ transformer_4bit = FluxTransformer2DModel.from_pretrained(
 By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `torch_dtype` parameter.
 
 ```diff
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -217,11 +217,11 @@ print(model.get_memory_footprint())
 Quantized models can be loaded from the [`~ModelMixin.from_pretrained`] method without needing to specify the `quantization_config` parameters:
 
 ```py
-from diffusers import FluxTransformer2DModel, BitsAndBytesConfig
+from diffusers import AutoModel, BitsAndBytesConfig
 
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 
-model_4bit = FluxTransformer2DModel.from_pretrained(
+model_4bit = AutoModel.from_pretrained(
     "hf-internal-testing/flux.1-dev-nf4-pkg", subfolder="transformer"
 )
 ```
@@ -243,13 +243,13 @@ An "outlier" is a hidden state value greater than a certain threshold, and these
 To find the best threshold for your model, we recommend experimenting with the `llm_int8_threshold` parameter in [`BitsAndBytesConfig`]:
 
 ```py
-from diffusers import FluxTransformer2DModel, BitsAndBytesConfig
+from diffusers import AutoModel, BitsAndBytesConfig
 
 quantization_config = BitsAndBytesConfig(
     load_in_8bit=True, llm_int8_threshold=10,
 )
 
-model_8bit = FluxTransformer2DModel.from_pretrained(
+model_8bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -305,7 +305,7 @@ NF4 is a 4-bit data type from the [QLoRA](https://hf.co/papers/2305.14314) paper
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(
@@ -325,7 +325,7 @@ quant_config = DiffusersBitsAndBytesConfig(
     bnb_4bit_quant_type="nf4",
 )
 
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -343,7 +343,7 @@ Nested quantization is a technique that can save additional memory at no additio
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(
@@ -363,7 +363,7 @@ quant_config = DiffusersBitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -379,7 +379,7 @@ Once quantized, you can dequantize a model to its original precision, but this m
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(
@@ -399,7 +399,7 @@ quant_config = DiffusersBitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
