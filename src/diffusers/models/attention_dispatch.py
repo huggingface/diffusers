@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import functools
 import inspect
 from enum import Enum
@@ -123,6 +124,8 @@ class AttentionProvider(str, Enum):
     _SAGE_QK_INT8_PV_FP8_CUDA_SM90 = "_sage_qk_int8_pv_fp8_cuda_sm90"
     _SAGE_QK_INT8_PV_FP16_CUDA = "_sage_qk_int8_pv_fp16_cuda"
     _SAGE_QK_INT8_PV_FP16_TRITON = "_sage_qk_int8_pv_fp16_triton"
+    # TODO: let's not add support for Sparge Attention now because it requires tuning per model
+    # We can look into supporting something "autotune"-ing in the future
     # SPARGE = "sparge"
 
     # `xformers`
@@ -155,6 +158,23 @@ class _AttentionProviderRegistry:
     @classmethod
     def list_providers(cls):
         return list(cls._providers.keys())
+
+
+@contextlib.contextmanager
+def attention_provider(provider: AttentionProvider = AttentionProvider.NATIVE):
+    """
+    Context manager to set the active attention provider.
+    """
+    if provider not in _AttentionProviderRegistry._providers:
+        raise ValueError(f"Provider {provider} is not registered.")
+
+    old_provider = _AttentionProviderRegistry._active_provider
+    _AttentionProviderRegistry._active_provider = provider
+
+    try:
+        yield
+    finally:
+        _AttentionProviderRegistry._active_provider = old_provider
 
 
 def attention_dispatch(
