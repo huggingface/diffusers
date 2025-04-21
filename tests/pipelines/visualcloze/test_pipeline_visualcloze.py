@@ -3,11 +3,11 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 from PIL import Image
+from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 import diffusers
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, VisualClozePipeline, FluxTransformer2DModel
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxTransformer2DModel, VisualClozePipeline
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -23,7 +23,18 @@ enable_full_determinism()
 
 class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = VisualClozePipeline
-    params = frozenset(["task_prompt", "content_prompt", "upsampling_height", "upsampling_width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds", "upsampling_strength"])
+    params = frozenset(
+        [
+            "task_prompt",
+            "content_prompt",
+            "upsampling_height",
+            "upsampling_width",
+            "guidance_scale",
+            "prompt_embeds",
+            "pooled_prompt_embeds",
+            "upsampling_strength",
+        ]
+    )
     batch_params = frozenset(["task_prompt", "content_prompt", "image"])
     test_xformers_attention = False
     test_layerwise_casting = True
@@ -96,15 +107,23 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
     def get_dummy_inputs(self, device, seed=0):
         # Create example images to simulate the input format required by VisualCloze
-        context_image = [Image.fromarray(floats_tensor((32, 32, 3), rng=random.Random(seed), scale=255).numpy().astype(np.uint8)) for _ in range(2)]
-        query_image = [Image.fromarray(floats_tensor((32, 32, 3), rng=random.Random(seed+1), scale=255).numpy().astype(np.uint8)), None]
-        
+        context_image = [
+            Image.fromarray(floats_tensor((32, 32, 3), rng=random.Random(seed), scale=255).numpy().astype(np.uint8))
+            for _ in range(2)
+        ]
+        query_image = [
+            Image.fromarray(
+                floats_tensor((32, 32, 3), rng=random.Random(seed + 1), scale=255).numpy().astype(np.uint8)
+            ),
+            None,
+        ]
+
         # Create an image list that conforms to the VisualCloze input format
         image = [
             context_image,  # In-Context example
-            query_image,    # Query image
+            query_image,  # Query image
         ]
-        
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -156,31 +175,31 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
-        
+
     def test_upsampling_strength(self, expected_min_diff=1e-1):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
-        
+
         # Test different upsampling strengths
         inputs["upsampling_strength"] = 0.2
         output_no_upsampling = pipe(**inputs).images[0]
-        
+
         inputs["upsampling_strength"] = 0.8
         output_full_upsampling = pipe(**inputs).images[0]
-        
+
         # Different upsampling strengths should produce different outputs
         max_diff = np.abs(output_no_upsampling - output_full_upsampling).max()
         assert max_diff > expected_min_diff
-        
+
     def test_different_task_prompts(self, expected_min_diff=1e-1):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
-        
+
         output_original = pipe(**inputs).images[0]
-        
+
         inputs["task_prompt"] = "A different task description for image generation"
         output_different_task = pipe(**inputs).images[0]
-        
+
         # Different task prompts should produce different outputs
         max_diff = np.abs(output_original - output_different_task).max()
         assert max_diff > expected_min_diff

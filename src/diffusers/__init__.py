@@ -513,6 +513,7 @@ else:
             "VersatileDiffusionPipeline",
             "VersatileDiffusionTextToImagePipeline",
             "VideoToVideoSDPipeline",
+            "VisualClozePipeline",
             "VQDiffusionPipeline",
             "WanImageToVideoPipeline",
             "WanPipeline",
@@ -520,7 +521,6 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
-            "VisualClozePipeline"
         ]
     )
 
@@ -1087,6 +1087,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionPipeline,
             VersatileDiffusionTextToImagePipeline,
             VideoToVideoSDPipeline,
+            VisualClozePipeline,
             VQDiffusionPipeline,
             WanImageToVideoPipeline,
             WanPipeline,
@@ -1094,7 +1095,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-            VisualClozePipeline
         )
 
     try:

@@ -13,16 +13,14 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
-from PIL import Image
 from einops import rearrange
+from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from ...image_processor import VaeImageProcessor
-from .processor_visualcloze import VisualClozeProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
@@ -36,8 +34,9 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
 from ..flux.pipeline_output import FluxPipelineOutput
+from ..pipeline_utils import DiffusionPipeline
+from .processor_visualcloze import VisualClozeProcessor
 
 
 if is_torch_xla_available():
@@ -58,21 +57,29 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> image = [
-        >>>     # in-context examples
-        >>>     [
-        >>>         load_image('https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/5bf755ed9dbb9b3e223e7ba35232b06e/5bf755ed9dbb9b3e223e7ba35232b06e_depth-anything-v2_Large.jpg'),
-        >>>         load_image('https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/5bf755ed9dbb9b3e223e7ba35232b06e/5bf755ed9dbb9b3e223e7ba35232b06e.jpg'),
-        >>>     ],
-        >>>     # query with the target image
-        >>>     [
-        >>>         load_image('https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/2b74476568f7562a6aa832d423132ed3/2b74476568f7562a6aa832d423132ed3_depth-anything-v2_Large.jpg'),
-        >>>         None,
-        >>>     ],
-        >>> ]
+        ...     # in-context examples
+        ...     [
+        ...         load_image(
+        ...             "https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/5bf755ed9dbb9b3e223e7ba35232b06e/5bf755ed9dbb9b3e223e7ba35232b06e_depth-anything-v2_Large.jpg"
+        ...         ),
+        ...         load_image(
+        ...             "https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/5bf755ed9dbb9b3e223e7ba35232b06e/5bf755ed9dbb9b3e223e7ba35232b06e.jpg"
+        ...         ),
+        ...     ],
+        ...     # query with the target image
+        ...     [
+        ...         load_image(
+        ...             "https://github.com/lzyhha/VisualCloze/tree/main/examples/examples/2b74476568f7562a6aa832d423132ed3/2b74476568f7562a6aa832d423132ed3_depth-anything-v2_Large.jpg"
+        ...         ),
+        ...         None,
+        ...     ],
+        ... ]
         >>> task_prompt = "Each row outlines a logical process, starting from [IMAGE1] gray-based depth map with detailed object contours, to achieve [IMAGE2] an image with flawless clarity."
         >>> content_prompt = "Group photo of five young adults enjoying a rooftop gathering at dusk. The group is positioned in the center, with three women and two men smiling and embracing. The woman on the far left wears a floral top and holds a drink, looking slightly to the right. Next to her, a woman in a denim jacket stands close to a woman in a white blouse, both smiling directly at the camera. The fourth woman, in an orange top, stands close to the man on the far right, who wears a red shirt and blue blazer, smiling broadly. The background features a cityscape with a tall building and string lights hanging overhead, creating a warm, festive atmosphere. Soft natural lighting, warm color palette, shallow depth of field, intimate and joyful mood, slightly blurred background, urban rooftop setting, evening ambiance."
 
-        >>> pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
+        >>> pipe = VisualClozePipeline.from_pretrained(
+        ...     "VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.enable_model_cpu_offload()  # save some VRAM by offloading the model to CPU
 
         >>> image = pipe(
@@ -187,9 +194,9 @@ class VisualClozePipeline(
     TextualInversionLoaderMixin,
 ):
     r"""
-    The VisualCloze pipeline for image generation with visual context.
-    Reference: https://github.com/lzyhha/VisualCloze/tree/main
-    This pipeline is designed to generate images based on visual in-context examples. 
+    The VisualCloze pipeline for image generation with visual context. Reference:
+    https://github.com/lzyhha/VisualCloze/tree/main This pipeline is designed to generate images based on visual
+    in-context examples.
 
     Args:
         transformer ([`FluxTransformer2DModel`]):
@@ -366,7 +373,8 @@ class VisualClozePipeline(
 
         Args:
             layout_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to define the number of in-context examples and the number of images involved in the task.
+                The prompt or prompts to define the number of in-context examples and the number of images involved in
+                the task.
             task_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to define the task intention.
             content_prompt (`str` or `List[str]`, *optional*):
@@ -401,14 +409,17 @@ class VisualClozePipeline(
             layout_prompt = [layout_prompt]
             task_prompt = [task_prompt]
             content_prompt = [content_prompt]
-        
+
         def _preprocess(prompt, content=False):
             if prompt is not None:
                 return f"The last image of the last row depicts: {prompt}" if content else prompt
             else:
                 return ""
 
-        prompt = [f"{_preprocess(layout_prompt[i])} {_preprocess(task_prompt[i])} {_preprocess(content_prompt[i], content=True)}".strip() for i in range(len(layout_prompt))]
+        prompt = [
+            f"{_preprocess(layout_prompt[i])} {_preprocess(task_prompt[i])} {_preprocess(content_prompt[i], content=True)}".strip()
+            for i in range(len(layout_prompt))
+        ]
         pooled_prompt_embeds = self._get_clip_prompt_embeds(
             prompt=prompt,
             device=device,
@@ -465,12 +476,12 @@ class VisualClozePipeline(
 
     def check_inputs(
         self,
-        image, 
+        image,
         task_prompt,
         content_prompt,
         upsampling_height,
         upsampling_width,
-        strength, 
+        strength,
         prompt_embeds=None,
         pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
@@ -479,7 +490,7 @@ class VisualClozePipeline(
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        if upsampling_height is not None and upsampling_height % (self.vae_scale_factor * 2) != 0 :
+        if upsampling_height is not None and upsampling_height % (self.vae_scale_factor * 2) != 0:
             logger.warning(
                 f"`upsampling_height`has to be divisible by {self.vae_scale_factor * 2} but are {upsampling_height}. Dimensions will be resized accordingly"
             )
@@ -497,25 +508,21 @@ class VisualClozePipeline(
 
         # Validate prompt inputs
         if (task_prompt is not None or content_prompt is not None) and prompt_embeds is not None:
-            raise ValueError(
-                "Cannot provide both text `task_prompt` + `content_prompt` and `prompt_embeds`. "
-            )
-        
+            raise ValueError("Cannot provide both text `task_prompt` + `content_prompt` and `prompt_embeds`. ")
+
         if task_prompt is None and content_prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Must provide either `task_prompt` + `content_prompt` or pre-computed `prompt_embeds`. "
-            )
+            raise ValueError("Must provide either `task_prompt` + `content_prompt` or pre-computed `prompt_embeds`. ")
 
         # Validate prompt types and consistency
         if task_prompt is None:
             raise ValueError("`task_prompt` is missing.")
-            
+
         if task_prompt is not None and not isinstance(task_prompt, (str, list)):
             raise ValueError(f"`task_prompt` must be str or list, got {type(task_prompt)}")
-            
+
         if content_prompt is not None and not isinstance(content_prompt, (str, list)):
             raise ValueError(f"`content_prompt` must be str or list, got {type(content_prompt)}")
-            
+
         if isinstance(task_prompt, list) or isinstance(content_prompt, list):
             if not isinstance(task_prompt, list) or not isinstance(content_prompt, list):
                 raise ValueError(
@@ -523,28 +530,18 @@ class VisualClozePipeline(
                     f"got {type(task_prompt)} and {type(content_prompt)}"
                 )
             if len(content_prompt) != len(task_prompt):
-                raise ValueError(
-                    "`task_prompt` and `content_prompt` must have the same length whe they are lists."
-                )
-            
+                raise ValueError("`task_prompt` and `content_prompt` must have the same length whe they are lists.")
+
             for sample in image:
                 if not isinstance(sample, list) or not isinstance(sample[0], list):
-                    raise ValueError(
-                        "Each sample in the batch must have a 2D list of images."
-                    )
-                if len(set([len(row) for row in sample])) != 1:
-                    raise ValueError(
-                        "Each in-context example and query should contain the same number of images."
-                    )
-                if not any([img is None for img in sample[-1]]):
-                    raise ValueError(
-                        "There are no targets in the query, which should be represented as None."
-                    )
+                    raise ValueError("Each sample in the batch must have a 2D list of images.")
+                if len({len(row) for row in sample}) != 1:
+                    raise ValueError("Each in-context example and query should contain the same number of images.")
+                if not any(img is None for img in sample[-1]):
+                    raise ValueError("There are no targets in the query, which should be represented as None.")
                 for row in sample[:-1]:
                     if any(img is None for img in row):
-                        raise ValueError(
-                            "Images are missing in in-context examples."
-                        )
+                        raise ValueError("Images are missing in in-context examples.")
 
         # Validate embeddings
         if prompt_embeds is not None and pooled_prompt_embeds is None:
@@ -558,24 +555,23 @@ class VisualClozePipeline(
 
     @staticmethod
     def _prepare_latent_image_ids(image, vae_scale_factor, device, dtype):
-        
         latent_image_ids = []
-        
+
         for idx, img in enumerate(image, start=1):
             img = img.squeeze(0)
             channels, height, width = img.shape
-            
+
             num_patches_h = height // vae_scale_factor // 2
             num_patches_w = width // vae_scale_factor // 2
-            
-            patch_ids = torch.zeros(num_patches_h, num_patches_w, 3, device=device, dtype=dtype)            
+
+            patch_ids = torch.zeros(num_patches_h, num_patches_w, 3, device=device, dtype=dtype)
             patch_ids[..., 0] = idx
             patch_ids[..., 1] = torch.arange(num_patches_h, device=device, dtype=dtype)[:, None]
             patch_ids[..., 2] = torch.arange(num_patches_w, device=device, dtype=dtype)[None, :]
-            
+
             patch_ids = patch_ids.reshape(-1, 3)
             latent_image_ids.append(patch_ids)
-        
+
         return torch.cat(latent_image_ids, dim=0)
 
     @staticmethod
@@ -607,23 +603,23 @@ class VisualClozePipeline(
     @staticmethod
     def _unpack_latents(latents, sizes, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
-        
+
         start = 0
         unpacked_latents = []
         for i in range(len(sizes)):
             cur_size = sizes[i]
             height = cur_size[0][0] // vae_scale_factor
             width = sum([size[1] for size in cur_size]) // vae_scale_factor
-            
+
             end = start + (height * width) // 4
-            
+
             cur_latents = latents[:, start:end]
             cur_latents = cur_latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
             cur_latents = cur_latents.permute(0, 3, 1, 4, 2, 5)
             cur_latents = cur_latents.reshape(batch_size, channels // (2 * 2), height, width)
-            
+
             unpacked_latents.append(cur_latents)
-            
+
             start = end
 
         return unpacked_latents
@@ -656,18 +652,18 @@ class VisualClozePipeline(
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-      
+
     def prepare_latents(
         self,
         input_image,
-        input_mask, 
-        timestep, 
+        input_mask,
+        timestep,
         batch_size,
         dtype,
         device,
-        generator, 
-        vae_scale_factor, 
-        upsampling = False
+        generator,
+        vae_scale_factor,
+        upsampling=False,
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -684,7 +680,7 @@ class VisualClozePipeline(
 
                 # Generate latent image IDs
                 latent_image_ids = self._prepare_latent_image_ids(image, vae_scale_factor, device, dtype)
-                
+
                 # Encode images to latent space
                 with torch.no_grad():
                     if not upsampling:
@@ -695,19 +691,27 @@ class VisualClozePipeline(
                         # For post-upsampling, use zero images for masked latents
                         image_latent = [self._encode_vae_image(img[None], gen) for img in image]
                         masked_image_latent = [self._encode_vae_image(img[None] * 0, gen) for img in image]
-                    
+
                     # Rearrange latents and masks for patch processing
-                    image_latent = [rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for img in image_latent]
-                    masked_image_latent = [rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for img in masked_image_latent]
+                    image_latent = [
+                        rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for img in image_latent
+                    ]
+                    masked_image_latent = [
+                        rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
+                        for img in masked_image_latent
+                    ]
 
                     # Rearrange masks for patch processing
-                    mask = [rearrange(m, "b c (h ph) (w pw) -> b (c ph pw) h w", ph=vae_scale_factor, pw=vae_scale_factor) for m in mask]
+                    mask = [
+                        rearrange(m, "b c (h ph) (w pw) -> b (c ph pw) h w", ph=vae_scale_factor, pw=vae_scale_factor)
+                        for m in mask
+                    ]
                     mask = [rearrange(m, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for m in mask]
-                
+
                 # Concatenate along batch dimension
                 image_latent = torch.cat(image_latent, dim=1)
                 masked_image_latent = torch.cat(masked_image_latent, dim=1)
-                mask = torch.cat(mask, dim=1)                
+                mask = torch.cat(mask, dim=1)
 
                 return image_latent, masked_image_latent, mask, latent_image_ids
 
@@ -719,15 +723,13 @@ class VisualClozePipeline(
 
         for i in range(len(input_image)):
             _image_latent, _masked_image_latent, _mask, _latent_image_ids = _prepare_single_batch(
-                input_image[i], 
-                input_mask[i], 
-                generator if isinstance(generator, torch.Generator) else generator[i]
+                input_image[i], input_mask[i], generator if isinstance(generator, torch.Generator) else generator[i]
             )
             masked_image_latents.append(_masked_image_latent)
             image_latents.append(_image_latent)
             masks.append(_mask)
             latent_image_ids.append(_latent_image_ids)
-        
+
         # Concatenate all batches
         masked_image_latents = torch.cat(masked_image_latents, dim=0)
         image_latents = torch.cat(image_latents, dim=0)
@@ -746,11 +748,11 @@ class VisualClozePipeline(
                     f"Cannot expand batch size from {masked_image_latents.shape[0]} to {batch_size}. "
                     "Batch sizes must be multiples of each other."
                 )
-        
+
         # Add noise to latents
         noises = randn_tensor(image_latents.shape, generator=generator, device=device, dtype=dtype)
         latents = self.scheduler.scale_noise(image_latents, timestep, noises).to(dtype=dtype)
-        
+
         # Combine masked latents with masks
         masked_image_latents = torch.cat((masked_image_latents, masks), dim=-1).to(dtype=dtype)
 
@@ -811,13 +813,15 @@ class VisualClozePipeline(
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`.
             upsampling_height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image (i.e., output image) after upsampling via SDEdit. 
-                By default, the image is upsampled by a factor of three, and the base resolution is determined by the resolution parameter of the pipeline. 
-                When only one of `upsampling_height` or `upsampling_width` is specified, the other will be automatically set based on the aspect ratio.
+                The height in pixels of the generated image (i.e., output image) after upsampling via SDEdit. By
+                default, the image is upsampled by a factor of three, and the base resolution is determined by the
+                resolution parameter of the pipeline. When only one of `upsampling_height` or `upsampling_width` is
+                specified, the other will be automatically set based on the aspect ratio.
             upsampling_width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image (i.e., output image) after upsampling via SDEdit. 
-                By default, the image is upsampled by a factor of three, and the base resolution is determined by the resolution parameter of the pipeline. 
-                When only one of `upsampling_height` or `upsampling_width` is specified, the other will be automatically set based on the aspect ratio.
+                The width in pixels of the generated image (i.e., output image) after upsampling via SDEdit. By
+                default, the image is upsampled by a factor of three, and the base resolution is determined by the
+                resolution parameter of the pipeline. When only one of `upsampling_height` or `upsampling_width` is
+                specified, the other will be automatically set based on the aspect ratio.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -866,11 +870,12 @@ class VisualClozePipeline(
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
             upsampling_strength (`float`, *optional*, defaults to 1.0):
-                Indicates extent to transform the reference `image` when upsampling the results. Must be between 0 and 1. 
-                The generated image is used as a starting point and more noise is added the higher the `upsampling_strength`. 
-                The number of denoising steps depends on the amount of noise initially added. When `upsampling_strength` is 1, 
-                added noise is maximum and the denoising process runs for the full number of iterations specified in `num_inference_steps`. 
-                A value of 0 skips the upsampling step and output the results at the resolution of `self.resolution`.
+                Indicates extent to transform the reference `image` when upsampling the results. Must be between 0 and
+                1. The generated image is used as a starting point and more noise is added the higher the
+                `upsampling_strength`. The number of denoising steps depends on the amount of noise initially added.
+                When `upsampling_strength` is 1, added noise is maximum and the denoising process runs for the full
+                number of iterations specified in `num_inference_steps`. A value of 0 skips the upsampling step and
+                output the results at the resolution of `self.resolution`.
 
         Examples:
 
@@ -882,12 +887,12 @@ class VisualClozePipeline(
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            image, 
+            image,
             task_prompt,
             content_prompt,
             upsampling_height,
             upsampling_width,
-            upsampling_strength, 
+            upsampling_strength,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -898,49 +903,50 @@ class VisualClozePipeline(
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
 
-        processor_output = self.visualcloze_processor(task_prompt, content_prompt, image, vae_scale_factor=self.vae_scale_factor)
-        
+        processor_output = self.visualcloze_processor(
+            task_prompt, content_prompt, image, vae_scale_factor=self.vae_scale_factor
+        )
+
         # Define call parameters
-        if processor_output['task_prompt'] is not None and isinstance(processor_output['task_prompt'], str):
+        if processor_output["task_prompt"] is not None and isinstance(processor_output["task_prompt"], str):
             batch_size = 1
-        elif processor_output['task_prompt'] is not None and isinstance(processor_output['task_prompt'], list):
-            batch_size = len(processor_output['task_prompt'])
+        elif processor_output["task_prompt"] is not None and isinstance(processor_output["task_prompt"], list):
+            batch_size = len(processor_output["task_prompt"])
         else:
             raise NotImplementedError("task_prompt must be a string or a list of strings")
-        
+
         cloze_latents = self.denoise(
-            processor_output, 
-            batch_size=batch_size, 
+            processor_output,
+            batch_size=batch_size,
             num_inference_steps=num_inference_steps,
-            sigmas=sigmas, 
-            guidance_scale=guidance_scale, 
-            num_images_per_prompt=num_images_per_prompt, 
-            generator=generator, 
-            latents=latents, 
-            prompt_embeds=prompt_embeds, 
-            pooled_prompt_embeds=pooled_prompt_embeds, 
-            callback_on_step_end=callback_on_step_end, 
-            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs, 
-            max_sequence_length=max_sequence_length, 
-            strength=1
+            sigmas=sigmas,
+            guidance_scale=guidance_scale,
+            num_images_per_prompt=num_images_per_prompt,
+            generator=generator,
+            latents=latents,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
+            strength=1,
         )
-        
+
         # Crop the target image
         images = []
         for b in range(len(cloze_latents)):
-            cur_image_size = processor_output['image_size'][b % batch_size]
-            cur_target_position = processor_output['target_position'][b % batch_size]
+            cur_image_size = processor_output["image_size"][b % batch_size]
+            cur_target_position = processor_output["target_position"][b % batch_size]
             cur_latent = self._unpack_latents(cloze_latents[b].unsqueeze(0), cur_image_size, self.vae_scale_factor)[-1]
             cur_latent = (cur_latent / self.vae.config.scaling_factor) + self.vae.config.shift_factor
             cur_image = self.vae.decode(cur_latent, return_dict=False)[0]
             cur_image = self.image_processor.postprocess(cur_image)[0]
-            
+
             start = 0
             cropped = []
             for i, size in enumerate(cur_image_size[-1]):
                 if cur_target_position[i]:
-                    cropped.append(
-                        cur_image.crop((start, 0, start + size[1], size[0])))
+                    cropped.append(cur_image.crop((start, 0, start + size[1], size[0])))
                 start += size[1]
             images.append(cropped)
 
@@ -955,7 +961,7 @@ class VisualClozePipeline(
             for image in images[i]:
                 upsampling_image.append([[image]])
                 upsampling_task_prompt.append(None)
-                upsampling_content_prompt.append(processor_output['content_prompt'][i % batch_size])
+                upsampling_content_prompt.append(processor_output["content_prompt"][i % batch_size])
                 if not isinstance(generator, (torch.Generator,)):
                     upsampling_generator.append(generator[i % num_images_per_prompt])
 
@@ -969,49 +975,51 @@ class VisualClozePipeline(
         elif upsampling_width is None:
             upsampling_width = base_width * (upsampling_height / base_height)
             upsampling_width = int(upsampling_width / self.vae_scale_factor) * self.vae_scale_factor
-        
+
         divisible = 2 * self.vae_scale_factor
         upsampling_height = int(upsampling_height // divisible) * divisible
         upsampling_width = int(upsampling_width // divisible) * divisible
 
         processor_output = self.visualcloze_processor(
-            upsampling_task_prompt, 
-            upsampling_content_prompt, 
-            upsampling_image, 
-            upsampling=True, 
-            height=upsampling_height, 
-            width=upsampling_width, 
-            vae_scale_factor=self.vae_scale_factor, 
+            upsampling_task_prompt,
+            upsampling_content_prompt,
+            upsampling_image,
+            upsampling=True,
+            height=upsampling_height,
+            width=upsampling_width,
+            vae_scale_factor=self.vae_scale_factor,
         )
 
         upsampling_latents = self.denoise(
-            processor_output, 
-            batch_size=len(upsampling_image), 
+            processor_output,
+            batch_size=len(upsampling_image),
             num_inference_steps=num_inference_steps,
-            sigmas=sigmas, 
-            guidance_scale=guidance_scale, 
-            num_images_per_prompt=1, 
-            generator=generator, 
-            latents=latents, 
-            callback_on_step_end=callback_on_step_end, 
-            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs, 
-            max_sequence_length=max_sequence_length, 
-            strength=upsampling_strength, 
-            upsampling=True
+            sigmas=sigmas,
+            guidance_scale=guidance_scale,
+            num_images_per_prompt=1,
+            generator=generator,
+            latents=latents,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
+            strength=upsampling_strength,
+            upsampling=True,
         )
 
         if output_type == "latent":
             image = upsampling_latents
         else:
-            latents = self._unpack_latents_upsampling(upsampling_latents, upsampling_height, upsampling_width, self.vae_scale_factor)
+            latents = self._unpack_latents_upsampling(
+                upsampling_latents, upsampling_height, upsampling_width, self.vae_scale_factor
+            )
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
-        
+
         output = []
         start = 0
         for n in n_target_per_sample:
-            output.append(image[start: start + n])
+            output.append(image[start : start + n])
             start += n
 
         # Offload all models
@@ -1023,9 +1031,9 @@ class VisualClozePipeline(
         return FluxPipelineOutput(images=output)
 
     def denoise(
-        self, 
-        processor_output: dict = None, 
-        batch_size: int = None, 
+        self,
+        processor_output: dict = None,
+        batch_size: int = None,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 30.0,
@@ -1038,9 +1046,8 @@ class VisualClozePipeline(
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         strength: float = 1.0,
-        upsampling: bool = False
+        upsampling: bool = False,
     ):
-
         device = self._execution_device
 
         # 1. Prepare prompt embeddings
@@ -1048,9 +1055,9 @@ class VisualClozePipeline(
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
         prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(
-            layout_prompt=processor_output['layout_prompt'],
-            task_prompt=processor_output['task_prompt'],
-            content_prompt=processor_output['content_prompt'],
+            layout_prompt=processor_output["layout_prompt"],
+            task_prompt=processor_output["task_prompt"],
+            content_prompt=processor_output["content_prompt"],
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             device=device,
@@ -1063,10 +1070,10 @@ class VisualClozePipeline(
         # Calculate sequence length and shift factor
         image_seq_len = sum(
             (size[0] // self.vae_scale_factor // 2) * (size[1] // self.vae_scale_factor // 2)
-            for sample in processor_output['image_size'][0]
+            for sample in processor_output["image_size"][0]
             for size in sample
         )
-        
+
         # Calculate noise schedule parameters
         mu = calculate_shift(
             image_seq_len,
@@ -1075,7 +1082,7 @@ class VisualClozePipeline(
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
-        
+
         # Get timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         timesteps, num_inference_steps = retrieve_timesteps(
@@ -1096,17 +1103,17 @@ class VisualClozePipeline(
         # 3. Prepare latent variables
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         latents, masked_image_latents, latent_image_ids = self.prepare_latents(
-            processor_output['init_image'], 
-            processor_output['mask'], 
-            latent_timestep, 
+            processor_output["init_image"],
+            processor_output["mask"],
+            latent_timestep,
             batch_size * num_images_per_prompt,
             prompt_embeds.dtype,
             device,
             generator,
-            vae_scale_factor=self.vae_scale_factor, 
-            upsampling=upsampling
+            vae_scale_factor=self.vae_scale_factor,
+            upsampling=upsampling,
         )
-            
+
         # Calculate warmup steps
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
@@ -1117,7 +1124,7 @@ class VisualClozePipeline(
             guidance = guidance.expand(latents.shape[0])
         else:
             guidance = None
-        
+
         # 4. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1126,7 +1133,7 @@ class VisualClozePipeline(
 
                 # Broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                
+
                 noise_pred = self.transformer(
                     hidden_states=torch.cat((latents, masked_image_latents), dim=2),
                     timestep=timestep / 1000,
@@ -1134,7 +1141,7 @@ class VisualClozePipeline(
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
-                    img_ids=latent_image_ids, 
+                    img_ids=latent_image_ids,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -1164,6 +1171,5 @@ class VisualClozePipeline(
                 # XLA optimization
                 if XLA_AVAILABLE:
                     xm.mark_step()
-        
-        return latents
 
+        return latents
