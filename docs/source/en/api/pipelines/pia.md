@@ -168,4 +168,4 @@ FreeInit is not really free - the improved quality comes at the cost of extra co
 
 ## PIAPipelineOutput
 
-[[autodoc]] pipelines.pia.PIAPipelineOutput
+[[autodoc]] pipelines.deprecated.pia.PIAPipelineOutput
