@@ -167,9 +167,9 @@ class DownloadTests(unittest.TestCase):
             download_requests = [r.method for r in m.request_history]
             assert download_requests.count("HEAD") == 15, "15 calls to files"
             assert download_requests.count("GET") == 17, "15 calls to files + model_info + model_index.json"
-            assert (
-                len(download_requests) == 32
-            ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+            assert len(download_requests) == 32, (
+                "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+            )
 
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download(
@@ -179,9 +179,9 @@ class DownloadTests(unittest.TestCase):
             cache_requests = [r.method for r in m.request_history]
             assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
             assert cache_requests.count("GET") == 1, "model info is only GET"
-            assert (
-                len(cache_requests) == 2
-            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            assert len(cache_requests) == 2, (
+                "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            )
 
     def test_less_downloads_passed_object(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -217,9 +217,9 @@ class DownloadTests(unittest.TestCase):
             assert download_requests.count("HEAD") == 13, "13 calls to files"
             # 17 - 2 because no call to config or model file for `safety_checker`
             assert download_requests.count("GET") == 15, "13 calls to files + model_info + model_index.json"
-            assert (
-                len(download_requests) == 28
-            ), "2 calls per file (13 files) + send_telemetry, model_info and model_index.json"
+            assert len(download_requests) == 28, (
+                "2 calls per file (13 files) + send_telemetry, model_info and model_index.json"
+            )
 
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download(
@@ -229,9 +229,9 @@ class DownloadTests(unittest.TestCase):
             cache_requests = [r.method for r in m.request_history]
             assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
             assert cache_requests.count("GET") == 1, "model info is only GET"
-            assert (
-                len(cache_requests) == 2
-            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            assert len(cache_requests) == 2, (
+                "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            )
 
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -1816,7 +1816,12 @@ class PipelineFastTests(unittest.TestCase):
             feature_extractor=self.dummy_extractor,
         )
 
-        sd.enable_model_cpu_offload(gpu_id=5)
+        # `enable_model_cpu_offload` detects device type when not passed
+        # `enable_model_cpu_offload` raises ValueError if detected device is `cpu`
+        # This test only checks whether `_offload_gpu_id` is set correctly
+        # So the device passed can be any supported `torch.device` type
+        # This allows us to keep the test under `PipelineFastTests`
+        sd.enable_model_cpu_offload(gpu_id=5, device="cuda")
         assert sd._offload_gpu_id == 5
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
