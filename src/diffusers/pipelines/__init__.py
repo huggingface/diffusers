@@ -561,6 +561,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MusicLDMPipeline,
             PaintByExamplePipeline,
             PIAPipeline,
+            SemanticStableDiffusionPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionControlNetXSPipeline,
             StableDiffusionDiffEditPipeline,
