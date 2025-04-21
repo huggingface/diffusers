@@ -556,6 +556,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             BlipDiffusionPipeline,
             CycleDiffusionPipeline,
             I2VGenXLPipeline,
+            ImageTextPipelineOutput,
             LattePipeline,
             MusicLDMPipeline,
             PaintByExamplePipeline,
