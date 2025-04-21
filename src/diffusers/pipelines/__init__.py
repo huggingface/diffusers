@@ -552,6 +552,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AmusedInpaintPipeline,
             AmusedPipeline,
             AudioLDMPipeline,
+            BlipDiffusionControlNetPipeline,
+            BlipDiffusionPipeline,
             CycleDiffusionPipeline,
             I2VGenXLPipeline,
             LattePipeline,
