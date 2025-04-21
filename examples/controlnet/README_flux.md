@@ -8,7 +8,7 @@ Training script provided by LibAI, which is an institution dedicated to the prog
 >
 > Flux can be quite expensive to run on consumer hardware devices and as a result, ControlNet training of it comes with higher memory requirements than usual.
 
-here is a gpu memory consumption for reference, tested on a single A100 with 80G.
+Here is a gpu memory consumption for reference, tested on a single A100 with 80G.
 
 | period | GPU |
 | - | - | 
