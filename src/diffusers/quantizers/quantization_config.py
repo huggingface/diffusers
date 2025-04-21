@@ -699,7 +699,7 @@ class QuantoConfig(QuantizationConfigMixin):
     Args:
         weights_dtype (`str`, *optional*, defaults to `"int8"`):
             The target dtype for the weights after quantization. Supported values are ("float8","int8","int4","int2")
-       modules_to_not_convert (`list`, *optional*, default to `None`):
+        modules_to_not_convert (`list`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision (e.g. Whisper encoder, Llava encoder, Mixtral gate layers).
     """
@@ -733,7 +733,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         QuantizationConfigMixin (_type_): _description_
     """
 
-    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, **kwargs) -> None:
+    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, channel_quantize: Optional[int] = None, block_quantize: Optional[int] = None, modelopt_config: Optional[dict] = None, **kwargs) -> None:
         self.quant_method = QuantizationMethod.MODELOPT
         self.quant_type = quant_type
         QUANT_TYPES = [
@@ -752,17 +752,14 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
             )
             self.quant_type = "FP8_WO"
         self.modules_to_not_convert = modules_to_not_convert
-        self.advanced_quant = kwargs
+        self.channel_quantize = channel_quantize
+        self.block_quantize = block_quantize
+        self.modelopt_config = self.get_config_from_quant_type() if not modelopt_config else modelopt_config
 
     def get_config_from_quant_type(self) -> Dict[str, Any]:
         """
         Get the config from the quantization type.
         """
-        # ModelOpt imports diffusers internally. This is here to prevent circular imports
-        external_conf = self.advanced_quant.pop("modelopt_config", None)
-        if external_conf:
-            return external_conf
-
         BASE_CONFIG = {
             "quant_cfg": {
                 "*weight_quantizer": {"fake_quant": False},
@@ -798,19 +795,16 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 if "*weight_quantizer" not in k:
                     quant_cfg[k]["enable"] = False
 
-        per_channel = self.advanced_quant.pop("per_channel", False)
-        if per_channel:
-            quant_cfg["*weight_quantizer"]["axis"] = self.advanced_quant.pop("axis", -1)
-            quant_cfg["*input_quantizer"]["axis"] = self.advanced_quant.pop("axis", -1)
-
-        block_quantize = self.advanced_quant.pop("block_quantize", False)
-        if block_quantize:
+        if self.block_quantize and self.channel_quantize:
             quant_cfg["*weight_quantizer"]["block_sizes"] = {
-                self.advanced_quant.pop("axis", -1): self.advanced_quant.pop("block_size", 128)
+                self.channel_quantize: self.block_quantize
             }
             quant_cfg["*input_quantizer"]["block_sizes"] = {
-                self.advanced_quant.pop("axis", -1): self.advanced_quant.pop("block_size", 128)
+                self.channel_quantize: self.block_quantize
             }
+        elif self.channel_quantize:
+            quant_cfg["*weight_quantizer"]["axis"] = self.channel_quantize
+            quant_cfg["*input_quantizer"]["axis"] = self.channel_quantize
 
         if self.modules_to_not_convert is not None:
             for module in self.modules_to_not_convert:

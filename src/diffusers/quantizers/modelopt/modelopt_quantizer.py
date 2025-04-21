@@ -111,6 +111,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             setattr(module, tensor_name, param_value)
         else:
             set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
+            mtq.calibrate(module, self.quantization_config.modelopt_config["algorithm"])
             mtq.compress(module)
             module.weight.requires_grad = False
 
@@ -137,6 +138,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
+        import modelopt.torch.opt as mto
         import modelopt.torch.quantization as mtq
 
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert
@@ -146,8 +148,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
 
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
 
-        config = self.quantization_config.get_config_from_quant_type()
-        mtq.quantize(model, config)
+        mto.apply_mode(model, mode=[("quantize", self.quantization_config.modelopt_config)], registry=mtq.mode.QuantizeModeRegistry)
         model.config.quantization_config = self.quantization_config
 
     def _process_model_after_weight_loading(self, model, **kwargs):
