@@ -129,6 +129,7 @@ from .state_dict_utils import (
     convert_unet_state_dict_to_peft,
     state_dict_all_zero,
 )
+from .testing_utils import is_accelerator_device
 from .typing_utils import _get_detailed_type, _is_valid_type
 
 

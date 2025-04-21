@@ -63,7 +63,9 @@ from ..utils.hub_utils import (
     populate_model_card,
 )
 from .model_loading_utils import (
+    _caching_allocator_warmup,
     _determine_device_map,
+    _expand_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
     _load_state_dict_into_model,
@@ -1374,6 +1376,24 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             return super().float(*args)
 
+    # Taken from `transformers`.
+    # https://github.com/huggingface/transformers/blob/6daa3eeba582facb57cd71db8efb66998b12942f/src/transformers/modeling_utils.py#L5351C5-L5365C81
+    def get_parameter_or_buffer(self, target: str):
+        """
+        Return the parameter or buffer given by `target` if it exists, otherwise throw an error. This combines
+        `get_parameter()` and `get_buffer()` in a single handy function. Note that it only work if `target` is a leaf
+        of the model.
+        """
+        try:
+            return self.get_parameter(target)
+        except AttributeError:
+            pass
+        try:
+            return self.get_buffer(target)
+        except AttributeError:
+            pass
+        raise AttributeError(f"`{target}` is neither a parameter nor a buffer.")
+
     @classmethod
     def _load_pretrained_model(
         cls,
@@ -1409,6 +1429,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         assign_to_params_buffers = None
         error_msgs = []
+
+        # Optionally, warmup cuda to load the weights much faster on devices
+        if device_map is not None:
+            expanded_device_map = _expand_device_map(device_map, expected_keys)
+            _caching_allocator_warmup(model, expanded_device_map, factor=2 if hf_quantizer is None else 4)
 
         # Deal with offload
         if device_map is not None and "disk" in device_map.values():

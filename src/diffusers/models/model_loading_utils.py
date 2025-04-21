@@ -18,7 +18,7 @@ import importlib
 import inspect
 import os
 from array import array
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from zipfile import is_zipfile
@@ -38,6 +38,7 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_accelerator_device,
     is_gguf_available,
     is_torch_available,
     is_torch_version,
@@ -302,6 +303,51 @@ def load_model_dict_into_meta(
             set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
 
     return offload_index, state_dict_index
+
+
+# Taken from
+# https://github.com/huggingface/transformers/blob/6daa3eeba582facb57cd71db8efb66998b12942f/src/transformers/modeling_utils.py#L5852C1-L5861C26
+def _expand_device_map(device_map, param_names):
+    new_device_map = {}
+    for module, device in device_map.items():
+        new_device_map.update(
+            {p: device for p in param_names if p == module or p.startswith(f"{module}.") or module == ""}
+        )
+    return new_device_map
+
+
+# Adapted from https://github.com/huggingface/transformers/blob/6daa3eeba582facb57cd71db8efb66998b12942f/src/transformers/modeling_utils.py#L5874
+# We don't incorporate the `tp_plan` stuff as we don't support it yet.
+def _caching_allocator_warmup(model, device_map: Dict, factor=2) -> Dict:
+    # Remove disk, cpu and meta devices, and cast to proper torch.device
+    accelerator_device_map = {
+        param: torch.device(device) for param, device in device_map.items() if is_accelerator_device(device)
+    }
+    if not len(accelerator_device_map):
+        return
+
+    total_byte_count = defaultdict(lambda: 0)
+    for param_name, device in accelerator_device_map.items():
+        param = model.get_parameter_or_buffer(param_name)
+        # The dtype of different parameters may be different with composite models or `keep_in_fp32_modules`
+        param_byte_count = param.numel() * param.element_size()
+        total_byte_count[device] += param_byte_count
+
+    # This will kick off the caching allocator to avoid having to Malloc afterwards
+    for device, byte_count in total_byte_count.items():
+        if device.type == "cuda":
+            index = device.index if device.index is not None else torch.cuda.current_device()
+            device_memory = torch.cuda.mem_get_info(index)[0]
+            # Allow up to (max device memory - 1.2 GiB) in resource-constrained hardware configurations. Trying to reserve more
+            # than that amount might sometimes lead to unecesary cuda OOM, if the last parameter to be loaded on the device is large,
+            # and the remaining reserved memory portion is smaller than the param size -> torch will then try to fully re-allocate all
+            # the param size, instead of using the remaining reserved part, and allocating only the difference, which can lead
+            # to OOM. See https://github.com/huggingface/transformers/issues/37436#issuecomment-2808982161 for more details.
+            # Note that we use an absolute value instead of device proportion here, as a 8GiB device could still allocate too much
+            # if using e.g. 90% of device size, while a 140GiB device would allocate too little
+            byte_count = min(byte_count, max(0, int(device_memory - 1.2 * 1024**3)))
+        # Allocate memory
+        _ = torch.empty(byte_count // factor, dtype=torch.float16, device=device, requires_grad=False)
 
 
 def _load_state_dict_into_model(

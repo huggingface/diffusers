@@ -1289,6 +1289,18 @@ if is_torch_available():
         update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
 
 
+if is_torch_available():
+    # Taken from
+    # https://github.com/huggingface/transformers/blob/6daa3eeba582facb57cd71db8efb66998b12942f/src/transformers/modeling_utils.py#L5864C1-L5871C64
+    def is_accelerator_device(device: Union[str, int, torch.device]) -> bool:
+        """Check if the device is an accelerator. We need to function, as device_map can be "disk" as well, which is not
+        a proper `torch.device`.
+        """
+        if device == "disk":
+            return False
+        else:
+            return torch.device(device).type not in ["meta", "cpu"]
+
 # Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers/testing_utils.py#L3090
 
 # Type definition of key used in `Expectations` class.
