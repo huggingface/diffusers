@@ -276,11 +276,15 @@ def _check_shape(
 
 
 def _prepare_for_flash_attn_or_sage_varlen(
-    batch_size: int, seq_len_q: int, attn_mask: Optional[torch.Tensor] = None, device: Optional[torch.device] = None
+    batch_size: int,
+    seq_len_q: int,
+    seq_len_kv: int,
+    attn_mask: Optional[torch.Tensor] = None,
+    device: Optional[torch.device] = None,
 ) -> None:
     seqlens_q = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
     if attn_mask is None:
-        seqlens_k = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
+        seqlens_k = torch.full((batch_size,), seq_len_kv, dtype=torch.int32, device=device)
     else:
         seqlens_k = attn_mask.sum(dim=1, dtype=torch.int32)
     cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
@@ -440,7 +444,9 @@ def _flash_varlen_attention(
 
     if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
         (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-            _prepare_for_flash_attn_or_sage_varlen(batch_size, seq_len_q, attn_mask=attn_mask, device=query.device)
+            _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+            )
         )
     else:
         seqlens_k = torch.full((batch_size,), max_seqlen_k, dtype=torch.int32, device=query.device)
@@ -730,7 +736,9 @@ def _sage_varlen_attention(
 
     if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
         (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-            _prepare_for_flash_attn_or_sage_varlen(batch_size, seq_len_q, attn_mask=attn_mask, device=query.device)
+            _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+            )
         )
     else:
         seqlens_k = torch.full((batch_size,), max_seqlen_k, dtype=torch.int32, device=query.device)
