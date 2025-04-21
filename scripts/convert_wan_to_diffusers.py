@@ -39,6 +39,24 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "img_emb.proj.1": "condition_embedder.image_embedder.ff.net.0.proj",
     "img_emb.proj.3": "condition_embedder.image_embedder.ff.net.2",
     "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
+    # for the FLF2V model
+    "img_emb.emb_pos": "condition_embedder.image_embedder.pos_embed",
+    # Add attention component mappings
+    "self_attn.q": "attn1.to_q",
+    "self_attn.k": "attn1.to_k",
+    "self_attn.v": "attn1.to_v",
+    "self_attn.o": "attn1.to_out.0",
+    "self_attn.norm_q": "attn1.norm_q",
+    "self_attn.norm_k": "attn1.norm_k",
+    "cross_attn.q": "attn2.to_q",
+    "cross_attn.k": "attn2.to_k",
+    "cross_attn.v": "attn2.to_v",
+    "cross_attn.o": "attn2.to_out.0",
+    "cross_attn.norm_q": "attn2.norm_q",
+    "cross_attn.norm_k": "attn2.norm_k",
+    "attn2.to_k_img": "attn2.add_k_proj",
+    "attn2.to_v_img": "attn2.add_v_proj",
+    "attn2.norm_k_img": "attn2.norm_added_k",
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
@@ -133,6 +151,28 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "patch_size": [1, 2, 2],
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
+            },
+        }
+    elif model_type == "Wan-FLF2V-14B-720P":
+        config = {
+            "model_id": "ypyp/Wan2.1-FLF2V-14B-720P",  # This is just a placeholder
+            "diffusers_config": {
+                "image_dim": 1280,
+                "added_kv_proj_dim": 5120,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 36,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+                "rope_max_seq_len": 1024,
+                "pos_embed_seq_len": 257 * 2,
             },
         }
     return config
@@ -393,11 +433,12 @@ if __name__ == "__main__":
     vae = convert_vae()
     text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl")
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    flow_shift = 16.0 if "FLF2V" in args.model_type else 3.0
     scheduler = UniPCMultistepScheduler(
-        prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=3.0
+        prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift
     )
 
-    if "I2V" in args.model_type:
+    if "I2V" in args.model_type or "FLF2V" in args.model_type:
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
             "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
         )

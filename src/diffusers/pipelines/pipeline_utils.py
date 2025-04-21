@@ -404,6 +404,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
+            _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
+
+            if is_loaded_in_8bit_bnb:
+                return False
+
             return hasattr(module, "_hf_hook") and (
                 isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
                 or hasattr(module._hf_hook, "hooks")
