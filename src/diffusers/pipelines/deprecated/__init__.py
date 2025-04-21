@@ -218,6 +218,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TextToVideoSDPipeline,
             TextToVideoZeroPipeline,
             TextToVideoZeroSDXLPipeline,
+            VideoToVideoSDPipeline,
         )
         from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
         from .unidiffuser import UniDiffuserPipeline
