@@ -21,6 +21,7 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from typing_extensions import Self
 
+from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
@@ -255,12 +256,17 @@ class FromOriginalModelMixin:
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
         config_revision = kwargs.pop("config_revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        torch_dtype = kwargs.pop("torch_dtype", None)
         quantization_config = kwargs.pop("quantization_config", None)
         device = kwargs.pop("device", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
 
-        if not isinstance(torch_dtype, torch.dtype):
+        user_agent = {"diffusers": __version__, "file_type": "single_file", "framework": "pytorch"}
+        # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
+        if quantization_config is not None:
+            user_agent["quant"] = quantization_config.quant_method.value
+
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
             logger.warning(
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
@@ -278,10 +284,12 @@ class FromOriginalModelMixin:
                 local_files_only=local_files_only,
                 revision=revision,
                 disable_mmap=disable_mmap,
+                user_agent=user_agent,
             )
         if quantization_config is not None:
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
             hf_quantizer.validate_environment()
+            torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
 
         else:
             hf_quantizer = None

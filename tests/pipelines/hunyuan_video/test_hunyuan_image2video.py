@@ -24,9 +24,11 @@ from transformers import (
     CLIPTextModel,
     CLIPTokenizer,
     LlamaConfig,
-    LlamaModel,
-    LlamaTokenizer,
+    LlamaTokenizerFast,
+    LlavaConfig,
+    LlavaForConditionalGeneration,
 )
+from transformers.models.clip import CLIPVisionConfig
 
 from diffusers import (
     AutoencoderKLHunyuanVideo,
@@ -83,6 +85,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             text_embed_dim=16,
             pooled_projection_dim=8,
             rope_axes_dim=(2, 4, 4),
+            image_condition_type="latent_concat",
         )
 
         torch.manual_seed(0)
@@ -115,7 +118,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
 
-        llama_text_encoder_config = LlamaConfig(
+        text_config = LlamaConfig(
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=16,
@@ -123,11 +126,21 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             layer_norm_eps=1e-05,
             num_attention_heads=4,
             num_hidden_layers=2,
-            pad_token_id=1,
+            pad_token_id=100,
             vocab_size=1000,
             hidden_act="gelu",
             projection_dim=32,
         )
+        vision_config = CLIPVisionConfig(
+            hidden_size=8,
+            intermediate_size=37,
+            projection_dim=32,
+            num_attention_heads=4,
+            num_hidden_layers=2,
+            image_size=224,
+        )
+        llava_text_encoder_config = LlavaConfig(vision_config, text_config, pad_token_id=100, image_token_index=101)
+
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
@@ -143,8 +156,8 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         )
 
         torch.manual_seed(0)
-        text_encoder = LlamaModel(llama_text_encoder_config)
-        tokenizer = LlamaTokenizer.from_pretrained("finetrainers/dummy-hunyaunvideo", subfolder="tokenizer")
+        text_encoder = LlavaForConditionalGeneration(llava_text_encoder_config)
+        tokenizer = LlamaTokenizerFast.from_pretrained("finetrainers/dummy-hunyaunvideo", subfolder="tokenizer")
 
         torch.manual_seed(0)
         text_encoder_2 = CLIPTextModel(clip_text_encoder_config)
@@ -152,14 +165,14 @@ class HunyuanVideoImageToVideoPipelineFastTests(
 
         torch.manual_seed(0)
         image_processor = CLIPImageProcessor(
-            crop_size=336,
+            crop_size=224,
             do_center_crop=True,
             do_normalize=True,
             do_resize=True,
             image_mean=[0.48145466, 0.4578275, 0.40821073],
             image_std=[0.26862954, 0.26130258, 0.27577711],
             resample=3,
-            size=336,
+            size=224,
         )
 
         components = {
@@ -189,6 +202,10 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             "prompt_template": {
                 "template": "{}",
                 "crop_start": 0,
+                "image_emb_len": 49,
+                "image_emb_start": 5,
+                "image_emb_end": 54,
+                "double_return_token_id": 0,
             },
             "generator": generator,
             "num_inference_steps": 2,
@@ -196,7 +213,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             "height": image_height,
             "width": image_width,
             "num_frames": 9,
-            "max_sequence_length": 16,
+            "max_sequence_length": 64,
             "output_type": "pt",
         }
         return inputs

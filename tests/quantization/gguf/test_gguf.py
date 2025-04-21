@@ -8,12 +8,14 @@ import torch.nn as nn
 from diffusers import (
     AuraFlowPipeline,
     AuraFlowTransformer2DModel,
+    FluxControlPipeline,
     FluxPipeline,
     FluxTransformer2DModel,
     GGUFQuantizationConfig,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
 )
+from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     is_gguf_available,
     nightly,
@@ -21,6 +23,7 @@ from diffusers.utils.testing_utils import (
     require_accelerate,
     require_big_gpu_with_torch_cuda,
     require_gguf_version_greater_or_equal,
+    require_peft_backend,
     torch_device,
 )
 
@@ -57,7 +60,7 @@ class GGUFSingleFileTesterMixin:
             if isinstance(module, torch.nn.Linear) and hasattr(module.weight, "quant_type"):
                 assert module.weight.dtype == torch.uint8
                 if module.bias is not None:
-                    assert module.bias.dtype == torch.float32
+                    assert module.bias.dtype == self.torch_dtype
 
     def test_gguf_memory_usage(self):
         quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
@@ -456,3 +459,46 @@ class AuraFlowGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
         )
         max_diff = numpy_cosine_similarity_distance(expected_slice, output_slice)
         assert max_diff < 1e-4
+
+
+@require_peft_backend
+@nightly
+@require_big_gpu_with_torch_cuda
+@require_accelerate
+@require_gguf_version_greater_or_equal("0.10.0")
+class FluxControlLoRAGGUFTests(unittest.TestCase):
+    def test_lora_loading(self):
+        ckpt_path = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
+        transformer = FluxTransformer2DModel.from_single_file(
+            ckpt_path,
+            quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+            torch_dtype=torch.bfloat16,
+        )
+        pipe = FluxControlPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev",
+            transformer=transformer,
+            torch_dtype=torch.bfloat16,
+        ).to("cuda")
+        pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
+
+        prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+        control_image = load_image(
+            "https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/control_image_robot_canny.png"
+        )
+
+        output = pipe(
+            prompt=prompt,
+            control_image=control_image,
+            height=256,
+            width=256,
+            num_inference_steps=10,
+            guidance_scale=30.0,
+            output_type="np",
+            generator=torch.manual_seed(0),
+        ).images
+
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.8047, 0.8359, 0.8711, 0.6875, 0.7070, 0.7383, 0.5469, 0.5820, 0.6641])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3)

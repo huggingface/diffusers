@@ -316,6 +316,7 @@ def _load_lora_into_text_encoder(
     adapter_name=None,
     _pipeline=None,
     low_cpu_mem_usage=False,
+    hotswap: bool = False,
 ):
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
@@ -340,6 +341,10 @@ def _load_lora_into_text_encoder(
     # then the `state_dict` keys should have `unet_name` and/or `text_encoder_name` as
     # their prefixes.
     prefix = text_encoder_name if prefix is None else prefix
+
+    # Safe prefix to check with.
+    if hotswap and any(text_encoder_name in key for key in state_dict.keys()):
+        raise ValueError("At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`.")
 
     # Load the layers corresponding to text encoder and make necessary adjustments.
     if prefix is not None:
@@ -908,3 +913,23 @@ class LoraBaseMixin:
         # property function that returns the lora scale which can be set at run time by the pipeline.
         # if _lora_scale has not been set, return 1
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
+
+    def enable_lora_hotswap(self, **kwargs) -> None:
+        """Enables the possibility to hotswap LoRA adapters.
+
+        Calling this method is only required when hotswapping adapters and if the model is compiled or if the ranks of
+        the loaded adapters differ.
+
+        Args:
+            target_rank (`int`):
+                The highest rank among all the adapters that will be loaded.
+            check_compiled (`str`, *optional*, defaults to `"error"`):
+                How to handle the case when the model is already compiled, which should generally be avoided. The
+                options are:
+                  - "error" (default): raise an error
+                  - "warn": issue a warning
+                  - "ignore": do nothing
+        """
+        for key, component in self.components.items():
+            if hasattr(component, "enable_lora_hotswap") and (key in self._lora_loadable_modules):
+                component.enable_lora_hotswap(**kwargs)
