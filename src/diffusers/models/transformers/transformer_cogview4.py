@@ -132,7 +132,6 @@ class CogView4AttnProcessor:
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         dtype = encoder_hidden_states.dtype
-        device = encoder_hidden_states.device
 
         batch_size, text_seq_length, embed_dim = encoder_hidden_states.shape
         batch_size, image_seq_length, embed_dim = hidden_states.shape
