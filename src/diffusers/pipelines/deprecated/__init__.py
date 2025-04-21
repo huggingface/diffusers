@@ -184,6 +184,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 
     else:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline, AltDiffusionPipelineOutput
+        from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
         from .audioldm import AudioLDMPipeline
         from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import BlipDiffusionControlNetPipeline
