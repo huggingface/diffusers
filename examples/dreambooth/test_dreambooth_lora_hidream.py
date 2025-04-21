@@ -35,6 +35,8 @@ logger.addHandler(stream_handler)
 class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
     instance_data_dir = "docs/source/en/imgs"
     pretrained_model_name_or_path = "hf-internal-testing/tiny-hidream-i1-pipe"
+    text_encoder_4_path = "hf-internal-testing/tiny-random-LlamaForCausalLM"
+    tokenizer_4_path = "hf-internal-testing/tiny-random-LlamaForCausalLM"
     script_path = "examples/dreambooth/train_dreambooth_lora_hidream.py"
     transformer_layer_type = "double_stream_blocks.0.block.attn1.to_k"
 
@@ -43,6 +45,8 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --pretrained_text_encoder_4_name_or_path {self.text_encoder_4_path}
+                --pretrained_tokenizer_4_name_or_path {self.tokenizer_4_path}
                 --instance_data_dir {self.instance_data_dir}
                 --resolution 32
                 --train_batch_size 1
@@ -76,6 +80,8 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --pretrained_text_encoder_4_name_or_path {self.text_encoder_4_path}
+                --pretrained_tokenizer_4_name_or_path {self.tokenizer_4_path}
                 --instance_data_dir {self.instance_data_dir}
                 --resolution 32
                 --train_batch_size 1
@@ -110,6 +116,8 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --pretrained_text_encoder_4_name_or_path {self.text_encoder_4_path}
+                --pretrained_tokenizer_4_name_or_path {self.tokenizer_4_path}
                 --instance_data_dir {self.instance_data_dir}
                 --resolution 32
                 --train_batch_size 1
@@ -146,6 +154,8 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             test_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}
+            --pretrained_text_encoder_4_name_or_path {self.text_encoder_4_path}
+            --pretrained_tokenizer_4_name_or_path {self.tokenizer_4_path}
             --instance_data_dir={self.instance_data_dir}
             --output_dir={tmpdir}
             --resolution=32
@@ -170,6 +180,8 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             test_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}
+            --pretrained_text_encoder_4_name_or_path {self.text_encoder_4_path}
+            --pretrained_tokenizer_4_name_or_path {self.tokenizer_4_path}
             --instance_data_dir={self.instance_data_dir}
             --output_dir={tmpdir}
             --resolution=32
@@ -188,6 +200,8 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             resume_run_args = f"""
             {self.script_path}
             --pretrained_model_name_or_path={self.pretrained_model_name_or_path}
+            --pretrained_text_encoder_4_name_or_path {self.text_encoder_4_path}
+            --pretrained_tokenizer_4_name_or_path {self.tokenizer_4_path}
             --instance_data_dir={self.instance_data_dir}
             --output_dir={tmpdir}
             --resolution=32

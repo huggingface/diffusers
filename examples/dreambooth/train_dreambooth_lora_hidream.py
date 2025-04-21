@@ -184,7 +184,7 @@ def load_text_encoders(class_one, class_two, class_three):
         args.pretrained_model_name_or_path, subfolder="text_encoder_3", revision=args.revision, variant=args.variant
     )
     text_encoder_four = LlamaForCausalLM.from_pretrained(
-        "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        args.pretrained_text_encoder_4_name_or_path,
         output_hidden_states=True,
         output_attentions=True,
         torch_dtype=torch.bfloat16,
@@ -285,6 +285,18 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         required=True,
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--pretrained_tokenizer_4_name_or_path",
+        type=str,
+        default="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--pretrained_text_encoder_4_name_or_path",
+        type=str,
+        default="meta-llama/Meta-Llama-3.1-8B-Instruct",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -1036,7 +1048,7 @@ def main(args):
     )
 
     tokenizer_four = AutoTokenizer.from_pretrained(
-        "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        args.pretrained_tokenizer_4_name_or_path,
         revision=args.revision,
     )
     tokenizer_four.pad_token = tokenizer_four.eos_token
@@ -1646,6 +1658,7 @@ def main(args):
         # Final inference
         # Load previous pipeline
         tokenizer_4 = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        tokenizer_4.pad_token = tokenizer_4.eos_token
         text_encoder_4 = LlamaForCausalLM.from_pretrained(
             "meta-llama/Meta-Llama-3.1-8B-Instruct",
             output_hidden_states=True,
