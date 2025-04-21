@@ -1020,7 +1020,6 @@ class FluxFillPipeline(
 
         # 8. Post-process the image
         if output_type == "latent":
-            # TODO
             image = latents
 
         else:
