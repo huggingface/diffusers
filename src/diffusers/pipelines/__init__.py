@@ -555,6 +555,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CycleDiffusionPipeline,
             I2VGenXLPipeline,
             LattePipeline,
+            MusicLDMPipeline,
             PaintByExamplePipeline,
             PIAPipeline,
             StableDiffusionAttendAndExcitePipeline,
@@ -568,6 +569,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionParadigmsPipeline,
             StableDiffusionPix2PixZeroPipeline,
             StableDiffusionXLControlNetXSPipeline,
+            UnCLIPImageVariationPipeline,
+            UnCLIPPipeline,
             VersatileDiffusionDualGuidedPipeline,
             VersatileDiffusionImageVariationPipeline,
             VersatileDiffusionPipeline,
@@ -668,8 +671,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGPipeline,
         )
         from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintPipeline
-        from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
-        from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_cascade import (
             StableCascadeCombinedPipeline,
