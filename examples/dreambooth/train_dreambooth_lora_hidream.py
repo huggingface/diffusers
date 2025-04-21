@@ -42,7 +42,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
-from transformers import CLIPTokenizer, LlamaForCausalLM, PretrainedConfig, PreTrainedTokenizerFast, T5Tokenizer, AutoTokenizer
+from transformers import CLIPTokenizer, LlamaForCausalLM, PretrainedConfig, PreTrainedTokenizerFast, AutoTokenizer
 
 import diffusers
 from diffusers import (
