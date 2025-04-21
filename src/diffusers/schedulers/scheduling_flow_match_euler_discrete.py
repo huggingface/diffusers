@@ -404,8 +404,6 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 A random number generator.
             per_token_timesteps (`torch.Tensor`, *optional*):
                 The timesteps for each token in the sample.
-            stochastic_sampling (`bool`, *optional*):
-                Whether to use stochastic sampling. If None, defaults to the value set in the scheduler's config.
             return_dict (`bool`):
                 Whether or not to return a
                 [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or tuple.
