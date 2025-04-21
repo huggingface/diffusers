@@ -554,6 +554,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDMPipeline,
             CycleDiffusionPipeline,
             I2VGenXLPipeline,
+            LattePipeline,
             PaintByExamplePipeline,
             PIAPipeline,
             StableDiffusionAttendAndExcitePipeline,
@@ -632,7 +633,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelPipeline,
         )
         from .latent_diffusion import LDMTextToImagePipeline
-        from .latte import LattePipeline
         from .ledits_pp import (
             LEditsPPDiffusionPipelineOutput,
             LEditsPPInversionPipelineOutput,
