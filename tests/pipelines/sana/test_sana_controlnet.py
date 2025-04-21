@@ -17,41 +17,33 @@ import unittest
 
 import numpy as np
 import torch
-from PIL import Image
-from transformers import (
-    CLIPImageProcessor,
-    CLIPTextConfig,
-    CLIPTextModel,
-    CLIPTokenizer,
-    LlamaConfig,
-    LlamaTokenizerFast,
-    LlavaConfig,
-    LlavaForConditionalGeneration,
-)
-from transformers.models.clip import CLIPVisionConfig
+from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
 from diffusers import (
-    AutoencoderKLHunyuanVideo,
+    AutoencoderDC,
     FlowMatchEulerDiscreteScheduler,
-    HunyuanVideoImageToVideoPipeline,
-    HunyuanVideoTransformer3DModel,
+    SanaControlNetModel,
+    SanaControlNetPipeline,
+    SanaTransformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    torch_device,
+)
 
-from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, to_np
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class HunyuanVideoImageToVideoPipelineFastTests(
-    PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, unittest.TestCase
-):
-    pipeline_class = HunyuanVideoImageToVideoPipeline
-    params = frozenset(
-        ["image", "prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"]
-    )
-    batch_params = frozenset(["prompt", "image"])
+class SanaControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = SanaControlNetPipeline
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
         [
             "num_inference_steps",
@@ -62,128 +54,94 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             "callback_on_step_end_tensor_inputs",
         ]
     )
-    supports_dduf = False
-
-    # there is no xformers processor for Flux
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
 
-    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
+    def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = HunyuanVideoTransformer3DModel(
-            in_channels=2 * 4 + 1,
-            out_channels=4,
-            num_attention_heads=2,
-            attention_head_dim=10,
-            num_layers=num_layers,
-            num_single_layers=num_single_layers,
-            num_refiner_layers=1,
+        controlnet = SanaControlNetModel(
             patch_size=1,
-            patch_size_t=1,
-            guidance_embeds=False,
-            text_embed_dim=16,
-            pooled_projection_dim=8,
-            rope_axes_dim=(2, 4, 4),
-            image_condition_type="latent_concat",
+            in_channels=4,
+            out_channels=4,
+            num_layers=1,
+            num_attention_heads=2,
+            attention_head_dim=4,
+            num_cross_attention_heads=2,
+            cross_attention_head_dim=4,
+            cross_attention_dim=8,
+            caption_channels=8,
+            sample_size=32,
         )
 
         torch.manual_seed(0)
-        vae = AutoencoderKLHunyuanVideo(
+        transformer = SanaTransformer2DModel(
+            patch_size=1,
+            in_channels=4,
+            out_channels=4,
+            num_layers=1,
+            num_attention_heads=2,
+            attention_head_dim=4,
+            num_cross_attention_heads=2,
+            cross_attention_head_dim=4,
+            cross_attention_dim=8,
+            caption_channels=8,
+            sample_size=32,
+        )
+
+        torch.manual_seed(0)
+        vae = AutoencoderDC(
             in_channels=3,
-            out_channels=3,
             latent_channels=4,
-            down_block_types=(
-                "HunyuanVideoDownBlock3D",
-                "HunyuanVideoDownBlock3D",
-                "HunyuanVideoDownBlock3D",
-                "HunyuanVideoDownBlock3D",
+            attention_head_dim=2,
+            encoder_block_types=(
+                "ResBlock",
+                "EfficientViTBlock",
             ),
-            up_block_types=(
-                "HunyuanVideoUpBlock3D",
-                "HunyuanVideoUpBlock3D",
-                "HunyuanVideoUpBlock3D",
-                "HunyuanVideoUpBlock3D",
+            decoder_block_types=(
+                "ResBlock",
+                "EfficientViTBlock",
             ),
-            block_out_channels=(8, 8, 8, 8),
-            layers_per_block=1,
-            act_fn="silu",
-            norm_num_groups=4,
-            scaling_factor=0.476986,
-            spatial_compression_ratio=8,
-            temporal_compression_ratio=4,
-            mid_block_add_attention=True,
+            encoder_block_out_channels=(8, 8),
+            decoder_block_out_channels=(8, 8),
+            encoder_qkv_multiscales=((), (5,)),
+            decoder_qkv_multiscales=((), (5,)),
+            encoder_layers_per_block=(1, 1),
+            decoder_layers_per_block=[1, 1],
+            downsample_block_type="conv",
+            upsample_block_type="interpolate",
+            decoder_norm_types="rms_norm",
+            decoder_act_fns="silu",
+            scaling_factor=0.41407,
         )
 
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
 
-        text_config = LlamaConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=16,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=2,
-            pad_token_id=100,
-            vocab_size=1000,
-            hidden_act="gelu",
-            projection_dim=32,
-        )
-        vision_config = CLIPVisionConfig(
+        torch.manual_seed(0)
+        text_encoder_config = Gemma2Config(
+            head_dim=16,
             hidden_size=8,
-            intermediate_size=37,
-            projection_dim=32,
-            num_attention_heads=4,
-            num_hidden_layers=2,
-            image_size=224,
+            initializer_range=0.02,
+            intermediate_size=64,
+            max_position_embeddings=8192,
+            model_type="gemma2",
+            num_attention_heads=2,
+            num_hidden_layers=1,
+            num_key_value_heads=2,
+            vocab_size=8,
+            attn_implementation="eager",
         )
-        llava_text_encoder_config = LlavaConfig(vision_config, text_config, pad_token_id=100, image_token_index=101)
-
-        clip_text_encoder_config = CLIPTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=8,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=2,
-            pad_token_id=1,
-            vocab_size=1000,
-            hidden_act="gelu",
-            projection_dim=32,
-        )
-
-        torch.manual_seed(0)
-        text_encoder = LlavaForConditionalGeneration(llava_text_encoder_config)
-        tokenizer = LlamaTokenizerFast.from_pretrained("finetrainers/dummy-hunyaunvideo", subfolder="tokenizer")
-
-        torch.manual_seed(0)
-        text_encoder_2 = CLIPTextModel(clip_text_encoder_config)
-        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-        torch.manual_seed(0)
-        image_processor = CLIPImageProcessor(
-            crop_size=224,
-            do_center_crop=True,
-            do_normalize=True,
-            do_resize=True,
-            image_mean=[0.48145466, 0.4578275, 0.40821073],
-            image_std=[0.26862954, 0.26130258, 0.27577711],
-            resample=3,
-            size=224,
-        )
+        text_encoder = Gemma2Model(text_encoder_config)
+        tokenizer = GemmaTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
 
         components = {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
-            "text_encoder_2": text_encoder_2,
             "tokenizer": tokenizer,
-            "tokenizer_2": tokenizer_2,
-            "image_processor": image_processor,
+            "controlnet": controlnet,
         }
         return components
 
@@ -193,28 +151,20 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        image_height = 16
-        image_width = 16
-        image = Image.new("RGB", (image_width, image_height))
+        control_image = torch.randn(1, 3, 32, 32, generator=generator)
         inputs = {
-            "image": image,
-            "prompt": "dance monkey",
-            "prompt_template": {
-                "template": "{}",
-                "crop_start": 0,
-                "image_emb_len": 49,
-                "image_emb_start": 5,
-                "image_emb_end": 54,
-                "double_return_token_id": 0,
-            },
+            "prompt": "",
+            "negative_prompt": "",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 4.5,
-            "height": image_height,
-            "width": image_width,
-            "num_frames": 9,
-            "max_sequence_length": 64,
+            "guidance_scale": 6.0,
+            "height": 32,
+            "width": 32,
+            "max_sequence_length": 16,
             "output_type": "pt",
+            "complex_human_instruction": None,
+            "control_image": control_image,
+            "controlnet_conditioning_scale": 1.0,
         }
         return inputs
 
@@ -227,13 +177,12 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
-        generated_video = video[0]
+        image = pipe(**inputs)[0]
+        generated_image = image[0]
 
-        # NOTE: The expected video has 4 lesser frames because they are dropped in the pipeline
-        self.assertEqual(generated_video.shape, (5, 3, 16, 16))
-        expected_video = torch.randn(5, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
+        self.assertEqual(generated_image.shape, (3, 32, 32))
+        expected_image = torch.randn(3, 32, 32)
+        max_diff = np.abs(generated_image - expected_image).max()
         self.assertLessEqual(max_diff, 1e10)
 
     def test_callback_inputs(self):
@@ -331,8 +280,6 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             )
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
-        # Seems to require higher tolerance than the other tests
-        expected_diff_max = 0.6
         generator_device = "cpu"
         components = self.get_dummy_components()
 
@@ -375,8 +322,6 @@ class HunyuanVideoImageToVideoPipelineFastTests(
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skip(
-        "Encode prompt currently does not work in isolation because of requiring image embeddings from image processor. The test does not handle this case, or we need to rewrite encode_prompt."
-    )
-    def test_encode_prompt_works_in_isolation(self):
-        pass
+    def test_float16_inference(self):
+        # Requires higher tolerance as model seems very sensitive to dtype
+        super().test_float16_inference(expected_max_diff=0.08)

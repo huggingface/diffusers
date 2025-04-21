@@ -1816,7 +1816,12 @@ class PipelineFastTests(unittest.TestCase):
             feature_extractor=self.dummy_extractor,
         )
 
-        sd.enable_model_cpu_offload(gpu_id=5)
+        # `enable_model_cpu_offload` detects device type when not passed
+        # `enable_model_cpu_offload` raises ValueError if detected device is `cpu`
+        # This test only checks whether `_offload_gpu_id` is set correctly
+        # So the device passed can be any supported `torch.device` type
+        # This allows us to keep the test under `PipelineFastTests`
+        sd.enable_model_cpu_offload(gpu_id=5, device="cuda")
         assert sd._offload_gpu_id == 5
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
