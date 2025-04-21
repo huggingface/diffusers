@@ -95,18 +95,18 @@ def convert_stable_audio_state_dict_to_diffusers(state_dict, num_autoencoder_lay
             # get idx of the layer
             idx = int(new_key.split("coder.layers.")[1].split(".")[0])
 
-            new_key = new_key.replace(f"coder.layers.{idx}", f"coder.block.{idx-1}")
+            new_key = new_key.replace(f"coder.layers.{idx}", f"coder.block.{idx - 1}")
 
             if "encoder" in new_key:
                 for i in range(3):
-                    new_key = new_key.replace(f"block.{idx-1}.layers.{i}", f"block.{idx-1}.res_unit{i+1}")
-                new_key = new_key.replace(f"block.{idx-1}.layers.3", f"block.{idx-1}.snake1")
-                new_key = new_key.replace(f"block.{idx-1}.layers.4", f"block.{idx-1}.conv1")
+                    new_key = new_key.replace(f"block.{idx - 1}.layers.{i}", f"block.{idx - 1}.res_unit{i + 1}")
+                new_key = new_key.replace(f"block.{idx - 1}.layers.3", f"block.{idx - 1}.snake1")
+                new_key = new_key.replace(f"block.{idx - 1}.layers.4", f"block.{idx - 1}.conv1")
             else:
                 for i in range(2, 5):
-                    new_key = new_key.replace(f"block.{idx-1}.layers.{i}", f"block.{idx-1}.res_unit{i-1}")
-                new_key = new_key.replace(f"block.{idx-1}.layers.0", f"block.{idx-1}.snake1")
-                new_key = new_key.replace(f"block.{idx-1}.layers.1", f"block.{idx-1}.conv_t1")
+                    new_key = new_key.replace(f"block.{idx - 1}.layers.{i}", f"block.{idx - 1}.res_unit{i - 1}")
+                new_key = new_key.replace(f"block.{idx - 1}.layers.0", f"block.{idx - 1}.snake1")
+                new_key = new_key.replace(f"block.{idx - 1}.layers.1", f"block.{idx - 1}.conv_t1")
 
             new_key = new_key.replace("layers.0.beta", "snake1.beta")
             new_key = new_key.replace("layers.0.alpha", "snake1.alpha")
@@ -118,9 +118,9 @@ def convert_stable_audio_state_dict_to_diffusers(state_dict, num_autoencoder_lay
             new_key = new_key.replace("layers.3.weight_", "conv2.weight_")
 
             if idx == num_autoencoder_layers + 1:
-                new_key = new_key.replace(f"block.{idx-1}", "snake1")
+                new_key = new_key.replace(f"block.{idx - 1}", "snake1")
             elif idx == num_autoencoder_layers + 2:
-                new_key = new_key.replace(f"block.{idx-1}", "conv2")
+                new_key = new_key.replace(f"block.{idx - 1}", "conv2")
 
         else:
             new_key = new_key

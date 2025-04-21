@@ -115,6 +115,12 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
         return
 
     @unittest.skip(
+        "Test not supported because of 'weight_norm_fwd_first_dim_kernel' not implemented for 'Float8_e4m3fn'"
+    )
+    def test_layerwise_casting_training(self):
+        return super().test_layerwise_casting_training()
+
+    @unittest.skip(
         "The convolution layers of AutoencoderOobleck are wrapped with torch.nn.utils.weight_norm. This causes the hook's pre_forward to not "
         "cast the module weights to compute_dtype (as required by forward pass). As a result, forward pass errors out. To fix:\n"
         "1. Make sure `nn::Module::to` works with `torch.nn.utils.weight_norm` wrapped convolution layer.\n"
@@ -177,7 +183,7 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
         return model
 
     def get_generator(self, seed=0):
-        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
+        generator_device = "cpu" if not torch_device.startswith(torch_device) else torch_device
         if torch_device != "mps":
             return torch.Generator(device=generator_device).manual_seed(seed)
         return torch.manual_seed(seed)

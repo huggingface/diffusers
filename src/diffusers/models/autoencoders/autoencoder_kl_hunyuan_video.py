@@ -36,11 +36,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def prepare_causal_attention_mask(
     num_frames: int, height_width: int, dtype: torch.dtype, device: torch.device, batch_size: int = None
 ) -> torch.Tensor:
-    seq_len = num_frames * height_width
-    mask = torch.full((seq_len, seq_len), float("-inf"), dtype=dtype, device=device)
-    for i in range(seq_len):
-        i_frame = i // height_width
-        mask[i, : (i_frame + 1) * height_width] = 0
+    indices = torch.arange(1, num_frames + 1, dtype=torch.int32, device=device)
+    indices_blocks = indices.repeat_interleave(height_width)
+    x, y = torch.meshgrid(indices_blocks, indices_blocks, indexing="xy")
+    mask = torch.where(x <= y, 0, -float("inf")).to(dtype=dtype)
+
     if batch_size is not None:
         mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
     return mask
@@ -829,7 +829,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
     def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
         tile_latent_min_num_frames = self.tile_sample_min_num_frames // self.temporal_compression_ratio
 
         if self.use_framewise_decoding and num_frames > tile_latent_min_num_frames:

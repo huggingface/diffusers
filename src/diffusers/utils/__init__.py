@@ -79,6 +79,9 @@ from .import_utils import (
     is_matplotlib_available,
     is_note_seq_available,
     is_onnx_available,
+    is_opencv_available,
+    is_optimum_quanto_available,
+    is_optimum_quanto_version,
     is_peft_available,
     is_peft_version,
     is_safetensors_available,
@@ -92,6 +95,7 @@ from .import_utils import (
     is_torch_xla_available,
     is_torch_xla_version,
     is_torchao_available,
+    is_torchao_version,
     is_torchsde_available,
     is_torchvision_available,
     is_transformers_available,
@@ -116,13 +120,16 @@ from .peft_utils import (
     unscale_lora_layers,
 )
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
+from .remote_utils import remote_decode
 from .state_dict_utils import (
     convert_all_state_dict_to_peft,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_kohya,
     convert_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
+    state_dict_all_zero,
 )
+from .typing_utils import _get_detailed_type, _is_valid_type
 
 
 logger = get_logger(__name__)

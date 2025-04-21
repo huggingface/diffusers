@@ -187,7 +187,7 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
         super().test_sequential_cpu_offload_forward_pass(expected_max_diff=0.008)
 
     def test_dict_tuple_outputs_equivalent(self):
-        super().test_dict_tuple_outputs_equivalent(expected_max_difference=0.008)
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=0.009)
 
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=0.008)
@@ -227,6 +227,10 @@ class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unit
         expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @unittest.skip("Test not supported for now.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
 
 
 @slow

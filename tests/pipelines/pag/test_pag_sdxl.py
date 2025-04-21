@@ -30,8 +30,9 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -47,7 +48,6 @@ from ..test_pipelines_common import (
     PipelineFromPipeTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -59,7 +59,6 @@ class StableDiffusionXLPAGPipelineFastTests(
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineFromPipeTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLPAGPipeline
@@ -168,9 +167,9 @@ class StableDiffusionXLPAGPipelineFastTests(
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert (
-            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
+            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        )
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0
@@ -192,9 +191,6 @@ class StableDiffusionXLPAGPipelineFastTests(
 
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
         assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
-
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
 
     def test_pag_applied_layers(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -288,9 +284,13 @@ class StableDiffusionXLPAGPipelineFastTests(
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusionXLPAGPipeline
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -298,12 +298,12 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", seed=0, guidance_scale=7.0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
@@ -320,7 +320,7 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
 
     def test_pag_cfg(self):
         pipeline = AutoPipelineForText2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
@@ -331,13 +331,13 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.3123679, 0.31725878, 0.32026544, 0.327533, 0.3266391, 0.3303998, 0.33544615, 0.34181812, 0.34102726]
         )
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-        ), f"output is different from expected, {image_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
+            f"output is different from expected, {image_slice.flatten()}"
+        )
 
     def test_pag_uncond(self):
         pipeline = AutoPipelineForText2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
-        pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device, guidance_scale=0.0)
@@ -348,6 +348,6 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.47400922, 0.48650584, 0.4839625, 0.4724013, 0.4890427, 0.49544555, 0.51707107, 0.54299414, 0.5224372]
         )
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-        ), f"output is different from expected, {image_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
+            f"output is different from expected, {image_slice.flatten()}"
+        )

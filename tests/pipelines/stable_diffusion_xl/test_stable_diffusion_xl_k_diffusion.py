@@ -20,14 +20,21 @@ import numpy as np
 import torch
 
 from diffusers import StableDiffusionXLKDiffusionPipeline
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    Expectations,
+    backend_empty_cache,
+    enable_full_determinism,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 
 
 enable_full_determinism()
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
     dtype = torch.float16
 
@@ -35,13 +42,13 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_diffusion_xl(self):
         sd_pipe = StableDiffusionXLKDiffusionPipeline.from_pretrained(
@@ -100,7 +107,38 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.6418, 0.6424, 0.6462, 0.6271, 0.6314, 0.6295, 0.6249, 0.6339, 0.6335])
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.6128,
+                        0.6108,
+                        0.6109,
+                        0.5997,
+                        0.5988,
+                        0.5948,
+                        0.5903,
+                        0.597,
+                        0.5973,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.6418,
+                        0.6424,
+                        0.6462,
+                        0.6271,
+                        0.6314,
+                        0.6295,
+                        0.6249,
+                        0.6339,
+                        0.6335,
+                    ]
+                ),
+            }
+        )
+
+        expected_slice = expected_slices.get_expectation()
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

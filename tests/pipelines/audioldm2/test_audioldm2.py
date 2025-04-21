@@ -26,7 +26,7 @@ from transformers import (
     ClapModel,
     ClapTextConfig,
     GPT2Config,
-    GPT2Model,
+    GPT2LMHeadModel,
     RobertaTokenizer,
     SpeechT5HifiGan,
     SpeechT5HifiGanConfig,
@@ -162,7 +162,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             n_ctx=99,
             n_positions=99,
         )
-        language_model = GPT2Model(language_model_config)
+        language_model = GPT2LMHeadModel(language_model_config)
         language_model.config.max_new_tokens = 8
 
         torch.manual_seed(0)
@@ -508,7 +508,24 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
+    @unittest.skip("Test not supported.")
     def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @unittest.skip("Test not supported for now because of the use of `projection_model` in `encode_prompt()`.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
+    @unittest.skip("Not supported yet due to CLAPModel.")
+    def test_sequential_offload_forward_pass_twice(self):
+        pass
+
+    @unittest.skip("Not supported yet, the second forward has mixed devices and `vocoder` is not offloaded.")
+    def test_cpu_offload_forward_pass_twice(self):
+        pass
+
+    @unittest.skip("Not supported yet. `vocoder` is not offloaded.")
+    def test_model_cpu_offload_forward_pass(self):
         pass
 
 

@@ -153,13 +153,18 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 16, 16, 3)
 
-        expected_slice = np.array(
-            [0.6953125, 0.89208984, 0.59375, 0.5078125, 0.5786133, 0.6035156, 0.5839844, 0.53564453, 0.52246094]
-        )
+        if torch_device == "xpu":
+            expected_slice = np.array(
+                [0.6376953, 0.84375, 0.58691406, 0.48046875, 0.43652344, 0.5517578, 0.54248047, 0.5644531, 0.48217773]
+            )
+        else:
+            expected_slice = np.array(
+                [0.6953125, 0.89208984, 0.59375, 0.5078125, 0.5786133, 0.6035156, 0.5839844, 0.53564453, 0.52246094]
+            )
 
-        assert (
-            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        ), f"Expected: {expected_slice}, got: {image_slice.flatten()}"
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
+            f"Expected: {expected_slice}, got: {image_slice.flatten()}"
+        )
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(
@@ -176,6 +181,12 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
 
     def test_save_load_optional_components(self):
         # TODO(YiYi) need to fix later
+        pass
+
+    @unittest.skip(
+        "Test not supported as `encode_prompt` is called two times separately which deivates from about 99% of the pipelines we have."
+    )
+    def test_encode_prompt_works_in_isolation(self):
         pass
 
 
@@ -345,6 +356,7 @@ class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
+
         expected_image = np.array(
             [0.43652344, 0.44018555, 0.4494629, 0.44995117, 0.45654297, 0.44848633, 0.43603516, 0.4404297, 0.42626953]
         )
