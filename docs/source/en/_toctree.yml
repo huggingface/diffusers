@@ -494,6 +494,8 @@
       title: MusicLDM
     - local: api/pipelines/omnigen
       title: OmniGen
+    - local: api/pipelines/visualcloze
+      title: VisualCloze
     - local: api/pipelines/pag
       title: PAG
     - local: api/pipelines/paint_by_example
