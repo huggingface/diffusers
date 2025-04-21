@@ -655,6 +655,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
+        from .omnigen import OmniGenPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
@@ -674,6 +675,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
         )
+        from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_cascade import (
