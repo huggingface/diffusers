@@ -562,6 +562,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PaintByExamplePipeline,
             PIAPipeline,
             SemanticStableDiffusionPipeline,
+            ShapEImg2ImgPipeline,
+            ShapEPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionControlNetXSPipeline,
             StableDiffusionDiffEditPipeline,
