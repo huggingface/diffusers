@@ -1357,7 +1357,7 @@ def main(args):
     vae_config_shift_factor = vae.config.shift_factor
     if args.cache_latents:
         latents_cache = []
-        if not args.offload:
+        if args.offload:
             vae = vae.to(accelerator.device)
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
