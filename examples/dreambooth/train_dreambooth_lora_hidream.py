@@ -1694,7 +1694,7 @@ def main(args):
 
         validation_prpmpt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
         save_model_card(
-            repo_id,
+            (args.hub_model_id or Path(args.output_dir).name) if not args.push_to_hub else repo_id,
             images=images,
             base_model=args.pretrained_model_name_or_path,
             instance_prompt=args.instance_prompt,
