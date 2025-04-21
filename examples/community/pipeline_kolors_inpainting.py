@@ -15,9 +15,14 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import PIL.Image
 import numpy as np
+import PIL.Image
 import torch
+from transformers import (
+    CLIPImageProcessor,
+    CLIPVisionModelWithProjection,
+)
+
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import (
@@ -33,23 +38,19 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
+from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
-    is_invisible_watermark_available,
-    replace_example_docstring,
-    is_torch_xla_available,
     deprecate,
+    is_invisible_watermark_available,
+    is_torch_xla_available,
     logging,
+    replace_example_docstring,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from transformers import (
-    CLIPImageProcessor,
-    CLIPVisionModelWithProjection,
-)
 
-from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
 
 if is_invisible_watermark_available():
     from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
@@ -70,20 +71,20 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import KolorsInpaintPipeline
         >>> from diffusers.utils import load_image
-        
+
         >>> pipe = KolorsInpaintPipeline.from_pretrained(
         ...     "Kwai-Kolors/Kolors-diffusers",
         ...     torch_dtype=torch.float16,
         ...     variant="fp16"
         ... )
         >>> pipe.to("cuda")
-        
+
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
         >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
-        
+
         >>> init_image = load_image(img_url).convert("RGB")
         >>> mask_image = load_image(mask_url).convert("RGB")
-        
+
         >>> prompt = "A majestic tiger sitting on a bench"
         >>> image = pipe(
         ...     prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=50, strength=0.80

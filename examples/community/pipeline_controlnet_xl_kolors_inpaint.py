@@ -15,41 +15,41 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import PIL.Image
 import numpy as np
+import PIL.Image
 import torch
 import torch.nn.functional as F
+from transformers import (
+    CLIPImageProcessor,
+    CLIPVisionModelWithProjection,
+)
+
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import (
     FromSingleFileMixin,
     IPAdapterMixin,
     StableDiffusionXLLoraLoaderMixin,
-    TextualInversionLoaderMixin
+    TextualInversionLoaderMixin,
 )
-from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from diffusers.models import ControlNetModel, MultiControlNetModel
+from diffusers.models import (
+    AutoencoderKL,
+    ControlNetModel,
+    ImageProjection,
+    MultiControlNetModel,
+    UNet2DConditionModel,
+)
 from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
 )
-
+from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import (
-    is_invisible_watermark_available,
-    replace_example_docstring,
-    deprecate,
-    logging
-)
+from diffusers.utils import deprecate, is_invisible_watermark_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
-from transformers import (
-    CLIPImageProcessor,
-    CLIPVisionModelWithProjection,
-)
 
-from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
 
 if is_invisible_watermark_available():
     from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
@@ -66,20 +66,20 @@ EXAMPLE_DOC_STRING = """
         >>> import numpy as np
         >>> import torch
         >>> import cv2
-        
+
         >>> init_image = load_image(
         ...     "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy.png"
         ... )
         >>> init_image = init_image.resize((1024, 1024))
-        
+
         >>> generator = torch.Generator(device="cpu").manual_seed(1)
-        
+
         >>> mask_image = load_image(
         ...     "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy_mask.png"
         ... )
         >>> mask_image = mask_image.resize((1024, 1024))
-        
-        
+
+
         >>> def make_canny_condition(image):
         ...     image = np.array(image)
         ...     image = cv2.Canny(image, 100, 200)
@@ -87,19 +87,19 @@ EXAMPLE_DOC_STRING = """
         ...     image = np.concatenate([image, image, image], axis=2)
         ...     image = Image.fromarray(image)
         ...     return image
-        
-        
+
+
         >>> control_image = make_canny_condition(init_image)
-        
+
         >>> controlnet = ControlNetModel.from_pretrained(
         ...     "Kwai-Kolors/Kolors-ControlNet-Canny", torch_dtype=torch.float16
         ... )
         >>> pipe = KolorsControlNetInpaintPipeline.from_pretrained(
         ...     "Kwai-Kolors/Kolors-diffusers", controlnet=controlnet, torch_dtype=torch.float16
         ... )
-        
+
         >>> pipe.enable_model_cpu_offload()
-        
+
         # generate image
         >>> image = pipe(
         ...     "a handsome man with ray-ban sunglasses",

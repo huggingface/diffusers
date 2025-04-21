@@ -31,27 +31,31 @@ from diffusers.loaders import (
     FromSingleFileMixin,
     IPAdapterMixin,
     StableDiffusionXLLoraLoaderMixin,
-    TextualInversionLoaderMixin
+    TextualInversionLoaderMixin,
 )
-from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
+from diffusers.models import (
+    AutoencoderKL,
+    ControlNetModel,
+    ImageProjection,
+    MultiControlNetModel,
+    UNet2DConditionModel,
+)
 from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
 )
-from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import (
-    is_invisible_watermark_available,
-    replace_example_docstring,
-    deprecate,
-    logging,
-)
-from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
+from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import (
+    deprecate,
+    is_invisible_watermark_available,
+    logging,
+    replace_example_docstring,
+)
+from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
 
-from diffusers.models import ControlNetModel, MultiControlNetModel
-
-from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
 
 if is_invisible_watermark_available():
     from diffusers.pipelines.stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
@@ -68,33 +72,33 @@ EXAMPLE_DOC_STRING = """
         >>> import numpy as np
         >>> import cv2
         >>> from PIL import Image
-        
+
         >>> prompt = "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
         >>> negative_prompt = "low quality, bad quality, sketches"
-        
+
         >>> # download an image
         >>> image = load_image(
         ...     "https://hf.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
         ... )
-        
+
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
         >>> controlnet = ControlNetModel.from_pretrained(
         ...     "Kwai-Kolors/Kolors-ControlNet-Canny", torch_dtype=torch.float16
         ... )
-        
+
         >>> pipe = KolorsControlNetPipeline.from_pretrained(
         ...     "Kwai-Kolors/Kolors-diffusers", controlnet=controlnet, torch_dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
-        
+
         >>> # get canny image
         >>> image = np.array(image)
         >>> image = cv2.Canny(image, 100, 200)
         >>> image = image[:, :, None]
         >>> image = np.concatenate([image, image, image], axis=2)
         >>> canny_image = Image.fromarray(image)
-        
+
         >>> # generate image
         >>> image = pipe(
         ...     prompt, controlnet_conditioning_scale=controlnet_conditioning_scale, image=canny_image
@@ -387,30 +391,6 @@ class KolorsControlNetPipeline(
             )
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
-
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
-
-        image = image.to(device=device, dtype=dtype)
-        if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_enc_hidden_states = self.image_encoder(
-                torch.zeros_like(image), output_hidden_states=True
-            ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
-            return image_enc_hidden_states, uncond_image_enc_hidden_states
-        else:
-            image_embeds = self.image_encoder(image).image_embeds
-            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_embeds = torch.zeros_like(image_embeds)
-
-            return image_embeds, uncond_image_embeds
 
     def prepare_ip_adapter_image_embeds(
             self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
