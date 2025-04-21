@@ -446,7 +446,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
             current_sigma = per_token_sigmas[..., None]
             next_sigma = lower_sigmas[..., None]
-            dt = next_sigma - current_sigma  # Equivalent to sigma_next - sigma
+            dt = current_sigma - next_sigma
         else:
             sigma_idx = self.step_index
             sigma = self.sigmas[sigma_idx]
