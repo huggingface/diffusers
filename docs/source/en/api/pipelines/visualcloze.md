@@ -94,5 +94,5 @@ image.save("output.png")
 ## VisualClozePipeline
 
 [[autodoc]] VisualClozePipeline
-  - all
-  - __call__
+    - all
+	- __call__
