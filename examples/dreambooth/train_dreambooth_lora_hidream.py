@@ -42,7 +42,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, CLIPTokenizer, LlamaForCausalLM, PretrainedConfig
+from transformers import AutoTokenizer, CLIPTokenizer, LlamaForCausalLM, PretrainedConfig, T5Tokenizer
 
 import diffusers
 from diffusers import (
@@ -1041,7 +1041,7 @@ def main(args):
         subfolder="tokenizer_2",
         revision=args.revision,
     )
-    tokenizer_three = AutoTokenizer.from_pretrained(
+    tokenizer_three = T5Tokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer_3",
         revision=args.revision,
