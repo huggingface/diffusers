@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -720,7 +720,7 @@ def main(args):
     # Train!
     logger.info("***** Running training *****")
     logger.info(f"  Num training steps = {args.max_train_steps}")
-    logger.info(f"  Instantaneous batch size per device = { args.train_batch_size}")
+    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
 

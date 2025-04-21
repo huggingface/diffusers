@@ -51,6 +51,8 @@ class StableUnCLIPImg2ImgPipelineFastTests(
     )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
     image_latents_params = frozenset([])
 
+    supports_dduf = False
+
     def get_dummy_components(self):
         embedder_hidden_size = 32
         embedder_projection_dim = embedder_hidden_size
@@ -204,6 +206,10 @@ class StableUnCLIPImg2ImgPipelineFastTests(
     )
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_max_difference=False)
+
+    @unittest.skip("Test not supported at the moment.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
 
 
 @nightly

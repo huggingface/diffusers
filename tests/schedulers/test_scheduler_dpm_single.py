@@ -1,4 +1,5 @@
 import tempfile
+import unittest
 
 import torch
 
@@ -65,6 +66,7 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
                 assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
+    @unittest.skip("Test not supported.")
     def test_from_save_pretrained(self):
         pass
 
@@ -343,9 +345,9 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
                         lower_order_final=lower_order_final,
                         final_sigmas_type=final_sigmas_type,
                     )
-                    assert (
-                        torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
-                    ), f"Scheduler outputs are not identical for prediction_type: {prediction_type}, lower_order_final: {lower_order_final} and final_sigmas_type: {final_sigmas_type}"
+                    assert torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5, (
+                        f"Scheduler outputs are not identical for prediction_type: {prediction_type}, lower_order_final: {lower_order_final} and final_sigmas_type: {final_sigmas_type}"
+                    )
 
     def test_beta_sigmas(self):
         self.check_over_configs(use_beta_sigmas=True)

@@ -450,9 +450,9 @@ class AnimateDiffPAGPipelineFastTests(
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert (
-            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
+            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        )
         out = pipe_sd(**inputs).frames[0, -3:, -3:, -1]
 
         components = self.get_dummy_components()
@@ -553,3 +553,11 @@ class AnimateDiffPAGPipelineFastTests(
         pag_layers = ["motion_modules.42"]
         with self.assertRaises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "num_images_per_prompt": 1,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)

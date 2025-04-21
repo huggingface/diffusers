@@ -29,10 +29,11 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_image,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -146,7 +147,7 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
         )
 
         latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
-        print(latent_slice.flatten())
+
         expected_slice = np.array([-0.9084, -0.0367, 0.2940, 0.0839, 0.6890, 0.2651, -0.7104, 2.1090, -0.7822])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -167,12 +168,12 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
         )
 
         latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
-        print(latent_slice.flatten())
+
         expected_slice = np.array([0.2528, 0.1458, -0.2166, 0.4565, -0.5657, -1.0286, -0.9961, 0.5933, 1.1173])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
         latent_slice = sd_pipe.init_latents[1, -1, -3:, -3:].to(device)
-        print(latent_slice.flatten())
+
         expected_slice = np.array([-0.0796, 2.0583, 0.5501, 0.5358, 0.0282, -0.2803, -1.0470, 0.7023, -0.0072])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -202,17 +203,17 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     @classmethod
     def setUpClass(cls):

@@ -78,7 +78,7 @@ class RDMPipeline(DiffusionPipeline, StableDiffusionMixin):
             feature_extractor=feature_extractor,
         )
         # Copy from statement here and all the methods we take from stable_diffusion_pipeline
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.retriever = retriever
 

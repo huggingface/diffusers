@@ -31,7 +31,7 @@ python scripts/convert_flux_to_diffusers.py  \
 --vae
 """
 
-CTX = init_empty_weights if is_accelerate_available else nullcontext
+CTX = init_empty_weights if is_accelerate_available() else nullcontext
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--original_state_dict_repo_id", default=None, type=str)

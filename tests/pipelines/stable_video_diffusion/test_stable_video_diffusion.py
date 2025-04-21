@@ -22,12 +22,13 @@ from diffusers.utils import load_image, logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
     require_accelerator,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -57,6 +58,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             "return_dict",
         ]
     )
+
+    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -513,19 +516,19 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableVideoDiffusionPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_sd_video(self):
         pipe = StableVideoDiffusionPipeline.from_pretrained(
@@ -533,7 +536,7 @@ class StableVideoDiffusionPipelineSlowTests(unittest.TestCase):
             variant="fp16",
             torch_dtype=torch.float16,
         )
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"

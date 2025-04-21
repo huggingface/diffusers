@@ -38,6 +38,8 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AmusedPipeline
     params = TEXT_TO_IMAGE_PARAMS | {"encoder_hidden_states", "negative_encoder_hidden_states"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -124,8 +126,7 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_consistent(batch_sizes=batch_sizes, batch_generator=False)
 
     @unittest.skip("aMUSEd does not support lists of generators")
-    def test_inference_batch_single_identical(self):
-        ...
+    def test_inference_batch_single_identical(self): ...
 
 
 @slow

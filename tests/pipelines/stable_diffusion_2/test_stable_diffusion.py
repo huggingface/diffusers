@@ -34,12 +34,13 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     enable_full_determinism,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    require_torch_gpu,
     skip_mps,
     slow,
     torch_device,
@@ -75,6 +76,8 @@ class StableDiffusion2PipelineFastTests(
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -310,6 +313,13 @@ class StableDiffusion2PipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
 
 @slow
 @require_torch_accelerator
@@ -321,9 +331,8 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        _generator_device = "cpu" if not generator_device.startswith("cuda") else "cuda"
         if not str(device).startswith("mps"):
-            generator = torch.Generator(device=_generator_device).manual_seed(seed)
+            generator = torch.Generator(device=generator_device).manual_seed(seed)
         else:
             generator = torch.manual_seed(seed)
 
@@ -352,9 +361,9 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
         assert np.abs(image_slice - expected_slice).max() < 7e-3
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_stable_diffusion_attention_slicing(self):
-        torch.cuda.reset_peak_memory_stats()
+        backend_reset_peak_memory_stats(torch_device)
         pipe = StableDiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
         )
@@ -367,8 +376,8 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         image_sliced = pipe(**inputs).images
 
-        mem_bytes = torch.cuda.max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        mem_bytes = backend_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
         # make sure that less than 3.3 GB is allocated
         assert mem_bytes < 3.3 * 10**9
 
@@ -379,7 +388,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images
 
         # make sure that more than 3.3 GB is allocated
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         assert mem_bytes > 3.3 * 10**9
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_sliced.flatten())
         assert max_diff < 5e-3

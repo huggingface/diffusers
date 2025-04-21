@@ -24,9 +24,14 @@ from diffusers import (
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     load_numpy,
     require_accelerator,
-    require_torch_gpu,
+    require_hf_hub_version_greater,
+    require_torch_accelerator,
+    require_transformers_version_greater,
     skip_mps,
     slow,
     torch_device,
@@ -62,9 +67,6 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
 
         return inputs
 
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_save_load_float16(self):
@@ -89,30 +91,39 @@ class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.T
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-2, rtol=1e-2)
+
+    @unittest.skip("Functionality is tested elsewhere.")
+    def test_save_load_optional_components(self):
+        pass
+
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class IFPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_if_text_to_image(self):
         pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
+        backend_reset_max_memory_allocated(torch_device)
+        backend_empty_cache(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe(

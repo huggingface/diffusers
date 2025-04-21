@@ -311,7 +311,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.float32)
         self._step_index = None
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication

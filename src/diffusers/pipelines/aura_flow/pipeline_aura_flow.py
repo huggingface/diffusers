@@ -12,19 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-from typing import List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
+from ...loaders import AuraFlowLoraLoaderMixin
 from ...models import AuraFlowTransformer2DModel, AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import (
+    USE_PEFT_BACKEND,
+    is_torch_xla_available,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -104,7 +120,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class AuraFlowPipeline(DiffusionPipeline):
+class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
     r"""
     Args:
         tokenizer (`T5TokenizerFast`):
@@ -124,6 +140,10 @@ class AuraFlowPipeline(DiffusionPipeline):
 
     _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+    ]
 
     def __init__(
         self,
@@ -139,9 +159,7 @@ class AuraFlowPipeline(DiffusionPipeline):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
-        self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
-        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def check_inputs(
@@ -154,10 +172,19 @@ class AuraFlowPipeline(DiffusionPipeline):
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
+        callback_on_step_end_tensor_inputs=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}."
+            )
 
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
@@ -214,6 +241,7 @@ class AuraFlowPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         max_sequence_length: int = 256,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -240,10 +268,20 @@ class AuraFlowPipeline(DiffusionPipeline):
             negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
             max_sequence_length (`int`, defaults to 256): Maximum sequence length to use for the prompt.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, AuraFlowLoraLoaderMixin):
+            self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            if self.text_encoder is not None and USE_PEFT_BACKEND:
+                scale_lora_layers(self.text_encoder, lora_scale)
+
         if device is None:
             device = self._execution_device
-
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -327,6 +365,11 @@ class AuraFlowPipeline(DiffusionPipeline):
             negative_prompt_embeds = None
             negative_prompt_attention_mask = None
 
+        if self.text_encoder is not None:
+            if isinstance(self, AuraFlowLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
+
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.prepare_latents
@@ -380,6 +423,18 @@ class AuraFlowPipeline(DiffusionPipeline):
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
 
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -387,7 +442,6 @@ class AuraFlowPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
         num_inference_steps: int = 50,
-        timesteps: List[int] = None,
         sigmas: List[float] = None,
         guidance_scale: float = 3.5,
         num_images_per_prompt: Optional[int] = 1,
@@ -402,6 +456,11 @@ class AuraFlowPipeline(DiffusionPipeline):
         max_sequence_length: int = 256,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Function invoked when calling the pipeline for generation.
@@ -424,10 +483,6 @@ class AuraFlowPipeline(DiffusionPipeline):
             sigmas (`List[float]`, *optional*):
                 Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
                 `num_inference_steps` and `timesteps` must be `None`.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -460,6 +515,19 @@ class AuraFlowPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
                 of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
 
         Examples:
@@ -481,7 +549,11 @@ class AuraFlowPipeline(DiffusionPipeline):
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
+
+        self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
 
         # 2. Determine batch size.
         if prompt is not None and isinstance(prompt, str):
@@ -492,6 +564,7 @@ class AuraFlowPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -515,6 +588,7 @@ class AuraFlowPipeline(DiffusionPipeline):
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             max_sequence_length=max_sequence_length,
+            lora_scale=lora_scale,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -522,9 +596,7 @@ class AuraFlowPipeline(DiffusionPipeline):
         # 4. Prepare timesteps
 
         # sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
-        )
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
@@ -541,6 +613,7 @@ class AuraFlowPipeline(DiffusionPipeline):
 
         # 6. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -557,6 +630,7 @@ class AuraFlowPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     return_dict=False,
+                    attention_kwargs=self.attention_kwargs,
                 )[0]
 
                 # perform guidance
@@ -567,9 +641,21 @@ class AuraFlowPipeline(DiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if output_type == "latent":
             image = latents

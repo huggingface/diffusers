@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers import SD3Transformer2DModel
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     torch_device,
@@ -32,6 +33,7 @@ enable_full_determinism()
 class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = SD3Transformer2DModel
     main_input_name = "hidden_states"
+    model_split_percents = [0.8, 0.8, 0.9]
 
     @property
     def dummy_input(self):
@@ -66,7 +68,7 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 32,
             "patch_size": 1,
             "in_channels": 4,
-            "num_layers": 1,
+            "num_layers": 4,
             "attention_head_dim": 8,
             "num_attention_heads": 4,
             "caption_projection_dim": 32,
@@ -80,6 +82,20 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_enable_works(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        model.enable_xformers_memory_efficient_attention()
+
+        assert model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor", (
+            "xformers is not enabled"
+        )
+
     @unittest.skip("SD3Transformer2DModel uses a dedicated attention processor. This test doesn't apply")
     def test_set_attn_processor_for_determinism(self):
         pass
@@ -92,6 +108,7 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
 class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = SD3Transformer2DModel
     main_input_name = "hidden_states"
+    model_split_percents = [0.8, 0.8, 0.9]
 
     @property
     def dummy_input(self):
@@ -126,7 +143,7 @@ class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 32,
             "patch_size": 1,
             "in_channels": 4,
-            "num_layers": 2,
+            "num_layers": 4,
             "attention_head_dim": 8,
             "num_attention_heads": 4,
             "caption_projection_dim": 32,
@@ -139,6 +156,20 @@ class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_enable_works(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        model.enable_xformers_memory_efficient_attention()
+
+        assert model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor", (
+            "xformers is not enabled"
+        )
 
     @unittest.skip("SD3Transformer2DModel uses a dedicated attention processor. This test doesn't apply")
     def test_set_attn_processor_for_determinism(self):

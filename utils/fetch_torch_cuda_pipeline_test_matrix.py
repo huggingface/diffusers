@@ -12,16 +12,14 @@ import diffusers
 PATH_TO_REPO = Path(__file__).parent.parent.resolve()
 ALWAYS_TEST_PIPELINE_MODULES = [
     "controlnet",
+    "controlnet_flux",
+    "controlnet_sd3",
     "stable_diffusion",
     "stable_diffusion_2",
+    "stable_diffusion_3",
     "stable_diffusion_xl",
-    "stable_diffusion_adapter",
-    "deepfloyd_if",
     "ip_adapters",
-    "kandinsky",
-    "kandinsky2_2",
-    "text_to_video_synthesis",
-    "wuerstchen",
+    "flux",
 ]
 PIPELINE_USAGE_CUTOFF = int(os.getenv("PIPELINE_USAGE_CUTOFF", 50000))
 

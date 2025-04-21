@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -215,19 +215,15 @@ class DiffusersQuantizer(ABC):
         )
 
     @abstractmethod
-    def _process_model_before_weight_loading(self, model, **kwargs):
-        ...
+    def _process_model_before_weight_loading(self, model, **kwargs): ...
 
     @abstractmethod
-    def _process_model_after_weight_loading(self, model, **kwargs):
-        ...
+    def _process_model_after_weight_loading(self, model, **kwargs): ...
 
     @property
     @abstractmethod
-    def is_serializable(self):
-        ...
+    def is_serializable(self): ...
 
     @property
     @abstractmethod
-    def is_trainable(self):
-        ...
+    def is_trainable(self): ...

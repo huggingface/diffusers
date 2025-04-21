@@ -24,8 +24,17 @@ import torch
 
 from ...models import AutoencoderKL, DiTTransformer2DModel
 from ...schedulers import KarrasDiffusionSchedulers
+from ...utils import is_torch_xla_available
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 
 class DiTPipeline(DiffusionPipeline):
@@ -178,10 +187,11 @@ class DiTPipeline(DiffusionPipeline):
                 # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                 # This would be a good case for the `match` statement (Python 3.10+)
                 is_mps = latent_model_input.device.type == "mps"
+                is_npu = latent_model_input.device.type == "npu"
                 if isinstance(timesteps, float):
-                    dtype = torch.float32 if is_mps else torch.float64
+                    dtype = torch.float32 if (is_mps or is_npu) else torch.float64
                 else:
-                    dtype = torch.int32 if is_mps else torch.int64
+                    dtype = torch.int32 if (is_mps or is_npu) else torch.int64
                 timesteps = torch.tensor([timesteps], dtype=dtype, device=latent_model_input.device)
             elif len(timesteps.shape) == 0:
                 timesteps = timesteps[None].to(latent_model_input.device)
@@ -210,6 +220,9 @@ class DiTPipeline(DiffusionPipeline):
 
             # compute previous image: x_t -> x_t-1
             latent_model_input = self.scheduler.step(model_output, t, latent_model_input).prev_sample
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         if guidance_scale > 1:
             latents, _ = latent_model_input.chunk(2, dim=0)

@@ -233,7 +233,7 @@ class PromptDiffusionPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
@@ -663,8 +663,7 @@ class PromptDiffusionPipeline(
                     self.check_image(image, prompt, prompt_embeds)
         else:
             raise ValueError(
-                f"You have passed a list of images of length {len(image_pair)}."
-                f"Make sure the list size equals to two."
+                f"You have passed a list of images of length {len(image_pair)}.Make sure the list size equals to two."
             )
 
         # Check `controlnet_conditioning_scale`

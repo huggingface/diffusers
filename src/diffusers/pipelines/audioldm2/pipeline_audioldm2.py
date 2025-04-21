@@ -20,7 +20,7 @@ import torch
 from transformers import (
     ClapFeatureExtractor,
     ClapModel,
-    GPT2Model,
+    GPT2LMHeadModel,
     RobertaTokenizer,
     RobertaTokenizerFast,
     SpeechT5HifiGan,
@@ -48,7 +48,19 @@ from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditi
 if is_librosa_available():
     import librosa
 
+
+from ...utils import is_torch_xla_available
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -184,7 +196,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         text_encoder: ClapModel,
         text_encoder_2: Union[T5EncoderModel, VitsModel],
         projection_model: AudioLDM2ProjectionModel,
-        language_model: GPT2Model,
+        language_model: GPT2LMHeadModel,
         tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
         tokenizer_2: Union[T5Tokenizer, T5TokenizerFast, VitsTokenizer],
         feature_extractor: ClapFeatureExtractor,
@@ -207,7 +219,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             scheduler=scheduler,
             vocoder=vocoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
     # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -225,7 +237,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         """
         self.vae.disable_slicing()
 
-    def enable_model_cpu_offload(self, gpu_id=0):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -237,11 +249,26 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        torch_device = torch.device(device)
+        device_index = torch_device.index
+
+        if gpu_id is not None and device_index is not None:
+            raise ValueError(
+                f"You have passed both `gpu_id`={gpu_id} and an index as part of the passed device `device`={device}"
+                f"Cannot pass both. Please make sure to either not define `gpu_id` or not pass the index as part of the device: `device`={torch_device.type}"
+            )
+
+        device_type = torch_device.type
+        device_str = device_type
+        if gpu_id or torch_device.index:
+            device_str = f"{device_str}:{gpu_id or torch_device.index}"
+        device = torch.device(device_str)
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+            device_mod = getattr(torch, device.type, None)
+            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         model_sequence = [
             self.text_encoder.text_model,
@@ -292,9 +319,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
 
             # forward pass to get next hidden states
-            output = self.language_model(**model_inputs, return_dict=True)
+            output = self.language_model(**model_inputs, output_hidden_states=True, return_dict=True)
 
-            next_hidden_states = output.last_hidden_state
+            next_hidden_states = output.hidden_states[-1]
 
             # Update the model input
             inputs_embeds = torch.cat([inputs_embeds, next_hidden_states[:, -1:, :]], dim=1)
@@ -764,7 +791,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         if transcription is None:
             if self.text_encoder_2.config.model_type == "vits":
-                raise ValueError("Cannot forward without transcription. Please make sure to" " have transcription")
+                raise ValueError("Cannot forward without transcription. Please make sure to have transcription")
         elif transcription is not None and (
             not isinstance(transcription, str) and not isinstance(transcription, list)
         ):
@@ -1032,6 +1059,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         self.maybe_free_model_hooks()
 

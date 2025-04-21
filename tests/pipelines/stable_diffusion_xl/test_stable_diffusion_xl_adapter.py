@@ -42,7 +42,6 @@ from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUI
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     assert_mean_pixel_difference,
 )
 
@@ -50,9 +49,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class StableDiffusionXLAdapterPipelineFastTests(
-    IPAdapterTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
-):
+class StableDiffusionXLAdapterPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionXLAdapterPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
@@ -300,6 +297,10 @@ class StableDiffusionXLAdapterPipelineFastTests(
 
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
+
     def test_stable_diffusion_adapter_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -373,9 +374,6 @@ class StableDiffusionXLAdapterPipelineFastTests(
             expected_out_image_size,
         )
 
-    def test_save_load_optional_components(self):
-        return self._test_save_load_optional_components()
-
     def test_adapter_sdxl_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -422,6 +420,8 @@ class StableDiffusionXLAdapterPipelineFastTests(
 class StableDiffusionXLMultiAdapterPipelineFastTests(
     StableDiffusionXLAdapterPipelineFastTests, PipelineTesterMixin, unittest.TestCase
 ):
+    supports_dduf = False
+
     def get_dummy_components(self, time_cond_proj_dim=None):
         return super().get_dummy_components("multi_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
@@ -512,6 +512,10 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
             assert output.shape[0] == batch_size
 
         logger.setLevel(level=diffusers.logging.WARNING)
+
+    @unittest.skip("We test this functionality elsewhere already.")
+    def test_save_load_optional_components(self):
+        pass
 
     def test_num_images_per_prompt(self):
         components = self.get_dummy_components()
@@ -642,9 +646,6 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
 
-        debug = [str(round(i, 4)) for i in image_slice.flatten().tolist()]
-        print(",".join(debug))
-
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_adapter_sdxl_lcm_custom_timesteps(self):
@@ -666,8 +667,5 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5313, 0.5375, 0.4942, 0.5021, 0.6142, 0.4968, 0.5434, 0.5311, 0.5448])
-
-        debug = [str(round(i, 4)) for i in image_slice.flatten().tolist()]
-        print(",".join(debug))
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

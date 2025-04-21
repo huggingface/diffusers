@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -910,9 +910,9 @@ def main():
                 index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
 
                 with torch.no_grad():
-                    accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
-                        index_no_updates
-                    ] = orig_embeds_params[index_no_updates]
+                    accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[index_no_updates] = (
+                        orig_embeds_params[index_no_updates]
+                    )
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:

@@ -41,3 +41,11 @@ Utility and helper functions for working with 🤗 Diffusers.
 ## randn_tensor
 
 [[autodoc]] utils.torch_utils.randn_tensor
+
+## apply_layerwise_casting
+
+[[autodoc]] hooks.layerwise_casting.apply_layerwise_casting
+
+## apply_group_offloading
+
+[[autodoc]] hooks.group_offloading.apply_group_offloading

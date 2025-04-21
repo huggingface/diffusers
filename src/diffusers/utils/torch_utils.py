@@ -102,6 +102,9 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
     # Non-power of 2 images must be float32
     if (W & (W - 1)) != 0 or (H & (H - 1)) != 0:
         x = x.to(dtype=torch.float32)
+    # fftn does not support bfloat16
+    elif x.dtype == torch.bfloat16:
+        x = x.to(dtype=torch.float32)
 
     # FFT
     x_freq = fftn(x, dim=(-2, -1))
@@ -146,3 +149,22 @@ def apply_freeu(
         res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s2"])
 
     return hidden_states, res_hidden_states
+
+
+def get_torch_cuda_device_capability():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        compute_capability = torch.cuda.get_device_capability(device)
+        compute_capability = f"{compute_capability[0]}.{compute_capability[1]}"
+        return float(compute_capability)
+    else:
+        return None
+
+
+def get_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+        return "xpu"
+    else:
+        return "cpu"

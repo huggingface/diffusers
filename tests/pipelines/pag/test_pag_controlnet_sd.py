@@ -28,9 +28,7 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-)
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import (
@@ -171,9 +169,9 @@ class StableDiffusionControlNetPAGPipelineFastTests(
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert (
-            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
+            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        )
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0
@@ -246,3 +244,10 @@ class StableDiffusionControlNetPAGPipelineFastTests(
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
+
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)

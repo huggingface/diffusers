@@ -28,10 +28,7 @@ from diffusers import (
     HunyuanDiTPAGPipeline,
     HunyuanDiTPipeline,
 )
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -121,10 +118,12 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    @unittest.skip("Not supported.")
     def test_sequential_cpu_offload_forward_pass(self):
         # TODO(YiYi) need to fix later
         pass
 
+    @unittest.skip("Not supported.")
     def test_sequential_offload_forward_pass_twice(self):
         # TODO(YiYi) need to fix later
         pass
@@ -133,6 +132,142 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_single_identical(
             expected_max_diff=1e-3,
         )
+
+    def test_feed_forward_chunking(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_no_chunking = image[0, -3:, -3:, -1]
+
+        pipe.transformer.enable_forward_chunking(chunk_size=1, dim=0)
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_chunking = image[0, -3:, -3:, -1]
+
+        max_diff = np.abs(to_np(image_slice_no_chunking) - to_np(image_slice_chunking)).max()
+        self.assertLess(max_diff, 1e-4)
+
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image = pipe(**inputs)[0]
+        original_image_slice = image[0, -3:, -3:, -1]
+
+        pipe.transformer.fuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image_fused = pipe(**inputs)[0]
+        image_slice_fused = image_fused[0, -3:, -3:, -1]
+
+        pipe.transformer.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image_disabled = pipe(**inputs)[0]
+        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
+
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
+
+    def test_pag_disable_enable(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+
+        # base pipeline (expect same output when pag is disabled)
+        pipe_sd = HunyuanDiTPipeline(**components)
+        pipe_sd = pipe_sd.to(device)
+        pipe_sd.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        del inputs["pag_scale"]
+        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
+            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        )
+        out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
+
+        components = self.get_dummy_components()
+
+        # pag disabled with pag_scale=0.0
+        pipe_pag = self.pipeline_class(**components)
+        pipe_pag = pipe_pag.to(device)
+        pipe_pag.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["pag_scale"] = 0.0
+        out_pag_disabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
+
+        # pag enabled
+        pipe_pag = self.pipeline_class(**components)
+        pipe_pag = pipe_pag.to(device)
+        pipe_pag.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["pag_scale"] = 3.0
+        out_pag_enabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
+
+        assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
+        assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
+
+    def test_pag_applied_layers(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+
+        # base pipeline
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn1" in k]
+        original_attn_procs = pipe.transformer.attn_processors
+        pag_layers = ["blocks.0", "blocks.1"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
+
+        # blocks.0
+        block_0_self_attn = ["blocks.0.attn1.processor"]
+        pipe.transformer.set_attn_processor(original_attn_procs.copy())
+        pag_layers = ["blocks.0"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
+
+        pipe.transformer.set_attn_processor(original_attn_procs.copy())
+        pag_layers = ["blocks.0.attn1"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
+
+        pipe.transformer.set_attn_processor(original_attn_procs.copy())
+        pag_layers = ["blocks.(0|1)"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert (len(pipe.pag_attn_processors)) == 2
+
+        pipe.transformer.set_attn_processor(original_attn_procs.copy())
+        pag_layers = ["blocks.0", r"blocks\.1"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert len(pipe.pag_attn_processors) == 2
+
+    @unittest.skip(
+        "Test not supported as `encode_prompt` is called two times separately which deivates from about 99% of the pipelines we have."
+    )
+    def test_encode_prompt_works_in_isolation(self):
+        pass
 
     def test_save_load_optional_components(self):
         components = self.get_dummy_components()
@@ -226,133 +361,3 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1e-4)
-
-    def test_feed_forward_chunking(self):
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_no_chunking = image[0, -3:, -3:, -1]
-
-        pipe.transformer.enable_forward_chunking(chunk_size=1, dim=0)
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_chunking = image[0, -3:, -3:, -1]
-
-        max_diff = np.abs(to_np(image_slice_no_chunking) - to_np(image_slice_chunking)).max()
-        self.assertLess(max_diff, 1e-4)
-
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image = pipe(**inputs)[0]
-        original_image_slice = image[0, -3:, -3:, -1]
-
-        pipe.transformer.fuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_fused = pipe(**inputs)[0]
-        image_slice_fused = image_fused[0, -3:, -3:, -1]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_disabled = pipe(**inputs)[0]
-        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
-
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
-
-    def test_pag_disable_enable(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline (expect same output when pag is disabled)
-        pipe_sd = HunyuanDiTPipeline(**components)
-        pipe_sd = pipe_sd.to(device)
-        pipe_sd.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        del inputs["pag_scale"]
-        assert (
-            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
-        out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
-
-        components = self.get_dummy_components()
-
-        # pag disabled with pag_scale=0.0
-        pipe_pag = self.pipeline_class(**components)
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["pag_scale"] = 0.0
-        out_pag_disabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
-
-        # pag enabled
-        pipe_pag = self.pipeline_class(**components)
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["pag_scale"] = 3.0
-        out_pag_enabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
-
-        assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
-        assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
-
-    def test_pag_applied_layers(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn1" in k]
-        original_attn_procs = pipe.transformer.attn_processors
-        pag_layers = ["blocks.0", "blocks.1"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
-
-        # blocks.0
-        block_0_self_attn = ["blocks.0.attn1.processor"]
-        pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["blocks.0"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
-
-        pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["blocks.0.attn1"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
-
-        pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["blocks.(0|1)"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert (len(pipe.pag_attn_processors)) == 2
-
-        pipe.transformer.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["blocks.0", r"blocks\.1"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 2

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -104,8 +104,7 @@ def update_metadata(commit_sha: str):
 
         if commit_sha is not None:
             commit_message = (
-                f"Update with commit {commit_sha}\n\nSee: "
-                f"https://github.com/huggingface/diffusers/commit/{commit_sha}"
+                f"Update with commit {commit_sha}\n\nSee: https://github.com/huggingface/diffusers/commit/{commit_sha}"
             )
         else:
             commit_message = "Update"

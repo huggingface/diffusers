@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import deprecate
 from ...utils.accelerate_utils import apply_forward_hook
@@ -34,7 +35,7 @@ from ..modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
 
-class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
 
@@ -136,10 +137,6 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         )
         self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
-
-    def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (Encoder, Decoder)):
-            module.gradient_checkpointing = value
 
     def enable_tiling(self, use_tiling: bool = True):
         r"""

@@ -13,14 +13,15 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_processor import (
     Attention,
@@ -73,15 +74,23 @@ class AuraFlowPatchEmbed(nn.Module):
         # PE will be viewed as 2d-grid, and H/p x W/p of the PE will be selected
         # because original input are in flattened format, we have to flatten this 2d grid as well.
         h_p, w_p = h // self.patch_size, w // self.patch_size
-        original_pe_indexes = torch.arange(self.pos_embed.shape[1])
         h_max, w_max = int(self.pos_embed_max_size**0.5), int(self.pos_embed_max_size**0.5)
-        original_pe_indexes = original_pe_indexes.view(h_max, w_max)
+
+        # Calculate the top-left corner indices for the centered patch grid
         starth = h_max // 2 - h_p // 2
-        endh = starth + h_p
         startw = w_max // 2 - w_p // 2
-        endw = startw + w_p
-        original_pe_indexes = original_pe_indexes[starth:endh, startw:endw]
-        return original_pe_indexes.flatten()
+
+        # Generate the row and column indices for the desired patch grid
+        rows = torch.arange(starth, starth + h_p, device=self.pos_embed.device)
+        cols = torch.arange(startw, startw + w_p, device=self.pos_embed.device)
+
+        # Create a 2D grid of indices
+        row_indices, col_indices = torch.meshgrid(rows, cols, indexing="ij")
+
+        # Convert the 2D grid indices to flattened 1D indices
+        selected_indices = (row_indices * w_max + col_indices).flatten()
+
+        return selected_indices
 
     def forward(self, latent):
         batch_size, num_channels, height, width = latent.size()
@@ -159,14 +168,20 @@ class AuraFlowSingleTransformerBlock(nn.Module):
         self.norm2 = FP32LayerNorm(dim, elementwise_affine=False, bias=False)
         self.ff = AuraFlowFeedForward(dim, dim * 4)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor):
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: torch.FloatTensor,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+    ):
         residual = hidden_states
+        attention_kwargs = attention_kwargs or {}
 
         # Norm + Projection.
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         # Attention.
-        attn_output = self.attn(hidden_states=norm_hidden_states)
+        attn_output = self.attn(hidden_states=norm_hidden_states, **attention_kwargs)
 
         # Process attention outputs for the `hidden_states`.
         hidden_states = self.norm2(residual + gate_msa.unsqueeze(1) * attn_output)
@@ -222,10 +237,15 @@ class AuraFlowJointTransformerBlock(nn.Module):
         self.ff_context = AuraFlowFeedForward(dim, dim * 4)
 
     def forward(
-        self, hidden_states: torch.FloatTensor, encoder_hidden_states: torch.FloatTensor, temb: torch.FloatTensor
+        self,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor,
+        temb: torch.FloatTensor,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         residual = hidden_states
         residual_context = encoder_hidden_states
+        attention_kwargs = attention_kwargs or {}
 
         # Norm + Projection.
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
@@ -235,7 +255,9 @@ class AuraFlowJointTransformerBlock(nn.Module):
 
         # Attention.
         attn_output, context_attn_output = self.attn(
-            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            **attention_kwargs,
         )
 
         # Process attention outputs for the `hidden_states`.
@@ -253,7 +275,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
+class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model as introduced in AuraFlow (https://blog.fal.ai/auraflow/).
 
@@ -261,20 +283,21 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         sample_size (`int`): The width of the latent images. This is fixed during training since
             it is used to learn a number of position embeddings.
         patch_size (`int`): Patch size to turn the input data into small patches.
-        in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
+        in_channels (`int`, *optional*, defaults to 4): The number of channels in the input.
         num_mmdit_layers (`int`, *optional*, defaults to 4): The number of layers of MMDiT Transformer blocks to use.
-        num_single_dit_layers (`int`, *optional*, defaults to 4):
+        num_single_dit_layers (`int`, *optional*, defaults to 32):
             The number of layers of Transformer blocks to use. These blocks use concatenated image and text
             representations.
-        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
-        num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*, defaults to 256): The number of channels in each head.
+        num_attention_heads (`int`, *optional*, defaults to 12): The number of heads to use for multi-head attention.
         joint_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
         caption_projection_dim (`int`): Number of dimensions to use when projecting the `encoder_hidden_states`.
-        out_channels (`int`, defaults to 16): Number of output channels.
-        pos_embed_max_size (`int`, defaults to 4096): Maximum positions to embed from the image latents.
+        out_channels (`int`, defaults to 4): Number of output channels.
+        pos_embed_max_size (`int`, defaults to 1024): Maximum positions to embed from the image latents.
     """
 
     _no_split_modules = ["AuraFlowJointTransformerBlock", "AuraFlowSingleTransformerBlock", "AuraFlowPatchEmbed"]
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -442,17 +465,29 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     def forward(
         self,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         height, width = hidden_states.shape[-2:]
 
         # Apply patch embedding, timestep embedding, and project the caption embeddings.
@@ -467,28 +502,19 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         # MMDiT blocks.
         for index_block, block in enumerate(self.joint_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     temb,
-                    **ckpt_kwargs,
                 )
 
             else:
                 encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=temb,
+                    attention_kwargs=attention_kwargs,
                 )
 
         # Single DiT blocks that combine the `hidden_states` (image) and `encoder_hidden_states` (text)
@@ -498,26 +524,16 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
 
             for index_block, block in enumerate(self.single_transformer_blocks):
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                    def create_custom_forward(module, return_dict=None):
-                        def custom_forward(*inputs):
-                            if return_dict is not None:
-                                return module(*inputs, return_dict=return_dict)
-                            else:
-                                return module(*inputs)
-
-                        return custom_forward
-
-                    ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                    combined_hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(block),
+                    combined_hidden_states = self._gradient_checkpointing_func(
+                        block,
                         combined_hidden_states,
                         temb,
-                        **ckpt_kwargs,
                     )
 
                 else:
-                    combined_hidden_states = block(hidden_states=combined_hidden_states, temb=temb)
+                    combined_hidden_states = block(
+                        hidden_states=combined_hidden_states, temb=temb, attention_kwargs=attention_kwargs
+                    )
 
             hidden_states = combined_hidden_states[:, encoder_seq_len:]
 
@@ -537,6 +553,10 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         output = hidden_states.reshape(
             shape=(hidden_states.shape[0], out_channels, height * patch_size, width * patch_size)
         )
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

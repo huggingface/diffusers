@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -381,9 +381,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
 
-                formatted_images = []
-
-                formatted_images.append(np.asarray(validation_image))
+                formatted_images = [np.asarray(validation_image)]
 
                 for image in images:
                     formatted_images.append(np.asarray(image))
@@ -805,21 +803,20 @@ def parse_args(input_args=None):
         "--control_type",
         type=str,
         default="canny",
-        help=("The type of controlnet conditioning image to use. One of `canny`, `depth`" " Defaults to `canny`."),
+        help=("The type of controlnet conditioning image to use. One of `canny`, `depth` Defaults to `canny`."),
     )
     parser.add_argument(
         "--transformer_layers_per_block",
         type=str,
         default=None,
-        help=("The number of layers per block in the transformer. If None, defaults to" " `args.transformer_layers`."),
+        help=("The number of layers per block in the transformer. If None, defaults to `args.transformer_layers`."),
     )
     parser.add_argument(
         "--old_style_controlnet",
         action="store_true",
         default=False,
         help=(
-            "Use the old style controlnet, which is a single transformer layer with"
-            " a single head. Defaults to False."
+            "Use the old style controlnet, which is a single transformer layer with a single head. Defaults to False."
         ),
     )
 

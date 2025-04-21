@@ -23,7 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...models.attention_processor import AttentionProcessor
 from ...models.modeling_utils import ModelMixin
-from ...utils import USE_PEFT_BACKEND, BaseOutput, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
 from ..controlnets.controlnet import ControlNetConditioningEmbedding, zero_module
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -179,10 +179,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
-
     @classmethod
     def from_transformer(
         cls,
@@ -303,15 +299,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        if self.union:
-            # union mode
-            if controlnet_mode is None:
-                raise ValueError("`controlnet_mode` cannot be `None` when applying ControlNet-Union")
-            # union mode emb
-            controlnet_mode_emb = self.controlnet_mode_embedder(controlnet_mode)
-            encoder_hidden_states = torch.cat([controlnet_mode_emb, encoder_hidden_states], dim=1)
-            txt_ids = torch.cat([txt_ids[:1], txt_ids], dim=0)
-
         if txt_ids.ndim == 3:
             logger.warning(
                 "Passing `txt_ids` 3d torch.Tensor is deprecated."
@@ -325,30 +312,27 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             )
             img_ids = img_ids[0]
 
+        if self.union:
+            # union mode
+            if controlnet_mode is None:
+                raise ValueError("`controlnet_mode` cannot be `None` when applying ControlNet-Union")
+            # union mode emb
+            controlnet_mode_emb = self.controlnet_mode_embedder(controlnet_mode)
+            encoder_hidden_states = torch.cat([controlnet_mode_emb, encoder_hidden_states], dim=1)
+            txt_ids = torch.cat([txt_ids[:1], txt_ids], dim=0)
+
         ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
 
         block_samples = ()
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     encoder_hidden_states,
                     temb,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
 
             else:
@@ -365,23 +349,11 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         single_block_samples = ()
         for index_block, block in enumerate(self.single_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
                     hidden_states,
                     temb,
                     image_rotary_emb,
-                    **ckpt_kwargs,
                 )
 
             else:
@@ -473,7 +445,7 @@ class FluxMultiControlNetModel(ModelMixin):
     ) -> Union[FluxControlNetOutput, Tuple]:
         # ControlNet-Union with multiple conditions
         # only load one ControlNet for saving memories
-        if len(self.nets) == 1 and self.nets[0].union:
+        if len(self.nets) == 1:
             controlnet = self.nets[0]
 
             for i, (image, mode, scale) in enumerate(zip(controlnet_cond, controlnet_mode, conditioning_scale)):
@@ -497,17 +469,18 @@ class FluxMultiControlNetModel(ModelMixin):
                     control_block_samples = block_samples
                     control_single_block_samples = single_block_samples
                 else:
-                    control_block_samples = [
-                        control_block_sample + block_sample
-                        for control_block_sample, block_sample in zip(control_block_samples, block_samples)
-                    ]
-
-                    control_single_block_samples = [
-                        control_single_block_sample + block_sample
-                        for control_single_block_sample, block_sample in zip(
-                            control_single_block_samples, single_block_samples
-                        )
-                    ]
+                    if block_samples is not None and control_block_samples is not None:
+                        control_block_samples = [
+                            control_block_sample + block_sample
+                            for control_block_sample, block_sample in zip(control_block_samples, block_samples)
+                        ]
+                    if single_block_samples is not None and control_single_block_samples is not None:
+                        control_single_block_samples = [
+                            control_single_block_sample + block_sample
+                            for control_single_block_sample, block_sample in zip(
+                                control_single_block_samples, single_block_samples
+                            )
+                        ]
 
         # Regular Multi-ControlNets
         # load all ControlNets into memories

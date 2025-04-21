@@ -41,7 +41,6 @@ from ..test_pipelines_common import (
     PipelineFromPipeTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -53,7 +52,6 @@ class StableDiffusionXLControlNetPAGImg2ImgPipelineFastTests(
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     PipelineFromPipeTesterMixin,
-    SDXLOptionalComponentsTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLControlNetPAGImg2ImgPipeline
@@ -191,9 +189,9 @@ class StableDiffusionXLControlNetPAGImg2ImgPipelineFastTests(
 
         inputs = self.get_dummy_inputs(device)
         del inputs["pag_scale"]
-        assert (
-            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
-        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        assert "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters, (
+            f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        )
         out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
 
         # pag disabled with pag_scale=0.0

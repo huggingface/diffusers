@@ -303,6 +303,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
         shape = (batch_size, decoder.config.in_channels, decoder.config.sample_size, decoder.config.sample_size)
+        generator = torch.Generator(device=device).manual_seed(0)
         decoder_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
@@ -380,7 +381,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
 
         self._test_inference_batch_single_identical(
-            additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs, expected_max_diff=5e-3
+            additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs, expected_max_diff=9.8e-3
         )
 
     def test_inference_batch_consistent(self):

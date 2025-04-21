@@ -55,6 +55,8 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
             "callback_on_step_end_tensor_inputs",
         ]
     )
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         cross_attention_dim = 8
@@ -436,3 +438,11 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "num_images_per_prompt": 1,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)

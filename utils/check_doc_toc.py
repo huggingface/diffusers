@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -123,11 +123,13 @@ def check_pipeline_doc(overwrite=False):
 
     # sort sub pipeline docs
     for pipeline_doc in pipeline_docs:
-        if "section" in pipeline_doc:
-            sub_pipeline_doc = pipeline_doc["section"]
+        if "sections" in pipeline_doc:
+            sub_pipeline_doc = pipeline_doc["sections"]
             new_sub_pipeline_doc = clean_doc_toc(sub_pipeline_doc)
-            if overwrite:
-                pipeline_doc["section"] = new_sub_pipeline_doc
+            if new_sub_pipeline_doc != sub_pipeline_doc:
+                diff = True
+                if overwrite:
+                    pipeline_doc["sections"] = new_sub_pipeline_doc
         new_pipeline_docs.append(pipeline_doc)
 
     # sort overall pipeline doc
@@ -149,6 +151,55 @@ def check_pipeline_doc(overwrite=False):
             )
 
 
+def check_model_doc(overwrite=False):
+    with open(PATH_TO_TOC, encoding="utf-8") as f:
+        content = yaml.safe_load(f.read())
+
+    # Get to the API doc
+    api_idx = 0
+    while content[api_idx]["title"] != "API":
+        api_idx += 1
+    api_doc = content[api_idx]["sections"]
+
+    # Then to the model doc
+    model_idx = 0
+    while api_doc[model_idx]["title"] != "Models":
+        model_idx += 1
+
+    diff = False
+    model_docs = api_doc[model_idx]["sections"]
+    new_model_docs = []
+
+    # sort sub model docs
+    for model_doc in model_docs:
+        if "sections" in model_doc:
+            sub_model_doc = model_doc["sections"]
+            new_sub_model_doc = clean_doc_toc(sub_model_doc)
+            if new_sub_model_doc != sub_model_doc:
+                diff = True
+                if overwrite:
+                    model_doc["sections"] = new_sub_model_doc
+        new_model_docs.append(model_doc)
+
+    # sort overall model doc
+    new_model_docs = clean_doc_toc(new_model_docs)
+
+    if new_model_docs != model_docs:
+        diff = True
+        if overwrite:
+            api_doc[model_idx]["sections"] = new_model_docs
+
+    if diff:
+        if overwrite:
+            content[api_idx]["sections"] = api_doc
+            with open(PATH_TO_TOC, "w", encoding="utf-8") as f:
+                f.write(yaml.dump(content, allow_unicode=True))
+        else:
+            raise ValueError(
+                "The model doc part of the table of content is not properly sorted, run `make style` to fix this."
+            )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--fix_and_overwrite", action="store_true", help="Whether to fix inconsistencies.")
@@ -156,3 +207,4 @@ if __name__ == "__main__":
 
     check_scheduler_doc(args.fix_and_overwrite)
     check_pipeline_doc(args.fix_and_overwrite)
+    check_model_doc(args.fix_and_overwrite)

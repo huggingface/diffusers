@@ -5,9 +5,6 @@ import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from diffusers import AuraFlowPipeline, AuraFlowTransformer2DModel, AutoencoderKL, FlowMatchEulerDiscreteScheduler
-from diffusers.utils.testing_utils import (
-    torch_device,
-)
 
 from ..test_pipelines_common import (
     PipelineTesterMixin,
@@ -30,6 +27,8 @@ class AuraFlowPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -88,37 +87,6 @@ class AuraFlowPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         }
         return inputs
 
-    def test_aura_flow_prompt_embeds(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-
-        output_with_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        prompt = inputs.pop("prompt")
-
-        do_classifier_free_guidance = inputs["guidance_scale"] > 1
-        (
-            prompt_embeds,
-            prompt_attention_mask,
-            negative_prompt_embeds,
-            negative_prompt_attention_mask,
-        ) = pipe.encode_prompt(
-            prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            device=torch_device,
-        )
-        output_with_embeds = pipe(
-            prompt_embeds=prompt_embeds,
-            prompt_attention_mask=prompt_attention_mask,
-            negative_prompt_embeds=negative_prompt_embeds,
-            negative_prompt_attention_mask=negative_prompt_attention_mask,
-            **inputs,
-        ).images[0]
-
-        max_diff = np.abs(output_with_prompt - output_with_embeds).max()
-        assert max_diff < 1e-4
-
     def test_attention_slicing_forward_pass(self):
         # Attention slicing needs to implemented differently for this because how single DiT and MMDiT
         # blocks interfere with each other.
@@ -138,9 +106,9 @@ class AuraFlowPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(
-            pipe.transformer
-        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_processors_exist(pipe.transformer), (
+            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        )
         assert check_qkv_fusion_matches_attn_procs_length(
             pipe.transformer, pipe.transformer.original_attn_processors
         ), "Something wrong with the attention processors concerning the fused QKV projections."
@@ -154,15 +122,15 @@ class AuraFlowPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
+            "Fusion of QKV projections shouldn't affect the outputs."
+        )
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        )
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
+        )
 
     @unittest.skip("xformers attention processor does not exist for AuraFlow")
     def test_xformers_attention_forwardGenerator_pass(self):
