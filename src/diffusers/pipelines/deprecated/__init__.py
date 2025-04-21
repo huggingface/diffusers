@@ -222,7 +222,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VideoToVideoSDPipeline,
         )
         from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
-        from .unidiffuser import ImageTextPipelineOutput, UniDiffuserPipeline
+        from .unidiffuser import ImageTextPipelineOutput, UniDiffuserModel, UniDiffuserPipeline, UniDiffuserTextDecoder
         from .versatile_diffusion import (
             VersatileDiffusionDualGuidedPipeline,
             VersatileDiffusionImageVariationPipeline,

@@ -194,4 +194,4 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 	- __call__
 
 ## TextToVideoSDPipelineOutput
-[[autodoc]] pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput
+[[autodoc]] pipelines.deprecated.text_to_video_synthesis.TextToVideoSDPipelineOutput
