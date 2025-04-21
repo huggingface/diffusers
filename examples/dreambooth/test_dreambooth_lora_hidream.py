@@ -189,7 +189,7 @@ class DreamBoothLoRAHiDreamImage(ExamplesTestsAccelerate):
             --gradient_accumulation_steps=1
             --max_train_steps=4
             --checkpointing_steps=2
-            --max_sequence_length 166
+            --max_sequence_length 16
             """.split()
 
             test_args.extend(["--instance_prompt", ""])
