@@ -50,7 +50,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -653,15 +653,15 @@ def main():
     try:
         # Gets the resolution of the timm transformation after centercrop
         timm_centercrop_transform = timm_transform.transforms[1]
-        assert isinstance(
-            timm_centercrop_transform, transforms.CenterCrop
-        ), f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
+        assert isinstance(timm_centercrop_transform, transforms.CenterCrop), (
+            f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
+        )
         timm_model_resolution = timm_centercrop_transform.size[0]
         # Gets final normalization
         timm_model_normalization = timm_transform.transforms[-1]
-        assert isinstance(
-            timm_model_normalization, transforms.Normalize
-        ), f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
+        assert isinstance(timm_model_normalization, transforms.Normalize), (
+            f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
+        )
     except AssertionError as e:
         raise NotImplementedError(e)
     # Enable flash attention if asked
