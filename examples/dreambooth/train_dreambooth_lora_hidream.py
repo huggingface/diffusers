@@ -42,7 +42,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, CLIPTokenizer, LlamaForCausalLM, PretrainedConfig, PreTrainedTokenizerFast
+from transformers import AutoTokenizer, CLIPTokenizer, LlamaForCausalLM, PretrainedConfig
 
 import diffusers
 from diffusers import (
@@ -1035,7 +1035,7 @@ def main(args):
         revision=args.revision,
     )
 
-    tokenizer_four = PreTrainedTokenizerFast.from_pretrained(
+    tokenizer_four = AutoTokenizer.from_pretrained(
         "meta-llama/Meta-Llama-3.1-8B-Instruct",
         revision=args.revision,
     )
@@ -1645,7 +1645,7 @@ def main(args):
 
         # Final inference
         # Load previous pipeline
-        tokenizer_4 = PreTrainedTokenizerFast.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        tokenizer_4 = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
         text_encoder_4 = LlamaForCausalLM.from_pretrained(
             "meta-llama/Meta-Llama-3.1-8B-Instruct",
             output_hidden_states=True,
