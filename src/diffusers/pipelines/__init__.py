@@ -574,6 +574,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionPanoramaPipeline,
             StableDiffusionParadigmsPipeline,
             StableDiffusionPix2PixZeroPipeline,
+            StableDiffusionLDM3DPipeline,
             StableDiffusionXLControlNetXSPipeline,
             UnCLIPImageVariationPipeline,
             UnCLIPPipeline,
