@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union, List
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -115,8 +115,8 @@ class CogView4AttnProcessor:
     Processor for implementing scaled dot-product attention for the CogView4 model. It applies a rotary embedding on
     query and key vectors, but does not include spatial normalization.
 
-    The processor supports passing an attention mask for text tokens. The attention mask should have shape
-    (batch_size, text_seq_length) where 1 indicates a non-padded token and 0 indicates a padded token.
+    The processor supports passing an attention mask for text tokens. The attention mask should have shape (batch_size,
+    text_seq_length) where 1 indicates a non-padded token and 0 indicates a padded token.
     """
 
     def __init__(self):
@@ -192,12 +192,13 @@ class CogView4AttnProcessor:
 
 class CogView4TrainingAttnProcessor:
     """
-    Training Processor for implementing scaled dot-product attention for the CogView4 model. It applies a rotary embedding on
-    query and key vectors, but does not include spatial normalization.
-    
+    Training Processor for implementing scaled dot-product attention for the CogView4 model. It applies a rotary
+    embedding on query and key vectors, but does not include spatial normalization.
+
     This processor differs from CogView4AttnProcessor in several important ways:
     1. It supports attention masking with variable sequence lengths for multi-resolution training
-    2. It unpacks and repacks sequences for efficient training with variable sequence lengths when batch_flag is provided
+    2. It unpacks and repacks sequences for efficient training with variable sequence lengths when batch_flag is
+       provided
     """
 
     def __init__(self):
@@ -212,7 +213,9 @@ class CogView4TrainingAttnProcessor:
         latent_attn_mask: Optional[torch.Tensor] = None,
         text_attn_mask: Optional[torch.Tensor] = None,
         batch_flag: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]] = None,
+        image_rotary_emb: Optional[
+            Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
+        ] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -224,17 +227,16 @@ class CogView4TrainingAttnProcessor:
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states for cross-attention.
             latent_attn_mask (`torch.Tensor`, *optional*):
-                Mask for latent tokens where 0 indicates pad token and 1 indicates non-pad token.
-                If None, full attention is used for all latent tokens.
-                Note: the shape of latent_attn_mask is (batch_size, num_latent_tokens).
+                Mask for latent tokens where 0 indicates pad token and 1 indicates non-pad token. If None, full
+                attention is used for all latent tokens. Note: the shape of latent_attn_mask is (batch_size,
+                num_latent_tokens).
             text_attn_mask (`torch.Tensor`, *optional*):
-                Mask for text tokens where 0 indicates pad token and 1 indicates non-pad token.
-                If None, full attention is used for all text tokens.
+                Mask for text tokens where 0 indicates pad token and 1 indicates non-pad token. If None, full attention
+                is used for all text tokens.
             batch_flag (`torch.Tensor`, *optional*):
-                Values from 0 to n-1 indicating which samples belong to the same batch.
-                Samples with the same batch_flag are packed together.
-                Example: [0, 1, 1, 2, 2] means sample 0 forms batch0, samples 1-2 form batch1, and samples 3-4 form batch2.
-                If None, no packing is used.
+                Values from 0 to n-1 indicating which samples belong to the same batch. Samples with the same
+                batch_flag are packed together. Example: [0, 1, 1, 2, 2] means sample 0 forms batch0, samples 1-2 form
+                batch1, and samples 3-4 form batch2. If None, no packing is used.
             image_rotary_emb (`Tuple[torch.Tensor, torch.Tensor]` or `list[Tuple[torch.Tensor, torch.Tensor]]`, *optional*):
                 The rotary embedding for the image part of the input.
         Returns:
@@ -287,10 +289,9 @@ class CogView4TrainingAttnProcessor:
 
             # Calculate packed sequence lengths for each packed batch
             mixed_seq_length_packed = [
-                torch.sum(mixed_attn_mask[batch_flag == batch_idx]).item()
-                for batch_idx in range(packing_batch_size)
+                torch.sum(mixed_attn_mask[batch_flag == batch_idx]).item() for batch_idx in range(packing_batch_size)
             ]
-            
+
             assert len(mixed_seq_length_packed) == packing_batch_size
 
             # Pack sequences by removing padding tokens
@@ -317,7 +318,7 @@ class CogView4TrainingAttnProcessor:
                 dtype=dtype,
                 device=device,
             )
-            
+
             # Fill attention mask with block diagonal matrices
             # This ensures that tokens can only attend to other tokens within the same original sample
             for idx, mask in enumerate(attn_mask_matrix):
@@ -429,7 +430,7 @@ class CogView4TrainingAttnProcessor:
             # Split by original sample sequence lengths
             hidden_states_unpack = torch.split(hidden_states_flatten, mixed_seq_length.tolist())
             assert len(hidden_states_unpack) == batch_size
-            
+
             # Further split each sample's sequence into text and image parts
             hidden_states_unpack = [
                 torch.split(h, [tlen, llen])
@@ -486,7 +487,9 @@ class CogView4TransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]] = None,
+        image_rotary_emb: Optional[
+            Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
+        ] = None,
         attention_mask: Optional[Dict[str, torch.Tensor]] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
@@ -677,7 +680,9 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]] = None,
+        image_rotary_emb: Optional[
+            Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
+        ] = None,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
