@@ -1528,10 +1528,9 @@ def main(args):
     num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
         len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
-        num_update_steps_per_epoch = math.ceil(
-            len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
         num_training_steps_for_scheduler = (
-                args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
+            args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
         )
     else:
         num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
