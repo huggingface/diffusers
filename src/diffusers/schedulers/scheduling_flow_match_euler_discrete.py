@@ -381,7 +381,6 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
         per_token_timesteps: Optional[torch.Tensor] = None,
-        stochastic_sampling: Optional[bool] = None,
         return_dict: bool = True,
     ) -> Union[FlowMatchEulerDiscreteSchedulerOutput, Tuple]:
         """
