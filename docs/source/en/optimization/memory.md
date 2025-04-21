@@ -12,11 +12,25 @@ specific language governing permissions and limitations under the License.
 
 # Reduce memory usage
 
-## Sharded checkpoints
+Modern diffusion models like [Flux](../api/pipelines/flux) and [Wan](../api/pipelines/wan) have billions of parameters that take up a lot of memory on your hardware for inference. This poses a challenge because common GPUs often don't have sufficient memory.
 
-## Device placement
+To overcome these memory constraints, you can use a second GPU (if available), offload some of the pipeline components to the CPU, and more. This guide will show you how to reduce your memory usage.
 
-## Sliced VAE
+## Multiple GPUs
+
+If you have access to more than one GPU, there a few options for efficiently loading and distributing a large model across your hardware. These features are supported by the [Accelerate](https://huggingface.co/docs/accelerate/index) library, so make sure it is installed first.
+
+```bash
+pip install -U accelerate
+```
+
+### Sharded checkpoints
+
+
+
+### Device placement
+
+### Sliced VAE
 
 ## Tiled VAE
 
