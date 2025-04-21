@@ -1657,10 +1657,10 @@ def main(args):
 
         # Final inference
         # Load previous pipeline
-        tokenizer_4 = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        tokenizer_4 = AutoTokenizer.from_pretrained(args.pretrained_tokenizer_4_name_or_path)
         tokenizer_4.pad_token = tokenizer_4.eos_token
         text_encoder_4 = LlamaForCausalLM.from_pretrained(
-            "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            args.pretrained_text_encoder_4_name_or_path,
             output_hidden_states=True,
             output_attentions=True,
             torch_dtype=torch.bfloat16,
@@ -1692,16 +1692,17 @@ def main(args):
                 torch_dtype=weight_dtype,
             )
 
+        validation_prpmpt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
+        save_model_card(
+            repo_id,
+            images=images,
+            base_model=args.pretrained_model_name_or_path,
+            instance_prompt=args.instance_prompt,
+            validation_prompt=validation_prpmpt,
+            repo_folder=args.output_dir,
+        )
+
         if args.push_to_hub:
-            validation_prpmpt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
-            save_model_card(
-                repo_id,
-                images=images,
-                base_model=args.pretrained_model_name_or_path,
-                instance_prompt=args.instance_prompt,
-                validation_prompt=validation_prpmpt,
-                repo_folder=args.output_dir,
-            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
