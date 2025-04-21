@@ -124,6 +124,7 @@ else:
         "UniDiffuserModel",
         "UTransformer2DModel",
         "UniDiffuserPipeline",
+        "ImageTextPipelineOutput",
     ]
     _import_structure["versatile_diffusion"] = [
         "VersatileDiffusionDualGuidedPipeline",
@@ -221,7 +222,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VideoToVideoSDPipeline,
         )
         from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
-        from .unidiffuser import UniDiffuserPipeline
+        from .unidiffuser import ImageTextPipelineOutput, UniDiffuserPipeline
         from .versatile_diffusion import (
             VersatileDiffusionDualGuidedPipeline,
             VersatileDiffusionImageVariationPipeline,
