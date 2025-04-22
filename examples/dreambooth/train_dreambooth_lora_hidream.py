@@ -1361,8 +1361,8 @@ def main(args):
     vae_config_shift_factor = vae.config.shift_factor
 
     # if cache_latents is set to True, we encode images to latents and store them.
-    # Similarly to the pre-encoding in the case of a single instance prompt, if custom prompts are provided
-    # we encode them in advance as well (by iterating over training batches)
+    # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
+    # we encode them in advance as well.
     precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
     if precompute_latents:
         t5_prompt_cache = []
