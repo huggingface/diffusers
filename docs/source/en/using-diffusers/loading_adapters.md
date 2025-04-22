@@ -134,7 +134,7 @@ The [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method loads L
 - the LoRA weights don't have separate identifiers for the UNet and text encoder
 - the LoRA weights have separate identifiers for the UNet and text encoder
 
-To directly load (and save) a LoRA adapter at the *model-level*, use [`~PeftAdapterMixin.load_lora_adapter`], which builds and prepares the necessary model configuration for the adapter. Like [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`], [`PeftAdapterMixin.load_lora_adapter`] can load LoRAs for both the UNet and text encoder. For example, if you're loading a LoRA for the UNet, [`PeftAdapterMixin.load_lora_adapter`] ignores the keys for the text encoder.
+To directly load (and save) a LoRA adapter at the *model-level*, use [`~loaders.PeftAdapterMixin.load_lora_adapter`], which builds and prepares the necessary model configuration for the adapter. Like [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`], [`~loaders.PeftAdapterMixin.load_lora_adapter`] can load LoRAs for both the UNet and text encoder. For example, if you're loading a LoRA for the UNet, [`~loaders.PeftAdapterMixin.load_lora_adapter`] ignores the keys for the text encoder.
 
 Use the `weight_name` parameter to specify the specific weight file and the `prefix` parameter to filter for the appropriate state dicts (`"unet"` in this case) to load.
 
@@ -155,7 +155,7 @@ image
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_attn_proc.png" />
 </div>
 
-Save an adapter with [`~PeftAdapterMixin.save_lora_adapter`].
+Save an adapter with [`~loaders.PeftAdapterMixin.save_lora_adapter`].
 
 To unload the LoRA weights, use the [`~loaders.StableDiffusionLoraLoaderMixin.unload_lora_weights`] method to discard the LoRA weights and restore the model to its original weights:
 
@@ -191,6 +191,59 @@ This also works with multiple adapters - see [this guide](https://huggingface.co
 <Tip warning={true}>
 
 Currently, [`~loaders.StableDiffusionLoraLoaderMixin.set_adapters`] only supports scaling attention weights. If a LoRA has other parts (e.g., resnets or down-/upsamplers), they will keep a scale of 1.0.
+
+</Tip>
+
+### Hotswapping LoRA adapters
+
+A common use case when serving multiple adapters is to load one adapter first, generate images, load another adapter, generate more images, load another adapter, etc. This workflow normally requires calling [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`], [`~loaders.StableDiffusionLoraLoaderMixin.set_adapters`], and possibly [`~loaders.peft.PeftAdapterMixin.delete_adapters`] to save memory. Moreover, if the model is compiled using `torch.compile`, performing these steps requires recompilation, which takes time.
+
+To better support this common workflow, you can "hotswap" a LoRA adapter, to avoid accumulating memory and in some cases, recompilation. It requires an adapter to already be loaded, and the new adapter weights are swapped in-place for the existing adapter.
+
+Pass `hotswap=True` when loading a LoRA adapter to enable this feature. It is important to indicate the name of the existing adapter, (`default_0` is the default adapter name), to be swapped. If you loaded the first adapter with a different name, use that name instead.
+
+```python
+pipe = ...
+# load adapter 1 as normal
+pipeline.load_lora_weights(file_name_adapter_1)
+# generate some images with adapter 1
+...
+# now hot swap the 2nd adapter
+pipeline.load_lora_weights(file_name_adapter_2, hotswap=True, adapter_name="default_0")
+# generate images with adapter 2
+```
+
+
+<Tip warning={true}>
+
+Hotswapping is not currently supported for LoRA adapters that target the text encoder.
+
+</Tip>
+
+For compiled models, it is often (though not always if the second adapter targets identical LoRA ranks and scales) necessary to call [`~loaders.lora_base.LoraBaseMixin.enable_lora_hotswap`] to avoid recompilation. Use [`~loaders.lora_base.LoraBaseMixin.enable_lora_hotswap`] _before_ loading the first adapter, and `torch.compile` should be called _after_ loading the first adapter.
+
+```python
+pipe = ...
+# call this extra method
+pipe.enable_lora_hotswap(target_rank=max_rank)
+# now load adapter 1
+pipe.load_lora_weights(file_name_adapter_1)
+# now compile the unet of the pipeline
+pipe.unet = torch.compile(pipeline.unet, ...)
+# generate some images with adapter 1
+...
+# now hot swap adapter 2
+pipeline.load_lora_weights(file_name_adapter_2, hotswap=True, adapter_name="default_0")
+# generate images with adapter 2
+```
+
+The `target_rank=max_rank` argument is important for setting the maximum rank among all LoRA adapters that will be loaded. If you have one adapter with rank 8 and another with rank 16, pass `target_rank=16`. You should use a higher value if in doubt. By default, this value is 128.
+
+However, there can be situations where recompilation is unavoidable. For example, if the hotswapped adapter targets more layers than the initial adapter, then recompilation is triggered. Try to load the adapter that targets the most layers first. Refer to the PEFT docs on [hotswapping](https://huggingface.co/docs/peft/main/en/package_reference/hotswap#peft.utils.hotswap.hotswap_adapter) for more details about the limitations of this feature.
+
+<Tip>
+
+Move your code inside the `with torch._dynamo.config.patch(error_on_recompile=True)` context manager to detect if a model was recompiled. If you detect recompilation despite following all the steps above, please open an issue with [Diffusers](https://github.com/huggingface/diffusers/issues) with a reproducible example.
 
 </Tip>
 

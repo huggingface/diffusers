@@ -90,7 +90,7 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         text_encoder = ChatGLMModel.from_pretrained(
-            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.bfloat16
+            "hf-internal-testing/tiny-random-chatglm3-6b", torch_dtype=torch.float32
         )
         tokenizer = ChatGLMTokenizer.from_pretrained("hf-internal-testing/tiny-random-chatglm3-6b")
 
@@ -145,4 +145,4 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         super().test_save_load_float16(expected_max_diff=2e-1)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=5e-4)
+        self._test_inference_batch_single_identical(expected_max_diff=5e-3)

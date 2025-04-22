@@ -12,17 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
+from ...loaders import AuraFlowLoraLoaderMixin
 from ...models import AuraFlowTransformer2DModel, AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import (
+    USE_PEFT_BACKEND,
+    is_torch_xla_available,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -112,7 +120,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class AuraFlowPipeline(DiffusionPipeline):
+class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
     r"""
     Args:
         tokenizer (`T5TokenizerFast`):
@@ -233,6 +241,7 @@ class AuraFlowPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         max_sequence_length: int = 256,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -259,10 +268,20 @@ class AuraFlowPipeline(DiffusionPipeline):
             negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
             max_sequence_length (`int`, defaults to 256): Maximum sequence length to use for the prompt.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, AuraFlowLoraLoaderMixin):
+            self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            if self.text_encoder is not None and USE_PEFT_BACKEND:
+                scale_lora_layers(self.text_encoder, lora_scale)
+
         if device is None:
             device = self._execution_device
-
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -346,6 +365,11 @@ class AuraFlowPipeline(DiffusionPipeline):
             negative_prompt_embeds = None
             negative_prompt_attention_mask = None
 
+        if self.text_encoder is not None:
+            if isinstance(self, AuraFlowLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
+
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.prepare_latents
@@ -404,6 +428,10 @@ class AuraFlowPipeline(DiffusionPipeline):
         return self._guidance_scale
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
     def num_timesteps(self):
         return self._num_timesteps
 
@@ -428,6 +456,7 @@ class AuraFlowPipeline(DiffusionPipeline):
         max_sequence_length: int = 256,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -486,6 +515,10 @@ class AuraFlowPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
                 of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -520,6 +553,7 @@ class AuraFlowPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
 
         # 2. Determine batch size.
         if prompt is not None and isinstance(prompt, str):
@@ -530,6 +564,7 @@ class AuraFlowPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -553,6 +588,7 @@ class AuraFlowPipeline(DiffusionPipeline):
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             max_sequence_length=max_sequence_length,
+            lora_scale=lora_scale,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -594,6 +630,7 @@ class AuraFlowPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     return_dict=False,
+                    attention_kwargs=self.attention_kwargs,
                 )[0]
 
                 # perform guidance

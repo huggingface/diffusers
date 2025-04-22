@@ -146,13 +146,16 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> # This example requires the `anytext_controlnet.py` file:
+        >>> # !git clone --depth 1 https://github.com/huggingface/diffusers.git
+        >>> # %cd diffusers/examples/research_projects/anytext
+        >>> # Let's choose a font file shared by an HF staff:
+        >>> # !wget https://huggingface.co/spaces/ysharma/TranslateQuotesInImageForwards/resolve/main/arial-unicode-ms.ttf
+
         >>> import torch
         >>> from diffusers import DiffusionPipeline
         >>> from anytext_controlnet import AnyTextControlNetModel
         >>> from diffusers.utils import load_image
-
-        >>> # I chose a font file shared by an HF staff:
-        >>> !wget https://huggingface.co/spaces/ysharma/TranslateQuotesInImageForwards/resolve/main/arial-unicode-ms.ttf
 
         >>> anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
         ...                                                             variant="fp16",)
@@ -165,6 +168,7 @@ EXAMPLE_DOC_STRING = """
         >>> # generate image
         >>> prompt = 'photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream'
         >>> draw_pos = load_image("https://raw.githubusercontent.com/tyxsspa/AnyText/refs/heads/main/example_images/gen9.png")
+        >>> # There are two modes: "generate" and "edit". "edit" mode requires `ori_image` parameter for the image to be edited.
         >>> image = pipe(prompt, num_inference_steps=20, mode="generate", draw_pos=draw_pos,
         ...              ).images[0]
         >>> image
@@ -183,9 +187,9 @@ def get_clip_token_for_string(tokenizer, string):
         return_tensors="pt",
     )
     tokens = batch_encoding["input_ids"]
-    assert (
-        torch.count_nonzero(tokens - 49407) == 2
-    ), f"String '{string}' maps to more than a single token. Please use another string"
+    assert torch.count_nonzero(tokens - 49407) == 2, (
+        f"String '{string}' maps to more than a single token. Please use another string"
+    )
     return tokens[0, 1]
 
 
@@ -257,11 +261,11 @@ class EmbeddingManager(ModelMixin, ConfigMixin):
             idx = tokenized_text[i] == self.placeholder_token.to(device)
             if sum(idx) > 0:
                 if i >= len(self.text_embs_all):
-                    print("truncation for log images...")
+                    logger.warning("truncation for log images...")
                     break
                 text_emb = torch.cat(self.text_embs_all[i], dim=0)
                 if sum(idx) != len(text_emb):
-                    print("truncation for long caption...")
+                    logger.warning("truncation for long caption...")
                 text_emb = text_emb.to(embedded_text.device)
                 embedded_text[i][idx] = text_emb[: sum(idx)]
         return embedded_text
@@ -1058,6 +1062,8 @@ class AuxiliaryLatentModule(ModelMixin, ConfigMixin):
                     raise ValueError(f"Can't read ori_image image from {ori_image}!")
             elif isinstance(ori_image, torch.Tensor):
                 ori_image = ori_image.cpu().numpy()
+            elif isinstance(ori_image, PIL.Image.Image):
+                ori_image = np.array(ori_image.convert("RGB"))
             else:
                 if not isinstance(ori_image, np.ndarray):
                     raise ValueError(f"Unknown format of ori_image: {type(ori_image)}")

@@ -10,7 +10,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
-|Spatiotemporal Skip Guidance (STG)|[Spatiotemporal Skip Guidance for Enhanced Video Diffusion Sampling](https://arxiv.org/abs/2411.18664) (CVPR 2025) enhances video diffusion models by generating a weaker model through layer skipping and using it as guidance, improving fidelity in models like HunyuanVideo, LTXVideo, and Mochi.|[Spatiotemporal Skip Guidance](#spatiotemporal-skip-guidance)|-|[Junha Hyung](https://junhahyung.github.io/), [Kinam Kim](https://kinam0252.github.io/)|
+|Spatiotemporal Skip Guidance (STG)|[Spatiotemporal Skip Guidance for Enhanced Video Diffusion Sampling](https://arxiv.org/abs/2411.18664) (CVPR 2025) enhances video diffusion models by generating a weaker model through layer skipping and using it as guidance, improving fidelity in models like HunyuanVideo, LTXVideo, and Mochi.|[Spatiotemporal Skip Guidance](#spatiotemporal-skip-guidance)|-|[Junha Hyung](https://junhahyung.github.io/), [Kinam Kim](https://kinam0252.github.io/), and [Ednaordinary](https://github.com/Ednaordinary)|
 |Adaptive Mask Inpainting|Adaptive Mask Inpainting algorithm from [Beyond the Contact: Discovering Comprehensive Affordance for 3D Objects from Pre-trained 2D Diffusion Models](https://github.com/snuvclab/coma) (ECCV '24, Oral) provides a way to insert human inside the scene image without altering the background, by inpainting with adapting mask.|[Adaptive Mask Inpainting](#adaptive-mask-inpainting)|-|[Hyeonwoo Kim](https://sshowbiz.xyz),[Sookwan Han](https://jellyheadandrew.github.io)|
 |Flux with CFG|[Flux with CFG](https://github.com/ToTheBeginning/PuLID/blob/main/docs/pulid_for_flux.md) provides an implementation of using CFG in [Flux](https://blackforestlabs.ai/announcing-black-forest-labs/).|[Flux with CFG](#flux-with-cfg)|[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/flux_with_cfg.ipynb)|[Linoy Tsaban](https://github.com/linoytsaban), [Apolinário](https://github.com/apolinario), and [Sayak Paul](https://github.com/sayakpaul)|
 |Differential Diffusion|[Differential Diffusion](https://github.com/exx8/differential-diffusion) modifies an image according to a text prompt, and according to a map that specifies the amount of change in each region.|[Differential Diffusion](#differential-diffusion)|[![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/exx8/differential-diffusion) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/exx8/differential-diffusion/blob/main/examples/SD2.ipynb)|[Eran Levin](https://github.com/exx8) and [Ohad Fried](https://www.ohadf.com/)|
@@ -85,7 +85,7 @@ PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixar
 | Stable Diffusion XL Attentive Eraser Pipeline |[[AAAI2025 Oral] Attentive Eraser](https://github.com/Anonym0u3/AttentiveEraser) is a novel tuning-free method that enhances object removal capabilities in pre-trained diffusion models.|[Stable Diffusion XL Attentive Eraser Pipeline](#stable-diffusion-xl-attentive-eraser-pipeline)|-|[Wenhao Sun](https://github.com/Anonym0u3) and [Benlei Cui](https://github.com/Benny079)|
 | Perturbed-Attention Guidance |StableDiffusionPAGPipeline is a modification of StableDiffusionPipeline to support Perturbed-Attention Guidance (PAG).|[Perturbed-Attention Guidance](#perturbed-attention-guidance)|[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/perturbed_attention_guidance.ipynb)|[Hyoungwon Cho](https://github.com/HyoungwonCho)|
 | CogVideoX DDIM Inversion Pipeline | Implementation of DDIM inversion and guided attention-based editing denoising process on CogVideoX. | [CogVideoX DDIM Inversion Pipeline](#cogvideox-ddim-inversion-pipeline) | - | [LittleNyima](https://github.com/LittleNyima) |
-
+| FaithDiff Stable Diffusion XL Pipeline | Implementation of [(CVPR 2025) FaithDiff: Unleashing Diffusion Priors for Faithful Image Super-resolutionUnleashing Diffusion Priors for Faithful Image Super-resolution](https://arxiv.org/abs/2411.18824) - FaithDiff is a faithful image super-resolution method that leverages latent diffusion models by actively adapting the diffusion prior and jointly fine-tuning its components (encoder and diffusion model) with an alignment module to ensure high fidelity and structural consistency. | [FaithDiff Stable Diffusion XL Pipeline](#faithdiff-stable-diffusion-xl-pipeline) | [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/jychen9811/FaithDiff) | [Junyang Chen, Jinshan Pan, Jiangxin Dong, IMAG Lab, (Adapted by Eliseu Silva)](https://github.com/JyChen9811/FaithDiff) |
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
 ```py
@@ -124,7 +124,6 @@ pipe = pipe.to("cuda")
 #--------Option--------#
 prompt = "A close-up of a beautiful woman's face with colored powder exploding around her, creating an abstract splash of vibrant hues, realistic style."
 stg_applied_layers_idx = [34]
-stg_mode = "STG"
 stg_scale = 1.0 # 0.0 for CFG
 #----------------------#
 
@@ -5334,3 +5333,103 @@ output = pipeline_for_inversion(
 pipeline.export_latents_to_video(output.inverse_latents[-1], "path/to/inverse_video.mp4", fps=8)
 pipeline.export_latents_to_video(output.recon_latents[-1], "path/to/recon_video.mp4", fps=8)
 ```
+# FaithDiff Stable Diffusion XL Pipeline
+
+[Project](https://jychen9811.github.io/FaithDiff_page/) / [GitHub](https://github.com/JyChen9811/FaithDiff/)
+
+This the implementation of the FaithDiff pipeline for SDXL, adapted to use the HuggingFace Diffusers.
+
+For more details see the project links above.
+
+## Example Usage
+
+This example upscale and restores a low-quality image. The input image has a resolution of 512x512 and will be upscaled at a scale of 2x, to a final resolution of 1024x1024. It is possible to upscale to a larger scale, but it is recommended that the input image be at least 1024x1024 in these cases. To upscale this image by 4x, for example, it would be recommended to re-input the result into a new 2x processing, thus performing progressive scaling.
+
+````py
+import random
+import numpy as np
+import torch
+from diffusers import DiffusionPipeline, AutoencoderKL, UniPCMultistepScheduler
+from huggingface_hub import hf_hub_download
+from diffusers.utils import load_image
+from PIL import Image
+
+device = "cuda"
+dtype = torch.float16
+MAX_SEED = np.iinfo(np.int32).max
+
+# Download weights for additional unet layers
+model_file = hf_hub_download(
+    "jychen9811/FaithDiff",
+    filename="FaithDiff.bin", local_dir="./proc_data/faithdiff", local_dir_use_symlinks=False
+)
+
+# Initialize the models and pipeline
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=dtype)
+
+model_id = "SG161222/RealVisXL_V4.0"
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    torch_dtype=dtype,
+    vae=vae,
+    unet=None, #<- Do not load with original model.
+    custom_pipeline="pipeline_faithdiff_stable_diffusion_xl",    
+    use_safetensors=True,
+    variant="fp16",
+).to(device)
+
+# Here we need use pipeline internal unet model
+pipe.unet = pipe.unet_model.from_pretrained(model_id, subfolder="unet", variant="fp16", use_safetensors=True)
+
+# Load aditional layers to the model
+pipe.unet.load_additional_layers(weight_path="proc_data/faithdiff/FaithDiff.bin", dtype=dtype)
+
+# Enable vae tiling
+pipe.set_encoder_tile_settings()
+pipe.enable_vae_tiling()
+
+# Optimization
+pipe.enable_model_cpu_offload()
+
+# Set selected scheduler
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+#input params
+prompt = "The image features a woman in her 55s with blonde hair and a white shirt, smiling at the camera. She appears to be in a good mood and is wearing a white scarf around her neck. "
+upscale = 2 # scale here
+start_point = "lr" # or "noise"
+latent_tiled_overlap = 0.5
+latent_tiled_size = 1024
+
+# Load image
+lq_image = load_image("https://huggingface.co/datasets/DEVAIEXP/assets/resolve/main/woman.png")
+original_height = lq_image.height
+original_width = lq_image.width
+print(f"Current resolution: H:{original_height} x W:{original_width}")
+
+width = original_width * int(upscale)
+height = original_height * int(upscale)
+print(f"Final resolution: H:{height} x W:{width}")
+
+# Restoration
+image = lq_image.resize((width, height), Image.LANCZOS)
+input_image, width_init, height_init, width_now, height_now = pipe.check_image_size(image)
+
+generator = torch.Generator(device=device).manual_seed(random.randint(0, MAX_SEED))
+gen_image = pipe(lr_img=input_image, 
+                 prompt = prompt,                  
+                 num_inference_steps=20, 
+                 guidance_scale=5, 
+                 generator=generator, 
+                 start_point=start_point, 
+                 height = height_now, 
+                 width=width_now, 
+                 overlap=latent_tiled_overlap, 
+                 target_size=(latent_tiled_size, latent_tiled_size)
+                ).images[0]
+
+cropped_image = gen_image.crop((0, 0, width_init, height_init))
+cropped_image.save("data/result.png")
+````
+### Result
+[<img src="https://huggingface.co/datasets/DEVAIEXP/assets/resolve/main/faithdiff_restored.PNG" width="512px" height="512px"/>](https://imgsli.com/MzY1NzE2)
