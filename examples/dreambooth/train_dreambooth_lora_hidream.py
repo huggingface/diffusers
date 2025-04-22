@@ -380,8 +380,7 @@ def parse_args(input_args=None):
         "--skip_final_inference",
         default=False,
         action="store_true",
-        help="whether to skip the final inference step with loaded lora weights upon training completion. "
-             "Set to True to reduce memory",
+        help="Whether to skip the final inference step with loaded lora weights upon training completion. This will run intermediate validation inference if `validation_prompt` is provided. Specify to reduce memory.",
     )
 
     parser.add_argument(
