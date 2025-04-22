@@ -196,6 +196,7 @@ def log_validation(
     torch_dtype,
     is_final_validation=False,
 ):
+    args.num_validation_images = args.num_validation_images if args.num_validation_images else 1
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
@@ -207,28 +208,16 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
 
-    # pre-calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
-    with torch.no_grad():
-        (
-            prompt_embeds_t5,
-            negative_prompt_embeds_t5,
-            prompt_embeds_llama3,
-            negative_prompt_embeds_llama3,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = pipeline.encode_prompt(
-            pipeline_args["prompt"],
-        )
     images = []
     for _ in range(args.num_validation_images):
         with autocast_ctx:
             image = pipeline(
-                prompt_embeds_t5=prompt_embeds_t5,
-                prompt_embeds_llama3=prompt_embeds_llama3,
-                negative_prompt_embeds_t5=negative_prompt_embeds_t5,
-                negative_prompt_embeds_llama3=negative_prompt_embeds_llama3,
-                pooled_prompt_embeds=pooled_prompt_embeds,
-                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+                prompt_embeds_t5=pipeline_args["prompt_embeds_t5"],
+                prompt_embeds_llama3=pipeline_args["prompt_embeds_llama3"],
+                negative_prompt_embeds_t5=pipeline_args["negative_prompt_embeds_t5"],
+                negative_prompt_embeds_llama3=pipeline_args["negative_prompt_embeds_llama3"],
+                pooled_prompt_embeds=pipeline_args["pooled_prompt_embeds"],
+                negative_pooled_prompt_embeds=pipeline_args["negative_pooled_prompt_embeds"],
                 generator=generator,
             ).images[0]
             images.append(image)
@@ -1319,13 +1308,20 @@ def main(args):
     def compute_text_embeddings(prompt, text_encoding_pipeline):
         if args.offload:
             text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
+
         with torch.no_grad():
-            t5_prompt_embeds, _, llama3_prompt_embeds, _, pooled_prompt_embeds, _ = (
+            (
+            t5_prompt_embeds,
+            negative_prompt_embeds_t5,
+            llama3_prompt_embeds,
+            negative_prompt_embeds_llama3,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds) = (
                 text_encoding_pipeline.encode_prompt(prompt=prompt, max_sequence_length=args.max_sequence_length)
             )
         if args.offload:  # back to cpu
             text_encoding_pipeline = text_encoding_pipeline.to("cpu")
-        return t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds
+        return t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds, negative_prompt_embeds_t5, negative_prompt_embeds_llama3, negative_pooled_prompt_embeds
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
@@ -1335,6 +1331,7 @@ def main(args):
             instance_prompt_hidden_states_t5,
             instance_prompt_hidden_states_llama3,
             instance_pooled_prompt_embeds,
+            _,_,_
         ) = compute_text_embeddings(args.instance_prompt, text_encoding_pipeline)
 
     # Handle class prompt for prior-preservation.
@@ -1343,6 +1340,7 @@ def main(args):
             class_prompt_hidden_states_t5,
             class_prompt_hidden_states_llama3,
             class_pooled_prompt_embeds,
+            _, _, _
         ) = compute_text_embeddings(args.class_prompt, text_encoding_pipeline)
 
 
@@ -1382,7 +1380,7 @@ def main(args):
                     )
                     latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
                 if train_dataset.custom_instance_prompts:
-                    t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(
+                    t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds,_,_,_ = compute_text_embeddings(
                         batch["prompts"], text_encoding_pipeline
                     )
                     t5_prompt_cache.append(t5_prompt_embeds)
@@ -1391,10 +1389,22 @@ def main(args):
 
             # delete tokenizers and text ecnoders except for llama (tokenizer & te four)
             # as it's needed for inference with pipeline
-        if args.validation_prompt is None:
-            del vae, tokenizer_four, text_encoder_four
-        del text_encoder_one, text_encoder_two, text_encoder_three, tokenizer_one, tokenizer_two, tokenizer_three, text_encoding_pipeline
-        free_memory()
+        if args.validation_prompt is not None:
+            validation_embeddings = {}
+            (validation_embeddings["prompt_embeds_t5"],
+             validation_embeddings["prompt_embeds_llama3"],
+             validation_embeddings["pooled_prompt_embeds"],
+             validation_embeddings["negative_prompt_embeds_t5"],
+             validation_embeddings["negative_prompt_embeds_llama3"],
+             validation_embeddings["negative_pooled_prompt_embeds"]) = compute_text_embeddings(
+                args.validation_prompt, text_encoding_pipeline
+            )
+        if args.cache_latents:
+            del vae
+        elif args.offload:
+            vae = vae.to("cpu")
+    del text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four, tokenizer_two, tokenizer_three, tokenizer_four, text_encoding_pipeline
+    free_memory()
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1500,15 +1510,8 @@ def main(args):
 
             with accelerator.accumulate(models_to_accumulate):
 
-                # if args.cache_latents:
-                #     t5_prompt_embeds = t5_prompt_cache[step]
-                #     llama3_prompt_embeds = llama3_prompt_cache[step]
-                #     pooled_prompt_embeds = pooled_prompt_cache[step]
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-                    # t5_prompt_embeds, llama3_prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(
-                    #     prompts, text_encoding_pipeline
-                    # )
                     t5_prompt_embeds = t5_prompt_cache[step]
                     llama3_prompt_embeds = llama3_prompt_cache[step]
                     pooled_prompt_embeds = pooled_prompt_cache[step]
@@ -1641,19 +1644,18 @@ def main(args):
                 # create pipeline
                 pipeline = HiDreamImagePipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    tokenizer_4=tokenizer_four,
-                    text_encoder_4=text_encoder_four,
+                    tokenizer_4=None,
+                    text_encoder_4=None,
                     transformer=accelerator.unwrap_model(transformer),
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
-                pipeline_args = {"prompt": args.validation_prompt}
                 images = log_validation(
                     pipeline=pipeline,
                     args=args,
                     accelerator=accelerator,
-                    pipeline_args=pipeline_args,
+                    pipeline_args=validation_embeddings,
                     torch_dtype=weight_dtype,
                     epoch=epoch,
                 )
@@ -1683,18 +1685,10 @@ def main(args):
         if not args.skip_final_inference:
             # Final inference
             # Load previous pipeline
-            tokenizer_4 = AutoTokenizer.from_pretrained(args.pretrained_tokenizer_4_name_or_path)
-            tokenizer_4.pad_token = tokenizer_4.eos_token
-            text_encoder_4 = LlamaForCausalLM.from_pretrained(
-                args.pretrained_text_encoder_4_name_or_path,
-                output_hidden_states=True,
-                output_attentions=True,
-                torch_dtype=torch.bfloat16,
-            )
             pipeline = HiDreamImagePipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
-                tokenizer_4=tokenizer_4,
-                text_encoder_4=text_encoder_4,
+                tokenizer_4=None,
+                text_encoder_4=None,
                 revision=args.revision,
                 variant=args.variant,
                 torch_dtype=weight_dtype,
@@ -1705,13 +1699,11 @@ def main(args):
             # run inference
             if (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt):
                 prompt_to_use = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
-                args.num_validation_images = args.num_validation_images if args.num_validation_images else 1
-                pipeline_args = {"prompt": prompt_to_use, "num_images_per_prompt": args.num_validation_images}
                 images = log_validation(
                     pipeline=pipeline,
                     args=args,
                     accelerator=accelerator,
-                    pipeline_args=pipeline_args,
+                    pipeline_args=validation_embeddings,
                     epoch=epoch,
                     is_final_validation=True,
                     torch_dtype=weight_dtype,
