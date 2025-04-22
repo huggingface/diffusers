@@ -380,6 +380,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        last_image: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
@@ -398,9 +399,16 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents = latents.to(device=device, dtype=dtype)
 
         image = image.unsqueeze(2)
-        video_condition = torch.cat(
-            [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
-        )
+        if last_image is None:
+            video_condition = torch.cat(
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+            )
+        else:
+            last_image = last_image.unsqueeze(2)
+            video_condition = torch.cat(
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image],
+                dim=2,
+            )
         video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
 
         latents_mean = (
@@ -421,11 +429,15 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
 
-        latent_condition = latent_condition.to(dtype=dtype)
+        latent_condition = latent_condition.to(dtype)
         latent_condition = (latent_condition - latents_mean) * latents_std
 
         mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
-        mask_lat_size[:, :, list(range(1, num_frames))] = 0
+
+        if last_image is None:
+            mask_lat_size[:, :, list(range(1, num_frames))] = 0
+        else:
+            mask_lat_size[:, :, list(range(1, num_frames - 1))] = 0
         first_frame_mask = mask_lat_size[:, :, 0:1]
         first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
@@ -477,6 +489,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         image_embeds: Optional[torch.Tensor] = None,
+        last_image: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -621,7 +634,10 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         if image_embeds is None:
-            image_embeds = self.encode_image(image, device)
+            if last_image is None:
+                image_embeds = self.encode_image(image, device)
+            else:
+                image_embeds = self.encode_image([image, last_image], device)
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
         image_embeds = image_embeds.to(transformer_dtype)
 
@@ -632,6 +648,10 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+        if last_image is not None:
+            last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
+                device, dtype=torch.float32
+            )
         latents, condition = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
@@ -643,6 +663,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device,
             generator,
             latents,
+            last_image,
         )
 
         # 6. Denoising loop
