@@ -791,7 +791,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         if encoder_hidden_states is not None:
             deprecation_message = "The `encoder_hidden_states` argument is deprecated. Please use `encoder_hidden_states_t5` and `encoder_hidden_states_llama3` instead."
-            deprecate("encoder_hidden_states", "0.34.0", deprecation_message)
+            deprecate("encoder_hidden_states", "0.35.0", deprecation_message)
             encoder_hidden_states_t5 = encoder_hidden_states[0]
             encoder_hidden_states_llama3 = encoder_hidden_states[1]
 
@@ -799,7 +799,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             deprecation_message = (
                 "Passing `img_ids` and `img_sizes` with unpachified `hidden_states` is deprecated and will be ignored."
             )
-            deprecate("img_ids", "0.34.0", deprecation_message)
+            deprecate("img_ids", "0.35.0", deprecation_message)
 
         if hidden_states_masks is not None and (img_ids is None or img_sizes is None):
             raise ValueError("if `hidden_states_masks` is passed, `img_ids` and `img_sizes` must also be passed.")
