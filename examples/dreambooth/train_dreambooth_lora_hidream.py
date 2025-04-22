@@ -1681,7 +1681,8 @@ def main(args):
         )
 
         images = []
-        if not args.skip_final_inference:
+        should_run_final_inference = (not args.skip_final_inference) or (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
+        if should_run_final_inference:
             # Final inference
             # Load previous pipeline
             pipeline = HiDreamImagePipeline.from_pretrained(
