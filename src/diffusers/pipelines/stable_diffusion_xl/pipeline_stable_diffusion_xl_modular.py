@@ -3571,7 +3571,7 @@ SDXL_SUPPORTED_BLOCKS = {
 
 
 # YiYi TODO: rename to components etc. and not inherit from ModularPipeline
-class StableDiffusionXLModularPipeline(
+class StableDiffusionXLComponentStates(
     ModularPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
