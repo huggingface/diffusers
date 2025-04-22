@@ -380,8 +380,7 @@ def parse_args(input_args=None):
         "--skip_final_inference",
         default=False,
         action="store_true",
-        help="whether to skip the final inference step with loaded lora weights upon training completion. "
-             "Set to True to reduce memory",
+        help="Whether to skip the final inference step with loaded lora weights upon training completion. This will run intermediate validation inference if `validation_prompt` is provided. Specify to reduce memory.",
     )
 
     parser.add_argument(
@@ -1362,8 +1361,8 @@ def main(args):
     vae_config_shift_factor = vae.config.shift_factor
 
     # if cache_latents is set to True, we encode images to latents and store them.
-    # Similarly to the pre-encoding in the case of a single instance prompt, if custom prompts are provided
-    # we encode them in advance as well (by iterating over training batches)
+    # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
+    # we encode them in advance as well.
     precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
     if precompute_latents:
         t5_prompt_cache = []
@@ -1687,7 +1686,8 @@ def main(args):
         )
 
         images = []
-        if not args.skip_final_inference:
+        should_run_final_inference = (not args.skip_final_inference) or (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
+        if should_run_final_inference:
             # Final inference
             # Load previous pipeline
             pipeline = HiDreamImagePipeline.from_pretrained(
