@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from typing import Union
-
+from enum import Enum
 from ..utils import is_torch_available
 
 
@@ -27,4 +27,11 @@ if is_torch_available():
     from .smoothed_energy_guidance import SmoothedEnergyGuidance
     from .tangential_classifier_free_guidance import TangentialClassifierFreeGuidance
 
-    GuiderType = Union[AdaptiveProjectedGuidance, AutoGuidance, ClassifierFreeGuidance, ClassifierFreeZeroStarGuidance, SkipLayerGuidance, SmoothedEnergyGuidance, TangentialClassifierFreeGuidance]
+    class GuiderType(Enum):
+        AdaptiveProjectedGuidance=1, 
+        AutoGuidance=2, 
+        ClassifierFreeGuidance=3, 
+        ClassifierFreeZeroStarGuidance=4, 
+        SkipLayerGuidance=5, 
+        SmoothedEnergyGuidance=6, 
+        TangentialClassifierFreeGuidance=7
