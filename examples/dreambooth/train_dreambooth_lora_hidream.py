@@ -1399,10 +1399,15 @@ def main(args):
              validation_embeddings["negative_pooled_prompt_embeds"]) = compute_text_embeddings(
                 args.validation_prompt, text_encoding_pipeline
             )
-        if args.cache_latents:
-            del vae
-        elif args.offload:
+        # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
+        if args.offload or args.cache_latents:
             vae = vae.to("cpu")
+            if args.cache_latents:
+                del vae
+
+    # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
+    text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+    print(text_encoder_one.device)
     del text_encoder_one, text_encoder_two, text_encoder_three, text_encoder_four, tokenizer_two, tokenizer_three, tokenizer_four, text_encoding_pipeline
     free_memory()
 
@@ -1698,7 +1703,7 @@ def main(args):
 
             # run inference
             if (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt):
-                prompt_to_use = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
+                #prompt_to_use = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
                 images = log_validation(
                     pipeline=pipeline,
                     args=args,
