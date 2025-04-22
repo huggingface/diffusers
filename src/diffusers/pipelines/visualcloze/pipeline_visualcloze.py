@@ -690,23 +690,39 @@ class VisualClozePipeline(
                         # For post-upsampling, use zero images for masked latents
                         image_latent = [self._encode_vae_image(img[None], gen) for img in image]
                         masked_image_latent = [self._encode_vae_image(img[None] * 0, gen) for img in image]
-                    
+
                     for i in range(len(image_latent)):
                         # Rearrange latents and masks for patch processing
                         num_channels_latents, height, width = image_latent[i].shape[1:]
                         image_latent[i] = self._pack_latents(image_latent[i], 1, num_channels_latents, height, width)
-                        masked_image_latent[i] = self._pack_latents(masked_image_latent[i], 1, num_channels_latents, height, width)
+                        masked_image_latent[i] = self._pack_latents(
+                            masked_image_latent[i], 1, num_channels_latents, height, width
+                        )
 
                         # Rearrange masks for patch processing
                         num_channels_latents, height, width = mask[i].shape[1:]
                         mask[i] = mask[i].view(
-                            1, 
-                            num_channels_latents, 
-                            height // vae_scale_factor, vae_scale_factor, 
-                            width // vae_scale_factor, vae_scale_factor)
+                            1,
+                            num_channels_latents,
+                            height // vae_scale_factor,
+                            vae_scale_factor,
+                            width // vae_scale_factor,
+                            vae_scale_factor,
+                        )
                         mask[i] = mask[i].permute(0, 1, 3, 5, 2, 4)
-                        mask[i] = mask[i].reshape(1, num_channels_latents * (vae_scale_factor ** 2), height // vae_scale_factor, width // vae_scale_factor)
-                        mask[i] = self._pack_latents(mask[i], 1, num_channels_latents * (vae_scale_factor ** 2), height // vae_scale_factor, width // vae_scale_factor)
+                        mask[i] = mask[i].reshape(
+                            1,
+                            num_channels_latents * (vae_scale_factor**2),
+                            height // vae_scale_factor,
+                            width // vae_scale_factor,
+                        )
+                        mask[i] = self._pack_latents(
+                            mask[i],
+                            1,
+                            num_channels_latents * (vae_scale_factor**2),
+                            height // vae_scale_factor,
+                            width // vae_scale_factor,
+                        )
 
                 # Concatenate along batch dimension
                 image_latent = torch.cat(image_latent, dim=1)
