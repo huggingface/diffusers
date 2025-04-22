@@ -17,7 +17,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from einops import rearrange
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from ...image_processor import VaeImageProcessor
@@ -686,27 +685,28 @@ class VisualClozePipeline(
                     if not upsampling:
                         # For initial encoding, use actual images
                         image_latent = [self._encode_vae_image(img[None], gen) for img in image]
-                        masked_image_latent = image_latent
+                        masked_image_latent = [img.clone() for img in image_latent]
                     else:
                         # For post-upsampling, use zero images for masked latents
                         image_latent = [self._encode_vae_image(img[None], gen) for img in image]
                         masked_image_latent = [self._encode_vae_image(img[None] * 0, gen) for img in image]
+                    
+                    for i in range(len(image_latent)):
+                        # Rearrange latents and masks for patch processing
+                        num_channels_latents, height, width = image_latent[i].shape[1:]
+                        image_latent[i] = self._pack_latents(image_latent[i], 1, num_channels_latents, height, width)
+                        masked_image_latent[i] = self._pack_latents(masked_image_latent[i], 1, num_channels_latents, height, width)
 
-                    # Rearrange latents and masks for patch processing
-                    image_latent = [
-                        rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for img in image_latent
-                    ]
-                    masked_image_latent = [
-                        rearrange(img, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
-                        for img in masked_image_latent
-                    ]
-
-                    # Rearrange masks for patch processing
-                    mask = [
-                        rearrange(m, "b c (h ph) (w pw) -> b (c ph pw) h w", ph=vae_scale_factor, pw=vae_scale_factor)
-                        for m in mask
-                    ]
-                    mask = [rearrange(m, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2) for m in mask]
+                        # Rearrange masks for patch processing
+                        num_channels_latents, height, width = mask[i].shape[1:]
+                        mask[i] = mask[i].view(
+                            1, 
+                            num_channels_latents, 
+                            height // vae_scale_factor, vae_scale_factor, 
+                            width // vae_scale_factor, vae_scale_factor)
+                        mask[i] = mask[i].permute(0, 1, 3, 5, 2, 4)
+                        mask[i] = mask[i].reshape(1, num_channels_latents * (vae_scale_factor ** 2), height // vae_scale_factor, width // vae_scale_factor)
+                        mask[i] = self._pack_latents(mask[i], 1, num_channels_latents * (vae_scale_factor ** 2), height // vae_scale_factor, width // vae_scale_factor)
 
                 # Concatenate along batch dimension
                 image_latent = torch.cat(image_latent, dim=1)
