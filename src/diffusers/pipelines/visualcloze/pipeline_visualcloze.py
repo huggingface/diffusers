@@ -583,7 +583,7 @@ class VisualClozePipeline(
         return latents
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents with _latents->_latents_upsampling
     def _unpack_latents_upsampling(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
