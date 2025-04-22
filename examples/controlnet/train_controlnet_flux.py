@@ -148,7 +148,7 @@ def log_validation(
                     pooled_prompt_embeds=pooled_prompt_embeds,
                     control_image=validation_image,
                     num_inference_steps=28,
-                    controlnet_conditioning_scale=0.7,
+                    controlnet_conditioning_scale=1,
                     guidance_scale=3.5,
                     generator=generator,
                 ).images[0]
@@ -1085,8 +1085,6 @@ def main(args):
         return {"prompt_embeds": prompt_embeds, "pooled_prompt_embeds": pooled_prompt_embeds, "text_ids": text_ids}
 
     train_dataset = get_train_dataset(args, accelerator)
-    text_encoders = [text_encoder_one, text_encoder_two]
-    tokenizers = [tokenizer_one, tokenizer_two]
     compute_embeddings_fn = functools.partial(
         compute_embeddings,
         flux_controlnet_pipeline=flux_controlnet_pipeline,
@@ -1103,7 +1101,8 @@ def main(args):
             compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint, batch_size=50
         )
 
-    del text_encoders, tokenizers, text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
+    text_encoder_one.to("cpu")
+    text_encoder_two.to("cpu")
     free_memory()
 
     # Then get the training dataset ready to be passed to the dataloader.
