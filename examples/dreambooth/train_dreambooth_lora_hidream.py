@@ -1706,11 +1706,8 @@ def main(args):
         )
 
         images = []
-        should_run_final_inference = (
-            (not args.skip_final_inference)
-            or (args.validation_prompt and args.num_validation_images > 0)
-            or (args.final_validation_prompt)
-        )
+        run_validation = (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
+        should_run_final_inference = not args.skip_final_inference and run_validation
         if should_run_final_inference:
             # Final inference
             # Load previous pipeline
