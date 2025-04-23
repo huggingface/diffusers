@@ -16,11 +16,13 @@ from diffusers import (
     StableDiffusion3Pipeline,
 )
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 from diffusers.utils.testing_utils import (
     is_gguf_available,
     nightly,
     numpy_cosine_similarity_distance,
     require_accelerate,
+    require_big_accelerator,
     require_big_gpu_with_torch_cuda,
     require_gguf_version_greater_or_equal,
     require_peft_backend,
@@ -33,7 +35,7 @@ if is_gguf_available():
 
 
 @nightly
-@require_big_gpu_with_torch_cuda
+@require_big_accelerator
 @require_accelerate
 @require_gguf_version_greater_or_equal("0.10.0")
 class GGUFSingleFileTesterMixin:
@@ -68,6 +70,8 @@ class GGUFSingleFileTesterMixin:
         model = self.model_cls.from_single_file(
             self.ckpt_path, quantization_config=quantization_config, torch_dtype=self.torch_dtype
         )
+        device_type = get_device()
+        print(f"device_type: {device_type}")
         model.to("cuda")
         assert (model.get_memory_footprint() / 1024**3) < self.expected_memory_use_in_gb
         inputs = self.get_dummy_inputs()

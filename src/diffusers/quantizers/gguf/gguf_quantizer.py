@@ -152,7 +152,7 @@ class GGUFQuantizer(DiffusersQuantizer):
             logger.info(
                 "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to GPU. After dequantization, will move the model back to CPU again to preserve the previous device."
             )
-            model.to(torch.cuda.current_device())
+            model.to(torch.accelerator.current_accelerator())
 
         model = _dequantize_gguf_and_restore_linear(model, self.modules_to_not_convert)
         if is_model_on_cpu:
