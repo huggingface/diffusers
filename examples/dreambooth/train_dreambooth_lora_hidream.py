@@ -1738,6 +1738,9 @@ def main(args):
                 is_final_validation=True,
                 torch_dtype=weight_dtype,
             )
+            pipeline.to("cpu")
+            del pipeline
+            free_memory()
 
         validation_prompt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
         save_model_card(
@@ -1758,7 +1761,7 @@ def main(args):
             )
 
         images = None
-        del pipeline
+
 
     accelerator.end_training()
 
