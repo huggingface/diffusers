@@ -153,7 +153,6 @@ class AutoModel(ConfigMixin):
             "token": token,
             "local_files_only": local_files_only,
             "revision": revision,
-            "subfolder": subfolder,
         }
 
         try:
@@ -161,6 +160,7 @@ class AutoModel(ConfigMixin):
             library, orig_class_name = config["subfolder"]
         except Exception:
             # Fallback to loading the config from the config.json file
+            load_config_kwargs["subfolder"] = subfolder
             config = cls.load_config(os.path.join(pretrained_model_or_path, cls.config_name), **load_config_kwargs)
             library = importlib.import_module("diffusers")
             orig_class_name = config["_class_name"]
