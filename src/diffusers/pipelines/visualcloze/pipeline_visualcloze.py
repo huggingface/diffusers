@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
-from ...image_processor import VaeImageProcessor, VisualClozeProcessor
+from ...image_processor import VisualClozeProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
@@ -35,7 +35,6 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
-# from .processor_visualcloze import VisualClozeProcessor
 
 
 if is_torch_xla_available():
@@ -927,9 +926,9 @@ class VisualClozePipeline(
             batch_size = 1
         elif processor_output["task_prompt"] is not None and isinstance(processor_output["task_prompt"], list):
             batch_size = len(processor_output["task_prompt"])
-        else:
-            raise NotImplementedError("task_prompt must be a string or a list of strings")
 
+        # Generate the target image latents by denoising the initial noise
+        # using the provided prompts and guidance scale
         cloze_latents = self.denoise(
             processor_output,
             batch_size=batch_size,

@@ -144,6 +144,55 @@ image_result = pipe(
 image_result.save("visualcloze.png")
 ```
 
+#### Example for subject-driven generation
+
+```python
+# Load in-context images (make sure the paths are correct and accessible)
+image_paths = [
+    # in-context examples
+    [
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00004-of-00022-7170_reference.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00004-of-00022-7170_depth-anything-v2_Large.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00004-of-00022-7170_target.jpg'),
+    ],
+    [
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00013-of-00022-4696_reference.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00013-of-00022-4696_depth-anything-v2_Large.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00013-of-00022-4696_target.jpg'),
+    ],
+    # query with the target image
+    [
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00005-of-00022-4396_reference.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00005-of-00022-4396_depth-anything-v2_Large.jpg'),
+        None,
+    ],
+]
+
+# Task and content prompt
+task_prompt = """Each row describes a process that begins with [IMAGE1] an image containing the key object, 
+[IMAGE2] depth map revealing gray-toned spatial layers and results in 
+[IMAGE3] an image with artistic qualitya high-quality image with exceptional detail."""
+content_prompt = """A vintage porcelain collector's item. Beneath a blossoming cherry tree in early spring, 
+this treasure is photographed up close, with soft pink petals drifting through the air and vibrant blossoms framing the scene."""
+
+# Run the pipeline
+image_result = pipe(
+    task_prompt=task_prompt,
+    content_prompt=content_prompt,
+    image=image_paths,
+    upsampling_width=1024,
+    upsampling_height=1024,
+    upsampling_strength=0.2,
+    guidance_scale=30,
+    num_inference_steps=30,
+    max_sequence_length=512,
+    generator=torch.Generator("cpu").manual_seed(1)
+).images[0][0]
+
+# Save the resulting image
+image_result.save("visualcloze.png")
+```
+
 ## VisualClozePipeline
 
 [[autodoc]] VisualClozePipeline
