@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # IP-Adapter
 
-[IP-Adapter](https://huggingface.co/papers/2308.06721) is a lightweight adapter designed to integrate image-based guidance into text-to-image diffusion models. The adapter uses an image encoder to extract image features that are passed to the newly added cross-attention layers in the UNet and fine-tuned. The original UNet model, and the existing cross-attention layers corresponding to text features, is frozen. Decoupling the cross-attention for image and text features enables more fine-grained and controllable generation.
+[IP-Adapter](https://huggingface.co/papers/2308.06721) is a lightweight adapter designed to integrate image-based guidance with text-to-image diffusion models. The adapter uses an image encoder to extract image features that are passed to the newly added cross-attention layers in the UNet and fine-tuned. The original UNet model and the existing cross-attention layers corresponding to text features is frozen. Decoupling the cross-attention for image and text features enables more fine-grained and controllable generation.
 
 IP-Adapter files are typically ~100MBs because they only contain the image embeddings. This means you need to load a model first, and then load the IP-Adapter with [`~loaders.IPAdapterMixin.load_ip_adapter`].
 
@@ -46,6 +46,17 @@ pipeline(
 ).images[0]
 ```
 
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_diner.png" width="400" alt="IP-Adapter image"/>
+    <figcaption style="text-align: center;">IP-Adapter image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_diner_2.png" width="400" alt="generated image"/>
+    <figcaption style="text-align: center;">generated image</figcaption>
+  </figure>
+</div>
+
 Take a look at the examples below to learn how to use IP-Adapter for other tasks.
 
 <hfoptions id="usage">
@@ -77,6 +88,21 @@ pipeline(
 ).images[0]
 ```
 
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_bear_1.png" width="300" alt="input image"/>
+    <figcaption style="text-align: center;">input image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_gummy.png" width="300" alt="IP-Adapter image"/>
+    <figcaption style="text-align: center;">IP-Adapter image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_bear_3.png" width="300" alt="generated image"/>
+    <figcaption style="text-align: center;">generated image</figcaption>
+  </figure>
+</div>
+
 </hfoption>
 <hfoption id="inpainting">
 
@@ -107,10 +133,25 @@ pipeline(
 ).images[0]
 ```
 
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_bear_1.png" width="300" alt="input image"/>
+    <figcaption style="text-align: center;">input image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_gummy.png" width="300" alt="IP-Adapter image"/>
+    <figcaption style="text-align: center;">IP-Adapter image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_inpaint.png" width="300" alt="generated image"/>
+    <figcaption style="text-align: center;">generated image</figcaption>
+  </figure>
+</div>
+
 </hfoption>
 <hfoption id="video">
 
-The [`~DiffusionPipeline.enable_model_cpu_offload`] method is useful for reducing memory, but you should enable it **after** the IP-Adapter is loaded. Otherwise, the IP-Adapter's image encoder is also offloaded to the CPU and returns an error.
+The [`~DiffusionPipeline.enable_model_cpu_offload`] method is useful for reducing memory and it should be enabled **after** the IP-Adapter is loaded. Otherwise, the IP-Adapter's image encoder is also offloaded to the CPU and returns an error.
 
 ```py
 import torch
@@ -150,6 +191,17 @@ pipeline(
     num_inference_steps=50,
 ).frames[0]
 ```
+
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_inpaint.png" width="400" alt="IP-Adapter image"/>
+    <figcaption style="text-align: center;">IP-Adapter image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gummy_bear.gif" width="400" alt="generated video"/>
+    <figcaption style="text-align: center;">generated video</figcaption>
+  </figure>
+</div>
 
 </hfoption>
 </hfoptions>
@@ -301,6 +353,17 @@ processor = IPAdapterMaskProcessor()
 masks = processor.preprocess([mask1, mask2], height=1024, width=1024)
 ```
 
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask1.png" width="200" alt="mask 1"/>
+    <figcaption style="text-align: center;">mask 1</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask2.png" width="200" alt="mask 2"/>
+    <figcaption style="text-align: center;">mask 2</figcaption>
+  </figure>
+</div>
+
 Provide both the IP-Adapter images and their scales as a list. Pass the preprocessed masks to `cross_attention_kwargs` in the pipeline.
 
 ```py
@@ -324,6 +387,29 @@ pipeline(
   cross_attention_kwargs={"ip_adapter_masks": masks}
 ).images[0]
 ```
+
+<div style="display: flex; flex-direction: column; gap: 10px;">
+  <div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+    <figure>
+      <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png" width="400" alt="IP-Adapter image 1"/>
+      <figcaption style="text-align: center;">IP-Adapter image 1</figcaption>
+    </figure>
+    <figure>
+      <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png" width="400" alt="IP-Adapter image 2"/>
+      <figcaption style="text-align: center;">IP-Adapter image 2</figcaption>
+    </figure>
+  </div>
+  <div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+    <figure>
+      <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_attention_mask_result_seed_0.png" width="400" alt="Generated image with mask"/>
+      <figcaption style="text-align: center;">generated with mask</figcaption>
+    </figure>
+    <figure>
+      <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_no_attention_mask_result_seed_0.png" width="400" alt="Generated image without mask"/>
+      <figcaption style="text-align: center;">generated without mask</figcaption>
+    </figure>
+  </div>
+</div>
 
 ## Applications
 
@@ -364,6 +450,17 @@ pipeline(
     num_inference_steps=100,
 ).images[0]
 ```
+
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_einstein_base.png" width="400" alt="IP-Adapter image"/>
+    <figcaption style="text-align: center;">IP-Adapter image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_einstein.png" width="400" alt="generated image"/>
+    <figcaption style="text-align: center;">generated image</figcaption>
+  </figure>
+</div>
 
 </hfoption>
 <hfoption id="h94/IP-Adapter-FaceID">
@@ -473,6 +570,17 @@ style_folder = "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/ma
 style_images = [load_image(f"{style_folder}/img{i}.png") for i in range(10)]
 ```
 
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/women_input.png" width="400" alt="Face image"/>
+    <figcaption style="text-align: center;">face image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_style_grid.png" width="400" alt="Style images"/>
+    <figcaption style="text-align: center;">style images</figcaption>
+  </figure>
+</div>
+
 Pass style and face images as a list to `ip_adapter_image`.
 
 ```py
@@ -485,11 +593,18 @@ pipeline(
 ).images[0]
 ```
 
+<div style="display: flex; justify-content: center;">
+  <figure>
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_multi_out.png" width="400" alt="Generated image"/>
+    <figcaption style="text-align: center;">generated image</figcaption>
+  </figure>
+</div>
+
 ### Instant generation
 
 [Latent Consistency Models (LCM)](../api/pipelines/latent_consistency_models) can generate images 4 steps or less, unlike other diffusion models which require a lot more steps, making it feel "instantaneous". IP-Adapters are compatible with LCM models to instantly generate images.
 
-Load the IP-Adapter weights and load the LoRA weights with [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights].
+Load the IP-Adapter weights and load the LoRA weights with [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
 
 ```py
 import torch
@@ -512,7 +627,7 @@ pipeline.scheduler = LCMScheduler.from_config(pipeline.scheduler.config)
 pipeline.enable_model_cpu_offload()
 ```
 
-Try using a lower IP-Adapter scale to condition generation more on the style you want to apply, and remember to use the special token in your prompt to trigger its generation.
+Try using a lower IP-Adapter scale to condition generation more on the style you want to apply and remember to use the special token in your prompt to trigger its generation.
 
 ```py
 pipeline.set_ip_adapter_scale(0.4)
@@ -527,6 +642,13 @@ pipeline(
     guidance_scale=1,
 ).images[0]
 ```
+
+<div style="display: flex; justify-content: center;">
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_herge.png" width="400" alt="Generated image"/>
+    <figcaption style="text-align: center;">generated image</figcaption>
+  </figure>
+</div>
 
 ### Structural control
 
@@ -566,6 +688,21 @@ pipeline(
   negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
 ).images[0]
 ```
+
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/statue.png" width="300" alt="IP-Adapter image"/>
+    <figcaption style="text-align: center;">IP-Adapter image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/depth.png" width="300" alt="Depth map"/>
+    <figcaption style="text-align: center;">depth map</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ipa-controlnet-out.png" width="300" alt="Generated image"/>
+    <figcaption style="text-align: center;">generated image</figcaption>
+  </figure>
+</div>
 
 ### Style and layout control
 
@@ -608,6 +745,17 @@ pipeline(
 ).images[0]
 ```
 
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/0052a70beed5bf71b92610a43a52df6d286cd5f3/diffusers/rabbit.jpg" width="400" alt="Style image"/>
+    <figcaption style="text-align: center;">style image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_style_layout.png" width="400" alt="Generated image"/>
+    <figcaption style="text-align: center;">generated image</figcaption>
+  </figure>
+</div>
+
 You can also insert the IP-Adapter in all the model layers. This tends to generate images that focus more on the image prompt and may reduce the diversity of generated images. Only activate the IP-Adapter in up `block_0` or the style layer.
 
 > [!TIP]
@@ -626,3 +774,14 @@ pipeline(
     guidance_scale=5,
 ).images[0]
 ```
+
+<div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_style_only.png" width="400" alt="Generated image (style only)"/>
+    <figcaption style="text-align: center;">style-layer generated image</figcaption>
+  </figure>
+  <figure>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/datasets/cat_ip_adapter.png" width="400" alt="Generated image (IP-Adapter only)"/>
+    <figcaption style="text-align: center;">all layers generated image</figcaption>
+  </figure>
+</div>
