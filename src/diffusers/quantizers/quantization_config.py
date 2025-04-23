@@ -730,36 +730,75 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
     """This is a config class to use nvidia modelopt for quantization.
 
     Args:
-        QuantizationConfigMixin (_type_): _description_
+        quant_type (`str`):
+            The type of quantization we want to use, following is how to use:
+                **weightquant_activationquant --> FP8_FP8**
+                In the above example we have use FP8 for both weight and activation quantization.
+                Following are the all the options:
+                    - FP8
+                    - INT8
+                    - INT4
+                    - NF4
+                    - NVFP4
+        modules_to_not_convert (`List[str]`, *optional*, default to `None`):
+            The list of modules to not quantize, useful for quantizing models that explicitly require to have some
+        weight_only (`bool`, *optional*, default to `False`):
+            If set to `True`, the quantization will be applied only to the weights of the model.
+        channel_quantize (`int`, *optional*, default to `None`):
+            The channel quantization axis, useful for quantizing models across different axes.
+        block_quantize (`int`, *optional*, default to `None`):
+            The block size, useful to further quantize each channel/axes into blocks.
+        algorithm (`str`, *optional*, default to `"max"`):
+            The algorithm to use for quantization, currently only supports `"max"`.
+        modelopt_config (`dict`, *optional*, default to `None`):
+            The modelopt config, useful for passing custom configs to modelopt.
     """
 
-    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, channel_quantize: Optional[int] = None, block_quantize: Optional[int] = None, modelopt_config: Optional[dict] = None, **kwargs) -> None:
+    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, weight_only: bool=True, channel_quantize: Optional[int] = None, block_quantize: Optional[int] = None, algorithm: str = "max", modelopt_config: Optional[dict] = None, **kwargs) -> None:
         self.quant_method = QuantizationMethod.MODELOPT
         self.quant_type = quant_type
-        QUANT_TYPES = [
-            "FP8_WO",
-            # "FP8_AINT8",
-            "INT8_WO",
-            # "INT8_AFP8",
-            # "INT8_AFP8_QKVFP8",
-            "INT4_WO",
-            # "INT4_AFP8",
-            # "INT4_AFP8_QKVFP8",
-        ]
-        if quant_type not in QUANT_TYPES:
+        self.type_bit_map = {
+            "FP8": (4, 3),
+            # "INT8": 8, # TODO: enable this upon modelopt release https://github.com/NVIDIA/TensorRT-Model-Optimizer/pull/166
+            "INT4": 4,
+            "NF4": 4,
+            "NVFP4": (2,1),
+        }
+
+        parts = self.quant_type.split("_")
+        w_type = parts[0]
+        act_type = parts[1] if len(parts) > 1 else None
+        if len(parts) > 2:
             logger.warning(
-                f"Quantization type {quant_type} not supported. Supported types are {QUANT_TYPES}, picking FP8_WO as default"
+                f"Quantization type {self.quant_type} is not supported. Picking FP8_INT8 as default"
             )
-            self.quant_type = "FP8_WO"
+            w_type = "FP8"
+            act_type = None
+        else:
+            if w_type not in self.type_bit_map:
+                logger.warning(
+                    f"Weight Quantization type {w_type} is not supported. Picking FP8 as default"
+                )
+                w_type = "FP8"
+            if act_type is not None and act_type not in self.type_bit_map:
+                logger.warning(
+                    f"Activation Quantization type {act_type} is not supported. Picking INT8 as default"
+                )
+                act_type = None
+        self.quant_type = w_type + ("_" + act_type if act_type is not None else "")
         self.modules_to_not_convert = modules_to_not_convert
+        self.weight_only = weight_only
         self.channel_quantize = channel_quantize
         self.block_quantize = block_quantize
+        self.algorithm = algorithm
         self.modelopt_config = self.get_config_from_quant_type() if not modelopt_config else modelopt_config
 
     def get_config_from_quant_type(self) -> Dict[str, Any]:
         """
         Get the config from the quantization type.
         """
+        import modelopt.torch.quantization as mtq
+        
         BASE_CONFIG = {
             "quant_cfg": {
                 "*weight_quantizer": {"fake_quant": False},
@@ -769,42 +808,50 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 "*k_bmm_quantizer": {},
                 "*v_bmm_quantizer": {},
                 "*softmax_quantizer": {},
-                "default": {"enable": False},
+                **mtq.config._default_disabled_quantizer_cfg,
             },
-            "algorithm": "max",
+            "algorithm": self.algorithm,
         }
 
         quant_cfg = BASE_CONFIG["quant_cfg"]
-        if "FP8" in self.quant_type:
+        if self.weight_only:
             for k in quant_cfg:
-                if "enable" not in quant_cfg[k]:
-                    quant_cfg[k]["num_bits"] = (4, 3)
-        elif "INT8" in self.quant_type:
-            for k in quant_cfg:
-                if "enable" not in quant_cfg[k]:
-                    quant_cfg[k]["num_bits"] = 8
-        elif "INT4" in self.quant_type:
-            for k in quant_cfg:
-                if "enable" not in quant_cfg[k]:
-                    quant_cfg[k]["num_bits"] = 4
-        else:
-            raise ValueError(f"Unknown quantization type: {self.quant_type}")
-
-        if "WO" in self.quant_type:
-            for k in quant_cfg:
-                if "*weight_quantizer" not in k:
+                if "*weight_quantizer" not in k and not quant_cfg[k]:
                     quant_cfg[k]["enable"] = False
 
+        parts = self.quant_type.split("_")
+        w_type = parts[0]
+        act_type = parts[1].replace("A", "") if len(parts) > 1 else None
+        for k in quant_cfg:
+            if k not in mtq.config._default_disabled_quantizer_cfg and "enable" not in quant_cfg[k]:
+                if k == "*input_quantizer":
+                    if act_type is not None:
+                        quant_cfg[k]["num_bits"] = self.type_bit_map[act_type]
+                    continue
+                quant_cfg[k]["num_bits"] = self.type_bit_map[w_type]
+        
         if self.block_quantize and self.channel_quantize:
             quant_cfg["*weight_quantizer"]["block_sizes"] = {
                 self.channel_quantize: self.block_quantize
             }
             quant_cfg["*input_quantizer"]["block_sizes"] = {
-                self.channel_quantize: self.block_quantize
+                self.channel_quantize: self.block_quantize, "type": "dynamic"
             }
         elif self.channel_quantize:
             quant_cfg["*weight_quantizer"]["axis"] = self.channel_quantize
             quant_cfg["*input_quantizer"]["axis"] = self.channel_quantize
+            quant_cfg["*input_quantizer"]["type"] = "dynamic"
+
+        # Only fixed sizes are supported for now in modelopt
+        if "NF4" in w_type:
+            BASE_CONFIG["quant_cfg"]["*weight_quantizer"]["block_sizes"].update({"scale_bits":8, "scale_block_sizes": {self.channel_quantize: self.block_quantize}})
+        elif "NVFP4" in w_type:
+            BASE_CONFIG["quant_cfg"]["*weight_quantizer"]["block_sizes"].update({"scale_bits":(4,3), "type": "dynamic"})
+        if act_type:
+            if "NF4" in act_type:
+                BASE_CONFIG["quant_cfg"]["*input_quantizer"]["block_sizes"].update({"scale_bits":8, "scale_block_sizes": {self.channel_quantize: self.block_quantize}})
+            elif "NVFP4" in act_type:
+                BASE_CONFIG["quant_cfg"]["*input_quantizer"]["block_sizes"].update({"scale_bits":(4,3), "type": "dynamic"})
 
         if self.modules_to_not_convert is not None:
             for module in self.modules_to_not_convert:
