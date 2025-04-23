@@ -75,8 +75,13 @@ class OnnxRuntimeModel:
             logger.info("No onnxruntime provider specified, using CPUExecutionProvider")
             provider = "CPUExecutionProvider"
 
+        if provider_options is None:
+            provider_options = []
+        else:
+            provider_options = [provider_options]
+
         return ort.InferenceSession(
-            path, providers=[provider], sess_options=sess_options, provider_options=[provider_options]
+            path, providers=[provider], sess_options=sess_options, provider_options=provider_options
         )
 
     def _save_pretrained(self, save_directory: Union[str, Path], file_name: Optional[str] = None, **kwargs):
