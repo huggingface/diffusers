@@ -13,6 +13,7 @@ from transformers import (
 )
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import HiDreamImageLoraLoaderMixin
 from ...models import AutoencoderKL, HiDreamImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
@@ -142,7 +143,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class HiDreamImagePipeline(DiffusionPipeline):
+class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->text_encoder_4->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds_t5", "prompt_embeds_llama3", "pooled_prompt_embeds"]
 
@@ -822,13 +823,13 @@ class HiDreamImagePipeline(DiffusionPipeline):
 
         if prompt_embeds is not None:
             deprecation_message = "The `prompt_embeds` argument is deprecated. Please use `prompt_embeds_t5` and `prompt_embeds_llama3` instead."
-            deprecate("prompt_embeds", "0.34.0", deprecation_message)
+            deprecate("prompt_embeds", "0.35.0", deprecation_message)
             prompt_embeds_t5 = prompt_embeds[0]
             prompt_embeds_llama3 = prompt_embeds[1]
 
         if negative_prompt_embeds is not None:
             deprecation_message = "The `negative_prompt_embeds` argument is deprecated. Please use `negative_prompt_embeds_t5` and `negative_prompt_embeds_llama3` instead."
-            deprecate("negative_prompt_embeds", "0.34.0", deprecation_message)
+            deprecate("negative_prompt_embeds", "0.35.0", deprecation_message)
             negative_prompt_embeds_t5 = negative_prompt_embeds[0]
             negative_prompt_embeds_llama3 = negative_prompt_embeds[1]
 
