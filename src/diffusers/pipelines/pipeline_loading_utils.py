@@ -323,9 +323,7 @@ def maybe_raise_or_warn(
         model_cls = unwrapped_sub_model.__class__
 
         if not issubclass(model_cls, expected_class_obj):
-            raise ValueError(
-                f"{passed_class_obj[name]} is of type: {model_cls}, but should be" f" {expected_class_obj}"
-            )
+            raise ValueError(f"{passed_class_obj[name]} is of type: {model_cls}, but should be {expected_class_obj}")
     else:
         logger.warning(
             f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
@@ -343,13 +341,13 @@ def get_class_obj_and_candidates(
         pipeline_module = getattr(pipelines, library_name)
 
         class_obj = getattr(pipeline_module, class_name)
-        class_candidates = {c: class_obj for c in importable_classes.keys()}
+        class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     elif os.path.isfile(os.path.join(component_folder, library_name + ".py")):
         # load custom component
         class_obj = get_class_from_dynamic_module(
             component_folder, module_file=library_name + ".py", class_name=class_name
         )
-        class_candidates = {c: class_obj for c in importable_classes.keys()}
+        class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     else:
         # else we just import it from the library.
         library = importlib.import_module(library_name)
@@ -592,6 +590,11 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 loaded_sub_model = passed_class_obj[name]
 
         else:
+            sub_model_dtype = (
+                torch_dtype.get(name, torch_dtype.get("default", torch.float32))
+                if isinstance(torch_dtype, dict)
+                else torch_dtype
+            )
             loaded_sub_model = _load_empty_model(
                 library_name=library_name,
                 class_name=class_name,
@@ -600,7 +603,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 is_pipeline_module=is_pipeline_module,
                 pipeline_class=pipeline_class,
                 name=name,
-                torch_dtype=torch_dtype,
+                torch_dtype=sub_model_dtype,
                 cached_folder=kwargs.get("cached_folder", None),
                 force_download=kwargs.get("force_download", None),
                 proxies=kwargs.get("proxies", None),
@@ -616,7 +619,12 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
     # Obtain a sorted dictionary for mapping the model-level components
     # to their sizes.
     module_sizes = {
-        module_name: compute_module_sizes(module, dtype=torch_dtype)[""]
+        module_name: compute_module_sizes(
+            module,
+            dtype=torch_dtype.get(module_name, torch_dtype.get("default", torch.float32))
+            if isinstance(torch_dtype, dict)
+            else torch_dtype,
+        )[""]
         for module_name, module in init_empty_modules.items()
         if isinstance(module, torch.nn.Module)
     }

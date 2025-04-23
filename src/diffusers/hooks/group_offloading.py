@@ -56,7 +56,8 @@ class ModuleGroup:
         buffers: Optional[List[torch.Tensor]] = None,
         non_blocking: bool = False,
         stream: Optional[torch.cuda.Stream] = None,
-        low_cpu_mem_usage=False,
+        record_stream: Optional[bool] = False,
+        low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
     ) -> None:
         self.modules = modules
@@ -68,10 +69,13 @@ class ModuleGroup:
         self.buffers = buffers or []
         self.non_blocking = non_blocking or stream is not None
         self.stream = stream
+        self.record_stream = record_stream
         self.onload_self = onload_self
         self.low_cpu_mem_usage = low_cpu_mem_usage
-
         self.cpu_param_dict = self._init_cpu_param_dict()
+
+        if self.stream is None and self.record_stream:
+            raise ValueError("`record_stream` cannot be True when `stream` is None.")
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -112,6 +116,8 @@ class ModuleGroup:
     def onload_(self):
         r"""Onloads the group of modules to the onload_device."""
         context = nullcontext() if self.stream is None else torch.cuda.stream(self.stream)
+        current_stream = torch.cuda.current_stream() if self.record_stream else None
+
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
             self.stream.synchronize()
@@ -122,14 +128,22 @@ class ModuleGroup:
                     for group_module in self.modules:
                         for param in group_module.parameters():
                             param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
+                            if self.record_stream:
+                                param.data.record_stream(current_stream)
                         for buffer in group_module.buffers():
                             buffer.data = pinned_memory[buffer].to(self.onload_device, non_blocking=self.non_blocking)
+                            if self.record_stream:
+                                buffer.data.record_stream(current_stream)
 
                     for param in self.parameters:
                         param.data = pinned_memory[param].to(self.onload_device, non_blocking=self.non_blocking)
+                        if self.record_stream:
+                            param.data.record_stream(current_stream)
 
                     for buffer in self.buffers:
                         buffer.data = pinned_memory[buffer].to(self.onload_device, non_blocking=self.non_blocking)
+                        if self.record_stream:
+                            buffer.data.record_stream(current_stream)
 
             else:
                 for group_module in self.modules:
@@ -143,11 +157,14 @@ class ModuleGroup:
 
                 for buffer in self.buffers:
                     buffer.data = buffer.data.to(self.onload_device, non_blocking=self.non_blocking)
+                    if self.record_stream:
+                        buffer.data.record_stream(current_stream)
 
     def offload_(self):
         r"""Offloads the group of modules to the offload_device."""
         if self.stream is not None:
-            torch.cuda.current_stream().synchronize()
+            if not self.record_stream:
+                torch.cuda.current_stream().synchronize()
             for group_module in self.modules:
                 for param in group_module.parameters():
                     param.data = self.cpu_param_dict[param]
@@ -331,7 +348,8 @@ def apply_group_offloading(
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,
-    low_cpu_mem_usage=False,
+    record_stream: bool = False,
+    low_cpu_mem_usage: bool = False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -378,6 +396,14 @@ def apply_group_offloading(
         use_stream (`bool`, defaults to `False`):
             If True, offloading and onloading is done asynchronously using a CUDA stream. This can be useful for
             overlapping computation and data transfer.
+        record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
+            as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to the
+            [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) more
+            details.
+        low_cpu_mem_usage (`bool`, defaults to `False`):
+            If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
+            option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
+            the CPU memory is a bottleneck but may counteract the benefits of using streams.
 
     Example:
         ```python
@@ -413,11 +439,24 @@ def apply_group_offloading(
             raise ValueError("num_blocks_per_group must be provided when using offload_type='block_level'.")
 
         _apply_group_offloading_block_level(
-            module, num_blocks_per_group, offload_device, onload_device, non_blocking, stream, low_cpu_mem_usage
+            module=module,
+            num_blocks_per_group=num_blocks_per_group,
+            offload_device=offload_device,
+            onload_device=onload_device,
+            non_blocking=non_blocking,
+            stream=stream,
+            record_stream=record_stream,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
     elif offload_type == "leaf_level":
         _apply_group_offloading_leaf_level(
-            module, offload_device, onload_device, non_blocking, stream, low_cpu_mem_usage
+            module=module,
+            offload_device=offload_device,
+            onload_device=onload_device,
+            non_blocking=non_blocking,
+            stream=stream,
+            record_stream=record_stream,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
     else:
         raise ValueError(f"Unsupported offload_type: {offload_type}")
@@ -430,6 +469,7 @@ def _apply_group_offloading_block_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
+    record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
 ) -> None:
     r"""
@@ -449,7 +489,17 @@ def _apply_group_offloading_block_level(
         stream (`torch.cuda.Stream`, *optional*):
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
+        record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
+            as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to the
+            [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) more
+            details.
+        low_cpu_mem_usage (`bool`, defaults to `False`):
+            If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
+            option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
+            the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
+    if stream is not None and num_blocks_per_group != 1:
+        raise ValueError(f"Using streams is only supported for num_blocks_per_group=1. Got {num_blocks_per_group=}.")
 
     # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
@@ -471,8 +521,9 @@ def _apply_group_offloading_block_level(
                 onload_leader=current_modules[0],
                 non_blocking=non_blocking,
                 stream=stream,
+                record_stream=record_stream,
                 low_cpu_mem_usage=low_cpu_mem_usage,
-                onload_self=stream is None,
+                onload_self=True,
             )
             matched_module_groups.append(group)
             for j in range(i, i + len(current_modules)):
@@ -480,12 +531,8 @@ def _apply_group_offloading_block_level(
 
     # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):
-        next_group = (
-            matched_module_groups[i + 1] if i + 1 < len(matched_module_groups) and stream is not None else None
-        )
-
         for group_module in group.modules:
-            _apply_group_offloading_hook(group_module, group, next_group)
+            _apply_group_offloading_hook(group_module, group, None)
 
     # Parameters and Buffers of the top-level module need to be offloaded/onloaded separately
     # when the forward pass of this module is called. This is because the top-level module is not
@@ -508,10 +555,13 @@ def _apply_group_offloading_block_level(
         buffers=buffers,
         non_blocking=False,
         stream=None,
+        record_stream=False,
         onload_self=True,
     )
-    next_group = matched_module_groups[0] if len(matched_module_groups) > 0 else None
-    _apply_group_offloading_hook(module, unmatched_group, next_group)
+    if stream is None:
+        _apply_group_offloading_hook(module, unmatched_group, None)
+    else:
+        _apply_lazy_group_offloading_hook(module, unmatched_group, None)
 
 
 def _apply_group_offloading_leaf_level(
@@ -520,6 +570,7 @@ def _apply_group_offloading_leaf_level(
     onload_device: torch.device,
     non_blocking: bool,
     stream: Optional[torch.cuda.Stream] = None,
+    record_stream: Optional[bool] = False,
     low_cpu_mem_usage: bool = False,
 ) -> None:
     r"""
@@ -541,6 +592,14 @@ def _apply_group_offloading_leaf_level(
         stream (`torch.cuda.Stream`, *optional*):
             If provided, offloading and onloading is done asynchronously using the provided stream. This can be useful
             for overlapping computation and data transfer.
+        record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
+            as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to the
+            [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html) more
+            details.
+        low_cpu_mem_usage (`bool`, defaults to `False`):
+            If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
+            option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
+            the CPU memory is a bottleneck but may counteract the benefits of using streams.
     """
 
     # Create module groups for leaf modules and apply group offloading hooks
@@ -556,6 +615,7 @@ def _apply_group_offloading_leaf_level(
             onload_leader=submodule,
             non_blocking=non_blocking,
             stream=stream,
+            record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
         )
@@ -601,6 +661,7 @@ def _apply_group_offloading_leaf_level(
             buffers=buffers,
             non_blocking=non_blocking,
             stream=stream,
+            record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
         )
@@ -620,6 +681,7 @@ def _apply_group_offloading_leaf_level(
             buffers=None,
             non_blocking=False,
             stream=None,
+            record_stream=False,
             low_cpu_mem_usage=low_cpu_mem_usage,
             onload_self=True,
         )

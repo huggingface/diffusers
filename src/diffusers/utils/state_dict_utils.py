@@ -17,7 +17,12 @@ State dict utilities: utility methods for converting state dicts easily
 
 import enum
 
+from .import_utils import is_torch_available
 from .logging import get_logger
+
+
+if is_torch_available():
+    import torch
 
 
 logger = get_logger(__name__)
@@ -329,7 +334,16 @@ def convert_state_dict_to_kohya(state_dict, original_type=None, **kwargs):
         kohya_key = kohya_key.replace(peft_adapter_name, "")  # Kohya doesn't take names
         kohya_ss_state_dict[kohya_key] = weight
         if "lora_down" in kohya_key:
-            alpha_key = f'{kohya_key.split(".")[0]}.alpha'
+            alpha_key = f"{kohya_key.split('.')[0]}.alpha"
             kohya_ss_state_dict[alpha_key] = torch.tensor(len(weight))
 
     return kohya_ss_state_dict
+
+
+def state_dict_all_zero(state_dict, filter_str=None):
+    if filter_str is not None:
+        if isinstance(filter_str, str):
+            filter_str = [filter_str]
+        state_dict = {k: v for k, v in state_dict.items() if any(f in k for f in filter_str)}
+
+    return all(torch.all(param == 0).item() for param in state_dict.values())

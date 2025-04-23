@@ -32,9 +32,9 @@ The denoiser checkpoint can also have multiple shards and supports inference tha
 For example, let's save a sharded checkpoint for the [SDXL UNet](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/unet):
 
 ```python
-from diffusers import UNet2DConditionModel
+from diffusers import AutoModel
 
-unet = UNet2DConditionModel.from_pretrained(
+unet = AutoModel.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet"
 )
 unet.save_pretrained("sdxl-unet-sharded", max_shard_size="5GB")
@@ -43,10 +43,10 @@ unet.save_pretrained("sdxl-unet-sharded", max_shard_size="5GB")
 The size of the fp32 variant of the SDXL UNet checkpoint is ~10.4GB. Set the `max_shard_size` parameter to 5GB to create 3 shards. After saving, you can load them in [`StableDiffusionXLPipeline`]:
 
 ```python
-from diffusers import UNet2DConditionModel, StableDiffusionXLPipeline
+from diffusers import AutoModel, StableDiffusionXLPipeline
 import torch
 
-unet = UNet2DConditionModel.from_pretrained(
+unet = AutoModel.from_pretrained(
     "sayakpaul/sdxl-unet-sharded", torch_dtype=torch.float16
 )
 pipeline = StableDiffusionXLPipeline.from_pretrained(
