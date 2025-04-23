@@ -263,7 +263,7 @@ class GroupOffloadTests(unittest.TestCase):
         context = contextlib.nullcontext()
         if compare_versions("diffusers", "<=", "0.33.0"):
             # Will raise a device mismatch RuntimeError mentioning weights are on CPU but input is on device
-            context = self.assertRaises(RuntimeError)
+            context = self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device")
 
         with context:
             model(self.input)
