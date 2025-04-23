@@ -25,7 +25,7 @@ pip install -e .
 
 Then cd in the `examples/dreambooth` folder and run
 ```bash
-pip install -r requirements_sana.txt
+pip install -r requirements_hidream.txt
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
