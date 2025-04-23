@@ -156,10 +156,14 @@ class AutoModel(ConfigMixin):
             "subfolder": subfolder,
         }
 
-        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-        orig_class_name = config["_class_name"]
-
-        library = importlib.import_module("diffusers")
+        try:
+            config = cls.load_config(os.path.join(pretrained_model_or_path, "model_index.json"), **load_config_kwargs)
+            library, orig_class_name = config["subfolder"]
+        except Exception:
+            # Fallback to loading the config from the config.json file
+            config = cls.load_config(os.path.join(pretrained_model_or_path, cls.config_name), **load_config_kwargs)
+            library = importlib.import_module("diffusers")
+            orig_class_name = config["_class_name"]
 
         model_cls = getattr(library, orig_class_name, None)
         if model_cls is None:
