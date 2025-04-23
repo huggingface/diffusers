@@ -1350,10 +1350,10 @@ def main(args):
         if args.offload:
             text_encoding_pipeline = text_encoding_pipeline.to("cpu")
 
+    validation_embeddings = {}
     if args.validation_prompt is not None:
         if args.offload:
             text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
-        validation_embeddings = {}
         (
             validation_embeddings["prompt_embeds_t5"],
             validation_embeddings["prompt_embeds_llama3"],
