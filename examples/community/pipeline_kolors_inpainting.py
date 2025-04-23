@@ -76,8 +76,9 @@ EXAMPLE_DOC_STRING = """
         ...     "Kwai-Kolors/Kolors-diffusers",
         ...     torch_dtype=torch.float16,
         ...     variant="fp16"
+        ...     use_safetensors=True
         ... )
-        >>> pipe.to("cuda")
+        >>> pipe.enable_model_cpu_offload()
 
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
         >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
@@ -244,7 +245,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-        encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -258,12 +259,12 @@ def retrieve_latents(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
-        scheduler,
-        num_inference_steps: Optional[int] = None,
-        device: Optional[Union[str, torch.device]] = None,
-        timesteps: Optional[List[int]] = None,
-        sigmas: Optional[List[float]] = None,
-        **kwargs,
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    sigmas: Optional[List[float]] = None,
+    **kwargs,
 ):
     """
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
@@ -379,17 +380,17 @@ class KolorsInpaintPipeline(
     ]
 
     def __init__(
-            self,
-            vae: AutoencoderKL,
-            text_encoder: ChatGLMModel,
-            tokenizer: ChatGLMTokenizer,
-            unet: UNet2DConditionModel,
-            scheduler: KarrasDiffusionSchedulers,
-            image_encoder: CLIPVisionModelWithProjection = None,
-            feature_extractor: CLIPImageProcessor = None,
-            requires_aesthetics_score: bool = False,
-            force_zeros_for_empty_prompt: bool = True,
-            add_watermarker: Optional[bool] = None,
+        self,
+        vae: AutoencoderKL,
+        text_encoder: ChatGLMModel,
+        tokenizer: ChatGLMTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: KarrasDiffusionSchedulers,
+        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: CLIPImageProcessor = None,
+        requires_aesthetics_score: bool = False,
+        force_zeros_for_empty_prompt: bool = True,
+        add_watermarker: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -444,7 +445,7 @@ class KolorsInpaintPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-            self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -457,7 +458,7 @@ class KolorsInpaintPipeline(
 
             image_embeds = []
             for single_ip_adapter_image, image_proj_layer in zip(
-                    ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
             ):
                 output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
@@ -495,17 +496,17 @@ class KolorsInpaintPipeline(
         return image_embeds
 
     def encode_prompt(
-            self,
-            prompt,
-            device: Optional[torch.device] = None,
-            num_images_per_prompt: int = 1,
-            do_classifier_free_guidance: bool = True,
-            negative_prompt=None,
-            prompt_embeds: Optional[torch.FloatTensor] = None,
-            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-            pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-            negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-            lora_scale: Optional[float] = None,
+        self,
+        prompt,
+        device: Optional[torch.device] = None,
+        num_images_per_prompt: int = 1,
+        do_classifier_free_guidance: bool = True,
+        negative_prompt=None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -573,10 +574,11 @@ class KolorsInpaintPipeline(
                     return_tensors="pt",
                 ).to(self._execution_device)
                 output = text_encoder(
-                    input_ids=text_inputs['input_ids'],
-                    attention_mask=text_inputs['attention_mask'],
-                    position_ids=text_inputs['position_ids'],
-                    output_hidden_states=True)
+                    input_ids=text_inputs["input_ids"],
+                    attention_mask=text_inputs["attention_mask"],
+                    position_ids=text_inputs["position_ids"],
+                    output_hidden_states=True,
+                )
                 prompt_embeds = output.hidden_states[-2].permute(1, 0, 2).clone()
                 pooled_prompt_embeds = output.hidden_states[-1][-1, :, :].clone()  # [batch_size, 4096]
                 bs_embed, seq_len, _ = prompt_embeds.shape
@@ -628,10 +630,11 @@ class KolorsInpaintPipeline(
                     return_tensors="pt",
                 ).to(self._execution_device)
                 output = text_encoder(
-                    input_ids=uncond_input['input_ids'],
-                    attention_mask=uncond_input['attention_mask'],
-                    position_ids=uncond_input['position_ids'],
-                    output_hidden_states=True)
+                    input_ids=uncond_input["input_ids"],
+                    attention_mask=uncond_input["attention_mask"],
+                    position_ids=uncond_input["position_ids"],
+                    output_hidden_states=True,
+                )
                 negative_prompt_embeds = output.hidden_states[-2].permute(1, 0, 2).clone()
                 negative_pooled_prompt_embeds = output.hidden_states[-1][-1, :, :].clone()  # [batch_size, 4096]
 
@@ -685,22 +688,22 @@ class KolorsInpaintPipeline(
         return extra_step_kwargs
 
     def check_inputs(
-            self,
-            prompt,
-            image,
-            mask_image,
-            height,
-            width,
-            strength,
-            callback_steps,
-            output_type,
-            negative_prompt=None,
-            prompt_embeds=None,
-            negative_prompt_embeds=None,
-            ip_adapter_image=None,
-            ip_adapter_image_embeds=None,
-            callback_on_step_end_tensor_inputs=None,
-            padding_mask_crop=None,
+        self,
+        prompt,
+        image,
+        mask_image,
+        height,
+        width,
+        strength,
+        callback_steps,
+        output_type,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        ip_adapter_image=None,
+        ip_adapter_image_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
+        padding_mask_crop=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -715,7 +718,7 @@ class KolorsInpaintPipeline(
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-                k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -749,7 +752,7 @@ class KolorsInpaintPipeline(
         if padding_mask_crop is not None:
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                    f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
                 )
             if not isinstance(mask_image, PIL.Image.Image):
                 raise ValueError(
@@ -757,7 +760,7 @@ class KolorsInpaintPipeline(
                     f" {type(mask_image)}."
                 )
             if output_type != "pil":
-                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is {output_type}.")
 
         if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
             raise ValueError(
@@ -775,21 +778,21 @@ class KolorsInpaintPipeline(
                 )
 
     def prepare_latents(
-            self,
-            batch_size,
-            num_channels_latents,
-            height,
-            width,
-            dtype,
-            device,
-            generator,
-            latents=None,
-            image=None,
-            timestep=None,
-            is_strength_max=True,
-            add_noise=True,
-            return_noise=False,
-            return_image_latents=False,
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+        image=None,
+        timestep=None,
+        is_strength_max=True,
+        add_noise=True,
+        return_noise=False,
+        return_image_latents=False,
     ):
         shape = (
             batch_size,
@@ -848,7 +851,7 @@ class KolorsInpaintPipeline(
 
         if isinstance(generator, list):
             image_latents = [
-                retrieve_latents(self.vae.encode(image[i: i + 1]), generator=generator[i])
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
@@ -864,7 +867,7 @@ class KolorsInpaintPipeline(
         return image_latents
 
     def prepare_mask_latents(
-            self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
+        self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
@@ -925,7 +928,7 @@ class KolorsInpaintPipeline(
         else:
             t_start = 0
 
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order:]
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
 
         # Strength is irrelevant if we directly request a timestep to start at;
         # that is, strength is determined by the denoising_start instead.
@@ -955,17 +958,17 @@ class KolorsInpaintPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids
     def _get_add_time_ids(
-            self,
-            original_size,
-            crops_coords_top_left,
-            target_size,
-            aesthetic_score,
-            negative_aesthetic_score,
-            negative_original_size,
-            negative_crops_coords_top_left,
-            negative_target_size,
-            dtype,
-            text_encoder_projection_dim=None,
+        self,
+        original_size,
+        crops_coords_top_left,
+        target_size,
+        aesthetic_score,
+        negative_aesthetic_score,
+        negative_original_size,
+        negative_crops_coords_top_left,
+        negative_target_size,
+        dtype,
+        text_encoder_projection_dim=None,
     ):
         if self.config.requires_aesthetics_score:
             add_time_ids = list(original_size + crops_coords_top_left + (aesthetic_score,))
@@ -976,21 +979,19 @@ class KolorsInpaintPipeline(
             add_time_ids = list(original_size + crops_coords_top_left + target_size)
             add_neg_time_ids = list(negative_original_size + crops_coords_top_left + negative_target_size)
 
-        passed_add_embed_dim = (
-                self.unet.config.addition_time_embed_dim * len(add_time_ids) + 4096
-        )
+        passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids) + 4096
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
         if (
-                expected_add_embed_dim > passed_add_embed_dim
-                and (expected_add_embed_dim - passed_add_embed_dim) == self.unet.config.addition_time_embed_dim
+            expected_add_embed_dim > passed_add_embed_dim
+            and (expected_add_embed_dim - passed_add_embed_dim) == self.unet.config.addition_time_embed_dim
         ):
             raise ValueError(
                 f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to enable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=True)` to make sure `aesthetic_score` {aesthetic_score} and `negative_aesthetic_score` {negative_aesthetic_score} is correctly used by the model."
             )
         elif (
-                expected_add_embed_dim < passed_add_embed_dim
-                and (passed_add_embed_dim - expected_add_embed_dim) == self.unet.config.addition_time_embed_dim
+            expected_add_embed_dim < passed_add_embed_dim
+            and (passed_add_embed_dim - expected_add_embed_dim) == self.unet.config.addition_time_embed_dim
         ):
             raise ValueError(
                 f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to disable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=False)` to make sure `target_size` {target_size} is correctly used by the model."
@@ -1027,7 +1028,7 @@ class KolorsInpaintPipeline(
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
-            self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
+        self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
     ) -> torch.Tensor:
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
@@ -1094,49 +1095,49 @@ class KolorsInpaintPipeline(
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
-            self,
-            prompt: Union[str, List[str]] = None,
-            image: PipelineImageInput = None,
-            mask_image: PipelineImageInput = None,
-            masked_image_latents: torch.Tensor = None,
-            height: Optional[int] = None,
-            width: Optional[int] = None,
-            padding_mask_crop: Optional[int] = None,
-            strength: float = 0.9999,
-            num_inference_steps: int = 50,
-            timesteps: List[int] = None,
-            sigmas: List[float] = None,
-            denoising_start: Optional[float] = None,
-            denoising_end: Optional[float] = None,
-            guidance_scale: float = 7.5,
-            negative_prompt: Optional[Union[str, List[str]]] = None,
-            num_images_per_prompt: Optional[int] = 1,
-            eta: float = 0.0,
-            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-            latents: Optional[torch.Tensor] = None,
-            prompt_embeds: Optional[torch.Tensor] = None,
-            negative_prompt_embeds: Optional[torch.Tensor] = None,
-            pooled_prompt_embeds: Optional[torch.Tensor] = None,
-            negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-            ip_adapter_image: Optional[PipelineImageInput] = None,
-            ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
-            output_type: Optional[str] = "pil",
-            return_dict: bool = True,
-            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-            guidance_rescale: float = 0.0,
-            original_size: Tuple[int, int] = None,
-            crops_coords_top_left: Tuple[int, int] = (0, 0),
-            target_size: Tuple[int, int] = None,
-            negative_original_size: Optional[Tuple[int, int]] = None,
-            negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
-            negative_target_size: Optional[Tuple[int, int]] = None,
-            aesthetic_score: float = 6.0,
-            negative_aesthetic_score: float = 2.5,
-            callback_on_step_end: Optional[
-                Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-            ] = None,
-            callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-            **kwargs,
+        self,
+        prompt: Union[str, List[str]] = None,
+        image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None,
+        masked_image_latents: torch.Tensor = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        padding_mask_crop: Optional[int] = None,
+        strength: float = 0.9999,
+        num_inference_steps: int = 50,
+        timesteps: List[int] = None,
+        sigmas: List[float] = None,
+        denoising_start: Optional[float] = None,
+        denoising_end: Optional[float] = None,
+        guidance_scale: float = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_images_per_prompt: Optional[int] = 1,
+        eta: float = 0.0,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
+        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guidance_rescale: float = 0.0,
+        original_size: Tuple[int, int] = None,
+        crops_coords_top_left: Tuple[int, int] = (0, 0),
+        target_size: Tuple[int, int] = None,
+        negative_original_size: Optional[Tuple[int, int]] = None,
+        negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
+        negative_target_size: Optional[Tuple[int, int]] = None,
+        aesthetic_score: float = 6.0,
+        negative_aesthetic_score: float = 2.5,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1558,11 +1559,11 @@ class KolorsInpaintPipeline(
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         if (
-                self.denoising_end is not None
-                and self.denoising_start is not None
-                and denoising_value_valid(self.denoising_end)
-                and denoising_value_valid(self.denoising_start)
-                and self.denoising_start >= self.denoising_end
+            self.denoising_end is not None
+            and self.denoising_start is not None
+            and denoising_value_valid(self.denoising_end)
+            and denoising_value_valid(self.denoising_start)
+            and self.denoising_start >= self.denoising_end
         ):
             raise ValueError(
                 f"`denoising_start`: {self.denoising_start} cannot be larger than or equal to `denoising_end`: "
