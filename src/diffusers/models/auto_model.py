@@ -17,12 +17,13 @@ import os
 from typing import Optional, Union
 
 from huggingface_hub.utils import validate_hf_hub_args
+from huggingface_hub import hf_hub_download
 
 from ..configuration_utils import ConfigMixin
 
 
 class AutoModel(ConfigMixin):
-    config_name = "model_index.json"
+    config_name = "config.json"
 
     def __init__(self, *args, **kwargs):
         raise EnvironmentError(
@@ -158,13 +159,14 @@ class AutoModel(ConfigMixin):
 
         try:
             mindex_kwargs = {k: v for k, v in load_config_kwargs.items() if k != "subfolder"}
-            config = cls.load_config(os.path.join(pretrained_model_or_path), **mindex_kwargs)
+            mindex_kwargs["filename"] = "model_index.json"
+            config_path = hf_hub_download(pretrained_model_or_path, **mindex_kwargs)
+            config = cls.load_config(config_path, **load_config_kwargs)
             library, orig_class_name = config[subfolder]
             library = importlib.import_module(library)
         except Exception:
             # Fallback to loading the config from the config.json file
-            cls.config_name = "config.json"
-            config = cls.load_config(os.path.join(pretrained_model_or_path), **load_config_kwargs)
+            config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
             library = importlib.import_module("diffusers")
             orig_class_name = config["_class_name"]
 
