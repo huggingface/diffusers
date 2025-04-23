@@ -25,7 +25,7 @@
 You can find all the original Wan2.1 checkpoints under the [Wan-AI](https://huggingface.co/Wan-AI) organization.
 
 > [!TIP]
-> Click on the Wan2.1 models in the right sidebar for more examples of other video generation tasks.
+> Click on the Wan2.1 models in the right sidebar for more examples of video generation.
 
 The example below demonstrates how to generate a video from text optimized for memory or inference speed.
 
@@ -38,17 +38,16 @@ The Wan2.1 text-to-video model below requires ~13GB of VRAM.
 
 ```py
 # pip install ftfy
-
 import torch
 import numpy as np
-from diffusers import AutoencoderKLWan, WanTransformer3DModel, WanPipeline
+from diffusers import AutoModel, WanPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
-from transformers import UMT5EncoderModel, CLIPVisionModel
+from transformers import UMT5EncoderModel
 
 text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = WanTransformer3DModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -67,7 +66,7 @@ transformer.enable_group_offload(
 )
 
 pipeline = WanPipeline.from_pretrained(
-    model_id,
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
@@ -104,20 +103,19 @@ Compilation is slow the first time but subsequent calls to the pipeline are fast
 
 ```py
 # pip install ftfy
-
 import torch
 import numpy as np
-from diffusers import AutoencoderKLWan, WanTransformer3DModel, WanPipeline
+from diffusers import AutoModel, WanPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
-from transformers import UMT5EncoderModel, CLIPVisionModel
+from transformers import UMT5EncoderModel
 
 text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = WanTransformer3DModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 
 pipeline = WanPipeline.from_pretrained(
-    model_id,
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
@@ -162,20 +160,19 @@ export_to_video(output, "output.mp4", fps=16)
 
   ```py
   # pip install ftfy
-
   import torch
-  from diffusers import WanPipeline
+  from diffusers import AutoModel, WanPipeline
   from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
   from diffusers.utils import export_to_video
 
-  vae = AutoencoderKLWan.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+  vae = AutoModel.from_pretrained(
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
   )
   pipeline = WanPipeline.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
   )
   pipeline.scheduler = UniPCMultistepScheduler.from_config(
-    pipeline.scheduler.config, flow_shift=5.0
+      pipeline.scheduler.config, flow_shift=5.0
   )
   pipeline.to("cuda")
 
@@ -194,9 +191,9 @@ export_to_video(output, "output.mp4", fps=16)
   """
 
   output = pipeline(
-    prompt=prompt,
-    num_frames=81,
-    guidance_scale=5.0,
+      prompt=prompt,
+      num_frames=81,
+      guidance_scale=5.0,
   ).frames[0]
   export_to_video(output, "output.mp4", fps=16)
   ```
@@ -205,22 +202,21 @@ export_to_video(output, "output.mp4", fps=16)
 
   ```py
   # pip install ftfy
-
   import torch
-  from diffusers import WanPipeline, WanTransformer3DModel, AutoencoderKLWan
+  from diffusers import WanPipeline, AutoModel
 
-  vae = AutoencoderKLWan.from_single_file(
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors"
+  vae = AutoModel.from_single_file(
+      "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors"
   )
-  transformer = WanTransformer3DModel.from_single_file(
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors",
-    torch_dtype=torch.bfloat16
+  transformer = AutoModel.from_single_file(
+      "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors",
+      torch_dtype=torch.bfloat16
   )
   pipeline = WanPipeline.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
-    vae=vae,
-    transformer=transformer,
-    torch_dtype=torch.bfloat16
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+      vae=vae,
+      transformer=transformer,
+      torch_dtype=torch.bfloat16
   )
   ```
 
@@ -228,7 +224,7 @@ export_to_video(output, "output.mp4", fps=16)
 
 - The number of frames per second (fps) or `k` should be calculated by `4 * k + 1`.
 
-- Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos, and try higher `shift` values (`7.0` to `12.0`) for higher resolution images.
+- Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos and higher `shift` values (`7.0` to `12.0`) for higher resolution images.
 
 ## WanPipeline
 

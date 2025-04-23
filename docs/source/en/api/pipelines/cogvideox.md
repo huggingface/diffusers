@@ -39,13 +39,13 @@ The quantized CogVideoX 5B model below requires ~16GB of VRAM.
 
 ```py
 import torch
-from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel
+from diffusers import CogVideoXPipeline, AutoModel, TorchAoConfig
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 
 # quantize weights to int8 with torchao
 quantization_config = TorchAoConfig("int8wo")
-transformer = CogVideoXTransformer3DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -53,20 +53,19 @@ transformer = CogVideoXTransformer3DModel.from_pretrained(
 )
 
 # fp8 layerwise weight-casting
-transformer = CogVideoXTransformer3DModel.from_pretrained(
-  "THUDM/CogVideoX-5b",
-  subfolder="transformer",
-  torch_dtype=torch.bfloat16
+transformer = AutoModel.from_pretrained(
+    "THUDM/CogVideoX-5b",
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(
-  storage_dtype=torch.float8_e4m3fn,
-  compute_dtype=torch.bfloat16
+    storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16
 )
 
 pipeline = CogVideoXPipeline.from_pretrained(
-  "THUDM/CogVideoX-5b",
-  transformer=transformer,
-  torch_dtype=torch.bfloat16
+    "THUDM/CogVideoX-5b",
+    transformer=transformer,
+    torch_dtype=torch.bfloat16
 )
 pipeline.to("cuda")
 
@@ -81,9 +80,9 @@ with the toy ship's journey symbolizing endless adventures in a whimsical, indoo
 """
 
 video = pipeline(
-  prompt=prompt,
-  guidance_scale=6,
-  num_inference_steps=50
+    prompt=prompt,
+    guidance_scale=6,
+    num_inference_steps=50
 ).frames[0]
 export_to_video(video, "output.mp4", fps=8)
 ```
@@ -95,12 +94,12 @@ Compilation is slow the first time but subsequent calls to the pipeline are fast
 
 ```py
 import torch
-from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel
+from diffusers import CogVideoXPipeline
 from diffusers.utils import export_to_video
 
 pipeline = CogVideoXPipeline.from_pretrained(
-  "THUDM/CogVideoX-2b",
-  torch_dtype=torch.float16
+    "THUDM/CogVideoX-2b",
+    torch_dtype=torch.float16
 ).to("cuda")
 
 # torch.compile
@@ -117,9 +116,9 @@ with the toy ship's journey symbolizing endless adventures in a whimsical, indoo
 """
 
 video = pipeline(
-  prompt=prompt,
-  guidance_scale=6,
-  num_inference_steps=50
+    prompt=prompt,
+    guidance_scale=6,
+    num_inference_steps=50
 ).frames[0]
 export_to_video(video, "output.mp4", fps=8)
 ```
@@ -133,13 +132,13 @@ export_to_video(video, "output.mp4", fps=8)
 
   ```py
   import torch
-  from diffusers import CogVideoXPipeline, CogVideoXTransformer3DModel
+  from diffusers import CogVideoXPipeline
   from diffusers.hooks import apply_group_offloading
   from diffusers.utils import export_to_video
 
   pipeline = CogVideoXPipeline.from_pretrained(
-    "THUDM/CogVideoX-5b",
-    torch_dtype=torch.bfloat16
+      "THUDM/CogVideoX-5b",
+      torch_dtype=torch.bfloat16
   )
   pipeline.to("cuda")
 

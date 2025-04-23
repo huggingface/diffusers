@@ -12,7 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Video generation
 
-Video generation models extend image generation (can be considered a 1-frame video) to also process data related to space and time. Making sure all this data - text, space, time - remain consistent and aligned from frame-to-frame is a big challenge in generating long and high-resolution videos. Modern video models tackle this challenge with the diffusion transformer (DiT) architecture. This reduces computational costs and allows more efficient scaling to larger and higher-quality image and video data.
+Video generation models extend image generation (can be considered a 1-frame video) to also process data related to space and time. Making sure all this data - text, space, time - remain consistent and aligned from frame-to-frame is a big challenge in generating long and high-resolution videos.
+
+Modern video models tackle this challenge with the diffusion transformer (DiT) architecture. This reduces computational costs and allows more efficient scaling to larger and higher-quality image and video data.
 
 Check out what some of these video models are capable of below.
 
@@ -21,17 +23,16 @@ Check out what some of these video models are capable of below.
 
 ```py
 # pip install ftfy
-
 import torch
 import numpy as np
-from diffusers import AutoencoderKLWan, WanTransformer3DModel, WanPipeline
+from diffusers import AutoModel, WanPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
-from transformers import UMT5EncoderModel, CLIPVisionModel
+from transformers import UMT5EncoderModel
 
 text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = WanTransformer3DModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -50,7 +51,7 @@ transformer.enable_group_offload(
 )
 
 pipeline = WanPipeline.from_pretrained(
-    model_id,
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
@@ -85,12 +86,12 @@ export_to_video(output, "output.mp4", fps=16)
 
 ```py
 import torch
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, HunyuanVideoTransformer3DModel, HunyuanVideoPipeline
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, HunyuanVideoPipeline
 from diffusers.utils import export_to_video
 
 # quantize weights to int4 with bitsandbytes
 quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -117,19 +118,18 @@ export_to_video(video, "output.mp4", fps=15)
 
 ```py
 import torch
-from diffusers import LTXPipeline, LTXVideoTransformer3DModel
+from diffusers import LTXPipeline, AutoModel
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 
 # fp8 layerwise weight-casting
-transformer = LTXVideoTransformer3DModel.from_pretrained(
-  "Lightricks/LTX-Video",
-  subfolder="transformer",
-  torch_dtype=torch.bfloat16
+transformer = AutoModel.from_pretrained(
+    "Lightricks/LTX-Video",
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(
-  storage_dtype=torch.float8_e4m3fn,
-  compute_dtype=torch.bfloat16
+    storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16
 )
 
 pipeline = LTXPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, torch_dtype=torch.bfloat16)
@@ -162,20 +162,20 @@ export_to_video(video, "output.mp4", fps=24)
 </hfoption>
 </hfoptions>
 
-This guide will cover the general basics of video generation such as which parameters to configure and how to reduce the memory costs of some of these models.
+This guide will cover video generation basics such as which parameters to configure and how to reduce their memory usage.
 
 > [!TIP]
 > If you're interested in learning more about how to use a specific model, please refer to their pipeline API model card.
 
 ## Pipeline parameters
 
-There are several parameters to configure in the pipeline that'll affect video generation quality or speed. Experimenting with different parameter values is important for discovering the appropriate quality/speed tradeoff for your use case.
+There are several parameters to configure in the pipeline that'll affect video generation quality or speed. Experimenting with different parameter values is important for discovering the appropriate quality and speed tradeoff.
 
 ### num_frames
 
 A frame is a still image that is played in a sequence of other frames to create motion or a video. Control the number of frames generated per second with `num_frames`. Increasing `num_frames` increases perceived motion smoothness and visual coherence, making it especially important for videos with dynamic content. A higher `num_frames` value also increases video duration.
 
-Some video models require more specific `num_frames` values for inference. For example, [`HunyuanVideo`] recommends calculating the `num_frames` with `(4 * num_frames) +1`. Always check a pipeline's API model card to see if there is a recommended value.
+Some video models require more specific `num_frames` values for inference. For example, [`HunyuanVideoPipeline`] recommends calculating the `num_frames` with `(4 * num_frames) +1`. Always check a pipelines API model card to see if there is a recommended value.
 
 ```py
 import torch
@@ -187,7 +187,11 @@ pipeline = LTXPipeline.from_pretrained(
 ).to("cuda")
 
 prompt = """
-A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage
+A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman 
+with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The 
+camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and 
+natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be 
+real-life footage
 """
 
 video = pipeline(
@@ -205,7 +209,7 @@ export_to_video(video, "output.mp4", fps=24)
 
 ### guidance_scale
 
-Guidance scale or "cfg" controls how closely the generated frames adhere to the input conditioning (text, image or both). Increasing `guidance_scale` generates frames that resemble the input conditions more closely and finer details, but risk introducing artifacts and reducing output diversity. Lower `guidance_scale` values encourages looser prompt adherence and increased output variety, but details may not be as great. If it's too low, it may ignore your prompt entirely and generate random noise.
+Guidance scale or "cfg" controls how closely the generated frames adhere to the input conditioning (text, image or both). Increasing `guidance_scale` generates frames that resemble the input conditions more closely and includes finer details, but risk introducing artifacts and reducing output diversity. Lower `guidance_scale` values encourages looser prompt adherence and increased output variety, but details may not be as great. If it's too low, it may ignore your prompt entirely and generate random noise.
 
 ```py
 import torch
@@ -218,9 +222,11 @@ pipeline = CogVideoXPipeline.from_pretrained(
 ).to("cuda")
 
 prompt = """
-A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over a plush, blue carpet that mimics the waves of the sea. 
-The ship's hull is painted a rich brown, with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an oceanic expanse. 
-Surrounding the ship are various other toys and children's items, hinting at a playful environment. The scene captures the innocence and imagination of childhood, 
+A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over
+a plush, blue carpet that mimics the waves of the sea. The ship's hull is painted a rich brown, 
+with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an 
+oceanic expanse. Surrounding the ship are various other toys and children's items, hinting at 
+a playful environment. The scene captures the innocence and imagination of childhood, 
 with the toy ship's journey symbolizing endless adventures in a whimsical, indoor setting.
 """
 
@@ -238,7 +244,6 @@ A negative prompt is useful for excluding things you don't want to see in the ge
 
 ```py
 # pip install ftfy
-
 import torch
 from diffusers import WanPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
@@ -265,8 +270,8 @@ prompt = """
 steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot, 
 revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
 for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
-shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts 
+dynamic shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
 """
 
 output = pipeline(
@@ -279,26 +284,25 @@ export_to_video(output, "output.mp4", fps=16)
 
 ## Reduce memory usage
 
-Recent video models like [`HunyuanVideo`] and [`Wan`], which have 10B+ parameters, require a lot of memory and it often exceeds the memory availabe on consumer hardware. Diffusers offers several techniques for reducing the memory requirements of these large models.
+Recent video models like [`HunyuanVideoPipeline`] and [`WanPipeline`], which have 10B+ parameters, require a lot of memory and it often exceeds the memory availabe on consumer hardware. Diffusers offers several techniques for reducing the memory requirements of these large models.
 
 > [!TIP]
-> Refer to the [Reduce memory usage](../optimization/memory) guide for more details about other memory saving tricks.
+> Refer to the [Reduce memory usage](../optimization/memory) guide for more details about other memory saving techniques.
 
-One of these techniques is [group-offloading](../optimization/memory#group-offloading), which offloads groups of internal model layers (such as `torch.nn.Seuqnetial`) to the CPU when it isn't being used. These layers are only loaded when they're needed for computation to avoid storing **all** the model components on the GPU. For a 14B parameter model like [`Wan`], group-offloading can lower the required memory to ~13GB of VRAM.
+One of these techniques is [group-offloading](../optimization/memory#group-offloading), which offloads groups of internal model layers (such as `torch.nn.Sequential`) to the CPU when it isn't being used. These layers are only loaded when they're needed for computation to avoid storing **all** the model components on the GPU. For a 14B parameter model like [`WanPipeline`], group-offloading can lower the required memory to ~13GB of VRAM.
 
 ```py
 # pip install ftfy
-
 import torch
 import numpy as np
-from diffusers import AutoencoderKLWan, WanTransformer3DModel, WanPipeline
+from diffusers import AutoModel, WanPipeline
 from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
-from transformers import UMT5EncoderModel, CLIPVisionModel
+from transformers import UMT5EncoderModel
 
 text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = WanTransformer3DModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -317,7 +321,7 @@ transformer.enable_group_offload(
 )
 
 pipeline = WanPipeline.from_pretrained(
-    model_id,
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
@@ -356,14 +360,14 @@ The example below uses [bitsandbytes](../quantization/bitsandbytes) to quantize 
 
 import torch
 from diffusers import WanPipeline
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, WanTransformer3DModel, WanPipeline, AutoencoderKLWan
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, WanPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from transformers import UMT5EncoderModel
 from diffusers.utils import export_to_video
 
 # quantize transformer and text encoder weights with bitsandbytes
 quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-transformer = WanTransformer3DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -378,7 +382,7 @@ text_encoder = UMT5EncoderModel.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-vae = AutoencoderKLWan.from_pretrained(
+vae = AutoModel.from_pretrained(
   "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32
 )
 pipeline = WanPipeline.from_pretrained(
@@ -399,8 +403,8 @@ prompt = """
 steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot, 
 revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
 for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
-shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts 
+dynamic shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
 """
 
 output = pipeline(
@@ -413,7 +417,7 @@ export_to_video(output, "output.mp4", fps=16)
 
 ## Inference speed
 
-[torch.compile](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial_.html) can speedup inference by using optimized kernels. Compilation may take longer the first time, but once compiled, it is much faster. It is best to compile the pipeline once, and then use the pipeline multiple times without changing anything. A change, such as in the image size, triggers recompilation.
+[torch.compile](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial_.html) can speedup inference by using optimized kernels. Compilation takes longer the first time, but once compiled, it is much faster. It is best to compile the pipeline once, and then use the pipeline multiple times without changing anything. A change, such as in the image size, triggers recompilation.
 
 The example below compiles the transformer in the pipeline and uses the `"max-autotune"` mode to maximize performance.
 

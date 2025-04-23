@@ -25,6 +25,8 @@
 You can find all the original HunyuanVideo checkpoints under the [Tencent](https://huggingface.co/tencent) organization.
 
 > [!TIP]
+> Click on the HunyuanVideo models in the right sidebar for more examples of video generation tasks.
+>
 > The examples below use a checkpoint from [hunyuanvideo-community](https://huggingface.co/hunyuanvideo-community) because the weights are stored in a layout compatible with Diffusers.
 
 The example below demonstrates how to generate a video optimized for memory or inference speed.
@@ -38,12 +40,12 @@ The quantized HunyuanVideo model below requires ~14GB of VRAM.
 
 ```py
 import torch
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, HunyuanVideoTransformer3DModel, HunyuanVideoPipeline
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, HunyuanVideoPipeline
 from diffusers.utils import export_to_video
 
 # quantize weights to int4 with bitsandbytes
 quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -72,12 +74,12 @@ Compilation is slow the first time but subsequent calls to the pipeline are fast
 
 ```py
 import torch
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, HunyuanVideoTransformer3DModel, HunyuanVideoPipeline
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, HunyuanVideoPipeline
 from diffusers.utils import export_to_video
 
 # quantize weights to int4 with bitsandbytes
 quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+transformer = AutoModel.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -114,12 +116,12 @@ export_to_video(video, "output.mp4", fps=15)
 
   ```py
   import torch
-  from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, HunyuanVideoTransformer3DModel, HunyuanVideoPipeline
+  from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig, AutoModel, HunyuanVideoPipeline
   from diffusers.utils import export_to_video
 
   # quantize weights to int4 with bitsandbytes
   quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
-  transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+  transformer = AutoModel.from_pretrained(
       "hunyuanvideo-community/HunyuanVideo",
       subfolder="transformer",
       quantization_config=quant_config,
@@ -157,7 +159,7 @@ export_to_video(video, "output.mp4", fps=15)
   | vae dtype | `torch.float16` |
   | `num_frames (k)` | 4 * `k` + 1 |
 
-- Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos, and try higher `shift` values (`7.0` to `12.0`) for higher resolution images.
+- Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos and higher `shift` values (`7.0` to `12.0`) for higher resolution images.
 
 ## HunyuanVideoPipeline
 

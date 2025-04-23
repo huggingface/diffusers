@@ -38,19 +38,18 @@ The LTX-Video model below requires ~10GB of VRAM.
 
 ```py
 import torch
-from diffusers import LTXPipeline, LTXVideoTransformer3DModel
+from diffusers import LTXPipeline, AutoModel
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
 
 # fp8 layerwise weight-casting
-transformer = LTXVideoTransformer3DModel.from_pretrained(
-  "Lightricks/LTX-Video",
-  subfolder="transformer",
-  torch_dtype=torch.bfloat16
+transformer = AutoModel.from_pretrained(
+    "Lightricks/LTX-Video",
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(
-  storage_dtype=torch.float8_e4m3fn,
-  compute_dtype=torch.bfloat16
+    storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16
 )
 
 pipeline = LTXPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, torch_dtype=torch.bfloat16)
@@ -159,17 +158,17 @@ export_to_video(video, "output.mp4", fps=24)
   ```py
   import torch
   from diffusers.utils import export_to_video
-  from diffusers import LTXPipeline, LTXVideoTransformer3DModel, GGUFQuantizationConfig
+  from diffusers import LTXPipeline, AutoModel, GGUFQuantizationConfig
 
-  transformer = LTXVideoTransformer3DModel.from_single_file(
-    "https://huggingface.co/city96/LTX-Video-gguf/blob/main/ltx-video-2b-v0.9-Q3_K_S.gguf"
-    quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-    torch_dtype=torch.bfloat16
+  transformer = AutoModel.from_single_file(
+      "https://huggingface.co/city96/LTX-Video-gguf/blob/main/ltx-video-2b-v0.9-Q3_K_S.gguf"
+      quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+      torch_dtype=torch.bfloat16
   )
   pipeline = LTXPipeline.from_pretrained(
-    "Lightricks/LTX-Video",
-    transformer=transformer,
-    torch_dtype=torch.bfloat16
+      "Lightricks/LTX-Video",
+      transformer=transformer,
+      torch_dtype=torch.bfloat16
   )
   ```
 
