@@ -251,8 +251,8 @@ class VisualClozePipeline(
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
         self.image_processor = VisualClozeProcessor(
-            vae_scale_factor=self.vae_scale_factor * 2, vae_latent_channels=self.latent_channels, 
-            resolution=resolution)
+            vae_scale_factor=self.vae_scale_factor * 2, vae_latent_channels=self.latent_channels, resolution=resolution
+        )
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )

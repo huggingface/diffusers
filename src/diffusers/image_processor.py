@@ -14,7 +14,7 @@
 
 import math
 import warnings
-from typing import List, Optional, Tuple, Union, Dict
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -1322,45 +1322,43 @@ class PixArtImageProcessor(VaeImageProcessor):
 class VisualClozeProcessor(VaeImageProcessor):
     """
     Image processor for the VisualCloze pipeline.
-    
-    This processor handles the preprocessing of images for visual cloze tasks,
-    including resizing, normalization, and mask generation.
-    
+
+    This processor handles the preprocessing of images for visual cloze tasks, including resizing, normalization, and
+    mask generation.
+
     Args:
-        resolution (int, optional): 
-            Target resolution for processing images. Each image will be resized to this resolution 
-            before being concatenated to avoid the out-of-memory error. Defaults to 384.
+        resolution (int, optional):
+            Target resolution for processing images. Each image will be resized to this resolution before being
+            concatenated to avoid the out-of-memory error. Defaults to 384.
         *args: Additional arguments passed to VaeImageProcessor
         **kwargs: Additional keyword arguments passed to VaeImageProcessor
     """
-    
+
     def __init__(self, *args, resolution: int = 384, **kwargs):
         super().__init__(*args, **kwargs)
         self.resolution = resolution
 
     def preprocess_image(
-        self, 
-        input_images: List[List[Optional[Image.Image]]], 
-        vae_scale_factor: int
+        self, input_images: List[List[Optional[Image.Image]]], vae_scale_factor: int
     ) -> Tuple[List[List[torch.Tensor]], List[List[List[int]]], List[int]]:
         """
         Preprocesses input images for the VisualCloze pipeline.
-        
+
         This function handles the preprocessing of input images by:
         1. Resizing and cropping images to maintain consistent dimensions
         2. Converting images to the Tensor format for the VAE
         3. Normalizing pixel values
         4. Tracking image sizes and positions of target images
-        
+
         Args:
-            input_images (List[List[Optional[Image.Image]]]): 
+            input_images (List[List[Optional[Image.Image]]]):
                 A nested list of PIL Images where:
                 - Outer list represents different samples, including in-context examples and the query
                 - Inner list contains images for the task
                 - In the last row, condition images are provided and the target images are placed as None
-            vae_scale_factor (int): 
+            vae_scale_factor (int):
                 The scale factor used by the VAE for resizing images
-                
+
         Returns:
             Tuple containing:
             - List[List[torch.Tensor]]: Preprocessed images in tensor format
@@ -1426,34 +1424,30 @@ class VisualClozeProcessor(VaeImageProcessor):
         return processed_images, image_sizes, target_position
 
     def preprocess_mask(
-        self, 
-        input_images: List[List[Image.Image]], 
-        target_position: List[int]
+        self, input_images: List[List[Image.Image]], target_position: List[int]
     ) -> List[List[torch.Tensor]]:
         """
         Generate masks for the VisualCloze pipeline.
-        
+
         Args:
-            input_images (List[List[Image.Image]]): 
+            input_images (List[List[Image.Image]]):
                 Processed images from preprocess_image
-            target_position (List[int]): 
+            target_position (List[int]):
                 Binary list marking the positions of target images (1 for target, 0 for condition)
-                
+
         Returns:
-            List[List[torch.Tensor]]: 
+            List[List[torch.Tensor]]:
                 A nested list of mask tensors (1 for target positions, 0 for condition images)
         """
         mask = []
         for i, row in enumerate(input_images):
             if i == len(input_images) - 1:  # Query row
                 row_masks = [
-                    torch.full((1, 1, row[0].shape[2], row[0].shape[3]), fill_value=m) 
-                    for m in target_position
+                    torch.full((1, 1, row[0].shape[2], row[0].shape[3]), fill_value=m) for m in target_position
                 ]
             else:  # In-context examples
                 row_masks = [
-                    torch.full((1, 1, row[0].shape[2], row[0].shape[3]), fill_value=0) 
-                    for _ in target_position
+                    torch.full((1, 1, row[0].shape[2], row[0].shape[3]), fill_value=0) for _ in target_position
                 ]
             mask.append(row_masks)
         return mask
@@ -1478,7 +1472,7 @@ class VisualClozeProcessor(VaeImageProcessor):
         image = self.pil_to_numpy(image)  # to np
         image = self.numpy_to_pt(image)  # to pt
         image = self.normalize(image)
-            
+
         input_images[0][0] = image
         image_sizes = [[[height, width]]]
         return input_images, image_sizes
