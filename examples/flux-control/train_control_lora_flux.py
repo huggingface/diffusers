@@ -57,7 +57,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -91,9 +91,9 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
             torch_dtype=weight_dtype,
         )
         pipeline.load_lora_weights(args.output_dir)
-        assert (
-            pipeline.transformer.config.in_channels == initial_channels * 2
-        ), f"{pipeline.transformer.config.in_channels=}"
+        assert pipeline.transformer.config.in_channels == initial_channels * 2, (
+            f"{pipeline.transformer.config.in_channels=}"
+        )
 
     pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -954,7 +954,7 @@ def main(args):
 
             lora_state_dict = FluxControlPipeline.lora_state_dict(input_dir)
             transformer_lora_state_dict = {
-                f'{k.replace("transformer.", "")}': v
+                f"{k.replace('transformer.', '')}": v
                 for k, v in lora_state_dict.items()
                 if k.startswith("transformer.") and "lora" in k
             }
