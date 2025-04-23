@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Reduce memory usage
 
-Modern diffusion models like [Flux](../api/pipelines/flux) and [Wan](../api/pipelines/wan) have billions of parameters that take up a lot of memory on your hardware for inference. This poses a challenge because common GPUs often don't have sufficient memory.
+Modern diffusion models like [Flux](../api/pipelines/flux) and [Wan](../api/pipelines/wan) have billions of parameters that take up a lot of memory on your hardware for inference. This is challenging because common GPUs often don't have sufficient memory.
 
-To overcome these memory constraints, you can use a second GPU (if available), offload some of the pipeline components to the CPU, and more. This guide will show you how to reduce your memory usage.
+To overcome the memory limitations, you can use more than one GPU (if available), offload some of the pipeline components to the CPU, and more. This guide will show you how to reduce your memory usage.
 
 ## Multiple GPUs
 
@@ -26,9 +26,9 @@ pip install -U accelerate
 
 ### Sharded checkpoints
 
-Loading large checkpoints in several shards in useful because shards are loaded one at a time. This keeps memory usage low, only requiring enough memory for the model size and the largest shard size. We recommend sharding when the fp32 checkpoint is greater than 5GB. The default shard size is 5GB.
+Loading large checkpoints in several shards in useful because the shards are loaded one at a time. This keeps memory usage low, only requiring enough memory for the model size and the largest shard size. We recommend sharding when the fp32 checkpoint is greater than 5GB. The default shard size is 5GB.
 
-You can shard a checkpoint in [`~DiffusionPipeline.save_pretrained`] with the `max_shard_size` parameter.
+Shard a checkpoint in [`~DiffusionPipeline.save_pretrained`] with the `max_shard_size` parameter.
 
 ```py
 from diffusers import AutoModel
@@ -39,7 +39,7 @@ unet = AutoModel.from_pretrained(
 unet.save_pretrained("sdxl-unet-sharded", max_shard_size="5GB")
 ```
 
-Reload the sharded checkpoint to save memory.
+Now you can use the sharded checkpoint, instead of the regular checkpoint, to save memory.
 
 ```py
 import torch
@@ -58,9 +58,9 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 ### Device placement
 
 > [!WARNING]
-> Device placement is an experimental feature and the API may change. Only the `balanced` strategy is supported at the moment, and we plan to support additional mapping strategies in the future.
+> Device placement is an experimental feature and the API may change. Only the `balanced` strategy is supported at the moment. We plan to support additional mapping strategies in the future.
 
-The `device_map` parameter allows you to control how the model components in a pipeline are distributed across your devices. The `balanced` device placement strategy evenly splits the pipeline across all available devices.
+The `device_map` parameter controls how the model components in a pipeline are distributed across devices. The `balanced` device placement strategy evenly splits the pipeline across all available devices.
 
 ```py
 import torch
@@ -73,7 +73,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 )
 ```
 
-Access the pipeline's device map with `hf_device_map`.
+You can inspect a pipeline's device map with `hf_device_map`.
 
 ```py
 print(pipeline.hf_device_map)
@@ -95,9 +95,9 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 )
 ```
 
-Diffusers uses the maxmium memory of all devices, but if they don't fit on the GPUs, then you'll need to use a single GPU and offload to the CPU with the methods below.
+Diffusers uses the maxmium memory of all devices by default, but if they don't fit on the GPUs, then you'll need to use a single GPU and offload to the CPU with the methods below.
 
-- [`~DiffusionPipeline.enable_model_cpu_offload`] only works on a single GPU and a model may not fit on it
+- [`~DiffusionPipeline.enable_model_cpu_offload`] only works on a single GPU but a very large model may not fit on it
 - [`~DiffusionPipeline.enable_sequential_cpu_offload`] may work but it is extremely slow and also limited to a single GPU
 
 Use the [`~DiffusionPipeline.reset_device_map`] method to reset the `device_map`. This is necessary if you want to use methods like `.to()`, [`~DiffusionPipeline.enable_sequential_cpu_offload`], and [`~DiffusionPipeline.enable_model_cpu_offload`] on a pipeline that was device-mapped.
@@ -108,9 +108,9 @@ pipeline.reset_device_map
 
 ## Sliced VAE
 
-Sliced VAE saves memory by processing an image in smaller non-overlapping "slices" instead of processing the entire image at once. This reduces peak memory usage because the GPU is only processing one slice at a time.
+Sliced VAE saves memory by processing an image in smaller non-overlapping "slices" instead of processing the entire image at once. This reduces peak memory usage because the GPU is only processing a small slice at a time.
 
-Call [`~DiffusionPipeline.enable_vae_slicing`] to sliced VAE. You can expect a small increase in performance when decoding multi-image batches and no performance impact for single-image batches.
+Call [`~StableDiffusionPipeline.enable_vae_slicing`] to enable sliced VAE. You can expect a small increase in performance when decoding multi-image batches and no performance impact for single-image batches.
 
 ```py
 import torch
@@ -129,7 +129,7 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 
 VAE tiling saves memory by dividing an image into smaller overlapping tiles instead of processing the entire image at once. This also reduces peak memory usage because the GPU is only processing a tile at a time. Unlike sliced VAE, tiled VAE maintains some context between tiles because they overlap which can generate more coherent images.
 
-Call [`~DiffusionPipeline.enable_vae_tiling`] to enable VAE tiling. The generate image may have some tone variation from tile-to-tile because they're decoded separately, but there shouldn't be any obvious seams between the tiles. Tiling is disabled for images that are 512x512 or smaller.
+Call [`~StableDiffusionPipeline.enable_vae_tiling`] to enable VAE tiling. The generated image may have some tone variation from tile-to-tile because they're decoded separately, but there shouldn't be any obvious seams between the tiles. Tiling is disabled for images that are 512x512 or smaller.
 
 ```py
 import torch
@@ -149,7 +149,7 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 
 ## CPU offloading
 
-CPU offloading selectively moves weights from the GPU to the CPU to reduce memory usage. When a component is required, it is transferred to the GPU and when it isn't required, it is moved to the CPU. This method works on submodules rather than whole models.
+CPU offloading selectively moves weights from the GPU to the CPU. When a component is required, it is transferred to the GPU and when it isn't required, it is moved to the CPU. This method works on submodules rather than whole models. It saves memory by avoiding storing the entire model on the GPU.
 
 CPU offloading dramatically reduces memory usage, but it is also extremely slow because submodules are passed back and forth multiple times between devices.
 
@@ -214,7 +214,7 @@ Group offloading moves groups of internal layers ([torch.nn.ModuleList](https://
 > [!WARNING]
 > Group offloading may not work with all models if the forward implementation contains weight-dependent device casting of inputs because it may clash with group offloading's device casting mechanism.
 
-Call [`ModelMixin.enable_group_offload`] to enable it for standard Diffusers model components that inherit from [`ModelMixin`]. For other model components that don't inherit from [`ModelMixin`], such as a generic [torch.nn.Module](https://pytorch.org/docs/stable/generated/torch.nn.Module.html), use [`~hooks.apply_group_offloading`] instead.
+Call [`~ModelMixin.enable_group_offload`] to enable it for standard Diffusers model components that inherit from [`ModelMixin`]. For other model components that don't inherit from [`ModelMixin`], such as a generic [torch.nn.Module](https://pytorch.org/docs/stable/generated/torch.nn.Module.html), use [`~hooks.apply_group_offloading`] instead.
 
 The `offload_type` parameter can be set to `block_level` or `leaf_level`.
 
@@ -331,7 +331,7 @@ apply_layerwise_casting(
 
 ## torch.channels_last
 
-[torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) flips how tensors are stored from `batch size, channels, height, width` to `batch size, heigh, width, channels`. This aligns the tensors with how the hardware sequentially accesses the tensors stored in memory and avoids skipping around in memory to access the pixel values.
+[torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) flips how tensors are stored from `(batch size, channels, height, width)` to `(batch size, heigh, width, channels)`. This aligns the tensors with how the hardware sequentially accesses the tensors stored in memory and avoids skipping around in memory to access the pixel values.
 
 Not all operators currently support the channels-last format and may result in worst performance, but it is still worth trying.
 
@@ -454,15 +454,15 @@ with torch.inference_mode():
     image = pipe([prompt] * 1, num_inference_steps=50).images[0]
 ```
 
-## Memory efficient attention
+## Memory-efficient attention
 
 The Transformers attention mechanism is memory-intensive, especially for long sequences, so you can try using different and more memory-efficient attention types.
 
-By default, if PyTorch >= 2.0 is installed, the PyTorch [scaled dot-product attention (SDPA)](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) is used. You don't need to make any additional changes to your code.
+By default, if PyTorch >= 2.0 is installed, [scaled dot-product attention (SDPA)](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) is used. You don't need to make any additional changes to your code.
 
 SDPA supports [FlashAttention](https://github.com/Dao-AILab/flash-attention) and [xFormers](https://github.com/facebookresearch/xformers) as well as a native C++ PyTorch implementation. It automatically selects the most optimal implementation based on your input.
 
-You can also explicitly use xFormers with the [`~ModelMixin.enable_xformers_memory_efficient_attention`] method.
+You can explicitly use xFormers with the [`~ModelMixin.enable_xformers_memory_efficient_attention`] method.
 
 ```py
 # pip install xformers
