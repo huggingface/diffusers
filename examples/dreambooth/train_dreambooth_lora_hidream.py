@@ -236,6 +236,7 @@ def log_validation(
                 }
             )
 
+    pipeline.to("cpu")
     del pipeline
     free_memory()
 
@@ -1007,6 +1008,7 @@ def main(args):
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
+            pipeline.to("cpu")
             del pipeline
             free_memory()
 
@@ -1738,7 +1740,6 @@ def main(args):
                 is_final_validation=True,
                 torch_dtype=weight_dtype,
             )
-            pipeline.to("cpu")
             del pipeline
             free_memory()
 
