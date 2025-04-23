@@ -1131,7 +1131,7 @@ def main(args):
     if args.lora_layers is not None:
         target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
-        target_modules = ["to_k", "to_q", "to_v", "to_out", "to_out_t", "to_q_t", "to_v_t", "to_k_t"]
+        target_modules = ["to_k", "to_q", "to_v", "to_out"]
 
     # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
