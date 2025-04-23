@@ -823,13 +823,13 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
 
         if prompt_embeds is not None:
             deprecation_message = "The `prompt_embeds` argument is deprecated. Please use `prompt_embeds_t5` and `prompt_embeds_llama3` instead."
-            deprecate("prompt_embeds", "0.34.0", deprecation_message)
+            deprecate("prompt_embeds", "0.35.0", deprecation_message)
             prompt_embeds_t5 = prompt_embeds[0]
             prompt_embeds_llama3 = prompt_embeds[1]
 
         if negative_prompt_embeds is not None:
             deprecation_message = "The `negative_prompt_embeds` argument is deprecated. Please use `negative_prompt_embeds_t5` and `negative_prompt_embeds_llama3` instead."
-            deprecate("negative_prompt_embeds", "0.34.0", deprecation_message)
+            deprecate("negative_prompt_embeds", "0.35.0", deprecation_message)
             negative_prompt_embeds_t5 = negative_prompt_embeds[0]
             negative_prompt_embeds_llama3 = negative_prompt_embeds[1]
 
