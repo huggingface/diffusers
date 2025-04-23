@@ -21,6 +21,7 @@ from ..utils import get_logger
 
 if TYPE_CHECKING:
     from ..models.attention_processor import AttentionProcessor
+    from ..pipelines.modular_pipeline import BlockState
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -30,6 +31,7 @@ class BaseGuidance:
     r"""Base class providing the skeleton for implementing guidance techniques."""
 
     _input_predictions = None
+    _identifier_key = "__guidance_identifier__"
 
     def __init__(self, start: float = 0.0, stop: float = 1.0):
         self._start = start
@@ -37,7 +39,7 @@ class BaseGuidance:
         self._step: int = None
         self._num_inference_steps: int = None
         self._timestep: torch.LongTensor = None
-        self._preds: Dict[str, torch.Tensor] = {}
+        self._input_fields: Dict[str, Union[str, Tuple[str, str]]] = None
         self._num_outputs_prepared: int = 0
         self._enabled = True
 
@@ -65,9 +67,45 @@ class BaseGuidance:
         self._step = step
         self._num_inference_steps = num_inference_steps
         self._timestep = timestep
-        self._preds = {}
         self._num_outputs_prepared = 0
 
+    def set_input_fields(self, **kwargs: Dict[str, Union[str, Tuple[str, str]]]) -> None:
+        """
+        Set the input fields for the guidance technique. The input fields are used to specify the names of the
+        returned attributes containing the prepared data after `prepare_inputs` is called. The prepared data is
+        obtained from the values of the provided keyword arguments to this method.
+
+        Args:
+            **kwargs (`Dict[str, Union[str, Tuple[str, str]]]`):
+                A dictionary where the keys are the names of the fields that will be used to store the data once
+                it is prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2,
+                which is used to look up the required data provided for preparation.
+
+                If a string is provided, it will be used as the conditional data (or unconditional if used with
+                a guidance method that requires it). If a tuple of length 2 is provided, the first element must
+                be the conditional data identifier and the second element must be the unconditional data identifier
+                or None.
+
+                Example:
+                
+                ```
+                data = {"prompt_embeds": <some tensor>, "negative_prompt_embeds": <some tensor>, "latents": <some tensor>}
+
+                BaseGuidance.set_input_fields(
+                    latents="latents",
+                    prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
+                )
+                ```
+        """
+        for key, value in kwargs.items():
+            is_string = isinstance(value, str)
+            is_tuple_of_str_with_len_2 = isinstance(value, tuple) and len(value) == 2 and all(isinstance(v, str) for v in value)
+            if not (is_string or is_tuple_of_str_with_len_2):
+                raise ValueError(
+                    f"Expected `set_input_fields` to be called with a string or a tuple of string with length 2, but got {type(value)} for key {key}."
+                )
+        self._input_fields = kwargs
+    
     def prepare_models(self, denoiser: torch.nn.Module) -> None:
         """
         Prepares the models for the guidance technique on a given batch of data. This method should be overridden in
@@ -75,18 +113,18 @@ class BaseGuidance:
         """
         pass
     
-    def prepare_inputs(self, denoiser: torch.nn.Module, *args: Union[Tuple[torch.Tensor], List[torch.Tensor]]) -> Tuple[List[torch.Tensor], ...]:
+    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
         raise NotImplementedError("BaseGuidance::prepare_inputs must be implemented in subclasses.")
 
-    def prepare_outputs(self, denoiser: torch.nn.Module, pred: torch.Tensor) -> None:
-        raise NotImplementedError("BaseGuidance::prepare_outputs must be implemented in subclasses.")
-
-    def __call__(self, **kwargs) -> Any:
-        if len(kwargs) != self.num_conditions:
+    def __call__(self, data: List["BlockState"]) -> Any:
+        if not all(hasattr(d, "noise_pred") for d in data):
+            raise ValueError("Expected all data to have `noise_pred` attribute.")
+        if len(data) != self.num_conditions:
             raise ValueError(
-                f"Expected {self.num_conditions} arguments, but got {len(kwargs)}. Please provide the correct number of arguments."
+                f"Expected {self.num_conditions} data items, but got {len(data)}. Please check the input data."
             )
-        return self.forward(**kwargs)
+        forward_inputs = {getattr(d, self._identifier_key): d.noise_pred for d in data}
+        return self.forward(**forward_inputs)
 
     def forward(self, *args, **kwargs) -> Any:
         raise NotImplementedError("BaseGuidance::forward must be implemented in subclasses.")
@@ -102,10 +140,48 @@ class BaseGuidance:
     @property
     def num_conditions(self) -> int:
         raise NotImplementedError("BaseGuidance::num_conditions must be implemented in subclasses.")
+    
+    @classmethod
+    def _prepare_batch(cls, input_fields: Dict[str, Union[str, Tuple[str, str]]], data: "BlockState", tuple_index: int, identifier: str) -> "BlockState":
+        """
+        Prepares a batch of data for the guidance technique. This method is used in the `prepare_inputs` method of
+        the `BaseGuidance` class. It prepares the batch based on the provided tuple index.
 
-    @property
-    def outputs(self) -> Dict[str, torch.Tensor]:
-        return self._preds, {}
+        Args:
+            input_fields (`Dict[str, Union[str, Tuple[str, str]]]`):
+                A dictionary where the keys are the names of the fields that will be used to store the data once
+                it is prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2,
+                which is used to look up the required data provided for preparation.
+                If a string is provided, it will be used as the conditional data (or unconditional if used with
+                a guidance method that requires it). If a tuple of length 2 is provided, the first element must
+                be the conditional data identifier and the second element must be the unconditional data identifier
+                or None.
+            data (`BlockState`):
+                The input data to be prepared.
+            tuple_index (`int`):
+                The index to use when accessing input fields that are tuples.
+        
+        Returns:
+            `BlockState`: The prepared batch of data.
+        """
+        from ..pipelines.modular_pipeline import BlockState
+
+        if input_fields is None:
+            raise ValueError("Input fields have not been set. Please call `set_input_fields` before preparing inputs.")
+        data_batch = {}
+        for key, value in input_fields.items():
+            try:
+                if isinstance(value, str):
+                    data_batch[key] = getattr(data, value)
+                elif isinstance(value, tuple):
+                    data_batch[key] = getattr(data, value[tuple_index])
+                else:
+                    # We've already checked that value is a string or a tuple of strings with length 2
+                    pass
+            except AttributeError:
+                raise ValueError(f"Expected `data` to have attribute(s) {value}, but it does not. Please check the input data.")
+        data_batch[cls._identifier_key] = identifier
+        return BlockState(**data_batch)
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):

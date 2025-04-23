@@ -2239,64 +2239,48 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
         data.extra_step_kwargs = self.prepare_extra_step_kwargs(pipeline, data.generator, data.eta)
         data.num_warmup_steps = max(len(data.timesteps) - data.num_inference_steps * pipeline.scheduler.order, 0)
 
+        pipeline.guider.set_input_fields(
+            prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
+            add_time_ids=("add_time_ids", "negative_add_time_ids"),
+            pooled_prompt_embeds=("pooled_prompt_embeds", "negative_pooled_prompt_embeds"),
+            ip_adapter_embeds=("ip_adapter_embeds", "negative_ip_adapter_embeds"),
+        )
+
         with pipeline.progress_bar(total=data.num_inference_steps) as progress_bar:
             for i, t in enumerate(data.timesteps):
                 pipeline.guider.set_state(step=i, num_inference_steps=data.num_inference_steps, timestep=t)
+                guider_data = pipeline.guider.prepare_inputs(data)
 
-                (
-                    latents,
-                    prompt_embeds,
-                    add_time_ids,
-                    pooled_prompt_embeds,
-                    mask,
-                    masked_image_latents,
-                    ip_adapter_embeds,
-                ) = pipeline.guider.prepare_inputs(
-                    pipeline.unet,
-                    data.latents,
-                    (data.prompt_embeds, data.negative_prompt_embeds),
-                    (data.add_time_ids, data.negative_add_time_ids),
-                    (data.pooled_prompt_embeds, data.negative_pooled_prompt_embeds),
-                    data.mask,
-                    data.masked_image_latents,
-                    (data.ip_adapter_embeds, data.negative_ip_adapter_embeds),
-                )
-
-                for batch_index, (
-                    latents_i, prompt_embeds_i, add_time_ids_i, pooled_prompt_embeds_i, mask_i, masked_image_latents_i, ip_adapter_embeds_i,
-                ) in enumerate(zip(
-                    latents, prompt_embeds, add_time_ids, pooled_prompt_embeds, mask, masked_image_latents, ip_adapter_embeds
-                )):
+                data.scaled_latents = pipeline.scheduler.scale_model_input(data.latents, t)
+                
+                # Prepare for inpainting
+                if data.num_channels_unet == 9:
+                    data.scaled_latents = torch.cat([data.scaled_latents, data.mask, data.masked_image_latents], dim=1)
+                
+                for batch in guider_data:
                     pipeline.guider.prepare_models(pipeline.unet)
-                    latents_i = pipeline.scheduler.scale_model_input(latents_i, t)
-                    
-                    # Prepare for inpainting
-                    if data.num_channels_unet == 9:
-                        latents_i = torch.cat([latents_i, mask_i, masked_image_latents_i], dim=1)
                     
                     # Prepare additional conditionings
-                    data.added_cond_kwargs = {
-                        "text_embeds": pooled_prompt_embeds_i,
-                        "time_ids": add_time_ids_i,
+                    batch.added_cond_kwargs = {
+                        "text_embeds": batch.pooled_prompt_embeds,
+                        "time_ids": batch.add_time_ids,
                     }
-                    if ip_adapter_embeds_i is not None:
-                        data.added_cond_kwargs["image_embeds"] = ip_adapter_embeds_i
-
+                    if batch.ip_adapter_embeds is not None:
+                        batch.added_cond_kwargs["image_embeds"] = batch.ip_adapter_embeds
+                    
                     # Predict the noise residual
-                    data.noise_pred = pipeline.unet(
-                        latents_i,
+                    batch.noise_pred = pipeline.unet(
+                        data.scaled_latents,
                         t,
-                        encoder_hidden_states=prompt_embeds_i,
+                        encoder_hidden_states=batch.prompt_embeds,
                         timestep_cond=data.timestep_cond,
                         cross_attention_kwargs=data.cross_attention_kwargs,
-                        added_cond_kwargs=data.added_cond_kwargs,
+                        added_cond_kwargs=batch.added_cond_kwargs,
                         return_dict=False,
                     )[0]
-                    data.noise_pred = pipeline.guider.prepare_outputs(pipeline.unet, data.noise_pred)
 
                 # Perform guidance
-                outputs, scheduler_step_kwargs = pipeline.guider.outputs
-                data.noise_pred = pipeline.guider(**outputs)
+                data.noise_pred, scheduler_step_kwargs = pipeline.guider(guider_data)
                 
                 # Perform scheduler step using the predicted output
                 data.latents_dtype = data.latents.dtype
