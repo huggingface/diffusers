@@ -382,6 +382,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         is_qv: Optional[bool] = False, # thesea modified for quick validation of product shots
+        is_blend_bg_enhance: Optional[bool] = False, # thesea modified for quick validation of product shots
         is_multiprod: Optional[bool] = False, # thesea modified for quick validation of product shots
         product_ratio: Optional[float] = None, # theseam modified for quick validation of product shots
         image_width: Optional[int] = 1024,
@@ -611,10 +612,14 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                     f"number of prompts ({len(prompt_embeds_list)}) must match the number of product images {len(image_embeds_prods)}"
                 )
             
-            prompt_embeds = image_embeds_bg
-            product_ratio = 0.7
-            for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
-                prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
+            if is_blend_bg_enhance:
+                prompt_embeds = torch.cat([prompt_embeds_list[-1], image_embeds_bg], dim=1)
+                for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list[:-1]), reversed(image_embeds_prods[:-1])):
+                    prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
+            else:  
+                prompt_embeds = image_embeds_bg  
+                for tmp_prompt_embeds, tmp_image_embeds_prod in zip(reversed(prompt_embeds_list), reversed(image_embeds_prods)):
+                    prompt_embeds = torch.cat([tmp_prompt_embeds, tmp_image_embeds_prod[:,:int(729*product_ratio),:], prompt_embeds], dim=1)
         else:
             prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
         
