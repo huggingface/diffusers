@@ -14,7 +14,7 @@
 
 import math
 import warnings
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict
 
 import numpy as np
 import PIL.Image
@@ -1312,3 +1312,197 @@ class PixArtImageProcessor(VaeImageProcessor):
             samples = samples[:, :, start_y:end_y, start_x:end_x]
 
         return samples
+
+
+class VisualClozeProcessor(VaeImageProcessor):
+    def __init__(self, 
+                 *args, 
+                 resolution: int = 384, 
+                 **kwargs):
+        self.resolution = resolution
+        super().__init__(*args, **kwargs)
+
+    def preprocess_image(
+        self, 
+        input_images: List[List[Optional[Image.Image]]], 
+        vae_scale_factor: int
+    ) -> Tuple[List[List[torch.Tensor]], List[List[List[int]]], List[int]]:
+        n_samples, n_task_images = len(input_images), len(input_images[0])
+        divisible = 2 * vae_scale_factor
+
+        processed_images: List[List[Image.Image]] = [[] for _ in range(n_samples)]
+        reference_size: List[Optional[Tuple[int, int]]] = [None for _ in range(n_samples)]
+        target_position: List[int] = []
+
+        for i in range(n_samples):
+            # Resize and crop images to the same size as the first uploaded image in each row
+            for j in range(0, n_task_images):
+                if input_images[i][j] is not None:
+                    aspect_ratio = input_images[i][j].width / input_images[i][j].height
+                    target_area = self.resolution * self.resolution
+                    new_h = int((target_area / aspect_ratio) ** 0.5)
+                    new_w = int(new_h * aspect_ratio)
+
+                    new_w = max(new_w // divisible, 1) * divisible
+                    new_h = max(new_h // divisible, 1) * divisible
+                    reference_size[i] = (new_w, new_h)
+
+                    break
+
+            for j in range(0, n_task_images):
+                if input_images[i][j] is not None:
+                    target = self._resize_and_crop(input_images[i][j], reference_size[i][0], reference_size[i][1])
+                    processed_images[i].append(target)
+
+                    if i == n_samples - 1:
+                        target_position.append(0)
+                else:
+                    blank = Image.new("RGB", reference_size[i] if reference_size[i] else (self.resolution, self.resolution), (0, 0, 0))
+                    processed_images[i].append(blank)
+                    if i == n_samples - 1:
+                        # Record the position of the target images
+                        target_position.append(1)
+
+        # When there are multiple target images, resize images to the same width help improve the stability of the generation
+        if len(target_position) > 1 and sum(target_position) > 1:
+            new_w = reference_size[n_samples - 1][0] or 384
+            for i in range(len(processed_images)):
+                for j in range(len(processed_images[i])):
+                    if processed_images[i][j] is not None:
+                        new_h = int(processed_images[i][j].height * (new_w / processed_images[i][j].width))
+                        new_w = int(new_w / 16) * 16
+                        new_h = int(new_h / 16) * 16
+                        processed_images[i][j] = self.height(processed_images[i][j], new_h, new_w)
+
+        image_sizes = []
+        for i in range(len(processed_images)):
+            image_sizes.append([[img.height, img.width] for img in processed_images[i]])
+            for j, image in enumerate(processed_images[i]):
+                image = self.pil_to_numpy(image)  # to np
+                image = self.numpy_to_pt(image)  # to pt
+                image = self.normalize(image)
+                processed_images[i][j] = image
+
+        return processed_images, image_sizes, target_position
+
+    def preprocess_mask(
+        self, input_images: List[List[Image.Image]], target_position: List[int]
+    ) -> List[List[torch.Tensor]]:
+        """Generate masks for the visual cloze task.
+
+        Args:
+            input_images: Processed images
+            target_position: Binary list marking target positions
+
+        Returns:
+            List of lists of mask tensors (1 for target positions, 0 for conditions)
+        """
+        mask = []
+        for i, row in enumerate(input_images):
+            if i == len(input_images) - 1:  # Query
+                row_masks = [
+                    torch.full((1, 1, row[0].shape[2], row[0].shape[3]), fill_value=m) for m in target_position
+                ]
+            else:  # In-context examples
+                row_masks = [
+                    torch.full((1, 1, row[0].shape[2], row[0].shape[3]), fill_value=0) for _ in target_position
+                ]
+            mask.append(row_masks)
+        return mask
+
+    def preprocess_image_upsampling(
+        self,
+        input_images: List[List[Image.Image]],
+        height: int,
+        width: int,
+    ) -> Tuple[List[List[Image.Image]], List[List[List[int]]]]:
+        """Process images for upsampling.
+
+        Args:
+            input_images: Input images to process
+            height: Target height
+            width: Target width
+
+        Returns:
+            Tuple of processed images and their sizes
+        """
+        image = self.resize(input_images[0][0], height, width)
+        image = self.pil_to_numpy(image)  # to np
+        image = self.numpy_to_pt(image)  # to pt
+        image = self.normalize(image)
+            
+        input_images[0][0] = image
+        image_sizes = [[[height, width]]]
+        return input_images, image_sizes
+
+    def preprocess_mask_upsampling(self, input_images: List[List[Image.Image]]) -> List[List[torch.Tensor]]:
+        return [[torch.ones((1, 1, input_images[0][0].shape[2], input_images[0][0].shape[3]))]]
+
+    def get_layout_prompt(self, size: Tuple[int, int]) -> str:
+        layout_instruction = (
+            f"A grid layout with {size[0]} rows and {size[1]} columns, displaying {size[0] * size[1]} images arranged side by side.",
+        )
+        return layout_instruction
+
+    def preprocess(
+        self,
+        task_prompt: Union[str, List[str]],
+        content_prompt: Union[str, List[str]],
+        input_images: Optional[List[List[List[Optional[str]]]]] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        upsampling: bool = False,
+        vae_scale_factor: int = 16,
+    ) -> Dict:
+        """Process visual cloze inputs.
+
+        Args:
+            task_prompt: Task description(s)
+            content_prompt: Content description(s)
+            input_images: List of image paths or None for target positions
+            height: Optional target height for upsampling
+            width: Optional target width for upsampling
+            upsampling: Whether this is a upsampling processing step
+
+        Returns:
+            Dictionary containing processed images, masks, prompts and metadata
+        """
+        if isinstance(task_prompt, str):
+            task_prompt = [task_prompt]
+            content_prompt = [content_prompt]
+            input_images = [input_images]
+
+        output = {
+            "init_image": [],
+            "mask": [],
+            "task_prompt": task_prompt if not upsampling else [None for _ in range(len(task_prompt))],
+            "content_prompt": content_prompt,
+            "layout_prompt": [],
+            "target_position": [],
+            "image_size": [],
+        }
+        for i in range(len(task_prompt)):
+            if upsampling:
+                layout_prompt = None
+            else:
+                layout_prompt = self.get_layout_prompt((len(input_images[i]), len(input_images[i][0])))
+
+            if upsampling:
+                cur_processed_images, cur_image_size = self.preprocess_image_upsampling(
+                    input_images[i], height=height, width=width
+                )
+                cur_mask = self.preprocess_mask_upsampling(cur_processed_images)
+            else:
+                cur_processed_images, cur_image_size, cur_target_position = self.preprocess_image(
+                    input_images[i], vae_scale_factor=vae_scale_factor
+                )
+                cur_mask = self.preprocess_mask(cur_processed_images, cur_target_position)
+
+                output["target_position"].append(cur_target_position)
+
+            output["image_size"].append(cur_image_size)
+            output["init_image"].append(cur_processed_images)
+            output["mask"].append(cur_mask)
+            output["layout_prompt"].append(layout_prompt)
+
+        return output

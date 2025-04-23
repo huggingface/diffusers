@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import VaeImageProcessor, VisualClozeProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
@@ -35,7 +35,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
-from .processor_visualcloze import VisualClozeProcessor
+# from .processor_visualcloze import VisualClozeProcessor
 
 
 if is_torch_xla_available():
@@ -251,10 +251,9 @@ class VisualClozePipeline(
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
-        self.image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor * 2, vae_latent_channels=self.latent_channels
-        )
-        self.visualcloze_processor = VisualClozeProcessor(resolution=resolution)
+        self.image_processor = VisualClozeProcessor(
+            vae_scale_factor=self.vae_scale_factor * 2, vae_latent_channels=self.latent_channels, 
+            resolution=resolution)
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
@@ -674,7 +673,7 @@ class VisualClozePipeline(
             """Helper function to prepare latents for a single batch."""
             with torch.autocast("cuda", dtype):
                 # Concatenate images and masks along width dimension
-                image = [torch.cat(img, dim=2).to(device, non_blocking=True) for img in image]
+                image = [torch.cat(img, dim=3).to(device, non_blocking=True) for img in image]
                 mask = [torch.cat(m, dim=3).to(device, non_blocking=True) for m in mask]
 
                 # Generate latent image IDs
@@ -684,12 +683,12 @@ class VisualClozePipeline(
                 with torch.no_grad():
                     if not upsampling:
                         # For initial encoding, use actual images
-                        image_latent = [self._encode_vae_image(img[None], gen) for img in image]
+                        image_latent = [self._encode_vae_image(img, gen) for img in image]
                         masked_image_latent = [img.clone() for img in image_latent]
                     else:
                         # For post-upsampling, use zero images for masked latents
-                        image_latent = [self._encode_vae_image(img[None], gen) for img in image]
-                        masked_image_latent = [self._encode_vae_image(img[None] * 0, gen) for img in image]
+                        image_latent = [self._encode_vae_image(img, gen) for img in image]
+                        masked_image_latent = [self._encode_vae_image(img * 0, gen) for img in image]
 
                     for i in range(len(image_latent)):
                         # Rearrange latents and masks for patch processing
@@ -919,7 +918,7 @@ class VisualClozePipeline(
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
 
-        processor_output = self.visualcloze_processor(
+        processor_output = self.image_processor.preprocess(
             task_prompt, content_prompt, image, vae_scale_factor=self.vae_scale_factor
         )
 
@@ -996,7 +995,7 @@ class VisualClozePipeline(
         upsampling_height = int(upsampling_height // divisible) * divisible
         upsampling_width = int(upsampling_width // divisible) * divisible
 
-        processor_output = self.visualcloze_processor(
+        processor_output = self.image_processor.preprocess(
             upsampling_task_prompt,
             upsampling_content_prompt,
             upsampling_image,

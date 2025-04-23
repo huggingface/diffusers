@@ -23,11 +23,9 @@ The abstract from the paper is:
 
 ## Inference
 
-Note: More examples can be found in the [Online Demo](https://huggingface.co/spaces/VisualCloze/VisualCloze) and [Github Repo](https://github.com/lzyhha/VisualCloze).
+### Model loading
 
-First, load the pipeline. 
-
-Note that VisualCloze releases two models suitable for diffusers, i.e., VisualClozePipeline-384 and VisualClozePipeline-512, which are trained with resolutions of 384 and 512, respectively. 
+VisualCloze releases two models suitable for diffusers, i.e., VisualClozePipeline-384 and VisualClozePipeline-512, which are trained with resolutions of 384 and 512, respectively. 
 The resolution means that each image is resized to the area of the square of it before concatenating images into a grid layout. 
 In this case, VisualCloze uses [SDEdit](https://arxiv.org/abs/2108.01073) to upsample the generated images.
 ```python
@@ -35,7 +33,6 @@ import torch
 from diffusers import VisualClozePipeline
 
 pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-384", resolution=384, torch_dtype=torch.bfloat16)
-# pipe = VisualClozePipeline.from_pretrained("VisualCloze/VisualClozePipeline-512", resolution=512, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 ```
 
@@ -52,43 +49,99 @@ When using batch inference, the input images should be a List[List[List[Image|No
 By default, the model first generates an image with a resolution of ${model.resolution}^2$, and then upsamples it by a factor of three. You can try setting the `upsampling_height` and `upsampling_width` parameters to generate images with different size. 
 
 
+### Examples 
+
+
+More examples covering a wide range of tasks can be found in the [Online Demo](https://huggingface.co/spaces/VisualCloze/VisualCloze) and [Github Repo](https://github.com/lzyhha/VisualCloze). 
+Here, the document shows simple examples for mask2image, edge-detection, and subject-driven generation.
+
+#### mask2image
+
 ```python
+
 # Load in-context images (make sure the paths are correct and accessible)
 image_paths = [
     # in-context examples
     [
-        load_image('https://github.com/lzyhha/VisualCloze/raw/main/examples/examples/93bc1c43af2d6c91ac2fc966bf7725a2/93bc1c43af2d6c91ac2fc966bf7725a2_depth-anything-v2_Large.jpg'), 
-        load_image('https://github.com/lzyhha/VisualCloze/raw/main/examples/examples/93bc1c43af2d6c91ac2fc966bf7725a2/93bc1c43af2d6c91ac2fc966bf7725a2.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/2c4e256fa512cb7e7f433f4c7f9101de_sam2_mask.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/2c4e256fa512cb7e7f433f4c7f9101de.jpg'),
     ],
     # query with the target image
     [
-        load_image('https://github.com/lzyhha/VisualCloze/raw/main/examples/examples/79f2ee632f1be3ad64210a641c4e201b/79f2ee632f1be3ad64210a641c4e201b_depth-anything-v2_Large.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/9c565b1aad76b22f5bb836744a93561a_sam2_mask.jpg'),
         None,  # No image needed for the query in this case
     ],
 ]
 
 # Task and content prompt
-task_prompt = "Each row outlines a logical process, starting from [IMAGE1] gray-based depth map with detailed object contours, to achieve [IMAGE2] an image with flawless clarity."
-content_prompt = """A serene portrait of a young woman with long dark hair, wearing a beige dress with intricate 
-gold embroidery, standing in a softly lit room. She holds a large bouquet of pale pink roses in a black box, 
-positioned in the center of the frame. The background features a tall green plant to the left and a framed artwork 
-on the wall to the right. A window on the left allows natural light to gently illuminate the scene. 
-The woman gazes down at the bouquet with a calm expression. Soft natural lighting, warm color palette, 
-high contrast, photorealistic, intimate, elegant, visually balanced, serene atmosphere."""
+task_prompt = "In each row, a logical task is demonstrated to achieve [IMAGE2] an aesthetically pleasing photograph based on [IMAGE1] sam 2-generated masks with rich color coding."
+content_prompt = """Majestic photo of a golden eagle perched on a rocky outcrop in a mountainous landscape. 
+The eagle is positioned in the right foreground, facing left, with its sharp beak and keen eyes prominently visible. 
+Its plumage is a mix of dark brown and golden hues, with intricate feather details. 
+The background features a soft-focus view of snow-capped mountains under a cloudy sky, creating a serene and grandiose atmosphere. 
+The foreground includes rugged rocks and patches of green moss. Photorealistic, medium depth of field, 
+soft natural lighting, cool color palette, high contrast, sharp focus on the eagle, blurred background, 
+tranquil, majestic, wildlife photography."""
 
+# Run the pipeline
 image_result = pipe(
     task_prompt=task_prompt,
     content_prompt=content_prompt,
     image=image_paths,
-    upsampling_width=1024,
-    upsampling_height=1024,
+    upsampling_width=1344,
+    upsampling_height=768,
     upsampling_strength=0.4,
     guidance_scale=30,
     num_inference_steps=30,
     max_sequence_length=512,
     generator=torch.Generator("cpu").manual_seed(0)
 ).images[0][0]
-image.save("output.png")
+
+# Save the resulting image
+image_result.save("visualcloze.png")
+```
+
+#### Example for edge-detection
+
+```python
+# Load in-context images (make sure the paths are correct and accessible)
+image_paths = [
+    # in-context examples
+    [
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/de5a8b250bf407aa7e04913562dcba90.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/de5a8b250bf407aa7e04913562dcba90_hed_512.jpg'),
+    ],
+    [
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/5bf755ed9dbb9b3e223e7ba35232b06e.jpg'),
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/5bf755ed9dbb9b3e223e7ba35232b06e_hed_512.jpg'),
+    ],
+    # query with the target image
+    [
+        load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/53b3f413257bee9e499b823b44623b1a.jpg'),
+        None,  # No image needed for the query in this case
+    ],
+]
+
+# Task and content prompt
+task_prompt = "Each row illustrates a pathway from [IMAGE1] a sharp and beautifully composed photograph to [IMAGE2] edge map with natural well-connected outlines using a clear logical task."
+content_prompt = ""
+
+# Run the pipeline
+image_result = pipe(
+    task_prompt=task_prompt,
+    content_prompt=content_prompt,
+    image=image_paths,
+    upsampling_width=864,
+    upsampling_height=1152,
+    upsampling_strength=0.4,
+    guidance_scale=30,
+    num_inference_steps=30,
+    max_sequence_length=512,
+    generator=torch.Generator("cpu").manual_seed(0)
+).images[0][0]
+
+# Save the resulting image
+image_result.save("visualcloze.png")
 ```
 
 ## VisualClozePipeline
