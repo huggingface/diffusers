@@ -69,7 +69,7 @@ image_paths = [
     # query with the target image
     [
         load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/9c565b1aad76b22f5bb836744a93561a_sam2_mask.jpg'),
-        None,  # No image needed for the query in this case
+        None, # No image needed for the target image
     ],
 ]
 
@@ -118,7 +118,7 @@ image_paths = [
     # query with the target image
     [
         load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/53b3f413257bee9e499b823b44623b1a.jpg'),
-        None,  # No image needed for the query in this case
+        None, # No image needed for the target image
     ],
 ]
 
@@ -164,7 +164,7 @@ image_paths = [
     [
         load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00005-of-00022-4396_reference.jpg'),
         load_image('https://huggingface.co/VisualCloze/VisualCloze/resolve/main/examples/data-00005-of-00022-4396_depth-anything-v2_Large.jpg'),
-        None,
+        None, # No image needed for the target image
     ],
 ]
 
@@ -186,7 +186,7 @@ image_result = pipe(
     guidance_scale=30,
     num_inference_steps=30,
     max_sequence_length=512,
-    generator=torch.Generator("cpu").manual_seed(1)
+    generator=torch.Generator("cpu").manual_seed(0)
 ).images[0][0]
 
 # Save the resulting image
